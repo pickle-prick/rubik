@@ -1,0 +1,8 @@
+build/
+.cache/
+debug/
+*.spv
+.gdb_history
+.gdbinit
+.vscode/
+tmp/

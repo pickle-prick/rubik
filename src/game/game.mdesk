@@ -1,0 +1,116 @@
+// Copyright (c) 2024 Epic Games Tools
+// Licensed under the MIT license (https://opensource.org/license/mit/)
+
+//- rjf: stack table
+
+@table(name, name_lower, type, default)
+G_StackTable:
+{
+  //- rjf: parents
+  { Parent                             parent                       `G_Node *`                0                                }
+  { Bucket                             bucket                       `G_Bucket *`              0                                }
+  { Scene                              scene                        `G_Scene *`               0                                }
+  
+  //- rjf: flags
+  { Flags                              flags                         G_NodeFlags            0                                }
+  
+}
+
+//- rjf: declaring stack node types
+
+@gen
+{
+  @expand(G_StackTable a) `typedef struct G_$(a.name)Node G_$(a.name)Node; struct G_$(a.name)Node{G_$(a.name)Node *next; $(a.type) v;};`
+}
+
+//- rjf: declaring all default stack tops
+
+@gen
+{
+  `#define G_DeclStackNils \\`;
+  `struct\\`;
+  `{\\`;
+    @expand(G_StackTable a) `G_$(a.name)Node $(a.name_lower)_nil_stack_top;\\`;
+    `}`;
+}
+
+//- rjf: initializing all default stack tops
+
+@gen
+{
+  `#define G_InitStackNils(state) \\`;
+  @expand(G_StackTable a) `state->$(a.name_lower)_nil_stack_top.v = $(a.default);\\`;
+  ``;
+}
+
+//- rjf: declaring all stack nodes & free lists
+
+@gen
+{
+  `#define G_DeclStacks \\`;
+  `struct\\`;
+  `{\\`;
+    @expand(G_StackTable a) `struct { G_$(a.name)Node *top; $(a.type) bottom_val; G_$(a.name)Node *free; B32 auto_pop; } $(a.name_lower)_stack;\\`;
+    `}`;
+}
+
+//- rjf: initing all stack nodes
+
+@gen
+{
+  `#define G_InitStacks(state) \\`;
+  @expand(G_StackTable a) `state->$(a.name_lower)_stack.top = &state->$(a.name_lower)_nil_stack_top; state->$(a.name_lower)_stack.bottom_val = $(a.default); state->$(a.name_lower)_stack.free = 0; state->$(a.name_lower)_stack.auto_pop = 0;\\`;
+  ``;
+}
+
+//- rjf: auto-popping all stacks
+
+@gen
+{
+  `#define G_AutoPopStacks(state) \\`
+  @expand(G_StackTable a)
+    `if(state->$(a.name_lower)_stack.auto_pop) { g_pop_$(a.name_lower)(); state->$(a.name_lower)_stack.auto_pop = 0; }\\`;
+  ``;
+}
+
+//- rjf: decls for the stack function operation headers
+
+@gen
+{
+  @expand(G_StackTable a)
+    `internal $(a.type) $(=>35) g_top_$(a.name_lower)(void);`
+    @expand(G_StackTable a)
+    `internal $(a.type) $(=>35) g_bottom_$(a.name_lower)(void);`
+    @expand(G_StackTable a)
+    `internal $(a.type) $(=>35) g_push_$(a.name_lower)($(a.type) v);`
+    @expand(G_StackTable a)
+    `internal $(a.type) $(=>35) g_pop_$(a.name_lower)(void);`
+    @expand(G_StackTable a)
+    `internal $(a.type) $(=>35) g_set_next_$(a.name_lower)($(a.type) v);`
+}
+
+//- rjf: defer-loop helpers
+
+@gen @c_file
+{
+  `#if 1`;
+  @expand(G_StackTable a)
+    `#define G_$(a.name)_Scope(v) DeferLoop(g_push_$(a.name_lower)(v), g_pop_$(a.name_lower)())`
+  `#endif`;
+}
+
+//- rjf: decls for the stack operation implementations
+
+@gen @c_file
+{
+  @expand(G_StackTable a)
+    `internal $(a.type) g_top_$(a.name_lower)(void) { G_StackTopImpl(g_state, $(a.name), $(a.name_lower)) }`;
+  @expand(G_StackTable a)
+    `internal $(a.type) g_bottom_$(a.name_lower)(void) { G_StackBottomImpl(g_state, $(a.name), $(a.name_lower)) }`;
+  @expand(G_StackTable a)
+    `internal $(a.type) g_push_$(a.name_lower)($(a.type) v) { G_StackPushImpl(g_state, $(a.name), $(a.name_lower), $(a.type), v) }`;
+  @expand(G_StackTable a)
+    `internal $(a.type) g_pop_$(a.name_lower)(void) { G_StackPopImpl(g_state, $(a.name), $(a.name_lower)) }`;
+  @expand(G_StackTable a)
+    `internal $(a.type) g_set_next_$(a.name_lower)($(a.type) v) { G_StackSetNextImpl(g_state, $(a.name), $(a.name_lower), $(a.type), v) }`;
+}

@@ -1,0 +1,7 @@
+[
+    {
+        "directory": "/home/k/dev/c/rubik",
+        "command": "gcc --include=src/game/game_main.c -g -O0 -DBUILD_DEBUG=1 -I./src/ -I./local/ -g -Wno-unknown-warning-option -Wall -Wno-missing-braces -Wno-unused-function -Wno-attributes -Wno-unused-value -Wno-unused-variable -Wno-unused-local-typedef -Wno-deprecated-declarations -Wno-unused-but-set-variable -Wno-compare-distinct-pointer-types -D_USE_MATH_DEFINES -Dstrdup=_strdup -Dgnu_printf=printf src/game/game_main.c -lpthread -lm -lrt -ldl -lglfw -lvulkan -lX11 -lXext -lXxf86vm -lXrandr -lXi -o ./build/game",
+        "file": "src/game/game_main.c"
+    }
+]

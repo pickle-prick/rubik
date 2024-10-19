@@ -1,0 +1,4 @@
+Index:
+  StandardLibrary: No
+Diagnostics:
+  Suppress: ['redefinition_different_kind', 'unknown_typename', 'unused-includes', 'fatal_too_many_errors', '-Winitializer-overrides']

@@ -1,0 +1,216 @@
+{
+    "frames": {
+        "DinoSprites 0.ase": {
+            "frame": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 1.ase": {
+            "frame": { "x": 24, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 2.ase": {
+            "frame": { "x": 48, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 3.ase": {
+            "frame": { "x": 72, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 4.ase": {
+            "frame": { "x": 96, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 5.ase": {
+            "frame": { "x": 120, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 6.ase": {
+            "frame": { "x": 144, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 7.ase": {
+            "frame": { "x": 168, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 8.ase": {
+            "frame": { "x": 192, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 9.ase": {
+            "frame": { "x": 216, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 10.ase": {
+            "frame": { "x": 240, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 1000
+        },
+        "DinoSprites 11.ase": {
+            "frame": { "x": 264, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 12.ase": {
+            "frame": { "x": 288, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 13.ase": {
+            "frame": { "x": 312, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 1000
+        },
+        "DinoSprites 14.ase": {
+            "frame": { "x": 336, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 15.ase": {
+            "frame": { "x": 360, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 16.ase": {
+            "frame": { "x": 384, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 17.ase": {
+            "frame": { "x": 408, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 18.ase": {
+            "frame": { "x": 432, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 19.ase": {
+            "frame": { "x": 456, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 20.ase": {
+            "frame": { "x": 480, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 21.ase": {
+            "frame": { "x": 504, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 22.ase": {
+            "frame": { "x": 528, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        },
+        "DinoSprites 23.ase": {
+            "frame": { "x": 552, "y": 0, "w": 24, "h": 24 },
+            "rotated": false,
+            "trimmed": false,
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+            "sourceSize": { "w": 24, "h": 24 },
+            "duration": 100
+        }
+    },
+    "meta": {
+        "app": "http://www.aseprite.org/",
+        "version": "1.x-dev",
+        "format": "I8",
+        "size": { "w": 576, "h": 24 },
+        "scale": "1",
+        "frameTags": [
+            { "name": "idle", "from": 0, "to": 3, "direction": "forward", "color": "#000000ff" },
+            { "name": "move", "from": 4, "to": 9, "direction": "forward", "color": "#000000ff" },
+            { "name": "kick", "from": 10, "to": 12, "direction": "forward", "color": "#000000ff" },
+            { "name": "hurt", "from": 13, "to": 16, "direction": "forward", "color": "#000000ff" },
+            { "name": "crouch", "from": 17, "to": 17, "direction": "forward", "color": "#000000ff" },
+            { "name": "sneak", "from": 18, "to": 23, "direction": "forward", "color": "#000000ff" }
+        ],
+        "layers": [
+            { "name": "VITA", "opacity": 255, "blendMode": "normal" }
+        ],
+        "slices": [
+        ]
+    }
+}
