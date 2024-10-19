@@ -7,6 +7,8 @@
 * linux
 * gcc
 * glslc
+* vulkan-headers
+* vulkan-validation-layers
 
 ## Building
 
