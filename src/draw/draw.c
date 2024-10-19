@@ -63,9 +63,9 @@ d_begin_frame(void)
 }
 
 internal void
-d_submit_bucket(OS_Handle os_wnd, R_Handle r_window, D_Bucket *bucket)
+d_submit_bucket(OS_Handle os_wnd, R_Handle r_window, D_Bucket *bucket, Vec2F32 ptr)
 {
-    r_window_submit(os_wnd, r_window, &bucket->passes);
+    r_window_submit(os_wnd, r_window, &bucket->passes, ptr);
 }
 
 ////////////////////////////////

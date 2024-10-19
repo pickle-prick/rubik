@@ -32,7 +32,8 @@
 #include "./game.c"
 
 internal void
-ui_draw(OS_Handle os_wnd) {
+ui_draw(OS_Handle os_wnd)
+{
     Rng2F32 w_rect = os_client_rect_from_window(os_wnd);
     Temp scratch = scratch_begin(0,0);
 
@@ -43,7 +44,8 @@ ui_draw(OS_Handle os_wnd) {
 
     // Recusivly drawing boxes
     UI_Box *b = ui_root_from_state(ui_state);
-    while(!ui_box_is_nil(b)) {
+    while(!ui_box_is_nil(b))
+    {
         UI_BoxRec rec = ui_box_rec_df_post(b, &ui_g_nil_box);
 
         // TODO: DEBUG
@@ -100,7 +102,8 @@ ui_draw(OS_Handle os_wnd) {
             }
 
             // Active effect extension
-            if(b->flags & UI_BoxFlag_DrawActiveEffects) {
+            if(b->flags & UI_BoxFlag_DrawActiveEffects)
+            {
                 Vec4F32 shadow_color = rgba_from_u32(0xFFFFFFFF);
                 shadow_color.x *= 0.3f;
                 shadow_color.y *= 0.3f;
@@ -147,7 +150,8 @@ ui_draw(OS_Handle os_wnd) {
         }
 
         // Draw string
-        if(b->flags & UI_BoxFlag_DrawText) {
+        if(b->flags & UI_BoxFlag_DrawText)
+        {
             // TODO: handle font color
             Vec2F32 text_position = ui_box_text_position(b);
 
@@ -180,7 +184,8 @@ ui_draw(OS_Handle os_wnd) {
 }
 
 internal void
-entry_point(CmdLine *cmd_line) {
+entry_point(CmdLine *cmd_line)
+{
     Vec2F32 default_resolution = {900, 900};
     String8 window_title = str8_lit("Rubik");
 
@@ -239,7 +244,8 @@ entry_point(CmdLine *cmd_line) {
     G_Scene *scene = g_scene_load();
 
     B32 window_should_close = 0;
-    while(!window_should_close) {
+    while(!window_should_close)
+    {
         U64 dt = os_now_microseconds() - frame_start_us;
         frame_start_us = os_now_microseconds();
 
@@ -254,7 +260,7 @@ entry_point(CmdLine *cmd_line) {
         //- Begin of frame
 
         r_begin_frame();
-        U64 id = r_window_begin_frame(window, wnd, mouse);
+        U64 id = r_window_begin_frame(window, wnd);
         d_begin_frame();
 
         /////////////////////////////////
@@ -270,13 +276,15 @@ entry_point(CmdLine *cmd_line) {
         UI_EventList ui_events = {0};
         OS_Event *os_evt_first = events.first;
         OS_Event *os_evt_opl = events.last + 1;
-        for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++) {
+        for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
+        {
             if(os_evt == 0) continue;
 
             UI_Event ui_evt = zero_struct;
 
             UI_EventKind kind = UI_EventKind_Null;
-            switch(os_evt->kind) {
+            switch(os_evt->kind)
+            {
                 default:{}break;
                 case OS_EventKind_Press:       {kind = UI_EventKind_Press;}break;
                 case OS_EventKind_Release:     {kind = UI_EventKind_Release;}break;
@@ -293,22 +301,26 @@ entry_point(CmdLine *cmd_line) {
             ui_evt.timestamp_us = os_evt->timestamp_us;
             ui_evt.modifiers    = os_evt->modifiers;
 
-            if(ui_evt.key == OS_Key_Backspace && ui_evt.kind == UI_EventKind_Press) {
+            if(ui_evt.key == OS_Key_Backspace && ui_evt.kind == UI_EventKind_Press)
+            {
                 ui_evt.kind       = UI_EventKind_Edit;
                 ui_evt.flags      = UI_EventFlag_Delete | UI_EventFlag_KeepMark;
                 ui_evt.delta_unit = UI_EventDeltaUnit_Char;
                 ui_evt.delta_2s32 = v2s32(-1,0);
             }
 
-            if(ui_evt.kind == UI_EventKind_Text) {
+            if(ui_evt.kind == UI_EventKind_Text)
+            {
                 ui_evt.flags = UI_EventFlag_KeepMark;
             }
 
-            if(ui_evt.key == OS_Key_Return && ui_evt.kind == UI_EventKind_Press) {
+            if(ui_evt.key == OS_Key_Return && ui_evt.kind == UI_EventKind_Press)
+            {
                 ui_evt.slot = UI_EventActionSlot_Accept;
             }
 
-            if(ui_evt.key == OS_Key_A && (ui_evt.modifiers & OS_Modifier_Ctrl) && ui_evt.kind == UI_EventKind_Press) {
+            if(ui_evt.key == OS_Key_A && (ui_evt.modifiers & OS_Modifier_Ctrl) && ui_evt.kind == UI_EventKind_Press)
+            {
                 ui_evt.kind       = UI_EventKind_Navigate;
                 ui_evt.flags      = UI_EventFlag_KeepMark;
                 ui_evt.delta_unit = UI_EventDeltaUnit_Whole;
@@ -321,14 +333,16 @@ entry_point(CmdLine *cmd_line) {
                 ui_event_list_push(ui_build_arena(), &ui_events, &ui_evt_0);
             }
 
-            if(ui_evt.key == OS_Key_Left && ui_evt.kind == UI_EventKind_Press) {
+            if(ui_evt.key == OS_Key_Left && ui_evt.kind == UI_EventKind_Press)
+            {
                 ui_evt.kind       = UI_EventKind_Navigate;
                 ui_evt.flags      = 0;
                 ui_evt.delta_unit = ui_evt.modifiers & OS_Modifier_Ctrl ? UI_EventDeltaUnit_Word : UI_EventDeltaUnit_Char;
                 ui_evt.delta_2s32 = v2s32(-1,0);
             }
 
-            if(ui_evt.key == OS_Key_Right && ui_evt.kind == UI_EventKind_Press) {
+            if(ui_evt.key == OS_Key_Right && ui_evt.kind == UI_EventKind_Press)
+            {
                 ui_evt.kind       = UI_EventKind_Navigate;
                 ui_evt.flags      = 0;
                 ui_evt.delta_unit = ui_evt.modifiers & OS_Modifier_Ctrl ? UI_EventDeltaUnit_Word : UI_EventDeltaUnit_Char;
@@ -361,12 +375,15 @@ entry_point(CmdLine *cmd_line) {
 
         // UI_Flags(UI_BoxFlag_ClickToFocus) 
         ui_push_parent(bg_box);
-        UI_Pane(r2f32p(0, 0, 600, 300), str8_lit("stats")) {
+        UI_Pane(r2f32p(0, 0, 600, 300), str8_lit("stats"))
+        {
             ui_pop_corner_radius();
 
             ui_set_next_pref_size(Axis2_Y, ui_pct(1.0, 1.0));
-            UI_Column {
-                UI_Row {
+            UI_Column
+            {
+                UI_Row
+                {
                     ui_label(str8_lit("dt"));
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%.6f", (dt / 1000000.0));
@@ -374,7 +391,8 @@ entry_point(CmdLine *cmd_line) {
 
                 ui_spacer(ui_px(3.0, 0));
 
-                UI_Row {
+                UI_Row
+                {
                     ui_label(str8_lit("fps"));
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%6.2f", 1 / (dt / 1000000.0));
@@ -382,7 +400,8 @@ entry_point(CmdLine *cmd_line) {
 
                 ui_spacer(ui_px(3.0, 0));
 
-                UI_Row {
+                UI_Row
+                {
                     ui_label(str8_lit("FRAMEefg"));
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%lu", frame_start_us);
@@ -390,22 +409,20 @@ entry_point(CmdLine *cmd_line) {
 
                 ui_spacer(ui_px(3.0, 0));
 
-                UI_Row {
+                UI_Row
+                {
                     ui_label(str8_lit("hot_box"));
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%lu", ui_state->hot_box_key.u64[0]);
                 }
 
                 Vec2F32 mouse = os_mouse_from_window(window);
-                UI_Row {
+                UI_Row
+                {
                     ui_label(str8_lit("mouse"));
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%.2f, %.2f", mouse.x, mouse.y);
                 }
-
-                ui_spacer(ui_px(3.0, 0));
-                if(ui_clicked(ui_button(str8_lit("XGetGeometry")))) { }
-                ui_spacer(ui_px(3.0, 0));
 
                 UI_Row
                 {
@@ -422,16 +439,17 @@ entry_point(CmdLine *cmd_line) {
                     ui_spacer(ui_pct(1.0, 0.0));
                     if(ui_committed(ui_line_edit(&cursor2, &mark2,
                                     edit_buffer2, sizeof(edit_buffer2), edit_string_size_out2,
-                                    str8(edit_buffer2, edit_string_size_out2[0]), str8_lit("name2")))) {
-                    }
+                                    str8(edit_buffer2, edit_string_size_out2[0]), str8_lit("name2")))) {}
                 }
 
-                UI_Row {
+                UI_Row
+                {
                     ui_label(str8_lit("drag mouse start"));
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%.2f, %.2f", ui_state->drag_start_mouse.x, ui_state->drag_start_mouse.y);
                 }
-                UI_Row {
+                UI_Row
+                {
                     ui_label(str8_lit("geo3d entity id"));
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%lu", id);
@@ -447,7 +465,7 @@ entry_point(CmdLine *cmd_line) {
         // }
 
         /////////////////////////////////
-        // Draw game
+        //~ Draw game
 
         g_update_and_render(scene, events, dt, id);
 
@@ -463,7 +481,7 @@ entry_point(CmdLine *cmd_line) {
         /////////////////////////////////
         //~ End of frame
 
-        d_submit_bucket(window, wnd, bucket);
+        d_submit_bucket(window, wnd, bucket, mouse);
         r_window_end_frame(window, wnd);
         r_end_frame();
 

@@ -293,11 +293,10 @@ internal void r_begin_frame(void);
 internal void r_end_frame(void);
 // internal void r_window_begin_frame(OS_Handle window, R_Handle window_equip);
 // internal void r_window_end_frame(OS_Handle window, R_Handle window_equip);
-internal U64  r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip, Vec2F32 p);
+internal U64  r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip);
 internal void r_window_end_frame(OS_Handle os_wnd, R_Handle window_equip);
 
 //- rjf: render pass submission
-// internal void r_window_submit(OS_Handle window, R_Handle window_equip, R_PassList *passes);
-internal void r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes);
+internal void r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec2F32 ptr);
 
 #endif // RENDER_CORE_H

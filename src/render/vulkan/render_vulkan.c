@@ -13,11 +13,12 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     // This data is technically optional, but it may provide some useful information 
     //      to the driver in order to optimize our specific application 
     //      (e.g. because it uses a well-known graphics engine with certain special behavior). 
-    VkApplicationInfo app_info = {
+    VkApplicationInfo app_info =
+    {
         .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pApplicationName   = app_name,
         .applicationVersion = VK_MAKE_VERSION(0, 0, 1),
-        .pEngineName        = "No Engine",
+        .pEngineName        = "Custom",
         .engineVersion      = VK_MAKE_VERSION(0, 0, 1),
         .apiVersion         = VK_API_VERSION_1_0,
         .pNext              = NULL, // point to extension information
@@ -34,7 +35,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         vkEnumerateInstanceExtensionProperties(NULL, &ext_count, extensions); /* query the extension details */
 
         printf("%d extensions supported\n", ext_count);
-        for (U64 i = 0; i < ext_count; i++) {
+        for(U64 i = 0; i < ext_count; i++)
+        {
             printf("[%3ld]: %s [%d] is supported\n", i, extensions[i].extensionName, extensions[i].specVersion);
         }
 
@@ -46,10 +48,13 @@ r_init(const char* app_name, OS_Handle window, bool debug)
 
         // Assert every required extension by glfw is in the supported extensions list
         U64 found = 0;
-        for (U64 i = 0; i < required_inst_ext_count; i++) {
+        for(U64 i = 0; i < required_inst_ext_count; i++)
+        {
             const char *ext = required_inst_exts[i];
-            for (U64 j = 0; j < ext_count; j++) {
-                if (strcmp(ext, extensions[j].extensionName)) {
+            for(U64 j = 0; j < ext_count; j++)
+            {
+                if (strcmp(ext, extensions[j].extensionName))
+                {
                     found++;
                     break;
                 }
@@ -61,11 +66,13 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         // NOTE(@k): add one for optional debug extension
         enabled_ext_names = push_array(r_vulkan_state->arena, char *, required_inst_ext_count + 1);
 
-        for (U64 i = 0; i < required_inst_ext_count; i++) {
+        for(U64 i = 0; i < required_inst_ext_count; i++)
+        {
             enabled_ext_names[i] = (char *)required_inst_exts[i];
         }
 
-        if (r_vulkan_state->enable_validation_layer) {
+        if(r_vulkan_state->enable_validation_layer)
+        {
             enabled_ext_names[enabled_ext_count++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
         }
 
@@ -78,7 +85,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     //      the SDK that is known as VK_LAYER_KHRONOS_validation 
     U64 layer_count = 0;
     const char *layers[] = { "VK_LAYER_KHRONOS_validation" };
-    if (r_vulkan_state->enable_validation_layer) {
+    if(r_vulkan_state->enable_validation_layer)
+    {
         layer_count = 1;
         U32 count;
         vkEnumerateInstanceLayerProperties(&count, NULL);
@@ -86,8 +94,10 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         vkEnumerateInstanceLayerProperties(&count, available_layers);
 
         bool support_validation_layer;
-        for (U64 i; i < count; i++) {
-            if (strcmp(available_layers[i].layerName, layers[0])) {
+        for(U64 i; i < count; i++)
+        {
+            if(strcmp(available_layers[i].layerName, layers[0]))
+            {
                 support_validation_layer = true;
                 break;
             }
@@ -124,17 +134,18 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info = {
             .sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
             .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-                VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT    |
-                VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+                               VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT    |
+                               VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                               VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
             .messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT     |
-                VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT  |
-                VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+                               VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT  |
+                               VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
             .pfnUserCallback = debug_callback,
             .pUserData       = NULL, // Optional 
         };
 
-        if (r_vulkan_state->enable_validation_layer) {
+        if(r_vulkan_state->enable_validation_layer)
+        {
             create_info.enabledLayerCount   = layer_count;
             create_info.ppEnabledLayerNames = layers;
             create_info.pNext               = &debug_messenger_create_info;
@@ -191,7 +202,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
 
         int best_score = 0;
         r_vulkan_state->gpu.h = 0;
-        for (U64 i = 0; i < pdevice_count; i++) {
+        for(U64 i = 0; i < pdevice_count; i++)
+        {
             int score = 0;
             VkPhysicalDeviceProperties properties;
             VkPhysicalDeviceFeatures features;
@@ -205,15 +217,18 @@ r_init(const char* app_name, OS_Handle window, bool debug)
 
             // Check if current device supports all the required physical device extensions
             U64 found = 0;
-            for (U64 i = 0; i < REQUIRED_PHYSICAL_DEVICE_EXTENSIONS_COUNT; i++) {
-                for (U64 j = 0; j < ext_count; j++) {
-                    if (strcmp(extensions[j].extensionName, enabled_pdevice_ext_names[i])) {
+            for(U64 i = 0; i < REQUIRED_PHYSICAL_DEVICE_EXTENSIONS_COUNT; i++)
+            {
+                for(U64 j = 0; j < ext_count; j++)
+                {
+                    if(strcmp(extensions[j].extensionName, enabled_pdevice_ext_names[i]))
+                    {
                         found++;
                         break;
                     } 
                 }
             }
-            if (found != REQUIRED_PHYSICAL_DEVICE_EXTENSIONS_COUNT) continue;
+            if(found != REQUIRED_PHYSICAL_DEVICE_EXTENSIONS_COUNT) continue;
 
             // Querying details of swap chain support
             // Just checking if a swap chain is avaiable is not sufficient  
@@ -250,10 +265,11 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             if(features.samplerAnisotropy == VK_FALSE) continue;
             if(features.independentBlend == VK_FALSE) continue;
 
-            if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) score += 300;
+            if(properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) score += 300;
             score += properties.limits.maxImageDimension2D;
 
-            if (score > best_score) {
+            if(score > best_score)
+            {
                 best_score = score;
                 r_vulkan_state->gpu.h = pdevices[i];
                 r_vulkan_state->gpu.properties = properties;
@@ -321,15 +337,18 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         VkQueueFamilyProperties queue_family_properties[queue_family_count];
         vkGetPhysicalDeviceQueueFamilyProperties(r_vulkan_state->gpu.h, &queue_family_count, queue_family_properties);
 
-        for (U64 i = 0; i < queue_family_count; i++) {
-            if (queue_family_properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+        for(U64 i = 0; i < queue_family_count; i++)
+        {
+            if(queue_family_properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+            {
                 r_vulkan_state->gpu.gfx_queue_family_index = i;
                 has_graphic_queue_family = true;
             }
 
             VkBool32 present_supported = VK_FALSE;
             vkGetPhysicalDeviceSurfaceSupportKHR(r_vulkan_state->gpu.h, i, surface.h, &present_supported);
-            if (present_supported == VK_TRUE) {
+            if(present_supported == VK_TRUE)
+            {
                 r_vulkan_state->gpu.prest_queue_family_index = i;
                 has_present_queue_family = true;
             }
@@ -337,7 +356,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             // Note that it's very likely that these end up being the same queue family after all
             //      but throughout the program we will treat them as if they were seprate queues for a uniform approach.
             // TODO(@k): Nevertheless, we would prefer a physical device that supports drawing and presentation in the same queue for improved performance.
-            if (has_graphic_queue_family && has_present_queue_family) break;
+            if(has_graphic_queue_family && has_present_queue_family) break;
 
         }
         Assert(has_graphic_queue_family == true);
@@ -396,7 +415,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
 
         // Device specific extension VK_KHR_swapchain, which allows you to present rendered images from that device to windows 
         // It's possible that there are Vulkan devices in the system that lack this ability, for example because they only support compute operations
-        if (r_vulkan_state->enable_validation_layer) {
+        if(r_vulkan_state->enable_validation_layer)
+        {
             // Previous implementations of Vulkan made a distinction between instance and device specific validation layers, but this is no longer the case
             // That means that the enabledLayerCount and ppEnabledLayerNames fields of VkDeviceCreateInfo are ignored by up-to-date implementations. 
             // However, it is still a good idea to set them anyway to be compatible with older implementations
@@ -479,7 +499,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     // The one catch here is that the size of the bytecode is specified in bytes, but the bytecode pointer is uint32_t pointer rather than a char pointer
     // You also need to ensure that the data satisfies the alignment requirements of uin32_t 
     Temp temp = temp_begin(r_vulkan_state->arena);
-    for (U64 kind = 0; kind < R_Vulkan_VShadKind_COUNT; kind++) {
+    for(U64 kind = 0; kind < R_Vulkan_VShadKind_COUNT; kind++)
+    {
         VkShaderModule *vshad_mo = &r_vulkan_state->vshad_modules[kind];
         String8 vshad_path;
         switch (kind)
@@ -503,7 +524,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         };
         VK_Assert(vkCreateShaderModule(r_vulkan_state->device.h, &create_info, NULL, vshad_mo), "Failed to create shader module");
     }
-    for (U64 kind = 0; kind < R_Vulkan_FShadKind_COUNT; kind++) {
+    for(U64 kind = 0; kind < R_Vulkan_FShadKind_COUNT; kind++)
+    {
         VkShaderModule *fshad_mo = &r_vulkan_state->fshad_modules[kind];
         String8 fshad_path;
         switch (kind)
@@ -612,10 +634,13 @@ r_window_equip(OS_Handle wnd_handle)
     R_Handle ret = {0};
     R_Vulkan_Window *window = r_vulkan_state->first_free_window;
 
-    if (window == 0) {
+    if(window == 0)
+    {
         window = push_array(r_vulkan_state->arena, R_Vulkan_Window, 1);
         window->arena = arena_alloc();
-    } else {
+    }
+    else
+    {
         U64 gen = window->generation;
         SLLStackPop(r_vulkan_state->first_free_window);
         MemoryZeroStruct(window);
@@ -652,21 +677,24 @@ r_window_equip(OS_Handle wnd_handle)
         alloc_info.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
         VK_Assert(vkAllocateCommandBuffers(r_vulkan_state->device.h, &alloc_info, command_buffers), "Failed to allocate command buffer");
 
-        for (U64 i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        for(U64 i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+        {
             window->frames[i].cmd_buf = command_buffers[i];
 
             // Create the synchronization objects for frames
             // One semaphore to signal that an image has been acquired from the swapchain and is ready for rendering
             // Another one to signal that rendering has finished and presentation can happen
             // One fence to make sure only one frame is rendering at a time
-            for (U64 i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            for(U64 i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+            {
                 window->frames[i].img_acq_sem   = r_vulkan_semaphore(r_vulkan_state->device.h);
                 window->frames[i].rend_comp_sem = r_vulkan_semaphore(r_vulkan_state->device.h);
                 window->frames[i].inflt_fence   = r_vulkan_fence(r_vulkan_state->device.h);
             }
 
             // Create uniform buffers
-            for (U64 kind = 0; kind < R_Vulkan_UniformTypeKind_COUNT; kind++) {
+            for(U64 kind = 0; kind < R_Vulkan_UniformTypeKind_COUNT; kind++)
+            {
                 // TODO(@k): not ideal, since mesh uniform wouldn't grow
                 window->frames[i].uniform_buffers[kind] = r_vulkan_uniform_buffer_alloc(kind, 300);
             }
@@ -678,7 +706,8 @@ r_window_equip(OS_Handle wnd_handle)
                 &window->frames[i].inst_buffer_mesh,
             };
 
-            for (U64 i = 0; i < 2; i++) {
+            for(U64 i = 0; i < 2; i++)
+            {
                 R_Vulkan_Buffer *buffer = buffers[i];
                 VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
                 create_info.size        = MB(64);
@@ -755,11 +784,13 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
     VkPresentModeKHR preferred_prest_mode = VK_PRESENT_MODE_MAILBOX_KHR;
     // TODO: is this working?
     VkPresentModeKHR selected_prest_mode  = VK_PRESENT_MODE_IMMEDIATE_KHR;
-    for (U64 i = 0; i < surface->prest_mode_count; i++) {
+    for(U64 i = 0; i < surface->prest_mode_count; i++)
+    {
         // VK_PRESENT_MODE_MAILBOX_KHR is a very nice trade-off if energy usage is not a concern.
         // It allows us to avoid tearing while still maintaining a fairly low latency by rendering new images that are as up-to-date as possible right until the vertical 
         // blank. On mobile devices, where energy usage is more important, you will probably want to use VK_PRESENT_MODE_FIFO_KHR instead
-        if (surface->prest_modes[i] == preferred_prest_mode) {
+        if(surface->prest_modes[i] == preferred_prest_mode)
+        {
             selected_prest_mode = preferred_prest_mode;
             break;
         }
@@ -779,9 +810,12 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
     // Instead, we must use glfwGetFramebufferSize to query the resolution of the window in pixels before matching it against the minimum and maximum image extent
     // VkExtent2D selected_surface_extent;
 
-    if (surface->caps.currentExtent.width != 0xFFFFFFFF) {
+    if(surface->caps.currentExtent.width != 0xFFFFFFFF)
+    {
         swapchain.extent = surface->caps.currentExtent;
-    } else {
+    }
+    else
+    {
         Rng2F32 client_rect = os_client_rect_from_window(os_wnd);
         Vec2F32 dim = dim_2f32(client_rect);
         U32 width = dim.x;
@@ -798,7 +832,7 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
     // acquire another image to render to. Therefore it is recommended to request at least one more image than the minimum
     U32 min_swapchain_image_count = surface->caps.minImageCount + 1;
     // We should also make sure to not exceed the maximum number of images while doing this, where 0 is special value that means that there is no maximum
-    if (surface->caps.maxImageCount > 0 && min_swapchain_image_count > surface->caps.maxImageCount) min_swapchain_image_count = surface->caps.maxImageCount;
+    if(surface->caps.maxImageCount > 0 && min_swapchain_image_count > surface->caps.maxImageCount) min_swapchain_image_count = surface->caps.maxImageCount;
 
     // *imageArrayLayers*
     // The imageArrayLayers specifies the amount of layers each image consists of
@@ -838,7 +872,7 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
         .clipped          = VK_TRUE,
         .oldSwapchain     = VK_NULL_HANDLE,
     };
-    if (old_swapchain != 0) create_info.oldSwapchain = old_swapchain->h;
+    if(old_swapchain != 0) create_info.oldSwapchain = old_swapchain->h;
 
     // We need to specify how to handle swap chain images that will be used across multiple queue families
     // That will be the case in our application if the grpahics queue family is different from the presentation queue
@@ -848,11 +882,14 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
     //    it in another queue family. This option offers the best performance
     // 2. VK_SHARING_MODE_CONCURRENT: images can be used across multiple queue families without explicit ownership transfers
     U32 queue_family_indices[2] = { r_vulkan_state->gpu.gfx_queue_family_index, r_vulkan_state->gpu.prest_queue_family_index };
-    if (r_vulkan_state->gpu.gfx_queue_family_index != r_vulkan_state->gpu.prest_queue_family_index) {
+    if(r_vulkan_state->gpu.gfx_queue_family_index != r_vulkan_state->gpu.prest_queue_family_index)
+    {
         create_info.imageSharingMode      = VK_SHARING_MODE_CONCURRENT;
         create_info.queueFamilyIndexCount = 2;
         create_info.pQueueFamilyIndices   = queue_family_indices;
-    } else {
+    }
+    else
+    {
         create_info.imageSharingMode      = VK_SHARING_MODE_EXCLUSIVE;
         create_info.queueFamilyIndexCount = 0;    // Optional
         create_info.pQueueFamilyIndices   = NULL; // Optional
@@ -874,7 +911,8 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
     //      for example if it should be treated as 2D texture depth texture without any mipmapping levels
     // Here, we are create a basic image view for every image in the swapchain so that we can use them as color targets later on
     // VkImageView swapchain_image_views[swapchain_image_count];
-    for (U64 i = 0; i < swapchain.image_count; i++) {
+    for(U64 i = 0; i < swapchain.image_count; i++)
+    {
         VkImageViewCreateInfo create_info = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = swapchain.images[i],
@@ -923,11 +961,13 @@ r_vulkan_format_for_swapchain(VkSurfaceFormatKHR *formats, U64 count, VkFormat *
     Assert(count > 0);
     *format = formats[0].format;
     *color_space = formats[0].colorSpace;
-    for (U64 i = 0; i < count; i++) {
+    for(U64 i = 0; i < count; i++)
+    {
         // For the color space, we'll use SRGB if it's available, because it ressults in more accurate perceived colors.
         // It is also pretty much the standard color space for images, like the textures we'll use later on. Because of that we should also 
         // use an SRGB color format, of which oen of the most common ones is VK_FORAMT_B8G8R8A8_SRGB 
-        if (formats[i].format == VK_FORMAT_B8G8R8A8_SRGB && formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+        if(formats[i].format == VK_FORMAT_B8G8R8A8_SRGB && formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+        {
             *format      = formats[i].format;
             *color_space = formats[i].colorSpace;
             break;
@@ -954,7 +994,8 @@ r_vulkan_dep_format()
     };
 
     int the_one = -1;
-    for (U64 i = 0; i < 3; i++) {
+    for(U64 i = 0; i < 3; i++)
+    {
         VkFormatProperties props;
         vkGetPhysicalDeviceFormatProperties(r_vulkan_state->gpu.h, format_candidates[i], &props);
 
@@ -962,7 +1003,7 @@ r_vulkan_dep_format()
         // * linearTilingFeatures: Use cases that are supported with linear tiling
         // * optimalTillingFeatures: Use cases that are supported with optimal tilling
         // * bufferFeatures: Use cases that are supported for buffers
-        if ((props.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) != VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) continue;
+        if((props.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) != VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) continue;
         the_one = i;
         break;
     }
@@ -977,18 +1018,21 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
     R_Vulkan_RenderPassGroup *rendpass_grp = window->first_free_rendpass_grp;
 
     U64 gen = 0;
-    if (old != 0) { gen = old->generation + 1; }
+    if(old != 0) { gen = old->generation + 1; }
 
-    if (rendpass_grp == 0) {
+    if(rendpass_grp == 0)
+    {
         rendpass_grp = push_array(window->arena, R_Vulkan_RenderPassGroup, 1);
     }
     rendpass_grp->generation = gen;
 
-    for (U64 kind = 0; kind < R_Vulkan_RenderPassKind_COUNT; kind++) {
+    for(U64 kind = 0; kind < R_Vulkan_RenderPassKind_COUNT; kind++)
+    {
         R_Vulkan_RenderPass *rendpass = &rendpass_grp->passes[kind];
         R_Vulkan_RenderPass *old_rendpass = 0;
-        if (old) old_rendpass = &old->passes[kind];
-        switch (kind) {
+        if(old) old_rendpass = &old->passes[kind];
+        switch (kind)
+        {
             case R_Vulkan_RenderPassKind_Rect:
             {
                 // Output to stage_color_att
@@ -1111,7 +1155,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
 
                 // Create pipelines
                 R_Vulkan_Pipeline *old_p_rect = 0;
-                if (old_rendpass) {old_p_rect = &old_rendpass->pipeline.rect;};
+                if(old_rendpass) {old_p_rect = &old_rendpass->pipeline.rect;};
                 rendpass->pipeline.rect = r_vulkan_pipeline(R_Vulkan_PipelineKind_Rect, rendpass->h, old_p_rect);
             } break;
             case R_Vulkan_RenderPassKind_Mesh:
@@ -1242,7 +1286,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
 
                 // Create pipelines
                 R_Vulkan_Pipeline *old_p_geo3d_composite = 0;
-                if (old_rendpass) {old_p_geo3d_composite = &old_rendpass->pipeline.geo3d_composite;};
+                if(old_rendpass) {old_p_geo3d_composite = &old_rendpass->pipeline.geo3d_composite;};
                 rendpass->pipeline.geo3d_composite = r_vulkan_pipeline(R_Vulkan_PipelineKind_Geo3DComposite, rendpass->h, old_p_geo3d_composite);
             } break;
             case R_Vulkan_RenderPassKind_Finalize:
@@ -1293,7 +1337,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
 
                 // Create pipelines
                 R_Vulkan_Pipeline *old_p_finalize = 0;
-                if (old_rendpass) {old_p_finalize = &old_rendpass->pipeline.finalize;};
+                if(old_rendpass) {old_p_finalize = &old_rendpass->pipeline.finalize;};
                 rendpass->pipeline.finalize = r_vulkan_pipeline(R_Vulkan_PipelineKind_Finalize, rendpass->h, old_p_finalize);
             } break;
             default: {InvalidPath;}break;
@@ -1359,7 +1403,7 @@ internal R_Handle
 r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, R_Tex2DFormat format, void *data)
 {
     R_Vulkan_Tex2D *texture = r_vulkan_state->first_free_tex2d;
-    if (texture == 0)
+    if(texture == 0)
     {
         texture = push_array(r_vulkan_state->arena, R_Vulkan_Tex2D, 1);
     }
@@ -1562,7 +1606,8 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
         R_Vulkan_Buffer *buffer = 0;
 
         buffer = r_vulkan_state->first_free_buffer;
-        if (buffer == 0) {
+        if(buffer == 0)
+        {
                 buffer = push_array(r_vulkan_state->arena, R_Vulkan_Buffer, 1);
         } else {
                 U64 gen = buffer->generation;
@@ -1572,7 +1617,7 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
         }
         buffer->generation++;
 
-        if (kind == R_ResourceKind_Static) Assert(data != 0);
+        if(kind == R_ResourceKind_Static) Assert(data != 0);
 
         // Fill basics
         buffer->kind = kind;
@@ -1587,7 +1632,8 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
 
         // TODO(@k): hate vma, remove it asap
         // Create staging buffer
-        if (kind == R_ResourceKind_Static) {
+        if(kind == R_ResourceKind_Static)
+        {
                 VkBuffer staging_buffer;
                 VmaAllocation staging_alloc;
                 {
@@ -1650,7 +1696,7 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
                 VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &create_info, &alloc_create_info, &buffer->h, &buffer->alloc, NULL), "Failed to create/allocate buffer/memory");
                 vmaMapMemory(r_vulkan_state->vma, buffer->alloc, &buffer->mapped);
 
-                if (data != 0) { MemoryCopy(buffer->mapped, data, size); }
+                if(data != 0) { MemoryCopy(buffer->mapped, data, size); }
         }
 
         R_Handle ret = r_vulkan_handle_from_buffer(buffer);
@@ -1704,14 +1750,16 @@ r_vulkan_image_transition(VkImage image, VkImageLayout old_layout, VkImageLayout
         // One thing to note is that command buffer submission results in implicit VK_ACCESS_HOST_WRITE_BIT synchronization at the beginning
         // Since the transition_image_layout function executes a command, you could use this implicit synchronization and set srcAccessMask to 0 
         // If you ever needed a VK_ACCESS_HOST_WRITE_BIT dependency in a layout transition, you could explicity specify it in srcAccessMask
-        if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        if(old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
                 barrier.srcAccessMask = 0;
                 barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
                 src_stage             = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
                 dst_stage             = VK_PIPELINE_STAGE_TRANSFER_BIT;
         // The image will be written in the same pipeline stage and subsequently read by the fragment shader, which is why we specify
         //     shader reading access in the fragment shader pipeline stage
-        } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        } 
+        else if(old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        {
                 barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
                 barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
                 src_stage             = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -2493,7 +2541,7 @@ r_end_frame(void)
 }
 
 internal U64
-r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip, Vec2F32 p)
+r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
 {
     R_Vulkan_Window *wnd = r_vulkan_window_from_handle(window_equip);
     R_Vulkan_Frame *frame = &wnd->frames[wnd->curr_frame_idx];
@@ -2511,7 +2559,8 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip, Vec2F32 p)
     // Get point entity id
     U64 w = wnd->bag->geo3d_color_image.extent.width;
     void *ids = wnd->bag->geo3d_id_cpu.mapped;
-    U64 id = ((U64 *)ids)[(U64)(p.y*w+p.x)];
+    // U64 id = ((U64 *)ids)[(U64)(ptr.y*w+ptr.x)];
+    U64 id = ((U64 *)ids)[30];
 
     // Vulkan will usually just tell us that the swapchain is no longer adequate during presentation
     // The vkAcquireNextImageKHR and vkQueuePresentKHR functions can return the following special values to indicate this
@@ -2538,7 +2587,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip, Vec2F32 p)
     /////////////////////////////////////////////////////////////////////////////////
     bool bag_gen_synced = true;
     bool rendpass_grp_gen_synced = true;
-    for (U64 i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    for(U64 i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
         R_Vulkan_Frame *frame = &wnd->frames[i];
         if (frame->bag_gen != wnd->bag->generation) bag_gen_synced = false;
@@ -2546,14 +2595,14 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip, Vec2F32 p)
     }
     if (bag_gen_synced)
     {
-        for (R_Vulkan_Bag *b = wnd->first_to_free_bag; b != 0; b = b->next) {
+        for(R_Vulkan_Bag *b = wnd->first_to_free_bag; b != 0; b = b->next) {
             r_vulkan_bag_destroy(b);
         }
         wnd->first_to_free_bag = 0;
     }
     if (rendpass_grp_gen_synced)
     {
-        for (R_Vulkan_RenderPassGroup *g = wnd->first_to_free_rendpass_grp; g != 0; g = g->next) {
+        for(R_Vulkan_RenderPassGroup *g = wnd->first_to_free_rendpass_grp; g != 0; g = g->next) {
             r_vulkan_rendpass_grp_destroy(g);
         }
         wnd->first_to_free_rendpass_grp = 0;
@@ -2667,7 +2716,7 @@ r_window_end_frame(OS_Handle os_wnd, R_Handle window_equip)
 }
 
 internal void
-r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
+r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec2F32 ptr)
 {
     R_Vulkan_Window *wnd              = r_vulkan_window_from_handle(window_equip);
     R_Vulkan_RenderPass *renderpasses = wnd->rendpass_grp->passes;
@@ -2687,7 +2736,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
     U64 mesh_group_count        = 0;
 
     // Do passing
-    for (R_PassNode *pass_n = passes->first; pass_n != 0; pass_n = pass_n->next) {
+    for(R_PassNode *pass_n = passes->first; pass_n != 0; pass_n = pass_n->next)
+    {
         R_Pass *pass = &pass_n->v;
         switch(pass->kind)
         {
@@ -2738,7 +2788,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 
                 // Draw each group
                 // Rects in the same group share some features
-                for (R_BatchGroup2DNode *group_n = rect_batch_groups->first; group_n != 0; group_n = group_n->next)
+                for(R_BatchGroup2DNode *group_n = rect_batch_groups->first; group_n != 0; group_n = group_n->next)
                 {
                     R_BatchList *batches               = &group_n->batches;
                     R_BatchGroup2DParams *group_params = &group_n->params;
@@ -2747,7 +2797,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     // TODO(@k): Dynamic allocaate instance buffer if needed
                     U8 *dst_ptr = frame->inst_buffer_rect.mapped + ui_inst_buffer_offset;
                     U64 off = 0;
-                    for (R_BatchNode *batch = batches->first; batch != 0; batch = batch->next) {
+                    for(R_BatchNode *batch = batches->first; batch != 0; batch = batch->next)
+                    {
                         MemoryCopy(dst_ptr+off, batch->v.v, batch->v.byte_count);
                         off += batch->v.byte_count;
                     }
@@ -2875,7 +2926,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                         // TODO(k): Dynamic allocaate instance buffer if needed
                         U8 *dst_ptr = frame->inst_buffer_mesh.mapped + mesh_inst_buffer_offset;
                         U64 off = 0;
-                        for (R_BatchNode *batch = batches->first; batch != 0; batch = batch->next) {
+                        for(R_BatchNode *batch = batches->first; batch != 0; batch = batch->next)
+                        {
                             MemoryCopy(dst_ptr+off, batch->v.v, batch->v.byte_count);
                             off += batch->v.byte_count;
                         }
@@ -2940,11 +2992,12 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 vkCmdEndRenderPass(cmd_buf);
 
                 // Copy geo3d_image to geo3d_cpu(buffer)
-                // NOTE(k): this is a slow operation, fps is reduced by 100
+                // TODO(k): this is a slow operation, fps is reduced by 100
+                //          maybe we could use a dedicated transfer queue to do it instead of block graphic queue
                 {
                     VkImageMemoryBarrier barrier = {};
                     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                    // NOTE(k): weird here, it's alreay in src optimal, but we need to wait the writes is done
+                    // NOTE(k): weird here, it's alreay in src optimal, but we need to wait for the writing
                     barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
                     barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
                     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // Not changing queue families
@@ -2978,9 +3031,9 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     region.imageSubresource.mipLevel = 0;
                     region.imageSubresource.baseArrayLayer = 0;
                     region.imageSubresource.layerCount = 1;
-                    region.imageOffset = (VkOffset3D){0,0,0};
-                    region.imageExtent = (VkExtent3D){wnd->bag->geo3d_id_image.extent.width, wnd->bag->geo3d_id_image.extent.height, 1};
-
+                    region.imageOffset = (VkOffset3D){ptr.x-15,ptr.y-15,0};
+                    // region.imageExtent = (VkExtent3D){wnd->bag->geo3d_id_image.extent.width, wnd->bag->geo3d_id_image.extent.height, 1};
+                    region.imageExtent = (VkExtent3D){30, 30, 1};
                     vkCmdCopyImageToBuffer(cmd_buf, wnd->bag->geo3d_id_image.h, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, wnd->bag->geo3d_id_cpu.h, 1, &region);
                 }
 
@@ -3100,7 +3153,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
             pool->cap  = AlignPow2(cap, 16);
 
             VkDescriptorPoolSize pool_sizes[set_layout.binding_count];
-            for (U64 i = 0; i < set_layout.binding_count; i++)
+            for(U64 i = 0; i < set_layout.binding_count; i++)
             {
                 pool_sizes[i].type            = set_layout.bindings[i].descriptorType;
                 pool_sizes[i].descriptorCount = set_layout.bindings[i].descriptorCount * pool->cap;
@@ -3133,7 +3186,8 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
             set_alloc_info.pSetLayouts        = &set_layout.h;
         VK_Assert(vkAllocateDescriptorSets(r_vulkan_state->device.h, &set_alloc_info, temp_sets), "Failed to allcoate descriptor sets");
 
-        for (U64 i = 0; i < alloc_count; i++) {
+        for(U64 i = 0; i < alloc_count; i++) 
+        {
             U64 offset = set_count - remaining;
             sets[i+offset].h = temp_sets[i];
             sets[i+offset].pool = pool;
@@ -3151,10 +3205,13 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
     MemoryZeroArray(writes);
 
     Temp temp = temp_begin(r_vulkan_state->arena);
-    for (U64 i = 0; i < set_count; i++) {
-        for (U64 j = 0; j < set_layout.binding_count; j++) {
+    for(U64 i = 0; i < set_count; i++)
+    {
+        for(U64 j = 0; j < set_layout.binding_count; j++)
+        {
             U64 set_idx = i + j;
-            switch (kind) {
+            switch (kind)
+            {
                 case (R_Vulkan_DescriptorSetKind_UBO_Rect):
                 {
                     VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
@@ -3598,7 +3655,8 @@ r_vulkan_surface_update(R_Vulkan_Surface *surface)
 internal void
 r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
 {
-    for (U64 kind = 0; kind < R_Vulkan_RenderPassKind_COUNT; kind++) {
+    for(U64 kind = 0; kind < R_Vulkan_RenderPassKind_COUNT; kind++)
+    {
         VkFramebuffer *framebuffer        = &bag->framebuffers[kind];
         R_Vulkan_Swapchain *swapchain     = &bag->swapchain;
         R_Vulkan_Image *stage_color_image = &bag->stage_color_image;
@@ -3659,7 +3717,8 @@ r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
             }break;
             case R_Vulkan_RenderPassKind_Finalize: 
             {
-                for (U64 i = 0; i < swapchain->image_count; i++) {
+                for(U64 i = 0; i < swapchain->image_count; i++)
+                {
                     VkImageView attachments[1] = { bag->swapchain.image_views[i] };
                     VkFramebufferCreateInfo fb_create_info = {
                         .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -3686,16 +3745,19 @@ internal void
 r_vulkan_bag_destroy(R_Vulkan_Bag *bag)
 {
     // Destroy swapchain
-    for (U64 i = 0; i < bag->swapchain.image_count; i++) {
+    for(U64 i = 0; i < bag->swapchain.image_count; i++)
+    {
         vkDestroyImageView(r_vulkan_state->device.h, bag->swapchain.image_views[i], NULL);
     }
     vkDestroySwapchainKHR(r_vulkan_state->device.h, bag->swapchain.h, NULL);
 
-    for (U64 i = 0; i < R_Vulkan_RenderPassKind_COUNT; i++) {
+    for(U64 i = 0; i < R_Vulkan_RenderPassKind_COUNT; i++)
+    {
         VkFramebuffer *ptr = &bag->framebuffers[i];
         U64 count = 1;
         if (i == R_Vulkan_RenderPassKind_COUNT) { count = MAX_FRAMES_IN_FLIGHT; }
-        for (U64 j = 0; j < count; j++) {
+        for(U64 j = 0; j < count; j++)
+        {
             vkDestroyFramebuffer(r_vulkan_state->device.h, *(ptr+j), NULL);
         }
     }
@@ -3723,7 +3785,7 @@ r_vulkan_bag_destroy(R_Vulkan_Bag *bag)
 internal void
 r_vulkan_rendpass_grp_destroy(R_Vulkan_RenderPassGroup *grp)
 {
-    for (U64 kind = 0; kind < R_Vulkan_RenderPassKind_COUNT; kind++)
+    for(U64 kind = 0; kind < R_Vulkan_RenderPassKind_COUNT; kind++)
     {
         R_Vulkan_RenderPass *rendpass = &grp->passes[kind];
         vkDestroyPipelineLayout(r_vulkan_state->device.h, rendpass->pipeline.first.layout, NULL);
@@ -3740,7 +3802,8 @@ r_vulkan_instance_extensions_from_window(Arena *arena, OS_Handle window, U64 *re
     char *extensions[2] = {"VK_KHR_surface", "VK_KHR_xlib_surface"};
     char **extensions_copy = push_array(arena, char *, ArrayCount(extensions));
 
-    for (U64 i = 0; i < ArrayCount(extensions); i++) {
+    for(U64 i = 0; i < ArrayCount(extensions); i++)
+    {
         U64 str_len = strlen(extensions[i]);
         char **dst = &extensions_copy[i];
         *dst = push_array(arena, char, str_len+1);
@@ -3750,6 +3813,7 @@ r_vulkan_instance_extensions_from_window(Arena *arena, OS_Handle window, U64 *re
     return extensions_copy;
 }
 
+// TODO: we should put this function into the os_gfx layer 
 internal VkSurfaceKHR 
 r_vulkan_surface_from_window(OS_Handle window, VkInstance instance)
 {

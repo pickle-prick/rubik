@@ -120,7 +120,7 @@ internal D_FancyRunList d_fancy_run_list_copy(Arena *arena, D_FancyRunList *src)
 // (Frame boundaries & bucket submission)
 
 internal void d_begin_frame(void);
-internal void d_submit_bucket(OS_Handle os_window, R_Handle r_window, D_Bucket *bucket);
+internal void d_submit_bucket(OS_Handle os_window, R_Handle r_window, D_Bucket *bucket, Vec2F32 ptr);
 
 ////////////////////////////////
 //~ rjf: Bucket Construction & Selection API
