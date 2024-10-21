@@ -116,6 +116,7 @@ struct G_SpriteSheet2D {
 
 typedef struct G_Mesh G_Mesh;
 struct G_Mesh {
+    G_Mesh     *next;
     R_Handle   vertices;
     R_Handle   indices;
     G_MeshKind kind;
@@ -210,8 +211,6 @@ struct G_Camera3D {
     F32     fov;
     F32     zn;
     F32     zf;
-    QuatF32 rot;
-    QuatF32 rot_delta;
 };
 
 /////////////////////////////////
@@ -242,12 +241,17 @@ struct G_Node {
 
     // Transform
     Vec3F32                        pos;
-    Vec3F32                        rot;
+    QuatF32                        rot;
     Vec3F32                        scale;
     // Delta
     Vec3F32                        pos_delta;
-    Vec3F32                        rot_delta;
+    QuatF32                        rot_delta;
     Vec3F32                        scale_delta;
+
+    // Xform
+    // TODO: remove base_xform
+    Mat4x4F32                      base_xform;
+    Mat4x4F32                      fixed_xform; // Calculated every iteration
 
     // TODO: rotation edit mode: Euler, Quaternion, Basis
 
@@ -285,6 +289,8 @@ struct G_Scene {
     G_Bucket *bucket;
     G_Node   *root;
     G_Node   *camera;
+
+    G_Mesh   *first_free_mesh;
 };
 
 /////////////////////////////////
@@ -350,6 +356,7 @@ internal G_Node *g_build_node_from_string(String8 name);
 internal G_Node *g_build_node_from_key(G_Key key);
 internal G_Node *g_node_camera3d_alloc(String8 string);
 internal G_Node *g_node_camera_mesh_inst3d_alloc(String8 string);
+internal G_Mesh *g_mesh_alloc();
 
 /////////////////////////////////
 // Node Type Functions
@@ -358,7 +365,9 @@ internal G_Node *g_node_df(G_Node *n, G_Node *root, U64 sib_member_off, U64 chil
 #define g_node_df_pre(node, root) g_node_df(node, root, OffsetOf(G_Node, next), OffsetOf(G_Node, first))
 #define g_node_df_post(node, root) g_node_df(node, root, OffsetOf(G_Node, prev), OffsetOf(G_Node, last))
 
-internal Vec3F32 g_node_pos(G_Node *node);
+internal Mat4x4F32 g_xform_from_node(G_Node *node);
+internal void      g_local_coord_from_node(G_Node *node, Vec3F32 *f, Vec3F32 *s, Vec3F32 *u);
+internal Mat4x4F32 g_view_from_node(G_Node *node);
 
 /////////////////////////////////
 // Node modification
@@ -381,8 +390,6 @@ internal Vec2F32     triple_product_2f32(Vec2F32 A, Vec2F32 B, Vec2F32 C);
 /////////////////////////////////
 // Camera
 
-internal Mat4x4F32 view_from_camera(Vec3F32 pos, G_Camera3D *camera);
-internal void      direction_from_camera(G_Camera3D *camera, Vec3F32 *f, Vec3F32 *s, Vec3F32 *u);
 
 /////////////////////////////////
 // Helpers

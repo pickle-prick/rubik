@@ -19,32 +19,75 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
         g_state->sig = ui_signal_from_box(box);
     }
 
-    G_Node *hot_node = g_node_from_key(scene->bucket, g_state->hot_key);
-    G_Node *active_node = g_node_from_key(scene->bucket, g_state->active_key);
+    // G_Node *hot_node = 0;
+    G_Node *active_node = 0;
 
     // Stats pane
     ui_pane_begin(r2f32p(0, 700, 600, 1400), str8_lit("game"));
     ui_column_begin();
     F32 dt_sec = dt/1000000.0f;
 
+    B32 show_grid   = 1;
+    B32 show_gizmos = 0;
+    // TODO: this is kind of awkward
+    d_push_bucket(g_state->bucket_geo3d);
+    R_PassParams_Geo3D *pass = d_geo3d_begin(window_rect, mat_4x4f32(1.f), mat_4x4f32(1.f),
+                                             show_grid, show_gizmos,
+                                             mat_4x4f32(1.f), v3f32(0,0,0));
+    d_pop_bucket();
+
+    // Update node
+    {
+        G_Node *node = scene->root;
+        while(node != 0)
+        {
+            F32 dt_ms = dt / 1000.f;
+            if(g_key_match(g_state->active_key, node->key)) { active_node = node; }
+
+            // Update xfrom (Top-down)
+            Mat4x4F32 xform = g_xform_from_node(node);
+            node->fixed_xform = xform;
+
+            D_BucketScope(g_state->bucket_geo3d)
+            {
+                switch(node->kind)
+                {
+                    default: {}break;
+                    case G_NodeKind_MeshInstance3D:
+                    {
+                        R_Mesh3DInst *inst = d_mesh(node->mesh_inst3d.mesh->vertices, node->mesh_inst3d.mesh->indices,
+                                                    R_GeoTopologyKind_Triangles,
+                                                    R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB,
+                                                    r_handle_zero(), mat_4x4f32(1.f), node->key.u64[0]);
+                        inst->xform = xform;
+                    }break;
+                }
+            }
+            if(node->update_fn != 0)
+            {
+                node->update_fn(node, scene, os_events, dt_sec);
+            }
+            // Next
+            node = g_node_df_pre(node, 0);
+        }
+    }
+
     // Unpack camera
     G_Node *camera = scene->camera;
-    Vec3F32 camera_pos = g_node_pos(camera);
-        
-    // TODO: add yaw from camera
-    // g_kv("camera_pos", "%.2f %.2f %.2f", camera_pos.x, camera_pos.y, camera_pos.z);
-    // g_kv("camera_yaw", "%.2f", camera->camera.yaw+camera->camera.yaw_delta);
-    // g_kv("camera_pitch", "%.2f", camera->camera.pitch+camera->camera.pitch_delta);
+    pass->view = g_view_from_node(camera);
+    pass->projection = make_perspective_vulkan_4x4f32(camera->camera.fov, window_dim.x/window_dim.y, camera->camera.zn, camera->camera.zf);
+    Mat4x4F32 xform_m = mul_4x4f32(pass->view, pass->projection);
 
-    g_kv("camera_pos", "%.2g %.2g %.2g", camera_pos.x, camera_pos.y, camera_pos.z);
-    QuatF32 quat = mul_quat_f32(camera->camera.rot, camera->camera.rot_delta);
-    g_kv("camera_quat", "%.2g %.2g %.2g %.2g", quat.x, quat.y, quat.z, quat.w);
-    F32 length = quat.x*quat.x + quat.y*quat.y + quat.z*quat.z + quat.w*quat.w;
-    g_kv("camera_quat_length", "%.2g", length);
-
-    Mat4x4F32 view_m = view_from_camera(camera_pos, &camera->camera);
-    Mat4x4F32 proj_m = make_perspective_vulkan_4x4f32(camera->camera.fov, window_dim.x/window_dim.y, camera->camera.zn, camera->camera.zf);
-    Mat4x4F32 xform_m = mul_4x4f32(proj_m, view_m);
+    if(active_node != 0) 
+    {
+        pass->show_gizmos = 1;
+        pass->gizmos_xform = active_node->fixed_xform;
+        pass->gizmos_origin = v4f32(pass->gizmos_xform.v[3][0],
+                                    pass->gizmos_xform.v[3][1],
+                                    pass->gizmos_xform.v[3][2],
+                                    1);
+        g_kv("active node", "%s", active_node->name.str);
+    }
 
     // Update hot/active
     {
@@ -93,11 +136,11 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                 Vec2F32 delta = ui_drag_delta();
                 Vec4F32 direction = v4f32(g_state->drag_start_direction.x, g_state->drag_start_direction.y, g_state->drag_start_direction.z, 1.0);
                 // TODO: this don't seem quite right, some axis is easier to move
-                Vec4F32 projected_start = transform_4x4f32(xform_m, v4f32(0,0,0,1));
+                Vec4F32 projected_start = mat_4x4f32_transform_4f32(xform_m, v4f32(0,0,0,1));
                 // TODO: not sure if we need to divide by w here, check out later
                 projected_start.x /= projected_start.w;
                 projected_start.y /= projected_start.w;
-                Vec4F32 projected_end = transform_4x4f32(xform_m, direction);
+                Vec4F32 projected_end = mat_4x4f32_transform_4f32(xform_m, direction);
                 projected_end.x /= projected_end.w;
                 projected_end.y /= projected_end.w;
                 Vec4F32 projected_direction = normalize_4f32(sub_4f32(projected_end, projected_start));
@@ -121,67 +164,6 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
         if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_A) {}
         if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_D) {}
         if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
-    }
-
-    // Physics dynamic pass
-    // g_physics_dynamic_root(scene->root, dt_sec);
-
-    // Collision detection and response
-    // g_collision_detection_response_root(scene->root);
-
-    // Update every node2d which has a custom update fn
-    D_BucketScope(g_state->bucket_geo3d)
-    {
-        B32 show_grid = 1;
-        B32 show_gizmos = 0;
-        Mat4x4F32 gizmos_xform = mat_4x4f32(1.0f);
-        Vec3F32 gizmos_origin = v3f32(0,0,0);
-
-        if(active_node != 0) 
-        {
-            Vec3F32 node_pos = g_node_pos(active_node);
-            show_gizmos = 1;
-            // TODO: change gizmos_coord based on active node's transform(translate, rotation)
-            Mat4x4F32 rot_m = mat_4x4f32(1.0f);
-            Mat4x4F32 tra_m = make_translate_4x4f32(node_pos);
-            gizmos_xform = mul_4x4f32(tra_m, rot_m);
-            gizmos_origin = node_pos;
-        }
-        R_PassParams_Geo3D *pass = d_geo3d_begin(window_rect, view_m, proj_m,
-                                                 show_grid, show_gizmos,
-                                                 gizmos_xform, gizmos_origin);
-        G_Node *node = scene->root;
-        while(node != 0)
-        {
-            // Abs position
-            Vec3F32 pos = g_node_pos(node);
-            // TODO: do the same thing with scale and rotation
-            F32 dt_ms = dt / 1000.f;
-
-            switch(node->kind)
-            {
-                default: {}break;
-                case G_NodeKind_MeshInstance3D:
-                {
-                    R_Mesh3DInst *inst = d_mesh(node->mesh_inst3d.mesh->vertices, node->mesh_inst3d.mesh->indices,
-                                                R_GeoTopologyKind_Triangles,
-                                                R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB,
-                                                r_handle_zero(), mat_4x4f32(1.f), node->key.u64[0]);
-                    // TODO: pos,rot,scale -> xform
-                    // inst->xform = make_translate_4x4f32(v3f32(0, 0, +3));
-                    Mat4x4F32 translate = make_translate_4x4f32(pos);
-                    Mat4x4F32 scale = make_scale_4x4f32(node->scale);
-                    // TODO: rotation
-                    inst->xform = mul_4x4f32(translate, scale);
-                }break;
-            }
-            if(node->update_fn != 0)
-            {
-                node->update_fn(node, scene, os_events, dt_sec);
-            }
-            // Next
-            node = g_node_df_pre(node, 0);
-        }
     }
 
     ui_column_end();
@@ -211,7 +193,7 @@ G_NODE_CUSTOM_UPDATE(camera_fn)
     Vec3F32 f = {0};
     Vec3F32 s = {0};
     Vec3F32 u = {0};
-    direction_from_camera(camera, &f, &s, &u);
+    g_local_coord_from_node(node, &f, &s, &u);
 
     // TODO: do we really need these?
     Vec3F32 clean_f = f;
@@ -269,9 +251,9 @@ G_NODE_CUSTOM_UPDATE(camera_fn)
         QuatF32 h_quat = make_rotate_quat_f32(v3f32(0,1,0), h_turn);
         g_kv("v_quat", "%4.3f %4.3f %4.3f %4.3f", v_quat.x, v_quat.y, v_quat.z, v_quat.w);
         g_kv("h_quat", "%4.3g %4.3g %4.3g %4.3g", h_quat.x, h_quat.y, h_quat.z, h_quat.w);
-        camera->rot_delta = mul_quat_f32(v_quat,h_quat);
-        g_kv("rot_delta", "%4.3g %4.3g %4.3g %4.3g", camera->rot_delta.x, camera->rot_delta.y, camera->rot_delta.z, camera->rot_delta.w);
-        g_kv("rot_delta_length", "%.2f", length_4f32(camera->rot_delta));
+        node->rot_delta = mul_quat_f32(v_quat,h_quat);
+        g_kv("rot_delta", "%4.3g %4.3g %4.3g %4.3g", node->rot_delta.x, node->rot_delta.y, node->rot_delta.z, node->rot_delta.w);
+        g_kv("rot_delta_length", "%.2f", length_4f32(node->rot_delta));
 
         // TEST: quaterion
         // QuatF32 nine_quat = make_rotate_quat_f32(v3f32(0,1,0), 0.25);
@@ -282,8 +264,8 @@ G_NODE_CUSTOM_UPDATE(camera_fn)
     else
     {
         // Commit camera rot_delta
-        camera->rot = mul_quat_f32(camera->rot_delta, camera->rot);
-        camera->rot_delta = make_indentity_quat_f32();
+        node->rot = mul_quat_f32(node->rot_delta, node->rot);
+        node->rot_delta = make_indentity_quat_f32();
     }
 
     // Scroll
@@ -369,25 +351,6 @@ G_NODE_CUSTOM_UPDATE(player_fn)
     else
     {
     }
-
-    // Friction 
-    // Kinetic friction
-    // if(body->velocity.x != 0) {
-    //     F32 friction_at = friction_nf * dt_sec;
-    //     if(friction_at > abs_f32(body->velocity.x)) {
-    //         body->velocity.x = 0.0f;
-    //     } else {
-    //         // Apply friction force in the opposite direction of movement
-    //         body->force.x += (friction_nf * (-velocity_direction.x));
-    //     }
-    // }
-
-    // If the body is staionary, apply static friction
-    // if(body->velocity.x == 0) {
-    //    if(abs_f32(body->force.x) < friction_nf)  {
-    //         body->force.x = 0.0f;
-    //    }
-    // }
 }
 
 /////////////////////////////////
@@ -439,39 +402,180 @@ g_scene_load()
         1, 0, 4
     };
 
+    // TODO: searilize scene data using yaml or something
+
+
     R_Handle vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(vertices_src), (void *)vertices_src);
     R_Handle indices = r_buffer_alloc(R_ResourceKind_Static, sizeof(indices_src), (void *)indices_src);
 
-    G_Bucket_Scope(scene->bucket)
+    G_Scene_Scope(scene)
     {
-        // Create the origin/world node
-        G_Node *root = g_build_node_from_string(str8_lit("root"));
-        root->pos = v3f32(0, 0, 0);
-        scene->root = root;
-
-        G_Parent_Scope(root)
+        G_Bucket_Scope(scene->bucket)
         {
-            G_Node *camera = g_node_camera3d_alloc(str8_lit("main_camera"));
-            scene->camera = camera;
-            camera->pos              = v3f32(0,-3,-3);
-            camera->update_fn        = camera_fn;
-            camera->camera.fov       = 0.25;
-            camera->camera.zn        = 0.1f;
-            camera->camera.zf        = 200.f;
-            camera->camera.rot       = make_indentity_quat_f32();
-            camera->camera.rot_delta = make_indentity_quat_f32();
+            // Create the origin/world node
+            G_Node *root = g_build_node_from_string(str8_lit("root"));
+            root->pos = v3f32(0, 0, 0);
+            scene->root = root;
 
-            // Player
-            G_Node *player = g_node_camera_mesh_inst3d_alloc(str8_lit("player"));
-            G_Mesh *mesh = push_array(scene->bucket->arena, G_Mesh, 1);
-            mesh->vertices = vertices;
-            mesh->indices = indices;
-            mesh->kind = G_MeshKind_Box;
-            player->pos = v3f32(0,-0.51,0);
-            player->mesh_inst3d.mesh = mesh;
-            player->update_fn = player_fn;
-            player->custom_data = push_array(scene->bucket->arena, G_PlayerData, 1);
+            G_Parent_Scope(root)
+            {
+                G_Node *camera = g_node_camera3d_alloc(str8_lit("main_camera"));
+                scene->camera = camera;
+                camera->pos              = v3f32(0,-3,-3);
+                camera->update_fn        = camera_fn;
+                camera->camera.fov       = 0.25;
+                camera->camera.zn        = 0.1f;
+                camera->camera.zf        = 200.f;
+
+                // Player
+                G_Node *player = g_node_camera_mesh_inst3d_alloc(str8_lit("player"));
+                G_Mesh *mesh = push_array(scene->bucket->arena, G_Mesh, 1);
+                mesh->vertices = vertices;
+                mesh->indices = indices;
+                mesh->kind = G_MeshKind_Box;
+                player->pos = v3f32(0,-0.51,0);
+                player->mesh_inst3d.mesh = mesh;
+                player->update_fn = player_fn;
+                player->custom_data = push_array(scene->bucket->arena, G_PlayerData, 1);
+
+                // Dummy
+                G_Node *n = node_from_gltf(scene->arena, str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"), str8_lit("dummy"));
+                n->scale = v3f32(0.01,0.01,0.01);
+                n->rot = make_rotate_quat_f32(v3f32(1,0,0), 0.25);
+            }
         }
     }
     return scene;
+}
+
+internal G_Node *
+node_from_gltf(Arena *arena, String8 gltf_path, String8 string)
+{
+    G_Node *node = 0;
+    // TODO: Create a model loader layer to support different model format (gltf, blend, obj, fbx ...)
+    cgltf_options opts = {0};
+    cgltf_data *data;
+    cgltf_result ret = cgltf_parse_file(&opts, (char *)gltf_path.str, &data);
+    if(ret == cgltf_result_success)
+    {
+        cgltf_options buf_ld_opts = {0};
+        cgltf_result buf_ld_ret = cgltf_load_buffers(&buf_ld_opts, data, (char *)gltf_path.str);
+        AssertAlways(buf_ld_ret == cgltf_result_success);
+
+        AssertAlways(data->scenes_count == 1);
+        cgltf_scene *root_scene = &data->scenes[0];
+        AssertAlways(root_scene->nodes_count == 1);
+
+        cgltf_node *root= root_scene->nodes[0];
+        node = node_from_gltf_node(arena, root);
+        cgltf_free(data);
+    }
+    else
+    { InvalidPath; }
+
+    return node;
+}
+internal G_Node *
+node_from_gltf_node(Arena *arena, cgltf_node *cn)
+{
+    cgltf_mesh *mesh = cn->mesh;
+    Temp temp = scratch_begin(0,0);
+    String8 prefix = push_str8_cat(temp.arena,
+                                   cn->parent ? str8_cstring(cn->parent->name) : str8_lit(""),
+                                   cn->parent ? str8_lit("-") : str8_lit(""));
+    String8 node_name = push_str8_cat(arena, prefix, str8_cstring(cn->name));
+    G_Node *node = g_build_node_from_string(node_name);
+
+    if(mesh != 0)
+    {
+        G_Parent_Scope(node)
+        {
+            for(U64 i = 0; i < cn->mesh->primitives_count; i++)
+            {
+                String8 mesh_node_name = push_str8_cat(arena, node_name, push_str8f(temp.arena, "#%d", i));
+                G_Node *mesh_node = g_node_camera_mesh_inst3d_alloc(mesh_node_name);
+                G_Mesh *mesh = g_mesh_alloc();
+                mesh->kind = G_MeshKind_Custom;
+                mesh_node->mesh_inst3d.mesh = mesh;
+
+                cgltf_primitive *primitive = &cn->mesh->primitives[i];
+                AssertAlways(primitive->type == cgltf_primitive_type_triangles);
+
+                // Mesh Indices
+                {
+                    cgltf_accessor *accessor = primitive->indices;
+                    AssertAlways(accessor->type == cgltf_type_scalar);
+                    AssertAlways(accessor->stride == 4);
+                    U64 offset = accessor->offset+accessor->buffer_view->offset;
+                    void *indices_src = (U8 *)accessor->buffer_view->buffer->data+offset;
+                    U64 size = sizeof(U32) * accessor->count;
+                    R_Handle indices = r_buffer_alloc(R_ResourceKind_Static, size, indices_src);
+                    mesh->indices = indices;
+                }
+
+                // Mesh vertex attributes
+                {
+                    cgltf_attribute *attrs = primitive->attributes;
+                    cgltf_size attr_count = primitive->attributes_count;
+                    U64 vertex_count = attrs[0].data->count;
+                    R_Vertex vertices_src[vertex_count];
+
+                    // position, normal, color, texcoord (TODO: joints, weights, tangent)
+                    for(U64 i = 0; i < vertex_count; i++)
+                    {
+                        R_Vertex *v = &vertices_src[i];
+                        for(U64 j = 0; j < attr_count; j++)
+                        {
+                            cgltf_attribute *attr = &attrs[j];
+                            cgltf_accessor *accessor = attr->data;
+                            // cgltf_accessor *accessor = &attr->data[attr->index];
+
+                            U64 src_offset = accessor->offset + accessor->buffer_view->offset + accessor->stride*i;
+                            U8 *src = (U8 *)accessor->buffer_view->buffer->data + src_offset;
+                            U64 dst_offset = 0;
+                            U64 size = 0;
+                            switch(attr->type)
+                            {
+                                case cgltf_attribute_type_position:
+                                {
+                                    dst_offset = OffsetOf(R_Vertex, pos);
+                                    size = sizeof(((struct R_Vertex *)0)->pos);
+                                }break;
+                                case cgltf_attribute_type_normal:
+                                {
+                                    dst_offset = OffsetOf(R_Vertex, nor);
+                                    size = sizeof(((struct R_Vertex *)0)->nor);
+                                }break;
+                                case cgltf_attribute_type_texcoord:
+                                {
+                                    dst_offset = OffsetOf(R_Vertex, tex);
+                                    size = sizeof(((struct R_Vertex *)0)->tex);
+                                }break;
+                                case cgltf_attribute_type_color:
+                                {
+                                    dst_offset = OffsetOf(R_Vertex, col);
+                                    size = sizeof(((struct R_Vertex *)0)->col);
+                                }break;
+                                default: {}break;
+                            }
+                            MemoryCopy((U8 *)v+dst_offset, src, size);
+                        }
+                    }
+                    R_Handle vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(vertices_src), (void *)vertices_src);
+                    mesh->vertices = vertices;
+                }
+            }
+        }
+    }
+
+    scratch_end(temp);
+
+    G_Parent_Scope(node)
+    {
+        for(U64 i = 0; i < cn->children_count; i++)
+        {
+            node_from_gltf_node(arena, cn->children[i]);
+        }
+    }
+    return node;
 }

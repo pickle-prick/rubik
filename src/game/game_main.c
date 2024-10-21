@@ -6,6 +6,8 @@
 // [h]
 // #define FAST_OBJ_IMPLEMENTATION
 // #include "external/fast_obj.h"
+#define CGLTF_IMPLEMENTATION
+#include "external/cgltf.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "external/stb/stb_image.h"
 #include "base/base_inc.h"
@@ -20,7 +22,7 @@
 #include "./game.h"
 
 // [c]
-#include "external/cJSON.c"
+// #include "external/cJSON.c" // TODO: we may want to use JSMN for this
 #include "base/base_inc.c"
 #include "os/os_inc.c"
 #include "render/render_inc.c"
@@ -221,7 +223,7 @@ entry_point(CmdLine *cmd_line)
     UI_State *ui = ui_state_alloc();
     ui_select_state(ui);
 
-    // TODO: TEST for now, should wrap into some kind of struct
+    // TODO: Testing for now, should wrap into some kind of struct
     TxtPt cursor = {0,4};
     TxtPt mark   = {0,4};
     U8 edit_buffer[300] = "test";
@@ -233,13 +235,11 @@ entry_point(CmdLine *cmd_line)
     // TODO: is this size per line
     U64 edit_string_size_out2[] = {4};
 
-    // TODO: demo image
     // int x,y,n; 
     // U8 *demo_image_data = stbi_load("textures/the-inside-world.png", &x, &y, &n, 4);
     // R_Handle demo_image = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Nearest, v2s32(x,y), R_Tex2DFormat_RGBA8, demo_image_data);
     // stbi_image_free(demo_image_data);
 
-    // TODO: game 2d scene
     g_init(window);
     G_Scene *scene = g_scene_load();
 
@@ -396,15 +396,6 @@ entry_point(CmdLine *cmd_line)
                     ui_label(str8_lit("fps"));
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%6.2f", 1 / (dt / 1000000.0));
-                }
-
-                ui_spacer(ui_px(3.0, 0));
-
-                UI_Row
-                {
-                    ui_label(str8_lit("FRAMEefg"));
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%lu", frame_start_us);
                 }
 
                 ui_spacer(ui_px(3.0, 0));

@@ -240,9 +240,18 @@ g_build_node_from_key(G_Key key) {
     Arena *arena = bucket->arena;
 
     G_Node *result = push_array(arena, G_Node, 1);
-    result->key   = key;
-    result->scale = v3f32(1,1,1);
-    result->parent = parent;
+    // Fill info
+    {
+        result->key         = key;
+        result->pos         = v3f32(0,0,0);
+        result->pos_delta   = v3f32(0,0,0);
+        result->rot         = make_indentity_quat_f32();
+        result->rot_delta   = make_indentity_quat_f32();
+        result->scale       = v3f32(1,1,1);
+        result->scale_delta = v3f32(1,1,1);
+        result->base_xform  = mat_4x4f32(1.0f);
+        result->parent      = parent;
+    }
 
     // Insert to the bucket
     U64 slot_idx = result->key.u64[0] % bucket->node_hash_table_size;
@@ -280,6 +289,22 @@ g_node_camera_mesh_inst3d_alloc(String8 string)
     {
         result->kind = G_NodeKind_MeshInstance3D;
     }
+    return result;
+}
+
+internal G_Mesh *g_mesh_alloc() 
+{
+    G_Scene *scene = g_top_scene();
+    G_Mesh *result = scene->first_free_mesh;
+    if(result == 0)
+    {
+        result = push_array_no_zero(scene->arena, G_Mesh, 1);
+    }
+    else 
+    {
+        SLLStackPop(scene->first_free_mesh);
+    }
+    MemoryZeroStruct(result);
     return result;
 }
 
@@ -343,20 +368,68 @@ g_node_df(G_Node *n, G_Node* root, U64 sib_member_off, U64 child_member_off)
     return result;
 }
 
-internal Vec3F32
-g_node_pos(G_Node *node)
+internal Mat4x4F32 g_xform_from_node(G_Node *node)
 {
-    // TODO(k): this will effect performance and unecessary, fix it later
-    Vec3F32 result = add_3f32(node->pos, node->pos_delta);
+    Mat4x4F32 result = node->base_xform;
+
+    QuatF32 rot   = mul_quat_f32(node->rot_delta, node->rot);
+    Vec3F32 pos   = add_3f32(node->pos_delta, node->pos);
+    Vec3F32 scale = add_3f32(node->scale_delta, node->scale);
+
+    Mat4x4F32 rot_m = mat_4x4f32_from_quat_f32(rot);
+    Mat4x4F32 tra_m = make_translate_4x4f32(pos);
+    Mat4x4F32 sca_m = make_scale_4x4f32(scale);
+
+    result = mul_4x4f32(sca_m, result);
+    result = mul_4x4f32(rot_m, result);
+    result = mul_4x4f32(tra_m, result);
+
     if(node->parent != 0)
     {
-        result = add_3f32(g_node_pos(node->parent), result);
+        result = mul_4x4f32(result, node->parent->fixed_xform);
     }
     return result;
 }
 
-/////////////////////////////////
-// Node modification
+internal void
+g_local_coord_from_node(G_Node *n, Vec3F32 *f, Vec3F32 *s, Vec3F32 *u)
+{
+    Mat4x4F32 xform = n->fixed_xform;
+    // NOTE: remove translate, only rotation matters
+    xform.v[3][0] = xform.v[3][1] = xform.v[3][2] = 0;
+    Vec4F32 i_hat = v4f32(1,0,0,1);
+    Vec4F32 j_hat = v4f32(0,-1,0,1);
+    Vec4F32 k_hat = v4f32(0,0,1,1);
+
+    i_hat = mat_4x4f32_transform_4f32(xform, i_hat);
+    j_hat = mat_4x4f32_transform_4f32(xform, j_hat);
+    k_hat = mat_4x4f32_transform_4f32(xform, k_hat);
+
+    MemoryCopy(f, &k_hat, sizeof(Vec3F32));
+    MemoryCopy(s, &i_hat, sizeof(Vec3F32));
+    MemoryCopy(u, &j_hat, sizeof(Vec3F32));
+
+    // Vec4F32 side    = v4f32(1,0,0,0);
+    // Vec4F32 up      = v4f32(0,-1,0,0);
+    // Vec4F32 forward = v4f32(0,0,1,0);
+
+    // side    = mul_quat_f32(rot_conj,side);
+    // side    = mul_quat_f32(side,rot);
+    // up      = mul_quat_f32(rot_conj,up);
+    // up      = mul_quat_f32(up,rot);
+    // forward = mul_quat_f32(rot_conj,forward);
+    // forward = mul_quat_f32(forward,rot);
+
+    // MemoryCopy(f, &forward, sizeof(Vec3F32));
+    // MemoryCopy(s, &side, sizeof(Vec3F32));
+    // MemoryCopy(u, &up, sizeof(Vec3F32));
+}
+
+internal Mat4x4F32
+g_view_from_node(G_Node *node)
+{
+    return inverse_4x4f32(node->fixed_xform);
+}
 
 /////////////////////////////////
 // Physics
@@ -652,55 +725,6 @@ p_in_triangle(Vec2F32 P, Vec2F32 A, Vec2F32 B, Vec2F32 C) {
 
 /////////////////////////////////
 // Camera
-
-internal Mat4x4F32 
-view_from_camera(Vec3F32 pos, G_Camera3D *camera)
-{
-    // // Rotate based on yaw
-    // Mat4x4F32 yaw_rot_inv = make_rotate_4x4f32(v3f32(0,1,0), -(camera->yaw+camera->yaw_delta));
-    // // Rotate based on pitch
-    // Mat4x4F32 pitch_rot_inv = make_rotate_4x4f32(v3f32(1,0,0), -(camera->pitch+camera->pitch_delta));
-    QuatF32 rot = mul_quat_f32(camera->rot_delta, camera->rot);
-
-    // Rotation mat
-    Mat4x4F32 rot_m_inv = mat_4x4f32_from_quat_f32(rot);
-    rot_m_inv = transpose_4x4f32(rot_m_inv);
-
-    // Translate
-    Mat4x4F32 translate_inv = make_translate_4x4f32(negate_3f32(pos));
-
-    Mat4x4F32 m = mul_4x4f32(rot_m_inv, translate_inv);
-    return m;
-}
-
-internal void
-direction_from_camera(G_Camera3D *camera, Vec3F32 *f, Vec3F32 *s, Vec3F32 *u)
-{
-    QuatF32 rot = mul_quat_f32(camera->rot_delta, camera->rot);
-    // QuatF32 rot_conj = conj_quat_f32(rot);
-    Vec3F32 i_hat = v3f32(1,0,0);
-    Vec3F32 j_hat = v3f32(0,-1,0);
-    Vec3F32 k_hat = v3f32(0,0,1);
-
-    *f = mul_quat_f32_v3f32(rot, k_hat);
-    *s = mul_quat_f32_v3f32(rot, i_hat);
-    *u = mul_quat_f32_v3f32(rot, j_hat);
-
-    // Vec4F32 side    = v4f32(1,0,0,0);
-    // Vec4F32 up      = v4f32(0,-1,0,0);
-    // Vec4F32 forward = v4f32(0,0,1,0);
-
-    // side    = mul_quat_f32(rot_conj,side);
-    // side    = mul_quat_f32(side,rot);
-    // up      = mul_quat_f32(rot_conj,up);
-    // up      = mul_quat_f32(up,rot);
-    // forward = mul_quat_f32(rot_conj,forward);
-    // forward = mul_quat_f32(forward,rot);
-
-    // MemoryCopy(f, &forward, sizeof(Vec3F32));
-    // MemoryCopy(s, &side, sizeof(Vec3F32));
-    // MemoryCopy(u, &up, sizeof(Vec3F32));
-}
 
 /////////////////////////////////
 // Helpers

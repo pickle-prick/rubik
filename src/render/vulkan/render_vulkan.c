@@ -13,8 +13,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     // This data is technically optional, but it may provide some useful information 
     //      to the driver in order to optimize our specific application 
     //      (e.g. because it uses a well-known graphics engine with certain special behavior). 
-    VkApplicationInfo app_info =
-    {
+    VkApplicationInfo app_info = {
         .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pApplicationName   = app_name,
         .applicationVersion = VK_MAKE_VERSION(0, 0, 1),
@@ -53,7 +52,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             const char *ext = required_inst_exts[i];
             for(U64 j = 0; j < ext_count; j++)
             {
-                if (strcmp(ext, extensions[j].extensionName))
+                if(strcmp(ext, extensions[j].extensionName))
                 {
                     found++;
                     break;
@@ -587,7 +586,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         set_layout->binding_count = 1;
 
         bindings[0].binding            = 0;
-        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[0].descriptorCount    = 1;
         bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT;
         bindings[0].pImmutableSamplers = NULL;
@@ -743,7 +742,7 @@ r_vulkan_window_from_handle(R_Handle handle)
 {
     R_Vulkan_Window *wnd = (R_Vulkan_Window *)handle.u64[0];
     // TODO(@k): do we need this?
-    // if (wnd->generation != handle.u64[1]) {
+    // if(wnd->generation != handle.u64[1]) {
     //         return NULL;
     // }
     AssertAlways(wnd->generation == handle.u64[1]);
@@ -2326,7 +2325,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
     };
 #elif 1
     // This per-framebuffer struct allows you to configure the first way of color blending. The operations that will be performed are best demonstrated using the following pseudocode:
-    // if (blendEnable) {
+    // if(blendEnable) {
     //     finalColor.rgb = (srcColorBlendFactor * newColor.rgb) <colorBlendOp> (dstColorBlendFactor * oldColor.rgb);
     //     finalColor.a = (srcAlphaBlendFactor * newColor.a) <alphaBlendOp> (dstAlphaBlendFactor * oldColor.a);
     // } else {
@@ -2512,7 +2511,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
         create_info.basePipelineIndex   = -1; // Optional
                                               // TODO(@k): not sure if we should do it
         create_info.flags = VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT;
-        if (old != NULL)
+        if(old != NULL)
         {
             create_info.basePipelineHandle = old->h;
             create_info.flags              |= VK_PIPELINE_CREATE_DERIVATIVE_BIT;
@@ -2537,7 +2536,7 @@ r_begin_frame(void) {}
 internal void
 r_end_frame(void)
 {
-        // TODO(@k): some cleanup jobs here?
+    // TODO(k): some cleanup jobs here?
 }
 
 internal U64
@@ -2560,7 +2559,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
     U64 w = wnd->bag->geo3d_color_image.extent.width;
     void *ids = wnd->bag->geo3d_id_cpu.mapped;
     // U64 id = ((U64 *)ids)[(U64)(ptr.y*w+ptr.x)];
-    U64 id = ((U64 *)ids)[30];
+    U64 id = ((U64 *)ids)[0];
 
     // Vulkan will usually just tell us that the swapchain is no longer adequate during presentation
     // The vkAcquireNextImageKHR and vkQueuePresentKHR functions can return the following special values to indicate this
@@ -2568,10 +2567,12 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
     //    Usually happens after a window resize
     // 2. VK_SUBOPTIMAL_KHR: the swap chain can still be used to successfully present to the surface, but the surface properties are no longer matched exactly
     VkResult ret;
-    while (1) {
+    while(1)
+    {
         // Acquire image from swapchain
         ret = vkAcquireNextImageKHR(device->h, wnd->bag->swapchain.h, UINT64_MAX, frame->img_acq_sem, VK_NULL_HANDLE, &frame->img_idx);
-        if (ret == VK_ERROR_OUT_OF_DATE_KHR || ret == VK_SUBOPTIMAL_KHR) {
+        if(ret == VK_ERROR_OUT_OF_DATE_KHR || ret == VK_SUBOPTIMAL_KHR)
+        {
             r_vulkan_window_resize(wnd);
             continue;
         }
@@ -2590,17 +2591,17 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
     for(U64 i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
         R_Vulkan_Frame *frame = &wnd->frames[i];
-        if (frame->bag_gen != wnd->bag->generation) bag_gen_synced = false;
-        if (frame->rendpass_grp_gen != wnd->rendpass_grp->generation) rendpass_grp_gen_synced = false;
+        if(frame->bag_gen != wnd->bag->generation) bag_gen_synced = false;
+        if(frame->rendpass_grp_gen != wnd->rendpass_grp->generation) rendpass_grp_gen_synced = false;
     }
-    if (bag_gen_synced)
+    if(bag_gen_synced)
     {
         for(R_Vulkan_Bag *b = wnd->first_to_free_bag; b != 0; b = b->next) {
             r_vulkan_bag_destroy(b);
         }
         wnd->first_to_free_bag = 0;
     }
-    if (rendpass_grp_gen_synced)
+    if(rendpass_grp_gen_synced)
     {
         for(R_Vulkan_RenderPassGroup *g = wnd->first_to_free_rendpass_grp; g != 0; g = g->next) {
             r_vulkan_rendpass_grp_destroy(g);
@@ -2705,7 +2706,7 @@ r_window_end_frame(OS_Handle os_wnd, R_Handle window_equip)
 
     // NOTE(@k): It is important to only check window_resized here to ensure that the job-done semaphores are in a consistent state
     //           otherwise a signaled semaphore may never be properly waited upon
-    if (prest_ret == VK_ERROR_OUT_OF_DATE_KHR || prest_ret == VK_SUBOPTIMAL_KHR)
+    if(prest_ret == VK_ERROR_OUT_OF_DATE_KHR || prest_ret == VK_SUBOPTIMAL_KHR)
     {
         r_vulkan_window_resize(wnd);
     } 
@@ -2733,7 +2734,6 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
     U64 ui_group_count        = 0;
 
     U64 mesh_inst_buffer_offset = 0;
-    U64 mesh_group_count        = 0;
 
     // Do passing
     for(R_PassNode *pass_n = passes->first; pass_n != 0; pass_n = pass_n->next)
@@ -2808,7 +2808,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
 
                     // Get texture
                     R_Handle tex_handle = group_params->tex;
-                    if (r_handle_match(tex_handle, r_handle_zero())) {
+                    if(r_handle_match(tex_handle, r_handle_zero()))
+                    {
                         tex_handle = r_vulkan_state->backup_texture;
                     }
                     R_Vulkan_Tex2D *texture = r_vulkan_tex2d_from_handle(tex_handle);
@@ -2823,7 +2824,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                         {0, 0, 0, 1},
                     };
 
-                    switch (texture->format) {
+                    switch (texture->format)
+                    {
                         default: break;
                         case R_Tex2DFormat_R8: 
                         {
@@ -2912,6 +2914,41 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                 R_Vulkan_UniformBuffer *uniform_buffer = &frame->uniform_buffers[R_Vulkan_UniformTypeKind_Mesh];
                 // TODO(@k): dynamic allocate uniform buffer if needed
 
+                // Setup uniforms buffer
+                R_Vulkan_Uniforms_Mesh uniforms = {0};
+                uniforms.proj = params->projection;
+                uniforms.view = params->view;
+                uniforms.show_grid = params->show_grid;
+                uniforms.show_gizmos = params->show_gizmos;
+                uniforms.gizmos_xform = params->gizmos_xform;
+                uniforms.gizmos_origin = params->gizmos_origin;
+
+                MemoryCopy((U8 *)uniform_buffer->buffer.mapped, &uniforms, sizeof(R_Vulkan_Uniforms_Mesh));
+                vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        renderpass->pipeline.mesh[1].layout, 0, 1,
+                                        &uniform_buffer->set.h, 0, NULL);
+
+                // Setup viewport and scissor 
+                // TODO(k): make use of params->viewport/clip
+                VkViewport viewport = {0};
+                viewport.x        = 0.0f;
+                viewport.y        = 0.0f;
+                viewport.width    = wnd->bag->stage_color_image.extent.width;
+                viewport.height   = wnd->bag->stage_color_image.extent.height;
+                viewport.minDepth = 0.0f;
+                viewport.maxDepth = 1.0f;
+                vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
+
+                VkRect2D scissor = {0};
+                scissor.offset = (VkOffset2D){0, 0};
+                scissor.extent = wnd->bag->stage_color_image.extent;
+                vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
+
+                // Bind mesh debug pipeline
+                vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.mesh[0].h);
+                // Draw mesh debug info (grid, gizmos e.g.)
+                vkCmdDraw(cmd_buf, 6, 1, 0, 0);
+
                 for(U64 slot_idx = 0; slot_idx < mesh_group_map->slots_count; slot_idx++)
                 {
                     for(R_BatchGroup3DMapNode *n = mesh_group_map->slots[slot_idx]; n!=0; n = n->next) 
@@ -2923,7 +2960,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                         R_Vulkan_Buffer *mesh_indices = r_vulkan_buffer_from_handle(group_params->mesh_indices);
 
                         // Get & fill instance buffer
-                        // TODO(k): Dynamic allocaate instance buffer if needed
+                        // TODO(k): Dynamic allocate instance buffer if needed
                         U8 *dst_ptr = frame->inst_buffer_mesh.mapped + mesh_inst_buffer_offset;
                         U64 off = 0;
                         for(R_BatchNode *batch = batches->first; batch != 0; batch = batch->next)
@@ -2937,43 +2974,6 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                         VkDeviceSize inst_buffer_offset = { mesh_inst_buffer_offset };
                         vkCmdBindVertexBuffers(cmd_buf, 1, 1, &frame->inst_buffer_mesh.h, &inst_buffer_offset);
 
-                        // Setup uniforms buffer
-                        R_Vulkan_Uniforms_Mesh uniforms = {0};
-                        uniforms.proj = params->projection;
-                        uniforms.view = params->view;
-                        uniforms.show_grid = params->show_grid;
-                        uniforms.show_gizmos = params->show_gizmos;
-                        uniforms.gizmos_xform = params->gizmos_xform;
-                        uniforms.gizmos_origin = params->gizmos_origin;
-
-                        U32 uniform_buffer_offset = mesh_group_count * uniform_buffer->stride;
-                        MemoryCopy((U8 *)uniform_buffer->buffer.mapped + uniform_buffer_offset, &uniforms, sizeof(R_Vulkan_Uniforms_Mesh));
-                        vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                                renderpass->pipeline.mesh[1].layout, 0, 1,
-                                                &uniform_buffer->set.h, 1, &uniform_buffer_offset);
-
-                        // Setup viewport and scissor 
-                        // TODO: make use of params->viewport/clip
-                        VkViewport viewport = {0};
-                        viewport.x        = 0.0f;
-                        viewport.y        = 0.0f;
-                        viewport.width    = wnd->bag->stage_color_image.extent.width;
-                        viewport.height   = wnd->bag->stage_color_image.extent.height;
-                        viewport.minDepth = 0.0f;
-                        viewport.maxDepth = 1.0f;
-                        vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
-
-                        // TODO(@k): Setup scissor rect
-                        VkRect2D scissor = {0};
-                        scissor.offset = (VkOffset2D){0, 0};
-                        scissor.extent = wnd->bag->stage_color_image.extent;
-                        vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
-
-                        // Bind mesh debug pipeline
-                        vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.mesh[0].h);
-                        // Draw mesh debug info (grid e.g.)
-                        vkCmdDraw(cmd_buf, 6, 1, 0, 0);
-
                         // Bind mesh pipeline
                         // The second parameter specifies if the pipeline object is a graphics or compute pipelinVK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BITe
                         // We've now told Vulkan which operations to execute in the graphcis pipeline and which attachment to use in the fragment shader
@@ -2984,11 +2984,9 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                         vkCmdDrawIndexed(cmd_buf, mesh_indices->size/sizeof(U32), inst_count, 0, 0, 0);
 
                         // increament group counter
-                        mesh_group_count++;
                         mesh_inst_buffer_offset += batches->byte_count;
                     }
                 }
-
                 vkCmdEndRenderPass(cmd_buf);
 
                 // Copy geo3d_image to geo3d_cpu(buffer)
@@ -3031,9 +3029,9 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                     region.imageSubresource.mipLevel = 0;
                     region.imageSubresource.baseArrayLayer = 0;
                     region.imageSubresource.layerCount = 1;
-                    region.imageOffset = (VkOffset3D){ptr.x-15,ptr.y-15,0};
+                    region.imageOffset = (VkOffset3D){ptr.x,ptr.y,0};
                     // region.imageExtent = (VkExtent3D){wnd->bag->geo3d_id_image.extent.width, wnd->bag->geo3d_id_image.extent.height, 1};
-                    region.imageExtent = (VkExtent3D){30, 30, 1};
+                    region.imageExtent = (VkExtent3D){1, 1, 1};
                     vkCmdCopyImageToBuffer(cmd_buf, wnd->bag->geo3d_id_image.h, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, wnd->bag->geo3d_id_cpu.h, 1, &region);
                 }
 
@@ -3072,7 +3070,6 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                 }
             }break;
             default: {InvalidPath;}break;
-
         }
     }
 }
@@ -3143,9 +3140,10 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
 
     U64 remaining = set_count;
     R_Vulkan_DescriptorSetPool *pool;
-    while (remaining > 0) {
+    while(remaining > 0)
+    {
         pool = r_vulkan_state->first_avail_ds_pool[kind];
-        if (pool == 0)
+        if(pool == 0)
         {
             pool = push_array(r_vulkan_state->arena, R_Vulkan_DescriptorSetPool, 1);
             pool->kind = kind;
@@ -3177,7 +3175,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
 
         U64 alloc_count = (pool->cap - pool->cmt);
         Assert(alloc_count > 0);
-        if (remaining < alloc_count) alloc_count = remaining;
+        if(remaining < alloc_count) alloc_count = remaining;
 
         VkDescriptorSet temp_sets[alloc_count];
         VkDescriptorSetAllocateInfo set_alloc_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
@@ -3196,7 +3194,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         pool->cmt += alloc_count;
         remaining -= alloc_count;
 
-        if (pool->cmt < pool->cap) { SLLStackPush(r_vulkan_state->first_avail_ds_pool[kind], pool); }
+        if(pool->cmt < pool->cap) { SLLStackPush(r_vulkan_state->first_avail_ds_pool[kind], pool); }
     }
 
     // NOTE(@k): set could have multiple writes due multiple bindings
@@ -3284,7 +3282,8 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
 void r_vulkan_descriptor_set_destroy(R_Vulkan_DescriptorSet *set) {
     VK_Assert(vkFreeDescriptorSets(r_vulkan_state->device.h, set->pool->h, 1, &set->h), "Failed to free descriptor sets");
     set->pool->cmt -= 1;
-    if ((set->pool->cmt+1) == set->pool->cap) {
+    if((set->pool->cmt+1) == set->pool->cap)
+    {
             SLLStackPush(r_vulkan_state->first_avail_ds_pool[set->pool->kind], set->pool);
     }
 }
@@ -3314,7 +3313,8 @@ debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
                const VkDebugUtilsMessengerCallbackDataEXT *p_callback_data,
                void *p_userdata)
 {
-    if (message_severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+    if(message_severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+    {
         fprintf(stderr, "validation layer: %s\n", p_callback_data->pMessage);
     }
 
@@ -3342,7 +3342,8 @@ void r_vulkan_window_resize(R_Vulkan_Window *window)
     w = dim.x;
     h = dim.y;
 
-    while (w == 0 || h == 0) {
+    while(w == 0 || h == 0)
+    {
         Temp temp = scratch_begin(0,0);
         Vec2F32 dim = dim_2f32(os_client_rect_from_window(window->os_wnd));
         w = dim.x;
@@ -3368,7 +3369,8 @@ void r_vulkan_window_resize(R_Vulkan_Window *window)
     window->bag = r_vulkan_bag(window, surface, window->bag);
 
     bool rendpass_outdated = window->bag->swapchain.format != old_format;
-    if (!rendpass_outdated) {
+    if(!rendpass_outdated)
+    {
         SLLStackPush(window->first_to_free_rendpass_grp, window->rendpass_grp);
         window->rendpass_grp = r_vulkan_rendpass_grp(window, window->bag->swapchain.format, window->rendpass_grp);
     }
@@ -3382,12 +3384,12 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
     U64 gen = 0;
     R_Vulkan_Swapchain *old_swapchain = 0;
 
-    if (old_bag != 0)
+    if(old_bag != 0)
     {
         gen = old_bag->generation + 1;
         old_swapchain = &old_bag->swapchain;
     }
-    if (bag == 0) { bag = push_array(window->arena, R_Vulkan_Bag, 1); }
+    if(bag == 0) { bag = push_array(window->arena, R_Vulkan_Bag, 1); }
 
     // Fill basic
     bag->generation = gen;
@@ -3502,7 +3504,8 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
 
     // geo3d_id_cpu
     {
-        VkDeviceSize size = geo3d_id_image->extent.width * geo3d_id_image->extent.height * sizeof(U64);
+        // VkDeviceSize size = geo3d_id_image->extent.width * geo3d_id_image->extent.height * sizeof(U64);
+        VkDeviceSize size = 1*1*sizeof(U64);
         VkBufferCreateInfo buf_ci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
         buf_ci.size = size;
         buf_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -3755,7 +3758,7 @@ r_vulkan_bag_destroy(R_Vulkan_Bag *bag)
     {
         VkFramebuffer *ptr = &bag->framebuffers[i];
         U64 count = 1;
-        if (i == R_Vulkan_RenderPassKind_COUNT) { count = MAX_FRAMES_IN_FLIGHT; }
+        if(i == R_Vulkan_RenderPassKind_COUNT) { count = MAX_FRAMES_IN_FLIGHT; }
         for(U64 j = 0; j < count; j++)
         {
             vkDestroyFramebuffer(r_vulkan_state->device.h, *(ptr+j), NULL);

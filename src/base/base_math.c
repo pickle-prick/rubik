@@ -643,19 +643,44 @@ internal Mat4x4F32 mul_4x4f32(Mat4x4F32 a, Mat4x4F32 b) {
     return c;
 }
 
-internal Vec4F32 transform_4x4f32(Mat4x4F32 a, Vec4F32 b)
+internal Vec4F32 mat_4x4f32_transform_4f32(Mat4x4F32 a, Vec4F32 b)
 {
+    // clock_t start_time = clock();
     Vec4F32 c = {0};
-    for(U64 i = 0; i < 4; i++)
+    if(0)
     {
-        F32 acc = 0;
-        for(U64 j = 0; j < 4; j++)
+        for(U64 i = 0; i < 4; i++)
         {
-            acc += a.v[j][i] * b.v[j];
+            F32 acc = 0;
+            for(U64 j = 0; j < 4; j++)
+            {
+                acc += a.v[j][i] * b.v[j];
+            }
+            c.v[i] = acc;
         }
-        c.v[i] = acc;
     }
+    else
+    {
+        // Store elements of vector b in temporary variables
+        F32 b0 = b.v[0];
+        F32 b1 = b.v[1];
+        F32 b2 = b.v[2];
+        F32 b3 = b.v[3];
+
+        // Manually unroll the loops to eliminate loop overhead
+        c.v[0] = a.v[0][0] * b0 + a.v[1][0] * b1 + a.v[2][0] * b2 + a.v[3][0] * b3;
+        c.v[1] = a.v[0][1] * b0 + a.v[1][1] * b1 + a.v[2][1] * b2 + a.v[3][1] * b3;
+        c.v[2] = a.v[0][2] * b0 + a.v[1][2] * b1 + a.v[2][2] * b2 + a.v[3][2] * b3;
+        c.v[3] = a.v[0][3] * b0 + a.v[1][3] * b1 + a.v[2][3] * b2 + a.v[3][3] * b3;
+    }
+    // double time_taken = ((double)(clock()-start_time)) / CLOCKS_PER_SEC;
     return c;
+}
+
+internal Vec3F32 mat_4x4f32_transform_3f32(Mat4x4F32 a, Vec3F32 b)
+{
+    Vec4F32 tmp = mat_4x4f32_transform_4f32(a, v4f32(b.x, b.y, b.z, 1.0));
+    return v3f32(tmp.x, tmp.y, tmp.z);
 }
 
 internal Mat4x4F32 scale_4x4f32(Mat4x4F32 m, F32 scale) {
