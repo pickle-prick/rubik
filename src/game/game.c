@@ -75,7 +75,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     G_Node *camera = scene->camera;
     pass->view = g_view_from_node(camera);
     pass->projection = make_perspective_vulkan_4x4f32(camera->camera.fov, window_dim.x/window_dim.y, camera->camera.zn, camera->camera.zf);
-    Mat4x4F32 xform_m = mul_4x4f32(pass->view, pass->projection);
+    Mat4x4F32 xform_m = mul_4x4f32(pass->projection, pass->view);
 
     if(active_node != 0) 
     {
@@ -111,7 +111,12 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
 
         if(active_node != 0)
         {
-            // Dragging
+            Vec3F32 local_i;
+            Vec3F32 local_j;
+            Vec3F32 local_k;
+            g_local_coord_from_node(active_node, &local_k, &local_i, &local_j);
+
+            // Dragging started
             if((g_state->sig.f & UI_SignalFlag_LeftDragging) &&
                g_state->is_dragging == 0 &&
                (g_state->hot_key.u64[0] == G_SpecialKeyKind_GizmosIhat ||
@@ -122,34 +127,46 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                 switch(g_state->hot_key.u64[0])
                 {
                     default: {InvalidPath;}break;
-                    case G_SpecialKeyKind_GizmosIhat: {direction.v[0]=1;}break;
-                    case G_SpecialKeyKind_GizmosJhat: {direction.v[1]=1;}break;
-                    case G_SpecialKeyKind_GizmosKhat: {direction.v[2]=1;}break;
+                    case G_SpecialKeyKind_GizmosIhat: { direction = local_i; }break;
+                    case G_SpecialKeyKind_GizmosJhat: { direction = local_j; }break;
+                    case G_SpecialKeyKind_GizmosKhat: { direction = local_k; }break;
                 }
                 g_state->is_dragging = 1;
                 g_state->drag_start_direction = direction;
             }
 
+            // Dragging
             if(g_state->is_dragging)
             {
                 Vec2F32 delta = ui_drag_delta();
-                Vec4F32 direction = v4f32(g_state->drag_start_direction.x, g_state->drag_start_direction.y, g_state->drag_start_direction.z, 1.0);
-                // TODO: this don't seem quite right, some axis is easier to move
-                Vec4F32 projected_start = mat_4x4f32_transform_4f32(xform_m, v4f32(0,0,0,1));
-                // TODO: not sure if we need to divide by w here, check out later
-                projected_start.x /= projected_start.w;
-                projected_start.y /= projected_start.w;
-                Vec4F32 projected_end = mat_4x4f32_transform_4f32(xform_m, direction);
-                projected_end.x /= projected_end.w;
-                projected_end.y /= projected_end.w;
-                Vec4F32 projected_direction = normalize_4f32(sub_4f32(projected_end, projected_start));
-                F32 length = dot_2f32(delta, v2f32(projected_direction.x, projected_direction.y));
-                // TODO: scale by some kind of fwidth, we want to scale larger when object is further
-                F32 scale = 10.0f/window_dim.x;
-                length *= scale;
-                g_kv("moving length", "%.2f", length);
-                g_kv("moving direction", "%.2f %.2f", projected_direction.x, projected_direction.y);
-                active_node->pos_delta = scale_3f32(g_state->drag_start_direction, length);
+                Vec4F32 dir = v4f32(g_state->drag_start_direction.x,
+                                    g_state->drag_start_direction.y,
+                                    g_state->drag_start_direction.z,
+                                    1.0);
+                Vec4F32 projected_start = mat_4x4f32_transform_4f32(xform_m, v4f32(0,0,0,1.0));
+                if(projected_start.w != 0)
+                {
+                    projected_start.x /= projected_start.w;
+                    projected_start.y /= projected_start.w;
+                }
+                Vec4F32 projected_end = mat_4x4f32_transform_4f32(xform_m, dir);
+                if(projected_end.w != 0)
+                {
+                    projected_end.x /= projected_end.w;
+                    projected_end.y /= projected_end.w;
+                }
+                Vec2F32 projected_dir = sub_2f32(v2f32(projected_end.x, projected_end.y), v2f32(projected_start.x, projected_start.y));
+                g_kv("projected_dir", "%.2f %.2f", projected_dir.x, projected_dir.y);
+
+                // TODO: negating direction could cause rapid changes on direction, we would want to avoid that 
+                S32 n = dot_2f32(delta, projected_dir) > 0 ? 1 : -1;
+
+                // 10.0 in word coordinate per pixel (scaled by the distance to the eye)
+                F32 speed = 1.0/(window_dim.x*length_2f32(projected_dir));
+
+                // g_kv("drag_start_direction", "%.2f %.2f %.2f", g_state->drag_start_direction.x, g_state->drag_start_direction.y, g_state->drag_start_direction.z);
+                // g_kv("drag_length", "%.2f", length_2f32(delta)*speed*n);
+                active_node->pos_delta = scale_3f32(g_state->drag_start_direction, length_2f32(delta)*speed*n);
             }
         }
     }
@@ -219,7 +236,7 @@ G_NODE_CUSTOM_UPDATE(camera_fn)
         F32 h_dist = 2.0 * h_pct;
         // Vertical
         F32 v_pct = delta.y / window_dim.y;
-        F32 v_dist = 2.0 * v_pct;
+        F32 v_dist = -2.0 * v_pct;
         node->pos_delta = scale_3f32(clean_s, -h_dist * 6);
         node->pos_delta = add_3f32(node->pos_delta, scale_3f32(clean_u, v_dist*6));
         g_kv("Middle dragging delta", "%.2f %.2f", delta.x, delta.y);
@@ -445,6 +462,7 @@ g_scene_load()
 
                 // Dummy
                 G_Node *n = node_from_gltf(scene->arena, str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"), str8_lit("dummy"));
+                n->pos       = v3f32(3,0,0);
                 n->scale     = v3f32(0.01,0.01,0.01);
                 n->rot       = make_rotate_quat_f32(v3f32(1,0,0), 0.25);
                 n->update_fn = dummy_fn;

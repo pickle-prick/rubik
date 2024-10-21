@@ -398,7 +398,7 @@ g_local_coord_from_node(G_Node *n, Vec3F32 *f, Vec3F32 *s, Vec3F32 *u)
     // NOTE: remove translate, only rotation matters
     xform.v[3][0] = xform.v[3][1] = xform.v[3][2] = 0;
     Vec4F32 i_hat = v4f32(1,0,0,1);
-    Vec4F32 j_hat = v4f32(0,-1,0,1);
+    Vec4F32 j_hat = v4f32(0,1,0,1);
     Vec4F32 k_hat = v4f32(0,0,1,1);
 
     i_hat = mat_4x4f32_transform_4f32(xform, i_hat);
