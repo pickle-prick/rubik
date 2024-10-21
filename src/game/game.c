@@ -463,7 +463,7 @@ g_scene_load()
                 // Dummy
                 G_Node *n = node_from_gltf(scene->arena, str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"), str8_lit("dummy"));
                 n->pos       = v3f32(3,0,0);
-                n->scale     = v3f32(0.01,0.01,0.01);
+                n->scale     = v3f32(0.03,0.03,0.03);
                 n->rot       = make_rotate_quat_f32(v3f32(1,0,0), 0.25);
                 n->update_fn = dummy_fn;
             }

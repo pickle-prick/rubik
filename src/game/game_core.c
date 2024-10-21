@@ -409,6 +409,10 @@ g_local_coord_from_node(G_Node *n, Vec3F32 *f, Vec3F32 *s, Vec3F32 *u)
     MemoryCopy(s, &i_hat, sizeof(Vec3F32));
     MemoryCopy(u, &j_hat, sizeof(Vec3F32));
 
+    *f = normalize_3f32(*f);
+    *s = normalize_3f32(*s);
+    *u = normalize_3f32(*u);
+
     // Vec4F32 side    = v4f32(1,0,0,0);
     // Vec4F32 up      = v4f32(0,-1,0,0);
     // Vec4F32 forward = v4f32(0,0,1,0);

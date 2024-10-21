@@ -166,9 +166,9 @@ vec4 gizmos(inout float depth, inout uvec2 key)
     vec4 color = vec4(0);
     depth = 1.0;
 
-    vec3 i_hat = gizmos_xform[0].xyz; // First column
-    vec3 j_hat = gizmos_xform[1].xyz; // Second column
-    vec3 k_hat = gizmos_xform[2].xyz; // Third column
+    vec3 i_hat = normalize(gizmos_xform[0].xyz); // First column
+    vec3 j_hat = normalize(gizmos_xform[1].xyz); // Second column
+    vec3 k_hat = normalize(gizmos_xform[2].xyz); // Third column
 
     vec3 ro = (inverse(view) * vec4(0,0,0,1)).xyz; // Eye position
     vec3 rd = normalize(far_p-near_p); // Ray direction
