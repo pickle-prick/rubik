@@ -29,7 +29,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
 
     B32 show_grid   = 1;
     B32 show_gizmos = 0;
-    // TODO: this is kind of awkward
+    // TODO: this is kind awkward
     d_push_bucket(g_state->bucket_geo3d);
     R_PassParams_Geo3D *pass = d_geo3d_begin(window_rect, mat_4x4f32(1.f), mat_4x4f32(1.f),
                                              show_grid, show_gizmos,
@@ -67,7 +67,6 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
             {
                 node->update_fn(node, scene, os_events, dt_sec);
             }
-            // Next
             node = g_node_df_pre(node, 0);
         }
     }
@@ -353,6 +352,13 @@ G_NODE_CUSTOM_UPDATE(player_fn)
     }
 }
 
+G_NODE_CUSTOM_UPDATE(dummy_fn)
+{
+    Vec3F32 pos = {0,0,0};
+    pos = mat_4x4f32_transform_3f32(node->fixed_xform, pos);
+    g_kv("dummy pos", "%.2f %.2f %.2f", pos.x, pos.y, pos.z);
+}
+
 /////////////////////////////////
 // Scene build api
 
@@ -404,7 +410,6 @@ g_scene_load()
 
     // TODO: searilize scene data using yaml or something
 
-
     R_Handle vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(vertices_src), (void *)vertices_src);
     R_Handle indices = r_buffer_alloc(R_ResourceKind_Static, sizeof(indices_src), (void *)indices_src);
 
@@ -431,17 +436,18 @@ g_scene_load()
                 G_Node *player = g_node_camera_mesh_inst3d_alloc(str8_lit("player"));
                 G_Mesh *mesh = push_array(scene->bucket->arena, G_Mesh, 1);
                 mesh->vertices = vertices;
-                mesh->indices = indices;
-                mesh->kind = G_MeshKind_Box;
-                player->pos = v3f32(0,-0.51,0);
+                mesh->indices  = indices;
+                mesh->kind     = G_MeshKind_Box;
+                player->pos              = v3f32(0,-0.51,0);
                 player->mesh_inst3d.mesh = mesh;
-                player->update_fn = player_fn;
-                player->custom_data = push_array(scene->bucket->arena, G_PlayerData, 1);
+                player->update_fn        = player_fn;
+                player->custom_data      = push_array(scene->bucket->arena, G_PlayerData, 1);
 
                 // Dummy
                 G_Node *n = node_from_gltf(scene->arena, str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"), str8_lit("dummy"));
-                n->scale = v3f32(0.01,0.01,0.01);
-                n->rot = make_rotate_quat_f32(v3f32(1,0,0), 0.25);
+                n->scale     = v3f32(0.01,0.01,0.01);
+                n->rot       = make_rotate_quat_f32(v3f32(1,0,0), 0.25);
+                n->update_fn = dummy_fn;
             }
         }
     }

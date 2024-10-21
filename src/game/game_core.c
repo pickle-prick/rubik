@@ -248,7 +248,7 @@ g_build_node_from_key(G_Key key) {
         result->rot         = make_indentity_quat_f32();
         result->rot_delta   = make_indentity_quat_f32();
         result->scale       = v3f32(1,1,1);
-        result->scale_delta = v3f32(1,1,1);
+        result->scale_delta = v3f32(0,0,0);
         result->base_xform  = mat_4x4f32(1.0f);
         result->parent      = parent;
     }

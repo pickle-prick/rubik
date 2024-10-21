@@ -3029,7 +3029,10 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                     region.imageSubresource.mipLevel = 0;
                     region.imageSubresource.baseArrayLayer = 0;
                     region.imageSubresource.layerCount = 1;
-                    region.imageOffset = (VkOffset3D){ptr.x,ptr.y,0};
+                    Vec2F32 range = {ptr.x, ptr.y};
+                    range.x = Clamp(0,ptr.x,wnd->bag->geo3d_id_image.extent.width);
+                    range.y = Clamp(0,ptr.y,wnd->bag->geo3d_id_image.extent.height);
+                    region.imageOffset = (VkOffset3D){range.x,range.y,0};
                     // region.imageExtent = (VkExtent3D){wnd->bag->geo3d_id_image.extent.width, wnd->bag->geo3d_id_image.extent.height, 1};
                     region.imageExtent = (VkExtent3D){1, 1, 1};
                     vkCmdCopyImageToBuffer(cmd_buf, wnd->bag->geo3d_id_image.h, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, wnd->bag->geo3d_id_cpu.h, 1, &region);
