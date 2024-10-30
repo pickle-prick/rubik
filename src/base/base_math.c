@@ -935,6 +935,43 @@ internal QuatF32 quat_f32_from_4x4f32(Mat4x4F32 M)
 
     return q;
 }
+internal QuatF32 mix_quat_f32(QuatF32 qa, QuatF32 qb, F32 t)
+{
+    // NOTE: interpolation between two quaterions mean spherical linear
+    // http://www.euclideanspace.com/maths/algebra/realNormedAlgebra/quaternions/slerp/index.htm
+	// quaternion to return
+	QuatF32 ret;
+	// Calculate angle between them.
+	F32 cos_half_theta = qa.w * qb.w + qa.x * qb.x + qa.y * qb.y + qa.z * qb.z;
+	// if qa=qb or qa=-qb then theta = 0 and we can return qa
+	if (abs_f32(cos_half_theta) >= 1.0){
+		ret.w = qa.w;
+        ret.x = qa.x;
+        ret.y = qa.y;
+        ret.z = qa.z;
+		return ret;
+	}
+	// Calculate temporary values.
+	double half_theta = acos(cos_half_theta);
+	double sin_half_theta = sqrt(1.0 - cos_half_theta*cos_half_theta);
+	// if theta = 180 degrees then result is not fully defined
+	// we could rotate around any axis normal to qa or qb
+	if (fabs(sin_half_theta) < 0.001){ // fabs is floating point absolute
+		ret.w = (qa.w * 0.5 + qb.w * 0.5);
+		ret.x = (qa.x * 0.5 + qb.x * 0.5);
+		ret.y = (qa.y * 0.5 + qb.y * 0.5);
+		ret.z = (qa.z * 0.5 + qb.z * 0.5);
+		return ret;
+	}
+	F32 ratioA = sin((1 - t) * half_theta) / sin_half_theta;
+	F32 ratioB = sin(t * half_theta) / sin_half_theta; 
+	//calculate Quaternion.
+	ret.w = (qa.w * ratioA + qb.w * ratioB);
+	ret.x = (qa.x * ratioA + qb.x * ratioB);
+	ret.y = (qa.y * ratioA + qb.y * ratioB);
+	ret.z = (qa.z * ratioA + qb.z * ratioB);
+    return ret;
+}
 
 ////////////////////////////////
 //~ rjf: Range Ops

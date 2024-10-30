@@ -543,6 +543,7 @@ internal QuatF32   mul_quat_f32(QuatF32 q, QuatF32 p);
 internal QuatF32   conj_quat_f32(QuatF32 q);
 internal Vec3F32   mul_quat_f32_v3f32(QuatF32 q, Vec3F32 v);
 internal QuatF32   quat_f32_from_4x4f32(Mat4x4F32 m);
+internal QuatF32   mix_quat_f32(QuatF32 a, QuatF32 b, F32 t);
 
 ////////////////////////////////
 //~ rjf: Range Ops

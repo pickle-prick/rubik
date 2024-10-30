@@ -511,6 +511,7 @@ G_NODE_CUSTOM_UPDATE(base_fn)
     if(node->flags & G_NodeFlags_Animated) { node->anim_dt += dt_sec; }
 
     // Play animations
+    // TODO: some weird artifacts when playing animation, fix it later
     if((node->flags & G_NodeFlags_Animated) && (node->flags & G_NodeFlags_AnimatedSkeleton))
     {
         // TODO: testing for now, play the first animation
@@ -528,16 +529,25 @@ G_NODE_CUSTOM_UPDATE(base_fn)
             G_Key target_key_pre = spline->target_key;
             G_Key target_key_pst = g_key_merge(node->key, target_key_pre);
             G_Node *target = g_node_from_key(bucket, target_key_pst);
+            AssertAlways(target != 0);
 
-            U64 target_frame = 0;
+            // TODO: only linear is supported for now  (STEP, LINEAR, CUBICSPLINE)
+            AssertAlways(spline->interpolation_method == G_InterpolationMethod_Linear);
 
-            // TODO: interpolation between frames
+            U64 last_frame = 0;
+            U64 next_frame = 0;
+            F32 t = 0;
+
+            // Interpolation between frames
             for(U64 frame_idx = 0; frame_idx < spline->frame_count; frame_idx++)
             {
-                F32 t = spline->timestamps[frame_idx];
-                if(node->anim_dt < t)
+                F32 curr_ts = spline->timestamps[frame_idx];
+                if(node->anim_dt < curr_ts)
                 {
-                    target_frame = frame_idx;
+                    F32 last_ts = spline->timestamps[frame_idx-1];
+                    t = (node->anim_dt-last_ts) / curr_ts;
+                    last_frame = frame_idx-1;
+                    next_frame = frame_idx;
                     break;
                 }
             }
@@ -546,15 +556,16 @@ G_NODE_CUSTOM_UPDATE(base_fn)
             {
                 case G_TransformKind_Scale:
                 {
-                    target->scale = (spline->values.v3s)[target_frame];
+                    target->scale = mix_3f32(spline->values.v3s[last_frame], spline->values.v3s[next_frame], t);
                 }break;
                 case G_TransformKind_Rotation:
                 {
-                    target->rot = (spline->values.v4s)[target_frame];
+                    target->rot = mix_quat_f32(spline->values.v4s[last_frame], spline->values.v4s[next_frame], t);
                 }break;
                 case G_TransformKind_Translation:
                 {
-                    target->pos = (spline->values.v3s)[target_frame];
+                    // spherical linear
+                    target->pos = mix_3f32(spline->values.v3s[last_frame], spline->values.v3s[next_frame], t);
                 }break;
                 default: {}break;
             }
@@ -869,9 +880,6 @@ p_in_triangle(Vec2F32 P, Vec2F32 A, Vec2F32 B, Vec2F32 C) {
 //     scratch_end(temp);
 //     return result;
 // }
-
-/////////////////////////////////
-// Camera
 
 /////////////////////////////////
 // Helpers
