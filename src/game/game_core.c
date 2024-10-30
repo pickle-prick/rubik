@@ -45,6 +45,7 @@ g_init(OS_Handle os_wnd) {
     Arena *arena = arena_alloc();
     g_state = push_array(arena, G_State, 1);
     g_state->arena = arena;
+    g_state->frame_arena = arena_alloc();
     g_state->node_bucket = g_bucket_make(arena, 3000);
     g_state->os_wnd = os_wnd;
 
@@ -56,24 +57,33 @@ g_init(OS_Handle os_wnd) {
 // Key
 
 internal G_Key
-g_key_from_string(String8 string)
+g_key_from_string(G_Key seed_key, String8 string)
 {
     G_Key result = {0};
-    result.u64[0] = g_hash_from_string(5381, string);
+    result.u64[0] = g_hash_from_string(seed_key.u64[0], string);
     return result;
 }
 
-internal B32
-g_key_match(G_Key a, G_Key b)
+internal G_Key
+g_key_merge(G_Key a, G_Key b)
 {
-    return a.u64[0] == b.u64[0];
+    return g_key_from_string(a, str8((U8*)(&b), 8));
 }
 
-internal G_Key
-g_key_zero()
+internal U64
+g_hash_from_string(U64 seed, String8 string)
 {
-    return (G_Key){0};
+    U64 result = seed;
+    for(U64 i = 0; i < string.size; i += 1)
+    {
+        result = ((result << 5) + result) + string.str[i];
+    }
+    return result;
 }
+
+internal B32 g_key_match(G_Key a, G_Key b) { return a.u64[0] == b.u64[0]; }
+
+internal G_Key g_key_zero() { return (G_Key){0}; }
 
 /////////////////////////////////
 // Bucket
@@ -81,7 +91,8 @@ g_key_zero()
 internal G_Node *
 g_node_from_string(G_Bucket *bucket, String8 string)
 {
-    G_Key key = g_key_from_string(string);
+    G_Key seed = g_top_seed();
+    G_Key key = g_key_from_string(seed, string);
     return g_node_from_key(bucket, key);
 }
 
@@ -90,8 +101,10 @@ g_node_from_key(G_Bucket *bucket, G_Key key)
 {
     G_Node *result = 0;
     U64 slot_idx = key.u64[0] % bucket->node_hash_table_size;
-    for(G_Node *node = bucket->node_hash_table[slot_idx].first; node != 0; node = node->hash_next) {
-        if(g_key_match(node->key, key)) {
+    for(G_Node *node = bucket->node_hash_table[slot_idx].first; node != 0; node = node->hash_next)
+    {
+        if(g_key_match(node->key, key))
+        {
             result = node;
             break;
         }
@@ -227,7 +240,7 @@ g_bucket_make(Arena *arena, U64 hash_table_size)
 internal G_Node *
 g_build_node_from_string(String8 string) {
     Arena *arena = g_top_bucket()->arena;
-    G_Key key = g_key_from_string(string);
+    G_Key key = g_key_from_string(g_top_seed(), string);
     G_Node *node = g_build_node_from_key(key);
     node->name = push_str8_copy(arena, string);
     return node;
@@ -240,17 +253,21 @@ g_build_node_from_key(G_Key key) {
     Arena *arena = bucket->arena;
 
     G_Node *result = push_array(arena, G_Node, 1);
+
     // Fill info
     {
-        result->key         = key;
-        result->pos         = v3f32(0,0,0);
-        result->pos_delta   = v3f32(0,0,0);
-        result->rot         = make_indentity_quat_f32();
-        result->rot_delta   = make_indentity_quat_f32();
-        result->scale       = v3f32(1,1,1);
-        result->scale_delta = v3f32(0,0,0);
-        result->base_xform  = mat_4x4f32(1.0f);
-        result->parent      = parent;
+        result->key             = key;
+        result->pos             = v3f32(0,0,0);
+        result->pre_pos_delta   = v3f32(0,0,0);
+        result->pst_pos_delta   = v3f32(0,0,0);
+        result->rot             = make_indentity_quat_f32();
+        result->pre_rot_delta   = make_indentity_quat_f32();
+        result->pst_rot_delta   = make_indentity_quat_f32();
+        result->scale           = v3f32(1,1,1);
+        result->pre_scale_delta = v3f32(0,0,0);
+        result->pst_scale_delta = v3f32(1,1,1);
+        result->parent          = parent;
+        g_node_push_fn(arena, result, base_fn);
     }
 
     // Insert to the bucket
@@ -262,6 +279,7 @@ g_build_node_from_key(G_Key key) {
     if(parent != 0)
     {
         DLLPushBack_NP(parent->first, parent->last, result, next, prev);
+        parent->children_count++;
     }
     return result;
 }
@@ -280,31 +298,15 @@ g_node_camera3d_alloc(String8 string)
 }
 
 internal G_Node *
-g_node_camera_mesh_inst3d_alloc(String8 string) 
+g_node_mesh_inst3d_alloc(String8 string) 
 {
     G_Bucket *bucket = g_top_bucket();
     Arena *arena = bucket->arena;
 
     G_Node *result = g_build_node_from_string(string);
     {
-        result->kind = G_NodeKind_MeshInstance3D;
+        result->kind = G_NodeKind_Mesh;
     }
-    return result;
-}
-
-internal G_Mesh *g_mesh_alloc() 
-{
-    G_Scene *scene = g_top_scene();
-    G_Mesh *result = scene->first_free_mesh;
-    if(result == 0)
-    {
-        result = push_array_no_zero(scene->arena, G_Mesh, 1);
-    }
-    else 
-    {
-        SLLStackPop(scene->first_free_mesh);
-    }
-    MemoryZeroStruct(result);
     return result;
 }
 
@@ -368,29 +370,6 @@ g_node_df(G_Node *n, G_Node* root, U64 sib_member_off, U64 child_member_off)
     return result;
 }
 
-internal Mat4x4F32 g_xform_from_node(G_Node *node)
-{
-    Mat4x4F32 result = node->base_xform;
-
-    QuatF32 rot   = mul_quat_f32(node->rot_delta, node->rot);
-    Vec3F32 pos   = add_3f32(node->pos_delta, node->pos);
-    Vec3F32 scale = add_3f32(node->scale_delta, node->scale);
-
-    Mat4x4F32 rot_m = mat_4x4f32_from_quat_f32(rot);
-    Mat4x4F32 tra_m = make_translate_4x4f32(pos);
-    Mat4x4F32 sca_m = make_scale_4x4f32(scale);
-
-    result = mul_4x4f32(sca_m, result);
-    result = mul_4x4f32(rot_m, result);
-    result = mul_4x4f32(tra_m, result);
-
-    if(node->parent != 0)
-    {
-        result = mul_4x4f32(result, node->parent->fixed_xform);
-    }
-    return result;
-}
-
 internal void
 g_local_coord_from_node(G_Node *n, Vec3F32 *f, Vec3F32 *s, Vec3F32 *u)
 {
@@ -433,6 +412,170 @@ internal Mat4x4F32
 g_view_from_node(G_Node *node)
 {
     return inverse_4x4f32(node->fixed_xform);
+}
+
+internal Vec3F32
+g_pos_from_node(G_Node *node)
+{
+    Vec3F32 c = {
+        node->fixed_xform.v[3][0],
+        node->fixed_xform.v[3][1],
+        node->fixed_xform.v[3][2],
+    };
+    return c;
+}
+
+internal void
+g_node_delta_commit(G_Node *node)
+{
+    MemoryZeroStruct(&node->pre_pos_delta);
+    node->pre_rot_delta = make_indentity_quat_f32();
+    MemoryZeroStruct(&node->pre_scale_delta);
+
+    MemoryZeroStruct(&node->pst_pos_delta);
+    node->pst_rot_delta = make_indentity_quat_f32();
+    node->pst_scale_delta = v3f32(1.0f, 1.0f, 1.0f);
+
+    Mat4x4F32 parent_xform = mat_4x4f32(1.0f);
+    if(node->parent != 0)
+    {
+        parent_xform = node->parent->fixed_xform;
+    }
+    Mat4x4F32 loc_m = mul_4x4f32(inverse_4x4f32(parent_xform), node->fixed_xform);
+    g_trs_from_matrix(&loc_m, &node->pos, &node->rot, &node->scale);
+}
+
+internal void
+g_node_push_fn(Arena *arena, G_Node *n, G_NodeCustomUpdateFunctionType *fn)
+{
+    G_UpdateFnNode *fn_node = push_array(arena, G_UpdateFnNode, 1);
+    fn_node->f = fn;
+    DLLPushBack(n->first_update_fn, n->last_update_fn, fn_node);
+}
+
+/////////////////////////////////
+// Mesh Type Functions
+
+/////////////////////////////////
+// Node base scripting
+
+G_NODE_CUSTOM_UPDATE(base_fn)
+{
+    // Update fixed_xform 
+    {
+        Mat4x4F32 xform = mat_4x4f32(1.0f);
+
+        // QuatF32 rot   = mul_quat_f32(node->rot_delta, node->rot);
+        // Vec3F32 pos   = add_3f32(node->pos_delta, node->pos);
+        // Vec3F32 scale = add_3f32(node->scale_delta, node->scale);
+
+        // Mat4x4F32 rot_m = mat_4x4f32_from_quat_f32(rot);
+        // Mat4x4F32 tra_m = make_translate_4x4f32(pos);
+        // Mat4x4F32 sca_m = make_scale_4x4f32(scale);
+
+        // // TRS order
+        // xform = mul_4x4f32(sca_m, xform);
+        // xform = mul_4x4f32(rot_m, xform);
+        // xform = mul_4x4f32(tra_m, xform);
+
+        QuatF32 rot   = mul_quat_f32(node->pre_rot_delta, node->rot);
+        Vec3F32 pos   = add_3f32(node->pre_pos_delta, node->pos);
+        Vec3F32 scale = add_3f32(node->pre_scale_delta, node->scale);
+
+        Mat4x4F32 rot_m = mat_4x4f32_from_quat_f32(rot);
+        Mat4x4F32 tra_m = make_translate_4x4f32(pos);
+        Mat4x4F32 sca_m = make_scale_4x4f32(scale);
+
+        Mat4x4F32 pst_rot_delta_m = mat_4x4f32_from_quat_f32(node->pst_rot_delta);
+        Mat4x4F32 pst_tra_delta_m = make_translate_4x4f32(node->pst_pos_delta);
+        Mat4x4F32 pst_sca_delta_m = make_scale_4x4f32(node->pst_scale_delta);
+
+        // TRS order
+        xform = mul_4x4f32(sca_m, xform);
+        xform = mul_4x4f32(rot_m, xform);
+        xform = mul_4x4f32(tra_m, xform);
+
+        if(node->parent != 0 && !(node->flags & G_NodeFlags_Float)) 
+        {
+            xform = mul_4x4f32(node->parent->fixed_xform, xform);
+        }
+
+        xform = mul_4x4f32(pst_sca_delta_m, xform);
+        xform = mul_4x4f32(pst_rot_delta_m, xform);
+        xform = mul_4x4f32(pst_tra_delta_m, xform);
+        
+        node->fixed_xform = xform;
+    }
+
+    // Advance anim_dt
+    if(node->flags & G_NodeFlags_Animated) { node->anim_dt += dt_sec; }
+
+    // Play animations
+    if((node->flags & G_NodeFlags_Animated) && (node->flags & G_NodeFlags_AnimatedSkeleton))
+    {
+        // TODO: testing for now, play the first animation
+        G_Bucket *bucket = scene->bucket;
+        G_MeshSkeletonAnimation *anim = node->skeleton_anims[0];
+
+        while(node->anim_dt > anim->duration)
+        {
+            node->anim_dt -= anim->duration;
+        }
+
+        for(U64 i = 0; i < anim->spline_count; i++)
+        {
+            G_MeshSkeletonAnimSpline *spline = &anim->splines[i];
+            G_Key target_key_pre = spline->target_key;
+            G_Key target_key_pst = g_key_merge(node->key, target_key_pre);
+            G_Node *target = g_node_from_key(bucket, target_key_pst);
+
+            U64 target_frame = 0;
+
+            // TODO: interpolation between frames
+            for(U64 frame_idx = 0; frame_idx < spline->frame_count; frame_idx++)
+            {
+                F32 t = spline->timestamps[frame_idx];
+                if(node->anim_dt < t)
+                {
+                    target_frame = frame_idx;
+                    break;
+                }
+            }
+
+            switch(spline->transform_kind)
+            {
+                case G_TransformKind_Scale:
+                {
+                    target->scale = (spline->values.v3s)[target_frame];
+                }break;
+                case G_TransformKind_Rotation:
+                {
+                    target->rot = (spline->values.v4s)[target_frame];
+                }break;
+                case G_TransformKind_Translation:
+                {
+                    target->pos = (spline->values.v3s)[target_frame];
+                }break;
+                default: {}break;
+            }
+        }
+    }
+}
+
+G_NODE_CUSTOM_UPDATE(mesh_grp_fn)
+{
+    if(node->v.mesh_grp.is_skinned)
+    {
+        for(U64 i = 0; i < node->v.mesh_grp.joint_count; i++)
+        {
+            G_Node *joint_node = node->v.mesh_grp.joints[i];
+            Mat4x4F32 joint_xform = joint_node->v.joint.inverse_bind_matrix;
+            joint_xform = mul_4x4f32(joint_node->fixed_xform, joint_xform);
+            // NOTE(k): we can either set the root joint float or we multiply with the inverse of mesh's global transform
+            // joint_xform = mul_4x4f32(inverse_4x4f32(node->fixed_xform), joint_xform);
+            node->v.mesh_grp.joint_xforms[i] = joint_xform;
+        }
+    }
 }
 
 /////////////////////////////////
@@ -733,13 +876,34 @@ p_in_triangle(Vec2F32 P, Vec2F32 A, Vec2F32 B, Vec2F32 C) {
 /////////////////////////////////
 // Helpers
 
-internal U64
-g_hash_from_string(U64 seed, String8 string)
+internal void
+g_trs_from_matrix(Mat4x4F32 *m, Vec3F32 *trans, QuatF32 *rot, Vec3F32 *scale)
 {
-    U64 result = seed;
-    for(U64 i = 0; i < string.size; i += 1)
+    // Translation
+    trans->x = m->v[3][0];
+    trans->y = m->v[3][1];
+    trans->z = m->v[3][2];
+
+    Vec3F32 i_hat = { m->v[0][0], m->v[0][1], m->v[0][2] };
+    Vec3F32 j_hat = { m->v[1][0], m->v[1][1], m->v[1][2] };
+    Vec3F32 k_hat = { m->v[2][0], m->v[2][1], m->v[2][2] };
+
+    scale->x = length_3f32(i_hat);
+    scale->y = length_3f32(j_hat);
+    scale->z = length_3f32(k_hat);
+
+    i_hat = normalize_3f32(i_hat);
+    j_hat = normalize_3f32(j_hat);
+    k_hat = normalize_3f32(k_hat);
+
+    Mat4x4F32 rot_m =
     {
-        result = ((result << 5) + result) + string.str[i];
-    }
-    return result;
+        {
+            { i_hat.x, i_hat.y, i_hat.z, 0.f },
+            { j_hat.x, j_hat.y, j_hat.z, 0.f },
+            { k_hat.x, k_hat.y, k_hat.z, 0.f },
+            { 0,       0,       0,       1.f },
+        }
+    };
+    *rot = quat_f32_from_4x4f32(rot_m);
 }

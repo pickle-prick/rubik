@@ -14,6 +14,7 @@ layout(location = 16) flat in   uint show_gizmos;
 layout(location = 0) out vec4  out_color;
 layout(location = 1) out uvec2 out_id;
 
+// Predefined keys
 uvec2 key_gizmos_ihat = uvec2(0xFFFFFFFF-0, 0xFFFFFFFF);
 uvec2 key_gizmos_jhat = uvec2(0xFFFFFFFF-1, 0xFFFFFFFF);
 uvec2 key_gizmos_khat = uvec2(0xFFFFFFFF-2, 0xFFFFFFFF);

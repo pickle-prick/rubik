@@ -19,6 +19,7 @@
 #include "draw/draw.h"
 #include "ui/ui_inc.h"
 #include "./game_core.h"
+#include "./game_asset.h"
 #include "./game.h"
 
 // [c]
@@ -31,6 +32,7 @@
 #include "draw/draw.c"
 #include "ui/ui_inc.c"
 #include "./game_core.c"
+#include "./game_asset.c"
 #include "./game.c"
 
 internal void

@@ -4,16 +4,20 @@
 /////////////////////////////////
 // Enum
 
-typedef enum G_PhysicsKind {
+typedef enum G_PhysicsKind
+{
     G_PhysicsKind_Static,
     G_PhysicsKind_Kinematic,
     G_PhysicsKind_Dynamic,
     G_PhysicsKind_COUNT,
 } G_PhysicsKind;
 
-typedef enum G_NodeKind {
+typedef enum G_NodeKind
+{
     G_NodeKind_Null,
-    G_NodeKind_MeshInstance3D,
+    G_NodeKind_MeshGroup,
+    G_NodeKind_Mesh,
+    G_NodeKind_MeshJoint,
     G_NodeKind_CollisionShape3D,
     G_NodeKind_CharacterBody3D,
     G_NodeKind_RigidBody3D,
@@ -21,10 +25,30 @@ typedef enum G_NodeKind {
     G_NodeKind_COUNT,
 } G_NodeKind;
 
-typedef U64 G_NodeFlags;
-# define G_NodeFlags_Visiable            (G_NodeFlags)(1ull<<0)
+typedef enum G_TransformKind
+{
+    G_TransformKind_Invalid,
+    G_TransformKind_Scale,
+    G_TransformKind_Rotation,
+    G_TransformKind_Translation,
+    G_TransformKind_COUNT
+} G_TransformKind;
 
-typedef enum G_MeshKind {
+typedef enum G_InterpolationMethod
+{
+    G_InterpolationMethod_Step,
+    G_InterpolationMethod_Linear,
+    G_InterpolationMethod_Cubicspline,
+    G_InterpolationMethod_COUNT,
+} G_InterpolationMethod;
+
+typedef U64 G_NodeFlags;
+# define G_NodeFlags_Animated         (G_NodeFlags)(1ull<<0)
+# define G_NodeFlags_AnimatedSkeleton (G_NodeFlags)(1ull<<1)
+# define G_NodeFlags_Float            (G_NodeFlags)(1ull<<2)
+
+typedef enum G_MeshKind
+{
     G_MeshKind_Box,
     G_MeshKind_Plane,
     G_MeshKind_Capsule,
@@ -38,7 +62,7 @@ typedef U64 G_SpecialKeyKind;
 #define G_SpecialKeyKind_GizmosIhat (U64)(0xffffffffffffffffull-0)
 #define G_SpecialKeyKind_GizmosJhat (U64)(0xffffffffffffffffull-1)
 #define G_SpecialKeyKind_GizmosKhat (U64)(0xffffffffffffffffull-2)
-#define G_SpecialKeyKind_Grid (U64)(0xffffffffffffffffull-3)
+#define G_SpecialKeyKind_Grid       (U64)(0xffffffffffffffffull-3)
 
 /////////////////////////////////
 // For magic (EPA)
@@ -60,23 +84,19 @@ typedef U64 G_SpecialKeyKind;
 // Key
 
 typedef struct G_Key G_Key;
-struct G_Key {
+struct G_Key
+{
     U64 u64[1];
 };
 
 /////////////////////////////////
-// Material
-
-// TODO
-typedef struct G_Material G_Material;
-
-/////////////////////////////////
-//~ Resource
+//~ Resource (alloc/load once)
 
 //- 2D Sprite
 
 typedef struct G_Tex2D G_Tex2D;
-struct G_Tex2D {
+struct G_Tex2D 
+{
     R_Handle texture;
     U64      w;
     U64      h;
@@ -84,7 +104,8 @@ struct G_Tex2D {
 };
 
 typedef struct G_Sprite2D_Frame G_Sprite2D_Frame;
-struct G_Sprite2D_Frame {
+struct G_Sprite2D_Frame 
+{
     U64       x;
     U64       y;
     U64       w;
@@ -94,14 +115,16 @@ struct G_Sprite2D_Frame {
 };
 
 typedef struct G_Sprite2D_FrameTag G_Sprite2D_FrameTag;
-struct G_Sprite2D_FrameTag {
+struct G_Sprite2D_FrameTag 
+{
     String8 name;
     U64     from;
     U64     to;
 };
 
 typedef struct G_SpriteSheet2D G_SpriteSheet2D;
-struct G_SpriteSheet2D {
+struct G_SpriteSheet2D
+{
     R_Handle            texture;
     U64                 w;
     U64                 h;
@@ -114,17 +137,119 @@ struct G_SpriteSheet2D {
 
 //- Mesh
 
-typedef struct G_Mesh G_Mesh;
-struct G_Mesh {
-    G_Mesh     *next;
-    R_Handle   vertices;
-    R_Handle   indices;
-    G_MeshKind kind;
-    B32        flip_face;
+typedef struct G_MeshJoint G_MeshJoint;
+struct G_MeshJoint
+{
+    Mat4x4F32   inverse_bind_matrix;
+};
+
+typedef struct G_MeshSkeletonAnimSpline G_MeshSkeletonAnimSpline;
+struct G_MeshSkeletonAnimSpline
+{
+    G_TransformKind       transform_kind;
+    F32                   *timestamps;
+    union
+    {
+        void              *v;
+        F32               *floats;
+        Vec3F32           *v3s;
+        Vec4F32           *v4s;
+    } values;
+    G_Key                 target_key;
+    U64                   frame_count;
+    G_InterpolationMethod interpolation_method;
+};
+
+typedef struct G_MeshSkeletonAnimation G_MeshSkeletonAnimation;
+struct G_MeshSkeletonAnimation
+{
+    String8                  name;
+    F32                      duration;
+    G_MeshSkeletonAnimSpline *splines;
+    U64                      spline_count;
+};
+
+struct G_ModelNode;
+typedef struct G_ModelNode_HashSlot G_ModelNode_HashSlot;
+struct G_ModelNode_HashSlot
+{
+    struct G_ModelNode *first; 
+    struct G_ModelNode *last; 
+};
+
+typedef struct G_ModelNode G_ModelNode;
+struct G_ModelNode
+{
+    G_ModelNode             *parent;
+    G_ModelNode             *first;
+    G_ModelNode             *last;
+    G_ModelNode             *next;
+    G_ModelNode             *prev;
+    G_ModelNode             *hash_next;
+    G_ModelNode             *hash_prev;
+    U64                     children_count;
+
+    String8                 name;
+    G_Key                   key;
+
+    // Xform
+    Mat4x4F32               xform;
+
+    // Joint
+    B32                     is_joint;
+    B32                     is_skin; // root joint
+    Mat4x4F32               inverse_bind_matrix;
+
+    // Mesh
+    B32                     is_mesh_group;
+    B32                     is_mesh;
+    R_Handle                vertices;
+    R_Handle                indices;
+    R_Handle                albedo_tex;
+
+    // Skeleton
+    B32                     is_skinned;
+    U64                     joint_count;
+    G_ModelNode             **joints;
+    G_ModelNode             *root_joint;
+
+    // Animation
+    U64                     anim_count;
+    G_MeshSkeletonAnimation **anims;
+
+    // Hash table
+    G_ModelNode_HashSlot    *hash_table;
+    U64                     hash_table_size;
+
+    U64                     rc; // TODO: make use of this
 };
 
 /////////////////////////////////
 //~ Node Equipment
+
+#define G_Model G_ModelNode
+
+typedef struct G_MeshGroup G_MeshGroup;
+struct G_MeshGroup
+{
+    // Skeleton
+    B32           is_skinned;
+    struct G_Node **joints;
+    U32           joint_count;
+    struct G_Node *root_joint;
+
+    // Artifacts per frame
+    Mat4x4F32     *joint_xforms;
+};
+
+typedef struct G_Mesh G_Mesh;
+struct G_Mesh
+{
+    G_MeshKind    kind;
+    R_Handle      vertices;
+    R_Handle      indices;
+    R_Handle      albedo_tex;
+};
 
 // typedef struct G_Sprite2D G_Sprite2D;
 // struct G_Sprite2D {
@@ -196,18 +321,9 @@ struct G_Mesh {
 //     } shape;
 // };
 
-//- Mesh
-typedef struct G_MeshInstance3D G_MeshInstance3D;
-struct G_MeshInstance3D {
-    G_Mesh    *mesh;
-    // TODO: surface
-    // G_Texture *surface;
-    // TODO: custom AABB
-    // TODO: skeleton
-};
-
 typedef struct G_Camera3D G_Camera3D;
-struct G_Camera3D {
+struct G_Camera3D 
+{
     F32     fov;
     F32     zn;
     F32     zf;
@@ -216,7 +332,6 @@ struct G_Camera3D {
 /////////////////////////////////
 //~ Node Type
 
-struct G_Node;
 struct G_Scene;
 #define G_NODE_CUSTOM_UPDATE(name) void name(struct G_Node *node, struct G_Scene *scene, OS_EventList os_events, F32 dt_sec)
 typedef G_NODE_CUSTOM_UPDATE(G_NodeCustomUpdateFunctionType);
@@ -224,8 +339,17 @@ typedef G_NODE_CUSTOM_UPDATE(G_NodeCustomUpdateFunctionType);
 #define G_NODE_CUSTOM_DRAW(name) void name(struct G_Node *node, void *node_data)
 typedef G_NODE_CUSTOM_DRAW(G_NodeCustomDrawFunctionType);
 
+typedef struct G_UpdateFnNode G_UpdateFnNode;
+struct G_UpdateFnNode
+{
+    G_UpdateFnNode             *next;
+    G_UpdateFnNode             *prev;
+    G_NodeCustomUpdateFunctionType *f;
+};
+
 typedef struct G_Node G_Node;
-struct G_Node {
+struct G_Node
+{
     G_Node                         *parent;
     G_Node                         *first;
     G_Node                         *last;
@@ -239,42 +363,53 @@ struct G_Node {
     G_NodeFlags                    flags;
     G_NodeKind                     kind;
 
-    // Transform
+    U64                            children_count; 
+
+    // Transform (TRS)
     Vec3F32                        pos;
     QuatF32                        rot;
     Vec3F32                        scale;
     // Delta
-    Vec3F32                        pos_delta;
-    QuatF32                        rot_delta;
-    Vec3F32                        scale_delta;
+    Vec3F32                        pre_pos_delta;
+    QuatF32                        pre_rot_delta;
+    Vec3F32                        pre_scale_delta;
+    Vec3F32                        pst_pos_delta;
+    QuatF32                        pst_rot_delta;
+    Vec3F32                        pst_scale_delta;
 
-    // Xform
-    // TODO: remove base_xform
-    Mat4x4F32                      base_xform;
-    Mat4x4F32                      fixed_xform; // Calculated every iteration
+    // Frame artifacts
+    Mat4x4F32                      fixed_xform; // Calculated every frame in DFS order
 
     // TODO: rotation edit mode: Euler, Quaternion, Basis
 
     void                           *custom_data;
-    G_NodeCustomUpdateFunctionType *update_fn;
+    G_UpdateFnNode                 *first_update_fn;
+    G_UpdateFnNode                 *last_update_fn;
     G_NodeCustomDrawFunctionType   *custom_draw;
+
+    // Animation
+    F32                            anim_dt;
+    G_MeshSkeletonAnimation        **skeleton_anims;
 
     union
     {
-        G_MeshInstance3D mesh_inst3d;
-        G_Camera3D       camera;
-    };
-    
+        G_MeshGroup mesh_grp;
+        G_Mesh      mesh;
+        G_MeshJoint joint;
+        G_Camera3D  camera;
+    } v;
 };
 
 typedef struct G_BucketSlot G_BucketSlot;
-struct G_BucketSlot {
+struct G_BucketSlot 
+{
     G_Node *first; 
     G_Node *last; 
 };
 
 typedef struct G_Bucket G_Bucket;
-struct G_Bucket {
+struct G_Bucket 
+{
     Arena        *arena;
     G_BucketSlot *node_hash_table;
     U64          node_hash_table_size;
@@ -284,7 +419,8 @@ struct G_Bucket {
 };
 
 typedef struct G_Scene G_Scene;
-struct G_Scene {
+struct G_Scene 
+{
     Arena    *arena;
     G_Bucket *bucket;
     G_Node   *root;
@@ -292,6 +428,11 @@ struct G_Scene {
 
     G_Mesh   *first_free_mesh;
 };
+
+/////////////////////////////////
+// Global nils
+
+read_only global G_Key g_nil_seed = {0};
 
 /////////////////////////////////
 // Generated code
@@ -302,6 +443,7 @@ typedef struct G_State G_State;
 struct G_State
 {
     Arena     *arena;
+    Arena     *frame_arena;
     G_Bucket  *node_bucket;
     D_Bucket  *bucket_rect;
     D_Bucket  *bucket_geo3d;
@@ -338,7 +480,9 @@ internal void g_init(OS_Handle os_wnd);
 /////////////////////////////////
 // Key
 
-internal G_Key g_key_from_string(String8 string);
+internal G_Key g_key_from_string(G_Key seed, String8 string);
+internal G_Key g_key_merge(G_Key a, G_Key b);
+internal U64   g_hash_from_string(U64 seed, String8 string);
 internal B32   g_key_match(G_Key a, G_Key b);
 internal G_Key g_key_zero();
 
@@ -355,7 +499,7 @@ internal G_Bucket *g_bucket_make(Arena *arena, U64 hash_table_size);
 internal G_Node *g_build_node_from_string(String8 name);
 internal G_Node *g_build_node_from_key(G_Key key);
 internal G_Node *g_node_camera3d_alloc(String8 string);
-internal G_Node *g_node_camera_mesh_inst3d_alloc(String8 string);
+internal G_Node *g_node_mesh_inst3d_alloc(String8 string);
 internal G_Mesh *g_mesh_alloc();
 
 /////////////////////////////////
@@ -365,17 +509,17 @@ internal G_Node *g_node_df(G_Node *n, G_Node *root, U64 sib_member_off, U64 chil
 #define g_node_df_pre(node, root) g_node_df(node, root, OffsetOf(G_Node, next), OffsetOf(G_Node, first))
 #define g_node_df_post(node, root) g_node_df(node, root, OffsetOf(G_Node, prev), OffsetOf(G_Node, last))
 
-internal Mat4x4F32 g_xform_from_node(G_Node *node);
 internal void      g_local_coord_from_node(G_Node *node, Vec3F32 *f, Vec3F32 *s, Vec3F32 *u);
 internal Mat4x4F32 g_view_from_node(G_Node *node);
+internal Vec3F32   g_pos_from_node(G_Node *node);
+internal void      g_node_delta_commit(G_Node *node);
+internal void      g_node_push_fn(Arena *arena, G_Node *n, G_NodeCustomUpdateFunctionType *fn);
 
 /////////////////////////////////
-// Node modification
+// Node base scripting
 
-/////////////////////////////////
-// Physics
-
-internal void g_physics_dynamic_root(G_Node *node, F32 dt);
+G_NODE_CUSTOM_UPDATE(base_fn);
+G_NODE_CUSTOM_UPDATE(mesh_grp_fn);
 
 /////////////////////////////////
 // Magic
@@ -388,13 +532,8 @@ G_SHAPE_SUPPORT_FN(G_SHAPE_RECT_SUPPORT_FN);
 internal Vec2F32     triple_product_2f32(Vec2F32 A, Vec2F32 B, Vec2F32 C);
 
 /////////////////////////////////
-// Camera
-
-
-/////////////////////////////////
 // Helpers
 
-internal U64 g_hash_from_string(U64 seed, String8 string);
 #define FileReadAll(arena, fp, return_data, return_size)                                 \
     do                                                                                   \
     {                                                                                    \
@@ -404,5 +543,6 @@ internal U64 g_hash_from_string(U64 seed, String8 string);
         *return_data = push_array(arena, U8, f_props.size);                              \
         os_file_read(f, rng_1u64(0,f_props.size), *return_data);                         \
     } while (0);
+internal void g_trs_from_matrix(Mat4x4F32 *m, Vec3F32 *trans, QuatF32 *rot, Vec3F32 *scale);
 
 #endif

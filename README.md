@@ -96,6 +96,21 @@ A list of the layers in the codebase and their associated namespaces is below:
   Provides a core immediate mode hierarchical user interface data structure building
   API, and has helper layers for building some higher-level widgets.
 
+## TODO
+
+[X] Debug gizmos/grid (PARTIAL)
+[X] Scripting
+[X] Skeletal animation in glTF (PARTIAL)
+[X] 2D collision detection
+[ ] Scene serialization and deserialization (may use gltf2.0)
+[ ] 3D scene editor UI
+[ ] Assets loading with multithreading
+[ ] Speed up raycasting and raymarching pass (mesh_debug pass for drawing grid and gizmos)
+[ ] Support morph target in glTF2.0
+[ ] PBR texture
+[ ] 3D collision detection
+[ ] 3D physics
+
 ## Reference
 
 ### Immediate mode ui

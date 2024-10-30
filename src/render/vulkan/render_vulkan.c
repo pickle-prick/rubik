@@ -262,7 +262,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             if(features.geometryShader == VK_FALSE) continue;
             // We want Anisotropy
             if(features.samplerAnisotropy == VK_FALSE) continue;
-            if(features.independentBlend == VK_FALSE) continue;
+            if(features.independentBlend == VK_FALSE)  continue;
+            if(features.fillModeNonSolid == VK_FALSE)  continue;
 
             if(properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) score += 300;
             score += properties.limits.maxImageDimension2D;
@@ -399,7 +400,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         // Specifying used device features, don't need anything special for now, leave everything to VK_FALSE
         VkPhysicalDeviceFeatures required_device_features = { VK_FALSE };
         required_device_features.samplerAnisotropy = VK_TRUE;
-        required_device_features.independentBlend = VK_TRUE;
+        required_device_features.independentBlend  = VK_TRUE;
+        required_device_features.fillModeNonSolid  = VK_TRUE;
 
         // Create the logical device
         VkDeviceCreateInfo create_info = {
@@ -551,6 +553,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
 
     // Create set layouts
     /////////////////////////////////////////////////////////////////////////////////
+
     // R_Vulkan_DescriptorSetKind_UBO_Rect
     {
         R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Rect];
@@ -596,6 +599,24 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         create_info.pBindings    = bindings;
         VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h), "Failed to create descriptor set layout");
     }
+    // R_Vulkan_DescriptorSetKind_Storage_Mesh
+    {
+        R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Storage_Mesh];
+        VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+        set_layout->bindings = bindings;
+        set_layout->binding_count = 1;
+
+        bindings[0].binding            = 0;
+        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[0].descriptorCount    = 1;
+        bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT;
+        bindings[0].pImmutableSamplers = NULL;
+
+        VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+        create_info.bindingCount = 1;
+        create_info.pBindings    = bindings;
+        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h), "Failed to create descriptor set layout");
+    }
     // R_Vulkan_DescriptorSetKind_Tex2D
     {
         R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D];
@@ -620,6 +641,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     //         0xff00ffff, 0x330033ff,
     //         0x330033ff, 0xff00ffff,
     // };
+
     U32 backup_texture_data[] = {
         0xFFFF00FF, 0xFF330033,
         0xFF330033, 0xFFFF00FF,
@@ -698,8 +720,15 @@ r_window_equip(OS_Handle wnd_handle)
                 window->frames[i].uniform_buffers[kind] = r_vulkan_uniform_buffer_alloc(kind, 300);
             }
 
+            // Create storage buffers
+            for(U64 kind = 0; kind < R_Vulkan_StorageTypeKind_COUNT; kind++)
+            {
+                window->frames[i].storage_buffers[kind] = r_vulkan_storage_buffer_alloc(kind, 3000);
+            }
+
             // Create instance buffers
             /////////////////////////////////////////////////////////////////
+
             R_Vulkan_Buffer *buffers[2] = {
                 &window->frames[i].inst_buffer_rect,
                 &window->frames[i].inst_buffer_mesh,
@@ -2011,7 +2040,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
     VkPipelineVertexInputStateCreateInfo vtx_input_state_create_info = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 
     VkVertexInputBindingDescription vtx_binding_desc[2] = {};
-#define MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT 9
+#define MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT 13
     VkVertexInputAttributeDescription vtx_attr_descs[MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT];
 
     U64 vtx_binding_desc_count = 0;
@@ -2025,7 +2054,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
         case (R_Vulkan_PipelineKind_Mesh):
         {
             vtx_binding_desc_count = 2;
-            vtx_attr_desc_cnt = 9;
+            vtx_attr_desc_cnt = 13;
 
             // All of our per-vertex data is packed together in one array, so we'are only going to have one binding for now
             // This specifies the index of the binding in the array of bindings
@@ -2079,35 +2108,55 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
             vtx_attr_descs[3].format   = VK_FORMAT_R32G32B32_SFLOAT;
             vtx_attr_descs[3].offset   = offsetof(R_Vertex, col);
 
+            vtx_attr_descs[4].binding  = 0;
+            vtx_attr_descs[4].location = 4;
+            vtx_attr_descs[4].format   = VK_FORMAT_R32G32B32A32_UINT;
+            vtx_attr_descs[4].offset   = offsetof(R_Vertex, joints);
+
+            vtx_attr_descs[5].binding  = 0;
+            vtx_attr_descs[5].location = 5;
+            vtx_attr_descs[5].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
+            vtx_attr_descs[5].offset   = offsetof(R_Vertex, weights);
+
             // Instance binding xform (vec4 x4)
             vtx_binding_desc[1].binding   = 1;
             vtx_binding_desc[1].stride    = sizeof(R_Mesh3DInst);
             vtx_binding_desc[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
 
-            vtx_attr_descs[4].binding  = 1;
-            vtx_attr_descs[4].location = 4;
-            vtx_attr_descs[4].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[4].offset   = sizeof(Vec4F32) * 0;
-
-            vtx_attr_descs[5].binding  = 1;
-            vtx_attr_descs[5].location = 5;
-            vtx_attr_descs[5].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[5].offset   = sizeof(Vec4F32) * 1;
-
             vtx_attr_descs[6].binding  = 1;
             vtx_attr_descs[6].location = 6;
             vtx_attr_descs[6].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[6].offset   = sizeof(Vec4F32) * 2;
+            vtx_attr_descs[6].offset   = sizeof(Vec4F32) * 0;
 
             vtx_attr_descs[7].binding  = 1;
             vtx_attr_descs[7].location = 7;
             vtx_attr_descs[7].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[7].offset   = sizeof(Vec4F32) * 3;
+            vtx_attr_descs[7].offset   = sizeof(Vec4F32) * 1;
 
             vtx_attr_descs[8].binding  = 1;
             vtx_attr_descs[8].location = 8;
-            vtx_attr_descs[8].format   = VK_FORMAT_R32G32_UINT;
-            vtx_attr_descs[8].offset   = offsetof(R_Mesh3DInst, key);
+            vtx_attr_descs[8].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
+            vtx_attr_descs[8].offset   = sizeof(Vec4F32) * 2;
+
+            vtx_attr_descs[9].binding  = 1;
+            vtx_attr_descs[9].location = 9;
+            vtx_attr_descs[9].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
+            vtx_attr_descs[9].offset   = sizeof(Vec4F32) * 3;
+
+            vtx_attr_descs[10].binding  = 1;
+            vtx_attr_descs[10].location = 10;
+            vtx_attr_descs[10].format   = VK_FORMAT_R32G32_UINT;
+            vtx_attr_descs[10].offset   = offsetof(R_Mesh3DInst, key);
+
+            vtx_attr_descs[11].binding  = 1;
+            vtx_attr_descs[11].location = 11;
+            vtx_attr_descs[11].format   = VK_FORMAT_R32_UINT;
+            vtx_attr_descs[11].offset   = offsetof(R_Mesh3DInst, first_joint);
+
+            vtx_attr_descs[12].binding  = 1;
+            vtx_attr_descs[12].location = 12;
+            vtx_attr_descs[12].format   = VK_FORMAT_R32_UINT;
+            vtx_attr_descs[12].offset   = offsetof(R_Mesh3DInst, joint_count);
         } break;
         case (R_Vulkan_PipelineKind_Rect):
         {
@@ -2231,7 +2280,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
         .cullMode                = VK_CULL_MODE_BACK_BIT,
         // The frontFace variable specifies the vertex order for faces to be considered front-facing and can be clockwise or counterclockwise
         .frontFace               = VK_FRONT_FACE_CLOCKWISE,
-        // TODO(@k): not sure what are these settings for
+        // TODO(k): not sure what are these settings for
         // The rasterizer can alter the depth values by adding a constant value or biasign them based on a fragment's slope
         // This si sometimes used for shadow mapping, but we won't be using it
         .depthBiasEnable         = VK_FALSE,
@@ -2239,6 +2288,21 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
         .depthBiasClamp          = 0.0f, // Optional
         .depthBiasSlopeFactor    = 0.0f, // Optional
     };
+
+    switch (kind)
+    {
+        case (R_Vulkan_PipelineKind_Mesh):
+        {
+            // rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_LINE;
+            rasterization_state_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+        }break;
+        case (R_Vulkan_PipelineKind_MeshDebug):
+        case (R_Vulkan_PipelineKind_Rect):
+        case (R_Vulkan_PipelineKind_Geo3DComposite):
+        case (R_Vulkan_PipelineKind_Finalize):
+        default: {}break;
+    }
 
     // Multisampling
     // The VkPipelineMultisamplesStateCreateInfo struct configures multisampling, which is one of the ways to perform anti-aliasing
@@ -2446,9 +2510,10 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
             }break;
             case (R_Vulkan_PipelineKind_Mesh):
             {
-                set_layout_count = 2;
+                set_layout_count = 3;
                 set_layouts[0]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Mesh].h;
-                set_layouts[1]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D].h;
+                set_layouts[1]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Storage_Mesh].h;
+                set_layouts[2]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D].h;
             }break;
             case (R_Vulkan_PipelineKind_Geo3DComposite):
             {
@@ -2841,6 +2906,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
 
                     // Bind uniform buffer
                     /////////////////////////////////////////////////
+
                     // Upload uniforms
                     R_Vulkan_Uniforms_Rect uniforms = {0};
                     uniforms.viewport_size = v2f32(wnd->bag->stage_color_image.extent.width, wnd->bag->stage_color_image.extent.height);
@@ -2949,6 +3015,13 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                 // Draw mesh debug info (grid, gizmos e.g.)
                 vkCmdDraw(cmd_buf, 6, 1, 0, 0);
 
+                // Unpack storage buffer (Currently only for joints)
+                R_Vulkan_StorageBuffer *storage_buffer = &frame->storage_buffers[R_Vulkan_StorageTypeKind_Mesh];
+                U8 *storage_buffer_dst = (U8 *)(storage_buffer->buffer.mapped);
+                U32 storage_buffer_offset = 0;
+                vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        renderpass->pipeline.mesh[1].layout, 1, 1, &storage_buffer->set.h, 0, 0);
+
                 for(U64 slot_idx = 0; slot_idx < mesh_group_map->slots_count; slot_idx++)
                 {
                     for(R_BatchGroup3DMapNode *n = mesh_group_map->slots[slot_idx]; n!=0; n = n->next) 
@@ -2958,6 +3031,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                         R_BatchGroup3DParams *group_params = &n->params;
                         R_Vulkan_Buffer *mesh_vertices = r_vulkan_buffer_from_handle(group_params->mesh_vertices);
                         R_Vulkan_Buffer *mesh_indices = r_vulkan_buffer_from_handle(group_params->mesh_indices);
+                        U64 inst_count = batches->byte_count / batches->bytes_per_inst;
 
                         // Get & fill instance buffer
                         // TODO(k): Dynamic allocate instance buffer if needed
@@ -2965,9 +3039,35 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                         U64 off = 0;
                         for(R_BatchNode *batch = batches->first; batch != 0; batch = batch->next)
                         {
+                            // Copy instance skinning data to storage buffer
+                            U64 batch_inst_count = batch->v.byte_count / sizeof(R_Mesh3DInst);
+                            R_Mesh3DInst *inst = 0; 
+                            for(U64 inst_idx = 0; inst_idx < batch_inst_count; inst_idx++)
+                            {
+                                inst = ((R_Mesh3DInst *)batch->v.v)+inst_idx;
+                                if(inst->joint_count > 0)
+                                {
+                                    U32 size = sizeof(Mat4x4F32) * inst->joint_count;
+                                    // TODO: we may need to consider the stride here
+                                    inst->first_joint = storage_buffer_offset / sizeof(Mat4x4F32);
+                                    MemoryCopy(storage_buffer_dst+storage_buffer_offset, inst->joint_xforms, size);
+                                    storage_buffer_offset += size;
+                                }
+                            }
+
+                            // Copy to instance buffer
                             MemoryCopy(dst_ptr+off, batch->v.v, batch->v.byte_count);
                             off += batch->v.byte_count;
                         }
+
+                        // Bind texture
+                        R_Handle tex_handle = group_params->albedo_tex;
+                        if(r_handle_match(tex_handle, r_handle_zero()))
+                        {
+                            tex_handle = r_vulkan_state->backup_texture;
+                        }
+                        R_Vulkan_Tex2D *texture = r_vulkan_tex2d_from_handle(tex_handle);
+                        vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.mesh[1].layout, 2, 1, &texture->desc_set.h, 0, NULL);
 
                         vkCmdBindVertexBuffers(cmd_buf, 0, 1, &mesh_vertices->h, &(VkDeviceSize){0});
                         vkCmdBindIndexBuffer(cmd_buf, mesh_indices->h, (VkDeviceSize){0}, VK_INDEX_TYPE_UINT32);
@@ -2980,7 +3080,6 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                         vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.mesh[1].h);
 
                         // Draw mesh
-                        U64 inst_count = batches->byte_count / batches->bytes_per_inst;
                         vkCmdDrawIndexed(cmd_buf, mesh_indices->size/sizeof(U32), inst_count, 0, 0, 0);
 
                         // increament group counter
@@ -3091,8 +3190,9 @@ r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count)
     }
     U64 buf_size = stride * unit_count;
 
-    uniform_buffer.unit_count = unit_count;
-    uniform_buffer.stride     = stride;
+    uniform_buffer.unit_count  = unit_count;
+    uniform_buffer.stride      = stride;
+    uniform_buffer.buffer.size = buf_size;
 
     VkBufferCreateInfo buf_ci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     // Specifies the size of the buffer in bytes
@@ -3116,19 +3216,69 @@ r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count)
     alloc_ci.usage         = VMA_MEMORY_USAGE_AUTO;
     alloc_ci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     alloc_ci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-    vmaCreateBuffer(r_vulkan_state->vma, &buf_ci, &alloc_ci, &uniform_buffer.buffer.h, &uniform_buffer.buffer.alloc, NULL);
+    VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &buf_ci, &alloc_ci, &uniform_buffer.buffer.h, &uniform_buffer.buffer.alloc, NULL), "Failed to create buffer");
     VK_Assert(vmaMapMemory(r_vulkan_state->vma, uniform_buffer.buffer.alloc, &uniform_buffer.buffer.mapped), "Failed to map memory");
 
     // Create descriptor set
     R_Vulkan_DescriptorSetKind ds_type = 0;
-    switch (kind) {
+    switch (kind)
+    {
         case R_Vulkan_UniformTypeKind_Rect: {ds_type = R_Vulkan_DescriptorSetKind_UBO_Rect;}break;
         case R_Vulkan_UniformTypeKind_Mesh: {ds_type = R_Vulkan_DescriptorSetKind_UBO_Mesh;}break;
-        default:                            {NotImplemented;}break;
+        default:                            {InvalidPath;}break;
     }
 
     r_vulkan_descriptor_set_alloc(ds_type, 1, 3, &uniform_buffer.buffer.h, NULL, NULL, &uniform_buffer.set);
     return uniform_buffer;
+}
+
+internal R_Vulkan_StorageBuffer
+r_vulkan_storage_buffer_alloc(R_Vulkan_StorageTypeKind kind, U64 unit_count)
+{
+    R_Vulkan_StorageBuffer storage_buffer = {0};
+    U64 stride = 0;
+
+    switch (kind) {
+        case R_Vulkan_StorageTypeKind_Mesh: {stride = AlignPow2(sizeof(R_Vulkan_Storage_Mesh), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);}break;
+        default:                            {InvalidPath;}break;
+    }
+
+    U64 buf_size = stride * unit_count;
+
+    storage_buffer.unit_count  = unit_count;
+    storage_buffer.stride      = stride;
+    storage_buffer.buffer.size = buf_size;
+
+    VkBufferCreateInfo buf_ci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    buf_ci.size = buf_size;
+    buf_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    // Just like the images in the swapchain, buffers can also be owned by a specific queue family or be shared between multiple at the same time
+    // Our buffer will only be used from the graphics queue, so we an stick to exclusive access
+    // .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    buf_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    // The flags parameter is used to configure sparse buffer memory
+    // Sparse bfufers in VUlkan refer to a memory management technique that allows more flexible and efficient use of GPU memory
+    // This technique is particularly useful for handling large datasets, such as textures or vertex buffers, that might not fit contiguously in GPU
+    // memory or that require efficient streaming of data in and out of GPU memory
+    buf_ci.flags = 0;
+
+    VmaAllocationCreateInfo alloc_ci = {};
+    alloc_ci.usage         = VMA_MEMORY_USAGE_AUTO;
+    alloc_ci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    alloc_ci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &buf_ci, &alloc_ci, &storage_buffer.buffer.h, &storage_buffer.buffer.alloc, NULL), "Failed to create buffer");
+    VK_Assert(vmaMapMemory(r_vulkan_state->vma, storage_buffer.buffer.alloc, &storage_buffer.buffer.mapped), "Failed to map memory");
+
+    // Create descriptor set
+    R_Vulkan_DescriptorSetKind ds_type = 0;
+    switch (kind)
+    {
+        case R_Vulkan_StorageTypeKind_Mesh: {ds_type = R_Vulkan_DescriptorSetKind_Storage_Mesh;}break;
+        default:                            {NotImplemented;}break;
+    }
+
+    r_vulkan_descriptor_set_alloc(ds_type, 1, 3, &storage_buffer.buffer.h, NULL, NULL, &storage_buffer.set);
+    return storage_buffer;
 }
 
 // TODO(@k): ugly, split into alloc and update
@@ -3183,8 +3333,8 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         VkDescriptorSet temp_sets[alloc_count];
         VkDescriptorSetAllocateInfo set_alloc_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
         set_alloc_info.descriptorPool     = pool->h;
-        set_alloc_info.descriptorSetCount = alloc_count,
-            set_alloc_info.pSetLayouts        = &set_layout.h;
+        set_alloc_info.descriptorSetCount = alloc_count;
+        set_alloc_info.pSetLayouts        = &set_layout.h;
         VK_Assert(vkAllocateDescriptorSets(r_vulkan_state->device.h, &set_alloc_info, temp_sets), "Failed to allcoate descriptor sets");
 
         for(U64 i = 0; i < alloc_count; i++) 
@@ -3242,6 +3392,24 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     buffer_info->buffer = buffers[i];
                     buffer_info->offset = 0;
                     buffer_info->range  = sizeof(R_Vulkan_Uniforms_Mesh);
+
+                    writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    writes[set_idx].dstSet           = sets[i].h;
+                    writes[set_idx].dstBinding       = j;
+                    writes[set_idx].dstArrayElement  = 0; // start updating from the first element
+                    writes[set_idx].descriptorCount  = set_layout.bindings[j].descriptorCount;
+                    writes[set_idx].descriptorType   = set_layout.bindings[j].descriptorType;
+                    writes[set_idx].pBufferInfo      = buffer_info;
+                    writes[set_idx].pImageInfo       = NULL; // Optional
+                    writes[set_idx].pTexelBufferView = NULL; // Optional
+                }break;
+                case (R_Vulkan_DescriptorSetKind_Storage_Mesh):
+                {
+                    VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+                    buffer_info->buffer = buffers[i];
+                    buffer_info->offset = 0;
+                    // NOTE: we want to access it as an array of R_Vulkan_Storage_Mesh 
+                    buffer_info->range  = VK_WHOLE_SIZE;
 
                     writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[set_idx].dstSet           = sets[i].h;

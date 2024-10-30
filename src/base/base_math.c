@@ -796,6 +796,7 @@ internal QuatF32 make_indentity_quat_f32()
 }
 internal QuatF32 make_rotate_quat_f32(Vec3F32 axis, F32 turns)
 {
+    axis = normalize_3f32(axis);
     QuatF32 result;
     F32 half_turns = turns/2.0f;
     MemoryCopy(&result, &axis, sizeof(Vec3F32));
@@ -886,6 +887,53 @@ internal Vec3F32 mul_quat_f32_v3f32(QuatF32 q, Vec3F32 v)
     result = add_3f32(v, t);
     result = add_3f32(result, u);
     return result;
+}
+internal QuatF32 quat_f32_from_4x4f32(Mat4x4F32 M)
+{
+    QuatF32 q;
+    F32 trace = M.v[0][0] + M.v[1][1] + M.v[2][2];
+
+    if(trace > 0.0f)
+    {
+        F32 s = sqrt_f32(trace + 1.0f) * 2.0f; // s = 4 * q.w
+        q.v[3] = 0.25f * s;                      // w
+        q.v[0] = (M.v[1][2] - M.v[2][1]) / s;    // x
+        q.v[1] = (M.v[2][0] - M.v[0][2]) / s;    // y
+        q.v[2] = (M.v[0][1] - M.v[1][0]) / s;    // z
+    }
+    else if((M.v[0][0] > M.v[1][1]) && (M.v[0][0] > M.v[2][2]))
+    {
+        F32 s = sqrt_f32(1.0f + M.v[0][0] - M.v[1][1] - M.v[2][2]) * 2.0f; // s = 4 * q.x
+        q.v[0] = 0.25f * s;                                                 // x
+        q.v[1] = (M.v[0][1] + M.v[1][0]) / s;                               // y
+        q.v[2] = (M.v[0][2] + M.v[2][0]) / s;                               // z
+        q.v[3] = (M.v[1][2] - M.v[2][1]) / s;                               // w
+    }
+    else if(M.v[1][1] > M.v[2][2])
+    {
+        F32 s = sqrt_f32(1.0f + M.v[1][1] - M.v[0][0] - M.v[2][2]) * 2.0f; // s = 4 * q.y
+        q.v[0] = (M.v[0][1] + M.v[1][0]) / s;                               // x
+        q.v[1] = 0.25f * s;                                                 // y
+        q.v[2] = (M.v[1][2] + M.v[2][1]) / s;                               // z
+        q.v[3] = (M.v[2][0] - M.v[0][2]) / s;                               // w
+    }
+    else
+    {
+        F32 s = sqrt_f32(1.0f + M.v[2][2] - M.v[0][0] - M.v[1][1]) * 2.0f; // s = 4 * q.z
+        q.v[0] = (M.v[0][2] + M.v[2][0]) / s;                               // x
+        q.v[1] = (M.v[1][2] + M.v[2][1]) / s;                               // y
+        q.v[2] = 0.25f * s;                                                 // z
+        q.v[3] = (M.v[0][1] - M.v[1][0]) / s;                               // w
+    }
+
+    // Normalize the quaternion to account for numerical errors
+    F32 magnitude = sqrt_f32(q.v[0]*q.v[0] + q.v[1]*q.v[1] + q.v[2]*q.v[2] + q.v[3]*q.v[3]);
+    q.v[0] /= magnitude;
+    q.v[1] /= magnitude;
+    q.v[2] /= magnitude;
+    q.v[3] /= magnitude;
+
+    return q;
 }
 
 ////////////////////////////////

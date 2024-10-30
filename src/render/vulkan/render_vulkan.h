@@ -77,6 +77,8 @@ struct R_Vulkan_Uniforms_Mesh
     U32       _padding1_[2];
 };
 
+#define R_Vulkan_Storage_Mesh Mat4x4F32
+
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ Enums
 
@@ -107,9 +109,15 @@ typedef enum R_Vulkan_UniformTypeKind {
     R_Vulkan_UniformTypeKind_COUNT,
 } R_Vulkan_UniformTypeKind;
 
+typedef enum R_Vulkan_StorageTypeKind {
+    R_Vulkan_StorageTypeKind_Mesh,
+    R_Vulkan_StorageTypeKind_COUNT,
+} R_Vulkan_StorageTypeKind;
+
 typedef enum R_Vulkan_DescriptorSetKind{
     R_Vulkan_DescriptorSetKind_UBO_Rect,
     R_Vulkan_DescriptorSetKind_UBO_Mesh,
+    R_Vulkan_DescriptorSetKind_Storage_Mesh,
     R_Vulkan_DescriptorSetKind_Tex2D,
     R_Vulkan_DescriptorSetKind_COUNT,
 } R_Vulkan_DescriptorSetKind;
@@ -250,7 +258,14 @@ struct R_Vulkan_DescriptorSet {
 
 typedef struct R_Vulkan_UniformBuffer R_Vulkan_UniformBuffer;
 struct R_Vulkan_UniformBuffer {
-    // Dynamic uniform buffer
+    R_Vulkan_Buffer        buffer;
+    R_Vulkan_DescriptorSet set;
+    U64                    unit_count;
+    U64                    stride;
+};
+
+typedef struct R_Vulkan_StorageBuffer R_Vulkan_StorageBuffer;
+struct R_Vulkan_StorageBuffer {
     R_Vulkan_Buffer        buffer;
     R_Vulkan_DescriptorSet set;
     U64                    unit_count;
@@ -280,6 +295,9 @@ typedef struct {
 
     // UBO buffer and descriptor set
     R_Vulkan_UniformBuffer uniform_buffers[R_Vulkan_UniformTypeKind_COUNT];
+
+    // Storage buffer and descriptor set
+    R_Vulkan_StorageBuffer storage_buffers[R_Vulkan_StorageTypeKind_COUNT];
 
     // Instance buffer
     R_Vulkan_Buffer        inst_buffer_rect;
@@ -399,6 +417,7 @@ internal R_Vulkan_Pipeline        r_vulkan_pipeline(R_Vulkan_PipelineKind kind, 
 internal void                     r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind, U64 set_count, U64 cap, VkBuffer *buffers, VkImageView *image_views, VkSampler *sampler, R_Vulkan_DescriptorSet *sets);
 internal void                     r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp);
 internal R_Vulkan_UniformBuffer   r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count);
+internal R_Vulkan_StorageBuffer   r_vulkan_storage_buffer_alloc(R_Vulkan_StorageTypeKind kind, U64 unit_count);
 internal VKAPI_ATTR               VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity, VkDebugUtilsMessageTypeFlagsEXT message_type, const VkDebugUtilsMessengerCallbackDataEXT *p_callback_data, void *p_userdata);
 internal VkFence                  r_vulkan_fence(VkDevice device);
 internal VkSemaphore              r_vulkan_semaphore(VkDevice device);

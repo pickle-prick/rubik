@@ -1,0 +1,11 @@
+Model Information:
+* title:	Blackguard
+* source:	https://sketchfab.com/3d-models/blackguard-4266e52d609b4a2bb1d5e59473bd08e0
+* author:	vasian-65 (https://sketchfab.com/vasian-65)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Blackguard" (https://sketchfab.com/3d-models/blackguard-4266e52d609b4a2bb1d5e59473bd08e0) by vasian-65 (https://sketchfab.com/vasian-65) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

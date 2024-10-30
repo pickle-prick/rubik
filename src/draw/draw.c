@@ -137,7 +137,10 @@ d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection, B32 show_g
 //- rjf: meshes
 
 internal R_Mesh3DInst *
-d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo_topology, R_GeoVertexFlags mesh_geo_vertex_flags, R_Handle albedo_tex, Mat4x4F32 inst_xform, U64 inst_key)
+d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices,
+       R_GeoTopologyKind mesh_geo_topology, R_GeoVertexFlags mesh_geo_vertex_flags, R_Handle albedo_tex,
+       Mat4x4F32 *joint_xforms, U64 joint_count,
+       Mat4x4F32 inst_xform, U64 inst_key)
 {
     Arena *arena = d_thread_ctx->arena;
     D_Bucket *bucket = d_top_bucket();
@@ -188,19 +191,21 @@ d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo
         SLLStackPush(params->mesh_batches.slots[slot_idx], node);
         node->hash = hash;
         node->batches = r_batch_list_make(sizeof(R_Mesh3DInst));
-        node->params.mesh_vertices = mesh_vertices;
-        node->params.mesh_indices = mesh_indices;
-        node->params.mesh_geo_topology = mesh_geo_topology;
-        node->params.mesh_geo_vertex_flags = mesh_geo_vertex_flags;
-        node->params.albedo_tex = albedo_tex;
+        node->params.mesh_vertices          = mesh_vertices;
+        node->params.mesh_indices           = mesh_indices;
+        node->params.mesh_geo_topology      = mesh_geo_topology;
+        node->params.mesh_geo_vertex_flags  = mesh_geo_vertex_flags;
+        node->params.albedo_tex             = albedo_tex;
         node->params.albedo_tex_sample_kind = d_top_tex2d_sample_kind();
-        node->params.xform = mat_4x4f32(1.0f);
+        node->params.xform                  = mat_4x4f32(1.0f);
     }
 
     // Push a new instance to the batch group, then return it
     R_Mesh3DInst *inst = (R_Mesh3DInst *)r_batch_list_push_inst(arena, &node->batches, 256);
-    inst->xform = inst_xform;
-    inst->key = inst_key;
+    inst->xform        = inst_xform;
+    inst->key          = inst_key;
+    inst->joint_xforms = joint_xforms;
+    inst->joint_count  = joint_count;
     return inst;
 }
 

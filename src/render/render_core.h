@@ -78,6 +78,8 @@ struct R_Vertex
     Vec3F32 nor;
     Vec2F32 tex;
     Vec3F32 col;
+    Vec4U32 joints;
+    Vec4F32 weights;
 };
 
 ////////////////////////////////
@@ -99,9 +101,15 @@ struct R_Rect2DInst
 typedef struct R_Mesh3DInst R_Mesh3DInst;
 struct R_Mesh3DInst
 {
+    // TODO(k): kind a mess here, some attributes were sent to instance buffer, some were copied to storage buffer 
+    // NOTE: Only these two sent to the instance buffer
     Mat4x4F32 xform;
-    U64 key;
+    U64       key;
+
     // TODO(k): material idx, a primitive could have array of materials
+    Mat4x4F32 *joint_xforms;
+    U32       joint_count;
+    U32       first_joint; // TODO: Set it in render side, quite ugly, fix it later
 };
 
 ////////////////////////////////
@@ -161,13 +169,14 @@ struct R_BatchGroup2DList
 typedef struct R_BatchGroup3DParams R_BatchGroup3DParams;
 struct R_BatchGroup3DParams
 {
-    R_Handle mesh_vertices;
-    R_Handle mesh_indices;
+    R_Handle          mesh_vertices;
+    R_Handle          mesh_indices;
     R_GeoTopologyKind mesh_geo_topology;
-    R_GeoVertexFlags mesh_geo_vertex_flags;
-    R_Handle albedo_tex;
+    R_GeoVertexFlags  mesh_geo_vertex_flags;
+    R_Handle          albedo_tex;
     R_Tex2DSampleKind albedo_tex_sample_kind;
-    Mat4x4F32 xform;
+    // TODO: do we need this?
+    Mat4x4F32         xform;
 };
 
 typedef struct R_BatchGroup3DMapNode R_BatchGroup3DMapNode;
@@ -206,17 +215,17 @@ struct R_PassParams_UI
 typedef struct R_PassParams_Geo3D R_PassParams_Geo3D;
 struct R_PassParams_Geo3D
 {
-    Rng2F32 viewport;
-    Rng2F32 clip;
-    Mat4x4F32 view;
-    Mat4x4F32 projection;
+    Rng2F32           viewport;
+    Rng2F32           clip;
+    Mat4x4F32         view;
+    Mat4x4F32         projection;
     R_BatchGroup3DMap mesh_batches;
 
     // Debug usage
-    Vec4F32   gizmos_origin;
-    Mat4x4F32 gizmos_xform;
-    B32       show_grid;
-    B32       show_gizmos;
+    Vec4F32           gizmos_origin;
+    Mat4x4F32         gizmos_xform;
+    B32               show_grid;
+    B32               show_gizmos;
 };
 
 typedef struct R_Pass R_Pass;

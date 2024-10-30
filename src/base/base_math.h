@@ -18,6 +18,15 @@ union Vec2F32 {
         F32 v[2];
 };
 
+typedef union Vec2U32 Vec2U32;
+union Vec2U32 {
+        struct {
+                U32 x;
+                U32 y;
+        };
+        U32 v[2];
+};
+
 typedef union Vec2S64 Vec2S64;
 union Vec2S64 {
         struct {
@@ -65,6 +74,24 @@ union Vec3F32 {
         F32 v[3];
 };
 
+typedef union Vec3U32 Vec3U32;
+union Vec3U32 {
+        struct {
+                U32 x;
+                U32 y;
+                U32 z;
+        };
+        struct {
+                Vec2U32 xy;
+                U32 _z0;
+        };
+        struct {
+                U32 _x0;
+                Vec2U32 yz;
+        };
+        U32 v[3];
+};
+
 typedef union Vec3S32 Vec3S32;
 union Vec3S32 {
         struct {
@@ -106,6 +133,29 @@ union Vec4F32 {
                 Vec3F32 yzw;
         };
         F32 v[4];
+};
+
+typedef union Vec4U32 Vec4U32;
+union Vec4U32 {
+        struct {
+                U32 x;
+                U32 y;
+                U32 z;
+                U32 w;
+        };
+        struct {
+                Vec2U32 xy;
+                Vec2U32 zw;
+        };
+        struct {
+                Vec3U32 xyz;
+                U32 _z0;
+        };
+        struct {
+                U32 _x0;
+                Vec3U32 yzw;
+        };
+        U32 v[4];
 };
 
 typedef union Vec4S32 Vec4S32;
@@ -492,6 +542,7 @@ internal Mat4x4F32 mat_4x4f32_from_quat_f32(QuatF32 q);
 internal QuatF32   mul_quat_f32(QuatF32 q, QuatF32 p);
 internal QuatF32   conj_quat_f32(QuatF32 q);
 internal Vec3F32   mul_quat_f32_v3f32(QuatF32 q, Vec3F32 v);
+internal QuatF32   quat_f32_from_4x4f32(Mat4x4F32 m);
 
 ////////////////////////////////
 //~ rjf: Range Ops
