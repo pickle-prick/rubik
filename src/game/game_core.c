@@ -560,11 +560,11 @@ G_NODE_CUSTOM_UPDATE(base_fn)
                 }break;
                 case G_TransformKind_Rotation:
                 {
+                    // spherical linear
                     target->rot = mix_quat_f32(spline->values.v4s[last_frame], spline->values.v4s[next_frame], t);
                 }break;
                 case G_TransformKind_Translation:
                 {
-                    // spherical linear
                     target->pos = mix_3f32(spline->values.v3s[last_frame], spline->values.v3s[next_frame], t);
                 }break;
                 default: {}break;

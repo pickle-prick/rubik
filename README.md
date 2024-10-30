@@ -129,3 +129,8 @@ A list of the layers in the codebase and their associated namespaces is below:
 ### How to write c
 
 * https://github.com/EpicGamesExt/raddebugger
+
+### GLTF skinning animation
+
+* https://lisyarus.github.io/blog/posts/gltf-animation.html
+* https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html

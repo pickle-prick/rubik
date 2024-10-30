@@ -939,7 +939,6 @@ internal QuatF32 mix_quat_f32(QuatF32 qa, QuatF32 qb, F32 t)
 {
     // NOTE: interpolation between two quaterions mean spherical linear
     // http://www.euclideanspace.com/maths/algebra/realNormedAlgebra/quaternions/slerp/index.htm
-	// quaternion to return
 	QuatF32 ret;
 	// Calculate angle between them.
 	F32 cos_half_theta = qa.w * qb.w + qa.x * qb.x + qa.y * qb.y + qa.z * qb.z;
@@ -952,8 +951,8 @@ internal QuatF32 mix_quat_f32(QuatF32 qa, QuatF32 qb, F32 t)
 		return ret;
 	}
 	// Calculate temporary values.
-	double half_theta = acos(cos_half_theta);
-	double sin_half_theta = sqrt(1.0 - cos_half_theta*cos_half_theta);
+	F32 half_theta = acos(cos_half_theta);
+	F32 sin_half_theta = sqrt(1.0 - cos_half_theta*cos_half_theta);
 	// if theta = 180 degrees then result is not fully defined
 	// we could rotate around any axis normal to qa or qb
 	if (fabs(sin_half_theta) < 0.001){ // fabs is floating point absolute
