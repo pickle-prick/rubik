@@ -511,7 +511,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             case (R_Vulkan_VShadKind_Mesh):           {vshad_path = str8_lit("src/render/vulkan/shader/mesh_vert.spv");}break;
             case (R_Vulkan_VShadKind_Geo3DComposite): {vshad_path = str8_lit("src/render/vulkan/shader/geo3d_composite_vert.spv");}break;
             case (R_Vulkan_VShadKind_Finalize):       {vshad_path = str8_lit("src/render/vulkan/shader/finalize_vert.spv");}break;
-            default:                                  {NotImplemented;}break;
+            default:                                  {InvalidPath;}break;
         }
         long vshad_size = 0;
         U8 *vshad_code  = 0;
@@ -536,7 +536,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             case (R_Vulkan_FShadKind_Mesh):           {fshad_path = str8_lit("src/render/vulkan/shader/mesh_frag.spv");}break;
             case (R_Vulkan_FShadKind_Geo3DComposite): {fshad_path = str8_lit("src/render/vulkan/shader/geo3d_composite_frag.spv");}break;
             case (R_Vulkan_FShadKind_Finalize):       {fshad_path = str8_lit("src/render/vulkan/shader/finalize_frag.spv");}break;
-            default:                                  {NotImplemented;}break;
+            default:                                  {InvalidPath;}break;
         }
         long fshad_size = 0;
         U8 *fshad_code  = 0;
@@ -747,7 +747,7 @@ r_window_equip(OS_Handle wnd_handle)
                 alloc_create_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
                 alloc_create_info.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
                 VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &create_info, &alloc_create_info, &buffer->h, &buffer->alloc, NULL), "Failed to create/allocate buffer/memory");
-                vmaMapMemory(r_vulkan_state->vma, buffer->alloc, &buffer->mapped);
+                VK_Assert(vmaMapMemory(r_vulkan_state->vma, buffer->alloc, &buffer->mapped), "Failed to map memory");
             }
         }
 
@@ -994,7 +994,7 @@ r_vulkan_format_for_swapchain(VkSurfaceFormatKHR *formats, U64 count, VkFormat *
         // For the color space, we'll use SRGB if it's available, because it ressults in more accurate perceived colors.
         // It is also pretty much the standard color space for images, like the textures we'll use later on. Because of that we should also 
         // use an SRGB color format, of which oen of the most common ones is VK_FORAMT_B8G8R8A8_SRGB 
-        if(formats[i].format == VK_FORMAT_B8G8R8A8_SRGB && formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+        if(formats[i].format == VK_FORMAT_R8G8B8A8_SRGB && formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
         {
             *format      = formats[i].format;
             *color_space = formats[i].colorSpace;
@@ -1454,7 +1454,7 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
     {
         case R_Tex2DFormat_R8:    {vk_image_format = VK_FORMAT_R8_UNORM;}break;
         case R_Tex2DFormat_RGBA8: {vk_image_format = VK_FORMAT_R8G8B8A8_SRGB; vk_image_size *= 4;}break;
-        default:                  {NotImplemented;}break;
+        default:                  {InvalidPath;}break;
     }
     texture->image.format = vk_image_format;
 
@@ -1471,10 +1471,9 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
         create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
         VmaAllocationCreateInfo alloc_create_info = {};
-        alloc_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+        alloc_create_info.usage         = VMA_MEMORY_USAGE_AUTO;
         alloc_create_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        alloc_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-
+        alloc_create_info.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
         VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &create_info, &alloc_create_info, &staging_buffer, &staging_alloc, NULL), "Failed to create/allocate buffer/memory");
 
         void *pdata;
@@ -1569,7 +1568,8 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
 
     // Copy buffer to image
     VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
-    OneshotCmdScope(cmd) {
+    OneshotCmdScope(cmd)
+    {
         VkBufferImageCopy region = {
             // Specify the byte offset in the buffer at which the pixel values start
             .bufferOffset                    = 0,
@@ -1612,18 +1612,18 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
 internal R_Handle
 r_vulkan_handle_from_tex2d(R_Vulkan_Tex2D *texture)
 {
-        R_Handle handle = {0};
-        handle.u64[0] = (U64)texture;
-        handle.u64[1] = texture->generation;
-        return handle;
+    R_Handle handle = {0};
+    handle.u64[0] = (U64)texture;
+    handle.u64[1] = texture->generation;
+    return handle;
 }
 
 internal R_Vulkan_Tex2D *
 r_vulkan_tex2d_from_handle(R_Handle handle)
 {
-        R_Vulkan_Tex2D *texture = (R_Vulkan_Tex2D *)handle.u64[0];
-        Assert(texture != 0 && texture->generation == handle.u64[1]);
-        return texture;
+    R_Vulkan_Tex2D *texture = (R_Vulkan_Tex2D *)handle.u64[0];
+    Assert(texture != 0 && texture->generation == handle.u64[1]);
+    return texture;
 }
 
 //- rjf: buffers
@@ -1631,104 +1631,109 @@ r_vulkan_tex2d_from_handle(R_Handle handle)
 internal R_Handle
 r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
 {
-        R_Vulkan_Buffer *buffer = 0;
+    R_Vulkan_Buffer *buffer = 0;
 
-        buffer = r_vulkan_state->first_free_buffer;
-        if(buffer == 0)
+    buffer = r_vulkan_state->first_free_buffer;
+    if(buffer == 0)
+    {
+        buffer = push_array(r_vulkan_state->arena, R_Vulkan_Buffer, 1);
+    }
+    else
+    {
+        U64 gen = buffer->generation;
+        SLLStackPop(r_vulkan_state->first_free_buffer);
+        MemoryZeroStruct(buffer);
+        buffer->generation = gen;
+    }
+    buffer->generation++;
+
+    if(kind == R_ResourceKind_Static) Assert(data != 0);
+
+    // Fill basics
+    buffer->kind = kind;
+    buffer->size = size;
+
+    // It should be noted that in a real world application, you're not supposed to actually call vkAllocateMemory for every individual buffer
+    // The maximum number of simultaneous memory allocations is limited by the maxMemoryAllocationCount physical device limit
+    // which may be as low as 4096 even on high end hardward like an NVIDIA GTX1080
+    // The right way to allocate memory for a large number of objects at the same time is to create a custom allocator that splits
+    //      up a single allocation among many different objects by using the offset parameters that we've seen in many functions
+    // We can either implement such an allocator ourself, or use the VulkanMemoryAllocator library provided by the GPUOpen initiative
+
+    // TODO(@k): hate vma, remove it asap
+    // Create staging buffer
+    if(kind == R_ResourceKind_Static)
+    {
+        VkBuffer staging_buffer;
+        VmaAllocation staging_alloc;
         {
-                buffer = push_array(r_vulkan_state->arena, R_Vulkan_Buffer, 1);
-        } else {
-                U64 gen = buffer->generation;
-                SLLStackPop(r_vulkan_state->first_free_buffer);
-                MemoryZeroStruct(buffer);
-                buffer->generation = gen;
-        }
-        buffer->generation++;
+            VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+            create_info.size        = size;
+            create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        if(kind == R_ResourceKind_Static) Assert(data != 0);
+            VmaAllocationCreateInfo alloc_create_info = {};
+            alloc_create_info.usage         = VMA_MEMORY_USAGE_AUTO;
+            alloc_create_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+            alloc_create_info.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
-        // Fill basics
-        buffer->kind = kind;
-        buffer->size = size;
+            VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &create_info, &alloc_create_info, &staging_buffer, &staging_alloc, NULL), "Failed to create/allocate buffer/memory");
 
-        // It should be noted that in a real world application, you're not supposed to actually call vkAllocateMemory for every individual buffer
-        // The maximum number of simultaneous memory allocations is limited by the maxMemoryAllocationCount physical device limit
-        // which may be as low as 4096 even on high end hardward like an NVIDIA GTX1080
-        // The right way to allocate memory for a large number of objects at the same time is to create a custom allocator that splits
-        //      up a single allocation among many different objects by using the offset parameters that we've seen in many functions
-        // We can either implement such an allocator ourself, or use the VulkanMemoryAllocator library provided by the GPUOpen initiative
-
-        // TODO(@k): hate vma, remove it asap
-        // Create staging buffer
-        if(kind == R_ResourceKind_Static)
-        {
-                VkBuffer staging_buffer;
-                VmaAllocation staging_alloc;
-                {
-                        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-                        create_info.size        = size;
-                        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-                        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-                        VmaAllocationCreateInfo alloc_create_info = {};
-                        alloc_create_info.usage         = VMA_MEMORY_USAGE_AUTO;
-                        alloc_create_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-                        alloc_create_info.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-                        VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &create_info, &alloc_create_info, &staging_buffer, &staging_alloc, NULL), "Failed to create/allocate buffer/memory");
-
-                        void *pdata;
-                        VK_Assert(vmaMapMemory(r_vulkan_state->vma, staging_alloc, &pdata), "Failed to map memory to host");
-                        MemoryCopy(pdata, data, size);
-                        vmaUnmapMemory(r_vulkan_state->vma, staging_alloc);
-                }
-
-                // Create buffer <GPU Device Local> 
-                VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-                create_info.size        = size;
-                // TODO(@k): we may want to differiciate index and vertex buffer
-                create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-                create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-                VmaAllocationCreateInfo alloc_create_info = {};
-                alloc_create_info.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-                alloc_create_info.usage = VMA_MEMORY_USAGE_AUTO;
-
-                VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &create_info, &alloc_create_info, &buffer->h, &buffer->alloc, NULL), "Failed to create/allocate buffer/memory");
-
-                // Copy buffer
-                VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
-                OneshotCmdScope(cmd) {
-                        VkBufferCopy copy_region = {
-                                .srcOffset = 0, // Optional
-                                .dstOffset = 0, // Optional
-                                .size      = size,
-                        };
-
-                        // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
-                        vkCmdCopyBuffer(cmd, staging_buffer, buffer->h, 1, &copy_region);
-                }
-                vmaDestroyBuffer(r_vulkan_state->vma, staging_buffer, staging_alloc);
-
-        } else {
-                VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-                create_info.size        = size;
-                // TODO(@k): we may want to differiciate index and vertex buffer
-                create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-                create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-                VmaAllocationCreateInfo alloc_create_info = {};
-                alloc_create_info.usage = VMA_MEMORY_USAGE_AUTO;
-                alloc_create_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-                alloc_create_info.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-                VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &create_info, &alloc_create_info, &buffer->h, &buffer->alloc, NULL), "Failed to create/allocate buffer/memory");
-                vmaMapMemory(r_vulkan_state->vma, buffer->alloc, &buffer->mapped);
-
-                if(data != 0) { MemoryCopy(buffer->mapped, data, size); }
+            void *pdata;
+            VK_Assert(vmaMapMemory(r_vulkan_state->vma, staging_alloc, &pdata), "Failed to map memory to host");
+            MemoryCopy(pdata, data, size);
+            vmaUnmapMemory(r_vulkan_state->vma, staging_alloc);
         }
 
-        R_Handle ret = r_vulkan_handle_from_buffer(buffer);
-        return ret;
+        // Create buffer <GPU Device Local> 
+        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        create_info.size        = size;
+        // TODO(@k): we may want to differiciate index and vertex buffer
+        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo alloc_create_info = {};
+        alloc_create_info.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+        alloc_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+
+        VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &create_info, &alloc_create_info, &buffer->h, &buffer->alloc, NULL), "Failed to create/allocate buffer/memory");
+
+        // Copy buffer
+        VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
+        OneshotCmdScope(cmd)
+        {
+            VkBufferCopy copy_region = {
+                .srcOffset = 0, // Optional
+                .dstOffset = 0, // Optional
+                .size      = size,
+            };
+
+            // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
+            vkCmdCopyBuffer(cmd, staging_buffer, buffer->h, 1, &copy_region);
+        }
+        vmaDestroyBuffer(r_vulkan_state->vma, staging_buffer, staging_alloc);
+
+    } 
+    else
+    {
+        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        create_info.size        = size;
+        // TODO(@k): we may want to differiciate index and vertex buffer
+        create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo alloc_create_info = {};
+        alloc_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+        alloc_create_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        alloc_create_info.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &create_info, &alloc_create_info, &buffer->h, &buffer->alloc, NULL), "Failed to create/allocate buffer/memory");
+        VK_Assert(vmaMapMemory(r_vulkan_state->vma, buffer->alloc, &buffer->mapped), "Failed to map memory");
+
+        if(data != 0) { MemoryCopy(buffer->mapped, data, size); }
+    }
+
+    R_Handle ret = r_vulkan_handle_from_buffer(buffer);
+    return ret;
 }
 
 /*
@@ -1742,158 +1747,161 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
 internal void
 r_vulkan_image_transition(VkImage image, VkImageLayout old_layout, VkImageLayout new_layout)
 {
-        VkPipelineStageFlags src_stage;
-        VkPipelineStageFlags dst_stage;
-        VkImageMemoryBarrier barrier = {
-                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                // It is possible to use VK_image_layout_undefined as oldLayout if you don't care about the existing contents of the image
-                .oldLayout = old_layout,
-                .newLayout = new_layout,
-                // If you are using the barrier to transfer queue family ownership, then these two fields should be the indices of the queue families
-                // They must be set to VK_QUEUE_FAMILY_IGNORED if you don't want to do this (not the default value)
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                // The image and subresourceRange specify the image that is affected and the specific part of the image
-                // Our image is not an array and does not have mipmapping levels, so only one level and layer are specified 
-                .image                           = image,
-                .subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-                .subresourceRange.baseMipLevel   = 0,
-                .subresourceRange.levelCount     = 1,
-                .subresourceRange.baseArrayLayer = 0,
-                .subresourceRange.layerCount     = 1,
-                // Barriers are primaryly used for synchronization purpose, so you must specify which types of operations that involve the resource must 
-                // happen before the barrier, and which operations that involve the resource must wait on the barrier
-                // We need to do that despite already using vkQueueWaitIdle to manually synchronize
-                // The right values depend on the old and new layout
-                .srcAccessMask = 0, 
-                .dstAccessMask = 0,
-        };
+    VkPipelineStageFlags src_stage;
+    VkPipelineStageFlags dst_stage;
+    VkImageMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        // It is possible to use VK_image_layout_undefined as oldLayout if you don't care about the existing contents of the image
+        .oldLayout = old_layout,
+        .newLayout = new_layout,
+        // If you are using the barrier to transfer queue family ownership, then these two fields should be the indices of the queue families
+        // They must be set to VK_QUEUE_FAMILY_IGNORED if you don't want to do this (not the default value)
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        // The image and subresourceRange specify the image that is affected and the specific part of the image
+        // Our image is not an array and does not have mipmapping levels, so only one level and layer are specified 
+        .image                           = image,
+        .subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+        .subresourceRange.baseMipLevel   = 0,
+        .subresourceRange.levelCount     = 1,
+        .subresourceRange.baseArrayLayer = 0,
+        .subresourceRange.layerCount     = 1,
+        // Barriers are primaryly used for synchronization purpose, so you must specify which types of operations that involve the resource must 
+        // happen before the barrier, and which operations that involve the resource must wait on the barrier
+        // We need to do that despite already using vkQueueWaitIdle to manually synchronize
+        // The right values depend on the old and new layout
+        .srcAccessMask = 0, 
+        .dstAccessMask = 0,
+    };
 
-        // Transfer writes must occur in the pipeline transfer stage
-        // Since the writes don't have to wait on anything, you may specify an empty access mask and the earliest possible pipeline stage
-        //     VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT for the pre-barrier operations
-        // It shoule be noted that VK_PIPELINE_STAGE_TRANSFER_BIT is not real stage within the graphics and compute pipelines
-        // It's more of a pseudo-stage where transfer happen
-        // ref: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap7.html#VkPipelineStageFlagBits
-        // One thing to note is that command buffer submission results in implicit VK_ACCESS_HOST_WRITE_BIT synchronization at the beginning
-        // Since the transition_image_layout function executes a command, you could use this implicit synchronization and set srcAccessMask to 0 
-        // If you ever needed a VK_ACCESS_HOST_WRITE_BIT dependency in a layout transition, you could explicity specify it in srcAccessMask
-        if(old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-                barrier.srcAccessMask = 0;
-                barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                src_stage             = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-                dst_stage             = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    // Transfer writes must occur in the pipeline transfer stage
+    // Since the writes don't have to wait on anything, you may specify an empty access mask and the earliest possible pipeline stage
+    //     VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT for the pre-barrier operations
+    // It shoule be noted that VK_PIPELINE_STAGE_TRANSFER_BIT is not real stage within the graphics and compute pipelines
+    // It's more of a pseudo-stage where transfer happen
+    // ref: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap7.html#VkPipelineStageFlagBits
+    // One thing to note is that command buffer submission results in implicit VK_ACCESS_HOST_WRITE_BIT synchronization at the beginning
+    // Since the transition_image_layout function executes a command, you could use this implicit synchronization and set srcAccessMask to 0 
+    // If you ever needed a VK_ACCESS_HOST_WRITE_BIT dependency in a layout transition, you could explicity specify it in srcAccessMask
+    if(old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+    {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        src_stage             = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        dst_stage             = VK_PIPELINE_STAGE_TRANSFER_BIT;
         // The image will be written in the same pipeline stage and subsequently read by the fragment shader, which is why we specify
         //     shader reading access in the fragment shader pipeline stage
-        } 
-        else if(old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-        {
-                barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                src_stage             = VK_PIPELINE_STAGE_TRANSFER_BIT;
-                dst_stage             = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        } else { assert(false && "Unsupported layout transition"); }
+    } 
+    else if(old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        src_stage             = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        dst_stage             = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else { assert(false && "Unsupported layout transition"); }
 
-        // - `VkCommandBuffer commandBuffer (aka struct VkCommandBuffer_T *)`
-        // - `VkPipelineStageFlags srcStageMask (aka unsigned int)`
-        // - `VkPipelineStageFlags dstStageMask (aka unsigned int)`
-        // - `VkDependencyFlags dependencyFlags (aka unsigned int)`
-        // - `uint32_t memoryBarrierCount (aka unsigned int)`
-        // - `const VkMemoryBarrier * pMemoryBarriers (aka const struct VkMemoryBarrier *)`
-        // - `uint32_t bufferMemoryBarrierCount (aka unsigned int)`
-        // - `const VkBufferMemoryBarrier * pBufferMemoryBarriers (aka const struct VkBufferMemoryBarrier *)`
-        // - `uint32_t imageMemoryBarrierCount (aka unsigned int)`
-        // - `const VkImageMemoryBarrier * pImageMemoryBarriers (aka const struct VkImageMemoryBarrier *)`
-        // ref: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-access-types-supported
-        // The third parameter is either 0 or VK_DEPENDENCY_BY_REGION_BIT
-        // The latter turns the barrier into a per-region condition
-        // That means that the implementation is allowed to already begin reading from the parts of a resource that were written so far, for example
-        VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
-        OneshotCmdScope(cmd) {
-                vkCmdPipelineBarrier(cmd, src_stage, dst_stage, 0, 0, NULL, 0, NULL, 1, &barrier);
-        }
+    // - `VkCommandBuffer commandBuffer (aka struct VkCommandBuffer_T *)`
+    // - `VkPipelineStageFlags srcStageMask (aka unsigned int)`
+    // - `VkPipelineStageFlags dstStageMask (aka unsigned int)`
+    // - `VkDependencyFlags dependencyFlags (aka unsigned int)`
+    // - `uint32_t memoryBarrierCount (aka unsigned int)`
+    // - `const VkMemoryBarrier * pMemoryBarriers (aka const struct VkMemoryBarrier *)`
+    // - `uint32_t bufferMemoryBarrierCount (aka unsigned int)`
+    // - `const VkBufferMemoryBarrier * pBufferMemoryBarriers (aka const struct VkBufferMemoryBarrier *)`
+    // - `uint32_t imageMemoryBarrierCount (aka unsigned int)`
+    // - `const VkImageMemoryBarrier * pImageMemoryBarriers (aka const struct VkImageMemoryBarrier *)`
+    // ref: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-access-types-supported
+    // The third parameter is either 0 or VK_DEPENDENCY_BY_REGION_BIT
+    // The latter turns the barrier into a per-region condition
+    // That means that the implementation is allowed to already begin reading from the parts of a resource that were written so far, for example
+    VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
+    OneshotCmdScope(cmd)
+    {
+        vkCmdPipelineBarrier(cmd, src_stage, dst_stage, 0, 0, NULL, 0, NULL, 1, &barrier);
+    }
 
 }
 
 internal VkSampler
 r_vulkan_sampler2d(R_Tex2DSampleKind kind)
 {
-        // It is possible for shaders to read texels directly from iamges, but that is not very common when they are used a textures
-        // Textures are usually accessed through samplers, which will aplly filtering and transformation to compute the final color that is retrieved
-        // These filters are helpful to deal with problems like oversampling (geometry with more fragments than texels, like pixel game or Minecraft)
-        // In this case if you combined the 4 closed texels through linear interpolation, then you would get a smoother result
-        // The linear interpolation in oversampling is preferred in conventional graphics applications
-        // A sampler object automatically applies the filtering for you when reading a color from the texture
-        //
-        // Undersampling is the opposite problem, where you have more texels than fragments
-        // This will lead to artifacts when sampling high frequency patterns like a checkerboard texture at a sharp angle
-        // The solution to this is *anisotropic filtering*, which can also be applied automatically by sampler
-        //
-        // Aside from these filters, a sampler can also take care of transformation
-        // It determines what happens when you try to read texels outside the image through its addressing mode
-        // * Repeat
-        // * Mirrored repeat
-        // * Clamp to edge
-        // * Clamp to border
-        VkSampler sampler;
+    // It is possible for shaders to read texels directly from iamges, but that is not very common when they are used a textures
+    // Textures are usually accessed through samplers, which will aplly filtering and transformation to compute the final color that is retrieved
+    // These filters are helpful to deal with problems like oversampling (geometry with more fragments than texels, like pixel game or Minecraft)
+    // In this case if you combined the 4 closed texels through linear interpolation, then you would get a smoother result
+    // The linear interpolation in oversampling is preferred in conventional graphics applications
+    // A sampler object automatically applies the filtering for you when reading a color from the texture
+    //
+    // Undersampling is the opposite problem, where you have more texels than fragments
+    // This will lead to artifacts when sampling high frequency patterns like a checkerboard texture at a sharp angle
+    // The solution to this is *anisotropic filtering*, which can also be applied automatically by sampler
+    //
+    // Aside from these filters, a sampler can also take care of transformation
+    // It determines what happens when you try to read texels outside the image through its addressing mode
+    // * Repeat
+    // * Mirrored repeat
+    // * Clamp to edge
+    // * Clamp to border
+    VkSampler sampler;
 
-        VkSamplerCreateInfo create_info = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-        // The magFilter and minFilter fields specify how to interpolate texels that are magnified or minified
-        // Magnification concerns the oversampling proble describes above
-        // Minification concerns undersampling
-        // The choices are VK_FILTER_NEAREST and VK_FILTER_LINEAR 
-        switch (kind) {
-                case (R_Tex2DSampleKind_Nearest): {create_info.magFilter = VK_FILTER_NEAREST; create_info.minFilter = VK_FILTER_NEAREST;}break;
-                case (R_Tex2DSampleKind_Linear):  {create_info.magFilter = VK_FILTER_LINEAR; create_info.minFilter = VK_FILTER_LINEAR;}break;
-                default:                          {NotImplemented;}break;
-        }
-        
-        // Note that the axes are called U, V and W instead of X, Y and Z
-        //               VK_SAMPLER_ADDRESS_MODE_REPEAT: repeat the texture when going beyond the image dimension
-        //      VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT: like repeat mode, but inverts the coordinates to mirror the image when going beyond the dimension
-        //        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE: take the color of the edge cloesest to the coordinate beyond the image dimensions
-        // VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE: like clamp to edge, but instead uses the edge opposite the closest edge
-        //      VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER: return a solid color when sampling beyond the dimensions of the image
-        // It doesn't really matter which addressing mode we use here, because we're not going to sample outside of the image in this tutorial
-        // However, the repeat mode is probably the most common mode, because it can be used to tile textures like floors an walls
-        create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        create_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        create_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        // These two fields specify if anisotropic filtering should be used
-        // There is no reason not to use this unless performance is concern
-        // The maxAnisotropy field limits the amount of texel samples that can be used to calculate the final color
-        // A lower value results in better performance, but lower quality results
-        // To figure out which value we can use, we need to retrieve the properties of the physical device
-        create_info.anisotropyEnable = VK_TRUE;
-        create_info.maxAnisotropy    = r_vulkan_state->gpu.properties.limits.maxSamplerAnisotropy;
-        // The borderColor field specifies which color is returned when sampling beyond the image with clamp to border addressing mode
-        // It is possible to return black, white or transparent in either float or int formats
-        // You cannot specify an arbitrary color
-        create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-        // The unnormalizedCoordinates fields specifies which coordinate system you want to use to address texels in an image
-        // If this field is VK_TRUE, then you can simply use coordinates within the [0, texWidth] and [0, textHeight] range
-        // If this field is VK_FALSE, then the texels are addressed using [0, 1] range on all axes
-        // Real world applications almost always use normalized coordinates, because then it's possible to use textures of varying resolutions with the exact same coordinates
-        create_info.unnormalizedCoordinates = VK_FALSE;
-        // If a comparsion function is enabled, then texels will first be compared to a value, and the result of that comparison is used in filtering operations
-        // TODO(@k): This si mainly used for percentage-closer filtering "https://developer.nvidia.com/gpugems/GPUGems/gpugems_ch11.html" on shadow maps
-        // We are not using any of that
-        create_info.compareEnable = VK_FALSE;
-        create_info.compareOp     = VK_COMPARE_OP_ALWAYS;
-        // NOTE(@k): These 4 fields apply to mipmapping
-        // We will look at mipmapping in a later chapter, but basically it's another type of filter that can be applied
-        create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        create_info.mipLodBias = 0.0f;
-        create_info.minLod     = 0.0f;
-        create_info.maxLod     = 0.0f;
+    VkSamplerCreateInfo create_info = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    // The magFilter and minFilter fields specify how to interpolate texels that are magnified or minified
+    // Magnification concerns the oversampling proble describes above
+    // Minification concerns undersampling
+    // The choices are VK_FILTER_NEAREST and VK_FILTER_LINEAR 
+    switch (kind)
+    {
+        case (R_Tex2DSampleKind_Nearest): {create_info.magFilter = VK_FILTER_NEAREST; create_info.minFilter = VK_FILTER_NEAREST;}break;
+        case (R_Tex2DSampleKind_Linear):  {create_info.magFilter = VK_FILTER_LINEAR; create_info.minFilter = VK_FILTER_LINEAR;}break;
+        default:                          {InvalidPath;}break;
+    }
 
-        VK_Assert(vkCreateSampler(r_vulkan_state->device.h, &create_info, NULL, &sampler), "Failed to create sampler");
-        // Note the sampler does not reference a VkImage anywhere
-        // The sampler is a distinct object that provides an interface to extrat colors from a texture
-        // It can be applied to any image you want, whether it is 1D, 2D or 3D
-        // This is different from many older APIS, which combined texture images and filtering into a single state
-        
-        return sampler;
+    // Note that the axes are called U, V and W instead of X, Y and Z
+    //               VK_SAMPLER_ADDRESS_MODE_REPEAT: repeat the texture when going beyond the image dimension
+    //      VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT: like repeat mode, but inverts the coordinates to mirror the image when going beyond the dimension
+    //        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE: take the color of the edge cloesest to the coordinate beyond the image dimensions
+    // VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE: like clamp to edge, but instead uses the edge opposite the closest edge
+    //      VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER: return a solid color when sampling beyond the dimensions of the image
+    // It doesn't really matter which addressing mode we use here, because we're not going to sample outside of the image in this tutorial
+    // However, the repeat mode is probably the most common mode, because it can be used to tile textures like floors an walls
+    create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    create_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    create_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    // These two fields specify if anisotropic filtering should be used
+    // There is no reason not to use this unless performance is concern
+    // The maxAnisotropy field limits the amount of texel samples that can be used to calculate the final color
+    // A lower value results in better performance, but lower quality results
+    // To figure out which value we can use, we need to retrieve the properties of the physical device
+    create_info.anisotropyEnable = VK_TRUE;
+    create_info.maxAnisotropy    = r_vulkan_state->gpu.properties.limits.maxSamplerAnisotropy;
+    // The borderColor field specifies which color is returned when sampling beyond the image with clamp to border addressing mode
+    // It is possible to return black, white or transparent in either float or int formats
+    // You cannot specify an arbitrary color
+    create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    // The unnormalizedCoordinates fields specifies which coordinate system you want to use to address texels in an image
+    // If this field is VK_TRUE, then you can simply use coordinates within the [0, texWidth] and [0, textHeight] range
+    // If this field is VK_FALSE, then the texels are addressed using [0, 1] range on all axes
+    // Real world applications almost always use normalized coordinates, because then it's possible to use textures of varying resolutions with the exact same coordinates
+    create_info.unnormalizedCoordinates = VK_FALSE;
+    // If a comparsion function is enabled, then texels will first be compared to a value, and the result of that comparison is used in filtering operations
+    // TODO(@k): This si mainly used for percentage-closer filtering "https://developer.nvidia.com/gpugems/GPUGems/gpugems_ch11.html" on shadow maps
+    // We are not using any of that
+    create_info.compareEnable = VK_FALSE;
+    create_info.compareOp     = VK_COMPARE_OP_ALWAYS;
+    // NOTE(@k): These 4 fields apply to mipmapping
+    // We will look at mipmapping in a later chapter, but basically it's another type of filter that can be applied
+    create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    create_info.mipLodBias = 0.0f;
+    create_info.minLod     = 0.0f;
+    create_info.maxLod     = 0.0f;
+
+    VK_Assert(vkCreateSampler(r_vulkan_state->device.h, &create_info, NULL, &sampler), "Failed to create sampler");
+    // Note the sampler does not reference a VkImage anywhere
+    // The sampler is a distinct object that provides an interface to extrat colors from a texture
+    // It can be applied to any image you want, whether it is 1D, 2D or 3D
+    // This is different from many older APIS, which combined texture images and filtering into a single state
+
+    return sampler;
 }
 
 internal R_Vulkan_Pipeline
@@ -2045,12 +2053,13 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
 
     U64 vtx_binding_desc_count = 0;
     U64 vtx_attr_desc_cnt      = 0;
-    switch (kind) {
+    switch (kind)
+    {
         case (R_Vulkan_PipelineKind_MeshDebug):
         {
             vtx_binding_desc_count = 0;
             vtx_attr_desc_cnt = 0;
-        } break;
+        }break;
         case (R_Vulkan_PipelineKind_Mesh):
         {
             vtx_binding_desc_count = 2;
@@ -2157,7 +2166,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
             vtx_attr_descs[12].location = 12;
             vtx_attr_descs[12].format   = VK_FORMAT_R32_UINT;
             vtx_attr_descs[12].offset   = offsetof(R_Mesh3DInst, joint_count);
-        } break;
+        }break;
         case (R_Vulkan_PipelineKind_Rect):
         {
             vtx_binding_desc_count = 1;
@@ -2214,13 +2223,13 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
             vtx_attr_descs[7].location = 7;
             vtx_attr_descs[7].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
             vtx_attr_descs[7].offset   = offsetof(R_Rect2DInst, border_thickness);
-        } break;
+        }break;
         case (R_Vulkan_PipelineKind_Geo3DComposite):
         case (R_Vulkan_PipelineKind_Finalize):
         {
             vtx_binding_desc_count = 0;
             vtx_attr_desc_cnt = 0;
-        } break;
+        }break;
         default: {InvalidPath;}break;
 
     }
@@ -2326,7 +2335,8 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
     //      VkPipelineDepthStencilStateCreateInfo. 
     // We don't have one right now, so we can simply pass a NULL instead of a pointer to such a struct
     VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
-    switch (kind) {
+    switch (kind)
+    {
         case (R_Vulkan_PipelineKind_MeshDebug): 
         case (R_Vulkan_PipelineKind_Mesh): 
         {
@@ -2362,7 +2372,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
             depth_stencil_state_create_info.front                 = (VkStencilOpState){}; // Optional
             depth_stencil_state_create_info.back                  = (VkStencilOpState){}; // Optional
         }break;
-        default: {NotImplemented;}break;
+        default: {InvalidPath;}break;
     }
 
     // Color blending stage
@@ -2496,7 +2506,8 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
 #define __MAX_PIPELINE_SET_LAYOUTS 9
         VkDescriptorSetLayout set_layouts[__MAX_PIPELINE_SET_LAYOUTS];
 
-        switch (kind) {
+        switch (kind)
+        {
             case (R_Vulkan_PipelineKind_Rect): 
             {
                 set_layout_count = 2;
@@ -2661,14 +2672,16 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
     }
     if(bag_gen_synced)
     {
-        for(R_Vulkan_Bag *b = wnd->first_to_free_bag; b != 0; b = b->next) {
+        for(R_Vulkan_Bag *b = wnd->first_to_free_bag; b != 0; b = b->next)
+        {
             r_vulkan_bag_destroy(b);
         }
         wnd->first_to_free_bag = 0;
     }
     if(rendpass_grp_gen_synced)
     {
-        for(R_Vulkan_RenderPassGroup *g = wnd->first_to_free_rendpass_grp; g != 0; g = g->next) {
+        for(R_Vulkan_RenderPassGroup *g = wnd->first_to_free_rendpass_grp; g != 0; g = g->next)
+        {
             r_vulkan_rendpass_grp_destroy(g);
         }
         wnd->first_to_free_rendpass_grp = 0;
@@ -3183,10 +3196,11 @@ r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count)
 
     U64 stride = 0;
 
-    switch (kind) {
+    switch (kind)
+    {
         case R_Vulkan_UniformTypeKind_Rect: {stride = AlignPow2(sizeof(R_Vulkan_Uniforms_Rect), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
         case R_Vulkan_UniformTypeKind_Mesh: {stride = AlignPow2(sizeof(R_Vulkan_Uniforms_Mesh), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
-        default:                            {NotImplemented;}break;
+        default:                            {InvalidPath;}break;
     }
     U64 buf_size = stride * unit_count;
 
@@ -3238,7 +3252,8 @@ r_vulkan_storage_buffer_alloc(R_Vulkan_StorageTypeKind kind, U64 unit_count)
     R_Vulkan_StorageBuffer storage_buffer = {0};
     U64 stride = 0;
 
-    switch (kind) {
+    switch (kind)
+    {
         case R_Vulkan_StorageTypeKind_Mesh: {stride = AlignPow2(sizeof(R_Vulkan_Storage_Mesh), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);}break;
         default:                            {InvalidPath;}break;
     }
@@ -3274,7 +3289,7 @@ r_vulkan_storage_buffer_alloc(R_Vulkan_StorageTypeKind kind, U64 unit_count)
     switch (kind)
     {
         case R_Vulkan_StorageTypeKind_Mesh: {ds_type = R_Vulkan_DescriptorSetKind_Storage_Mesh;}break;
-        default:                            {NotImplemented;}break;
+        default:                            {InvalidPath;}break;
     }
 
     r_vulkan_descriptor_set_alloc(ds_type, 1, 3, &storage_buffer.buffer.h, NULL, NULL, &storage_buffer.set);
@@ -3450,12 +3465,13 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
     temp_end(temp);
 }
 
-void r_vulkan_descriptor_set_destroy(R_Vulkan_DescriptorSet *set) {
+void r_vulkan_descriptor_set_destroy(R_Vulkan_DescriptorSet *set)
+{
     VK_Assert(vkFreeDescriptorSets(r_vulkan_state->device.h, set->pool->h, 1, &set->h), "Failed to free descriptor sets");
     set->pool->cmt -= 1;
     if((set->pool->cmt+1) == set->pool->cap)
     {
-            SLLStackPush(r_vulkan_state->first_avail_ds_pool[set->pool->kind], set->pool);
+        SLLStackPush(r_vulkan_state->first_avail_ds_pool[set->pool->kind], set->pool);
     }
 }
 
@@ -3839,7 +3855,8 @@ r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
         R_Vulkan_Image *geo3d_depth_image = &bag->geo3d_depth_image;
         R_Vulkan_RenderPass *renderpass   = &grp->passes[kind];
 
-        switch (kind) {
+        switch (kind)
+        {
             case R_Vulkan_RenderPassKind_Rect:
             {
                 // The attachments specified during render pass creation are bound by wrapping them into a VkFramebuffer object

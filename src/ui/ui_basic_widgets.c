@@ -1,11 +1,7 @@
-#include "ui/ui_core.h"
 internal UI_Signal
 ui_button(String8 string) {
-    UI_Size s = ui_size(UI_SizeKind_TextContent, 0, 1.0);
-    ui_set_next_pref_width(s);
-    ui_set_next_pref_height(s);
-
     ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+    ui_set_next_text_alignment(UI_TextAlign_Center);
     UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable |
                                            UI_BoxFlag_DrawBackground |
                                            UI_BoxFlag_DrawBorder |
@@ -20,6 +16,7 @@ ui_button(String8 string) {
 internal UI_Signal
 ui_label(String8 string)
 {
+    ui_set_next_text_padding(3);
     UI_Box *box = ui_build_box_from_string(UI_BoxFlag_DrawText, str8_zero());
     ui_box_equip_display_string(box, string);
     UI_Signal interact = ui_signal_from_box(box);
@@ -185,22 +182,23 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark,
                                         UI_BoxFlag_DrawHotEffects,
                                         key);
     // Take navigation actions for editing
-    if(is_focus_active) {
+    if(is_focus_active)
+    {
         Temp scratch = scratch_begin(0,0);
         UI_EventList *events = ui_events();
-        for(UI_EventNode *n = events->first; n!=0; n = n->next) {
+        for(UI_EventNode *n = events->first; n!=0; n = n->next)
+        {
             String8 edit_string = str8(edit_buffer, edit_string_size_out[0]);
 
             // Don't consume anything that doesn't fit a single-line's operations
-            if((n->v.kind != UI_EventKind_Edit && n->v.kind != UI_EventKind_Navigate && n->v.kind != UI_EventKind_Text) || n->v.delta_2s32.y != 0) {
-                continue;
-            }
+            if((n->v.kind != UI_EventKind_Edit && n->v.kind != UI_EventKind_Navigate && n->v.kind != UI_EventKind_Text) || n->v.delta_2s32.y != 0) { continue; }
 
             // Map this action to an TxtOp
             UI_TxtOp op = ui_single_line_txt_op_from_event(scratch.arena, &n->v, edit_string, *cursor, *mark);
 
             // Perform replace range
-            if(!txt_pt_match(op.range.min, op.range.max) || op.replace.size != 0) {
+            if(!txt_pt_match(op.range.min, op.range.max) || op.replace.size != 0)
+            {
                 String8 new_string = ui_push_string_replace_range(scratch.arena, edit_string,
                                                                   r1s64(op.range.min.column, op.range.max.column),
                                                                   op.replace);
@@ -221,15 +219,20 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark,
 
     // Build contents
     TxtPt mouse_pt = {0};
-    UI_Parent(box) {
+    UI_Parent(box)
+    {
         String8 edit_string = str8(edit_buffer, edit_string_size_out[0]);
-        if(!is_focus_active && box->focus_active_t < 0.001) {
+        if(!is_focus_active && box->focus_active_t < 0.001)
+        {
             String8 display_string = ui_display_part_from_key_string(string);
-            if(pre_edit_value.size != 0) {
+            if(pre_edit_value.size != 0) 
+            {
                 display_string = pre_edit_value;
             }
             ui_label(display_string);
-        } else {
+        }
+        else
+        {
             // TODO
             F32 total_text_width = f_dim_from_tag_size_string(box->font, box->font_size, 0,
                                                               box->tab_size, edit_string).x;
@@ -252,7 +255,8 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark,
     // Interact
     UI_Signal sig = ui_signal_from_box(box);
 
-    if(!is_focus_active && sig.f&(UI_SignalFlag_DoubleClicked|UI_SignalFlag_KeyboardPressed)) {
+    if(!is_focus_active && sig.f&(UI_SignalFlag_DoubleClicked|UI_SignalFlag_KeyboardPressed))
+    {
         String8 edit_string = pre_edit_value;
         edit_string.size = Min(edit_buffer_size, pre_edit_value.size);
         MemoryCopy(edit_buffer, edit_string.str, edit_string.size);
@@ -266,12 +270,14 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark,
         *mark = txt_pt(1, 1);
     }
 
-    if(is_focus_active && sig.f&UI_SignalFlag_KeyboardPressed) {
+    if(is_focus_active && sig.f&UI_SignalFlag_KeyboardPressed) 
+    {
         ui_set_auto_focus_active_key(ui_key_zero());
         sig.f |= UI_SignalFlag_Commit;
     }
 
-    if(is_focus_active && ui_dragging(sig)) {
+    if(is_focus_active && ui_dragging(sig)) 
+    {
         // Update mouse ptr
         if(ui_pressed(sig)) {
             *mark = mouse_pt;
@@ -280,7 +286,8 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark,
     }
 
     // TODO: fix it later, dragging will override the cursor position
-    if(is_focus_active && sig.f&UI_SignalFlag_DoubleClicked) {
+    if(is_focus_active && sig.f&UI_SignalFlag_DoubleClicked) 
+    {
         String8 edit_string = str8(edit_buffer, edit_string_size_out[0]);
         *cursor = txt_pt(1, edit_string.size+1);
         *mark = txt_pt(1, 1);

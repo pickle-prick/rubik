@@ -20,6 +20,10 @@ uvec2 key_gizmos_jhat = uvec2(0xFFFFFFFF-1, 0xFFFFFFFF);
 uvec2 key_gizmos_khat = uvec2(0xFFFFFFFF-2, 0xFFFFFFFF);
 uvec2 key_grid        = uvec2(0xFFFFFFFF-3, 0xFFFFFFFF);
 
+vec3 red   = vec3(1.,0.271,0.271);
+vec3 green = vec3(0.,0.416,0.404);
+vec3 blue  = vec3(0.,0.192,0.38);
+
 //////////////////////////////
 //~ Transform
 
@@ -99,25 +103,30 @@ float sdf_segment(in vec2 p, in vec2 a, in vec2 b)
 vec4 grid(vec3 pos, float scale) {
     vec2 coord = pos.xz * scale;
     vec2 derivative = fwidth(coord);
-    vec2 grid = abs(fract(coord-0.5)-0.5) / (derivative*2);
+    vec2 grid = abs(fract(coord-0.5)-0.5) / (derivative*1.5);
     float line = min(grid.x, grid.y);
     float minimumz = min(derivative.y, 1);
     float minimumx = min(derivative.x, 1);
     // minimumz *= 19;
     // minimumx *= 89;
 
-    vec4 color = vec4(0.2, 0.2, 0.2, 1.0-min(line, 1.0));
+    // vec4 color = vec4(0.0, 0.0, 0.0, 1.0-min(line, 1.0));
+    vec3 base_color = vec3(0.984,0.98,0.855);
+    vec3 line_color = vec3(0.094,0.11,0.078);
+    vec4 color = vec4(mix(base_color, line_color, 1.0-min(line, 1.0)).xyz, 1.0);
 
     // z axis
     // if(pos.x > -0.01 && pos.x < 0.01) {
-    if(pos.x > -4 * minimumx && pos.x < 4 * minimumx) {
-        color.r = 1.0;
+    if(pos.x > -4 * minimumx && pos.x < 4 * minimumx)
+    {
+        color.b = 1.0;
     }
 
     // x axis
-    if(pos.z > -4 * minimumz && pos.z < 4 * minimumz) {
     // if(pos.z > -0.1 * minimumz && pos.z < 0.1 * minimumz) {
-        color.b = 1.0;
+    if(pos.z > -4 * minimumz && pos.z < 4 * minimumz)
+    {
+        color.r = 1.0;
     }
 
     // z axis
@@ -182,9 +191,9 @@ vec4 gizmos(inout float depth, inout uvec2 key)
 
     float dist     = length(view*gizmos_origin);
     vec3 origin    = gizmos_origin.xyz;
-    float center_r = 0.04 * dist;
+    float center_r = 0.02 * dist;
     float axis_r   = center_r/2.0;
-    float axis_l   = 0.3 * dist;
+    float axis_l   = 0.1 * dist;
     vec3 i_end     = origin+(i_hat*axis_l);
     vec3 j_end     = origin-(j_hat*axis_l);
     vec3 k_end     = origin+(k_hat*axis_l);
@@ -209,21 +218,21 @@ vec4 gizmos(inout float depth, inout uvec2 key)
             float d_cyl_y    = sd_capped_cylinder(p, origin, j_end, axis_r);
             bool is_closer_y = d_cyl_y < min_d;
             min_d            = is_closer_y ? d_cyl_y : min_d;
-            min_color        = is_closer_y ? vec4(0,1,0,1) : min_color;
+            min_color        = is_closer_y ? vec4(green.xyz,1) : min_color;
             min_key          = is_closer_y ? key_gizmos_jhat : min_key;
 
             // X Axis
             float d_cyl_x    = sd_capped_cylinder(p, origin, i_end, axis_r);
             bool is_closer_x = d_cyl_x < min_d;
             min_d            = is_closer_x ? d_cyl_x : min_d;
-            min_color        = is_closer_x ? vec4(0,0,1,1) : min_color;
+            min_color        = is_closer_x ? vec4(red.xyz,1) : min_color;
             min_key          = is_closer_x ? key_gizmos_ihat : min_key;
 
             // Z Axis
             float d_cyl_z    = sd_capped_cylinder(p, origin, k_end, axis_r);
             bool is_closer_z = d_cyl_z < min_d;
             min_d            = is_closer_z ? d_cyl_z : min_d;
-            min_color        = is_closer_z ? vec4(1,0,0,1) : min_color;
+            min_color        = is_closer_z ? vec4(blue.xyz,1) : min_color;
             min_key          = is_closer_z ? key_gizmos_khat : min_key;
         }
 

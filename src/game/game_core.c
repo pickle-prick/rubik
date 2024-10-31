@@ -41,7 +41,8 @@ return old_value;
 #include "generated/game.meta.c"
 
 internal void
-g_init(OS_Handle os_wnd) {
+g_init(OS_Handle os_wnd)
+{
     Arena *arena = arena_alloc();
     g_state = push_array(arena, G_State, 1);
     g_state->arena = arena;

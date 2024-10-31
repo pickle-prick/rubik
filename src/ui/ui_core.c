@@ -5,7 +5,7 @@ internal U64
 ui_hash_from_string(U64 seed, String8 string)
 {
     U64 result = seed;
-    for(U64 i = 0; i < string.size; i += 1)
+    for(U64 i = 0; i < string.size; i++)
     {
         result = ((result << 5) + result) + string.str[i];
     }
@@ -37,7 +37,8 @@ ui_display_part_from_key_string(String8 string)
 }
 
 internal UI_Key
-ui_key_zero(void) {
+ui_key_zero(void)
+{
     UI_Key result = {0};
     return result;
 }
@@ -46,7 +47,8 @@ internal UI_Key
 ui_key_from_string(UI_Key seed_key, String8 string)
 {
     UI_Key result = {0};
-    if(string.size != 0) {
+    if(string.size != 0)
+    {
         String8 hash_part = ui_hash_part_from_key_string(string);
         result.u64[0] = ui_hash_from_string(seed_key.u64[0], hash_part);
     }
@@ -54,7 +56,8 @@ ui_key_from_string(UI_Key seed_key, String8 string)
 }
 
 internal B32
-ui_key_match(UI_Key a, UI_Key b) {
+ui_key_match(UI_Key a, UI_Key b)
+{
     return a.u64[0] == b.u64[0];
 }
 
@@ -62,7 +65,8 @@ ui_key_match(UI_Key a, UI_Key b) {
 //~ Event Types Functions
 
 internal UI_EventNode *
-ui_event_list_push(Arena *arena, UI_EventList *list, UI_Event *v) {
+ui_event_list_push(Arena *arena, UI_EventList *list, UI_Event *v)
+{
     UI_EventNode *n = push_array(arena, UI_EventNode, 1);
     MemoryCopy(&n->v, v, sizeof(UI_Event));
     DLLPushBack(list->first, list->last, n);
@@ -70,7 +74,8 @@ ui_event_list_push(Arena *arena, UI_EventList *list, UI_Event *v) {
     return n;
 }
 
-internal void ui_eat_event(UI_EventList *list, UI_EventNode *node) {
+internal void ui_eat_event(UI_EventList *list, UI_EventNode *node)
+{
     DLLRemove(list->first, list->last, node);
     list->count -= 1;
 }
@@ -79,12 +84,14 @@ internal void ui_eat_event(UI_EventList *list, UI_EventNode *node) {
 //~ Box Type Functions
 
 internal B32
-ui_box_is_nil(UI_Box *box) {
+ui_box_is_nil(UI_Box *box)
+{
     return box == 0 || box == &ui_g_nil_box;
 }
 
 internal UI_BoxRec
-ui_box_rec_df(UI_Box *box, UI_Box *root, U64 sib_member_off, U64 child_member_off) {
+ui_box_rec_df(UI_Box *box, UI_Box *root, U64 sib_member_off, U64 child_member_off)
+{
     // Depth first search starting from the current box 
     UI_BoxRec result = {0};
     result.next = &ui_g_nil_box;
@@ -111,12 +118,14 @@ ui_box_rec_df(UI_Box *box, UI_Box *root, U64 sib_member_off, U64 child_member_of
 //~ rjf: State Allocating / Selection
 
 internal UI_State *
-ui_state_alloc(void) {
+ui_state_alloc(void)
+{
     Arena *arena = arena_alloc();
     UI_State *ui = push_array(arena, UI_State, 1);
     ui->arena = arena;
 
-    for(U64 i = 0; i < ArrayCount(ui->build_arenas); i++) {
+    for(U64 i = 0; i < ArrayCount(ui->build_arenas); i++)
+    {
         ui->build_arenas[i] = arena_alloc();
     }
     ui->box_table_size = 4096;
@@ -126,12 +135,14 @@ ui_state_alloc(void) {
 }
 
 internal UI_Box *
-ui_root_from_state(UI_State *state) {
+ui_root_from_state(UI_State *state)
+{
     return state->root;
 }
 
 internal void
-ui_select_state(UI_State *s) {
+ui_select_state(UI_State *s)
+{
     ui_state = s;
 }
 
@@ -158,12 +169,12 @@ ui_box_from_key(UI_Key key)
 {
     UI_Box *result = &ui_g_nil_box;
 
-    if (!ui_key_match(key, ui_key_zero()))
+    if(!ui_key_match(key, ui_key_zero()))
     {
         U64 slot = key.u64[0] % ui_state->box_table_size;
         for(UI_Box *b = ui_state->box_table[slot].hash_first; !ui_box_is_nil(b); b = b->hash_next)
         {
-            if (ui_key_match(b->key, key))
+            if(ui_key_match(b->key, key))
             {
                 result = b;
                 break;
@@ -194,8 +205,10 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, F32 dt)
     ui_state->root = &ui_g_nil_box;
 
     //- k: detect mouse-moves
-    for(UI_EventNode *n = events->first; n!=0; n = n->next) {
-        if (n->v.kind == UI_EventKind_MouseMove) {
+    for(UI_EventNode *n = events->first; n!=0; n = n->next)
+    {
+        if(n->v.kind == UI_EventKind_MouseMove)
+        {
             ui_state->mouse = n->v.pos;
             ui_state->last_time_mousemoved_us = os_now_microseconds();
         }
@@ -226,8 +239,10 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, F32 dt)
 
     // TODO: focus navigation
     {
-        for(U64 slot = 0; slot < ui_state->box_table_size; slot++) {
-            for(UI_Box *box = ui_state->box_table[slot].hash_first; !ui_box_is_nil(box); box = box->hash_next) {
+        for(U64 slot = 0; slot < ui_state->box_table_size; slot++)
+        {
+            for(UI_Box *box = ui_state->box_table[slot].hash_first; !ui_box_is_nil(box); box = box->hash_next)
+            {
                 box->default_nav_focus_hot_key    = box->default_nav_focus_next_hot_key;
                 box->default_nav_focus_active_key = box->default_nav_focus_next_active_key;
             }
@@ -251,21 +266,27 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, F32 dt)
     }
 
     // Reset active keys if they have been pruned
-    for (EachEnumVal(UI_MouseButtonKind, k)) {
-            UI_Box *box = ui_box_from_key(ui_state->active_box_key[k]);
-            if (ui_box_is_nil(box)) {
-                    ui_state->active_box_key[k] = ui_key_zero();
-            }
+    for(EachEnumVal(UI_MouseButtonKind, k))
+    {
+        UI_Box *box = ui_box_from_key(ui_state->active_box_key[k]);
+        if(ui_box_is_nil(box))
+        {
+            ui_state->active_box_key[k] = ui_key_zero();
+        }
     }
 }
 
 internal void
-ui_end_build(void) {
+ui_end_build(void)
+{
     // Prune untouched or transient widgets in the cache
-    for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++) {
-        for(UI_Box *box = ui_state->box_table[slot_idx].hash_first; !ui_box_is_nil(box); box = box->hash_next) {
+    for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
+    {
+        for(UI_Box *box = ui_state->box_table[slot_idx].hash_first; !ui_box_is_nil(box); box = box->hash_next)
+        {
             AssertAlways(!ui_key_match(box->key, ui_key_zero()));
-            if(box->last_touched_build_index < ui_state->build_index) {
+            if(box->last_touched_build_index < ui_state->build_index)
+            {
                 DLLRemove_NPZ(&ui_g_nil_box,
                               ui_state->box_table[slot_idx].hash_first,
                               ui_state->box_table[slot_idx].hash_last,
@@ -277,7 +298,8 @@ ui_end_build(void) {
     }
 
     // Layout box tree
-    for (Axis2 axis = 0; axis < Axis2_COUNT; axis++) {
+    for(Axis2 axis = 0; axis < Axis2_COUNT; axis++)
+    {
         ui_layout_root(ui_state->root, axis);
     }
 
@@ -299,8 +321,10 @@ ui_end_build(void) {
         F32 slug_rate = 1 - exp_f32((critical / 0.14f) * ui_state->animation_dt);
         F32 slaf_rate = 1 - exp_f32((critical / 0.28f) * ui_state->animation_dt);
 
-        for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++) {
-            for(UI_Box *b = ui_state->box_table[slot_idx].hash_first; !ui_box_is_nil(b); b = b->hash_next) {
+        for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
+        {
+            for(UI_Box *b = ui_state->box_table[slot_idx].hash_first; !ui_box_is_nil(b); b = b->hash_next)
+            {
                 B32 is_hot          = ui_key_match(b->key, ui_state->hot_box_key);
                 B32 is_active       = ui_key_match(b->key, ui_state->active_box_key[UI_MouseButtonKind_Left]);
 
@@ -328,10 +352,12 @@ ui_end_build(void) {
         UI_Box *active = ui_box_from_key(ui_state->active_box_key[UI_MouseButtonKind_Left]);
         UI_Box *box = ui_box_is_nil(active) ? hot : active;
         OS_Cursor cursor = box->hover_cursor;
-        if(box->flags & UI_BoxFlag_Disabled && box->flags & UI_BoxFlag_Clickable) {
+        if(box->flags & UI_BoxFlag_Disabled && box->flags & UI_BoxFlag_Clickable)
+        {
             cursor = OS_Cursor_Disabled;
         }
-        if(os_window_is_focused(ui_state->os_wnd) || !ui_box_is_nil(active)) {
+        if(os_window_is_focused(ui_state->os_wnd) || !ui_box_is_nil(active))
+        {
             os_set_cursor(cursor);
         }
     }
@@ -342,8 +368,10 @@ ui_end_build(void) {
 }
 
 internal void 
-ui_calc_sizes_standalone__in_place_rec(UI_Box *root, Axis2 axis) {
-    switch (root->pref_size[axis].kind) {
+ui_calc_sizes_standalone__in_place_rec(UI_Box *root, Axis2 axis)
+{
+    switch (root->pref_size[axis].kind)
+    {
         default:{}break;
         case UI_SizeKind_Pixels:
         {
@@ -360,24 +388,28 @@ ui_calc_sizes_standalone__in_place_rec(UI_Box *root, Axis2 axis) {
     }
 
     // Recurse
-    for (UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next) {
+    for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
+    {
         ui_calc_sizes_standalone__in_place_rec(child, axis);
     }
 }
 
 internal void
-ui_calc_sizes_upwards_dependent__in_place_rec(UI_Box *root, Axis2 axis) {
-    switch (root->pref_size[axis].kind) {
+ui_calc_sizes_upwards_dependent__in_place_rec(UI_Box *root, Axis2 axis)
+{
+    switch (root->pref_size[axis].kind)
+    {
         default:{}break;
         case UI_SizeKind_ParentPct: 
         {
             UI_Box *fixed_parent = &ui_g_nil_box;
             // Find a parent that has a fixed size
-            for (UI_Box *p = root->parent; !ui_box_is_nil(p); p = p->parent) {
-                if (p->flags & UI_BoxFlag_FixedWidth<<axis||
-                    p->pref_size[axis].kind == UI_SizeKind_Pixels||
-                    p->pref_size[axis].kind == UI_SizeKind_TextContent||
-                    p->pref_size[axis].kind == UI_SizeKind_ParentPct)
+            for(UI_Box *p = root->parent; !ui_box_is_nil(p); p = p->parent)
+            {
+                if(p->flags & UI_BoxFlag_FixedWidth<<axis||
+                   p->pref_size[axis].kind == UI_SizeKind_Pixels||
+                   p->pref_size[axis].kind == UI_SizeKind_TextContent||
+                   p->pref_size[axis].kind == UI_SizeKind_ParentPct)
                 {
                     fixed_parent = p;
                     break;
@@ -390,30 +422,39 @@ ui_calc_sizes_upwards_dependent__in_place_rec(UI_Box *root, Axis2 axis) {
     };
 
     // Recurse
-    for (UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next) {
+    for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
+    {
         ui_calc_sizes_upwards_dependent__in_place_rec(child, axis);
     }
 }
 
 internal void
-ui_calc_sizes_downwards_dependent__in_place_rec(UI_Box *root, Axis2 axis) {
+ui_calc_sizes_downwards_dependent__in_place_rec(UI_Box *root, Axis2 axis)
+{
     // Recurse first
-    for (UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next) {
+    for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
+    {
         ui_calc_sizes_downwards_dependent__in_place_rec(child, axis);
     }
 
-    switch (root->pref_size[axis].kind) {
+    switch (root->pref_size[axis].kind)
+    {
         default:{}break;
         case UI_SizeKind_ChildrenSum: 
         {
             F32 sum = 0;
-            for (UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next) {
+            for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
+            {
 
-                if (!(child->flags & (UI_BoxFlag_FloatingX<<axis))) {
-                    if (axis == root->child_layout_axis) {
+                if(!(child->flags & (UI_BoxFlag_FloatingX<<axis)))
+                {
+                    if(axis == root->child_layout_axis)
+                    {
                         sum += child->fixed_size.v[axis];
                     }
-                } else {
+                } 
+                else
+                {
                     sum = Max(sum, child->fixed_size.v[axis]);
                 }
 
@@ -425,19 +466,24 @@ ui_calc_sizes_downwards_dependent__in_place_rec(UI_Box *root, Axis2 axis) {
 }
 
 internal void
-ui_layout_enforce_constraints__in_place_rec(UI_Box *root, Axis2 axis) {
+ui_layout_enforce_constraints__in_place_rec(UI_Box *root, Axis2 axis)
+{
     Temp scratch = scratch_begin(0,0);
 
     // Fixup children sizes (along the *non-layout* axis)
-    if (axis != root->child_layout_axis && !(root->flags & (UI_BoxFlag_AllowOverflowX<<axis))) {
+    if(axis != root->child_layout_axis && !(root->flags & (UI_BoxFlag_AllowOverflowX<<axis)))
+    {
         F32 allowed_size = root->fixed_size.v[axis];
-        for (UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next) {
-            if (!(child->flags & (UI_BoxFlag_FloatingX<<axis))) {
+        for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
+        {
+            if(!(child->flags & (UI_BoxFlag_FloatingX<<axis)))
+            {
                 F32 child_size = child->fixed_size.v[axis];
                 F32 violation = child_size - allowed_size;
                 F32 max_fixup = child_size;
                 F32 fixup = Clamp(0, violation, max_fixup);
-                if (fixup > 0) {
+                if(fixup > 0)
+                {
                     child->fixed_size.v[axis] = fixup;
                 }
             }
@@ -445,13 +491,16 @@ ui_layout_enforce_constraints__in_place_rec(UI_Box *root, Axis2 axis) {
     }
 
     // Fixup children sizes (along the layout axis)
-    if (axis == root->child_layout_axis && !(root->flags & (UI_BoxFlag_AllowOverflowX<<axis))) {
+    if(axis == root->child_layout_axis && !(root->flags & (UI_BoxFlag_AllowOverflowX<<axis)))
+    {
         F32 total_allowed_size = root->fixed_size.v[axis];
         F32 total_size = 0;
         F32 total_weighted_size = 0;
 
-        for (UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next) {
-            if (!(child->flags & (UI_BoxFlag_FloatingX<<axis))) {
+        for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
+        {
+            if(!(child->flags & (UI_BoxFlag_FloatingX<<axis)))
+            {
                 total_size += child->fixed_size.v[axis];
                 total_weighted_size += child->fixed_size.v[axis] * (1-child->pref_size[axis].strictness);
             }
@@ -459,14 +508,17 @@ ui_layout_enforce_constraints__in_place_rec(UI_Box *root, Axis2 axis) {
 
         // k: if we have a violation, we need to subtract some amount from all children 
         F32 violation = total_size - total_allowed_size;
-        if (violation > 0) {
+        if(violation > 0)
+        {
             // Figure out how much we can take for each child
             F32 *child_fixups = push_array(scratch.arena, F32, root->child_count);
             F32 child_fixup_sum = 0;
             {
                 U64 child_idx = 0;
-                for (UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next, child_idx++) {
-                    if (!(child->flags & (UI_BoxFlag_FloatingX<<axis))) {
+                for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next, child_idx++)
+                {
+                    if(!(child->flags & (UI_BoxFlag_FloatingX<<axis))) 
+                    {
                         F32 fixup_size_this_child = child->fixed_size.v[axis] * (1-child->pref_size[axis].strictness);
                         AssertAlways(fixup_size_this_child >= 0);
                         child_fixups[child_idx] = fixup_size_this_child;
@@ -481,8 +533,10 @@ ui_layout_enforce_constraints__in_place_rec(UI_Box *root, Axis2 axis) {
                 // TODO: total_weighted_size could be zero 
                 F32 fixup_pct = (violation / total_weighted_size);
                 fixup_pct = Clamp(0, fixup_pct, 1);
-                for (UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next, child_idx++) {
-                    if (!(child->flags & (UI_BoxFlag_FloatingX<<axis))) {
+                for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next, child_idx++)
+                {
+                    if(!(child->flags & (UI_BoxFlag_FloatingX<<axis)))
+                    {
                         child->fixed_size.v[axis] -= child_fixups[child_idx] * fixup_pct;
                     }
                 }
@@ -491,32 +545,41 @@ ui_layout_enforce_constraints__in_place_rec(UI_Box *root, Axis2 axis) {
     }
 
     // Fixup upward-relative sizes, since root's size could be changed during this "fixation"
-    if (root->flags & (UI_BoxFlag_AllowOverflowX<<axis)) {
-        for (UI_Box *child = root->first; !(ui_box_is_nil(child)); child = child->next) {
-            if (child->pref_size[axis].kind == UI_SizeKind_ParentPct) {
+    if(root->flags & (UI_BoxFlag_AllowOverflowX<<axis))
+    {
+        for(UI_Box *child = root->first; !(ui_box_is_nil(child)); child = child->next)
+        {
+            if(child->pref_size[axis].kind == UI_SizeKind_ParentPct)
+            {
                 child->fixed_size.v[axis] = root->fixed_size.v[axis] * child->pref_size[axis].value;
             }
         }
     }
    
     // Recurse
-    for (UI_Box *child = root->first; !(ui_box_is_nil(child)); child = child->next) {
+    for(UI_Box *child = root->first; !(ui_box_is_nil(child)); child = child->next) 
+    {
         ui_layout_enforce_constraints__in_place_rec(child, axis);
     }
     scratch_end(scratch);
 }
 
 internal void
-ui_layout_position__in_place_rec(UI_Box *root, Axis2 axis) {
+ui_layout_position__in_place_rec(UI_Box *root, Axis2 axis)
+{
     F32 layout_position = 0;
 
     // Lay out children 
-    for (UI_Box *child = root->first; !(ui_box_is_nil(child)); child = child->next) {
-        if (!(child->flags & (UI_BoxFlag_FloatingX<<axis))) {
+    for(UI_Box *child = root->first; !(ui_box_is_nil(child)); child = child->next)
+    {
+        if(!(child->flags & (UI_BoxFlag_FloatingX<<axis)))
+        {
             child->fixed_position.v[axis] = layout_position;
-            if (root->child_layout_axis == axis) {
+            if(root->child_layout_axis == axis)
+            {
                 layout_position += child->fixed_size.v[axis];
-            } else {}
+            }
+            else {}
         }
 
         // Determine final rect for child, given fixed_position & size
@@ -524,13 +587,15 @@ ui_layout_position__in_place_rec(UI_Box *root, Axis2 axis) {
         child->rect.p1.v[axis] = child->rect.p0.v[axis] + child->fixed_size.v[axis];
     }
 
-    for (UI_Box *child = root->first; !(ui_box_is_nil(child)); child = child->next) {
+    for(UI_Box *child = root->first; !(ui_box_is_nil(child)); child = child->next)
+    {
         ui_layout_position__in_place_rec(child, axis);
     }
 }
 
 internal void
-ui_layout_root(UI_Box *root, Axis2 axis) {
+ui_layout_root(UI_Box *root, Axis2 axis)
+{
     ui_calc_sizes_standalone__in_place_rec(root, axis);
     ui_layout_position__in_place_rec(root, axis);
     ui_calc_sizes_upwards_dependent__in_place_rec(root, axis);
@@ -544,7 +609,8 @@ ui_layout_root(UI_Box *root, Axis2 axis) {
 
 //- rjf: box node construction
 internal UI_Box *
-ui_build_box_from_key(UI_BoxFlags flags, UI_Key key) {
+ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
+{
     // Grab active parent
     UI_Box *parent = ui_top_parent();
     UI_BoxFlags last_flags = 0;
@@ -554,7 +620,8 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key) {
     last_flags = box->flags;
 
     // Zero key on duplicate
-    if (!(box_first_frame) && box->last_touched_build_index == ui_state->build_index) {
+    if(!(box_first_frame) && box->last_touched_build_index == ui_state->build_index)
+    {
         box = &ui_g_nil_box;
         key = ui_key_zero();
         box_first_frame = 1;
@@ -564,12 +631,16 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key) {
     U32 box_is_transient = ui_key_match(key, ui_key_zero());
 
     // Allocate box if it doesn't yet exist
-    if (box_first_frame) {
+    if(box_first_frame)
+    {
         box = box_is_transient ? 0 : ui_state->first_free_box;
 
-        if (!ui_box_is_nil(box)) {
+        if(!ui_box_is_nil(box))
+        {
             SLLStackPop(ui_state->first_free_box);
-        } else {
+        }
+        else
+        {
             box = push_array_no_zero(box_is_transient ? ui_build_arena(): ui_state->arena, UI_Box, 1);
         }
         MemoryZeroStruct(box);
@@ -586,7 +657,8 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key) {
     }
 
     // Hook into persistent state table
-    if (box_first_frame && !box_is_transient) {
+    if(box_first_frame && !box_is_transient)
+    {
         U64 slot = key.u64[0] % ui_state->box_table_size;
         DLLInsert_NPZ(&ui_g_nil_box, ui_state->box_table[slot].hash_first,
                       ui_state->box_table[slot].hash_last,
@@ -595,7 +667,8 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key) {
     }
 
     // Hook into per-frame tree structure
-    if (!ui_box_is_nil(parent)) {
+    if(!ui_box_is_nil(parent))
+    {
         DLLPushBack_NPZ(&ui_g_nil_box, parent->first, parent->last, box, next, prev);
         parent->child_count+=1;
         AssertAlways(parent->child_count < 100);
@@ -607,24 +680,32 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key) {
         box->key                      = key;
         box->flags                    = flags | ui_state->flags_stack.top->v;
         box->last_touched_build_index = ui_state->build_index;
-        if(ui_state->fixed_x_stack.top != &ui_state->fixed_x_nil_stack_top) {
+        if(ui_state->fixed_x_stack.top != &ui_state->fixed_x_nil_stack_top)
+        {
             box->flags |= UI_BoxFlag_FloatingX;
             box->fixed_position.x = ui_state->fixed_x_stack.top->v;
         }
-        if(ui_state->fixed_y_stack.top != &ui_state->fixed_y_nil_stack_top) {
+        if(ui_state->fixed_y_stack.top != &ui_state->fixed_y_nil_stack_top)
+        {
             box->flags |= UI_BoxFlag_FloatingY;
             box->fixed_position.y = ui_state->fixed_y_stack.top->v;
         }
-        if(ui_state->fixed_width_stack.top != &ui_state->fixed_width_nil_stack_top) {
+        if(ui_state->fixed_width_stack.top != &ui_state->fixed_width_nil_stack_top)
+        {
             box->flags |= UI_BoxFlag_FixedWidth;
             box->fixed_size.x = ui_state->fixed_width_stack.top->v;
-        } else {
+        }
+        else
+        {
             box->pref_size[Axis2_X] = ui_state->pref_width_stack.top->v;
         }
-        if(ui_state->fixed_height_stack.top != &ui_state->fixed_height_nil_stack_top) {
+        if(ui_state->fixed_height_stack.top != &ui_state->fixed_height_nil_stack_top)
+        {
             box->flags |= UI_BoxFlag_FixedHeight;
             box->fixed_size.y = ui_state->fixed_height_stack.top->v;
-        } else {
+        }
+        else
+        {
             box->pref_size[Axis2_Y] = ui_state->pref_height_stack.top->v;
         }
 
@@ -659,7 +740,8 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key) {
 }
 
 internal UI_Key
-ui_active_seed_key(void) {
+ui_active_seed_key(void)
+{
     UI_Box *keyed_ancestor = &ui_g_nil_box;
     for(UI_Box *p = ui_top_parent(); !ui_box_is_nil(p); p = p->parent)
     {
@@ -673,21 +755,24 @@ ui_active_seed_key(void) {
 }
 
 internal UI_Box *
-ui_build_box_from_string(UI_BoxFlags flags, String8 string) {
+ui_build_box_from_string(UI_BoxFlags flags, String8 string)
+{
     // Grab active parent
     UI_Box *parent = ui_top_parent();
 
     UI_Key key = ui_key_from_string(ui_active_seed_key(), string);
 
     UI_Box *box = ui_build_box_from_key(flags, key);
-    if (flags & UI_BoxFlag_DrawText) {
+    if(flags & UI_BoxFlag_DrawText)
+    {
         ui_box_equip_display_string(box, string);
     }
     return box;
 }
 
 internal UI_Box *
-ui_build_box_from_stringf(UI_BoxFlags flags, char *fmt, ...) {
+ui_build_box_from_stringf(UI_BoxFlags flags, char *fmt, ...)
+{
     Temp scratch = scratch_begin(0,0);
     va_list args;
     va_start(args, fmt);
@@ -700,10 +785,12 @@ ui_build_box_from_stringf(UI_BoxFlags flags, char *fmt, ...) {
 
 //- rjf: box node equipment
 internal inline void
-ui_box_equip_display_string(UI_Box *box, String8 string) {
+ui_box_equip_display_string(UI_Box *box, String8 string)
+{
     box->string = push_str8_copy(ui_build_arena(), string);
 
-    if (box->flags & UI_BoxFlag_DrawText) {
+    if(box->flags & UI_BoxFlag_DrawText)
+    {
         D_FancyStringNode fancy_string_n = {0};
         fancy_string_n.next = 0;
         fancy_string_n.v.font                    = box->font;
@@ -722,7 +809,8 @@ ui_box_equip_display_string(UI_Box *box, String8 string) {
 }
 
 internal Vec2F32
-ui_box_text_position(UI_Box *box) {
+ui_box_text_position(UI_Box *box)
+{
     Vec2F32 result = {0};
 
     F_Tag font = box->font;
@@ -732,7 +820,8 @@ ui_box_text_position(UI_Box *box) {
     result.y += font_metrics.ascent/2.0f;
     result.y -= font_metrics.descent/2.0f;
 
-    switch(box->text_align) {
+    switch(box->text_align)
+    {
         default:
         case UI_TextAlign_Left:
         {
@@ -798,10 +887,13 @@ ui_box_display_string(UI_Box *box)
 }
 
 internal B32 
-ui_is_key_auto_focus_hot(UI_Key key) {
+ui_is_key_auto_focus_hot(UI_Key key)
+{
     B32 result = 0;
-    if(!ui_key_match(ui_key_zero(), key)) {
-        for(UI_Box *p = ui_top_parent(); !ui_box_is_nil(p); p = p->parent) {
+    if(!ui_key_match(ui_key_zero(), key))
+    {
+        for(UI_Box *p = ui_top_parent(); !ui_box_is_nil(p); p = p->parent)
+        {
             if(p->flags & UI_BoxFlag_FocusHot &&
                ((!(p->flags & UI_BoxFlag_FocusHotDisabled) && ui_key_match(key, p->default_nav_focus_hot_key)) ||
                ui_key_match(key, p->default_nav_focus_active_key)))
@@ -815,11 +907,15 @@ ui_is_key_auto_focus_hot(UI_Key key) {
 }
 
 internal B32
-ui_is_key_auto_focus_active(UI_Key key) {
+ui_is_key_auto_focus_active(UI_Key key)
+{
     B32 result = 0;
-    if(!ui_key_match(ui_key_zero(), key)) {
-        for(UI_Box *p = ui_top_parent(); !ui_box_is_nil(p); p = p->parent) {
-            if(p->flags & UI_BoxFlag_FocusActive && ui_key_match(key, p->default_nav_focus_active_key)) {
+    if(!ui_key_match(ui_key_zero(), key))
+    {
+        for(UI_Box *p = ui_top_parent(); !ui_box_is_nil(p); p = p->parent)
+        {
+            if(p->flags & UI_BoxFlag_FocusActive && ui_key_match(key, p->default_nav_focus_active_key))
+            {
                 result = 1;
                 break;
             }
@@ -829,9 +925,12 @@ ui_is_key_auto_focus_active(UI_Key key) {
 }
 
 internal void
-ui_set_auto_focus_hot_key(UI_Key key) {
-    for(UI_Box *p = ui_top_parent(); !ui_box_is_nil(p); p = p->parent) {
-        if(p->flags & UI_BoxFlag_DefaultFocusNav) {
+ui_set_auto_focus_hot_key(UI_Key key)
+{
+    for(UI_Box *p = ui_top_parent(); !ui_box_is_nil(p); p = p->parent)
+    {
+        if(p->flags & UI_BoxFlag_DefaultFocusNav)
+        {
             p->default_nav_focus_next_hot_key = key;
             break;
         }
@@ -839,9 +938,12 @@ ui_set_auto_focus_hot_key(UI_Key key) {
 }
 
 internal void
-ui_set_auto_focus_active_key(UI_Key key) {
-    for(UI_Box *p = ui_top_parent(); !ui_box_is_nil(p); p = p->parent) {
-        if(p->flags & UI_BoxFlag_DefaultFocusNav) {
+ui_set_auto_focus_active_key(UI_Key key)
+{
+    for(UI_Box *p = ui_top_parent(); !ui_box_is_nil(p); p = p->parent)
+    {
+        if(p->flags & UI_BoxFlag_DefaultFocusNav)
+        {
             p->default_nav_focus_next_active_key = key;
             break;
         }
@@ -851,14 +953,19 @@ ui_set_auto_focus_active_key(UI_Key key) {
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: focus tree coloring
 internal B32
-ui_is_focus_hot(void) {
+ui_is_focus_hot(void)
+{
     B32 result = (ui_state->focus_hot_stack.top->v == UI_FocusKind_On);
-    if(result) {
-        for(UI_FocusHotNode *n = ui_state->focus_hot_stack.top; n != 0; n = n->next) {
-            if(n->v == UI_FocusKind_Root) {
+    if(result)
+    {
+        for(UI_FocusHotNode *n = ui_state->focus_hot_stack.top; n != 0; n = n->next)
+        {
+            if(n->v == UI_FocusKind_Root)
+            {
                 break;
             }
-            if(n->v == UI_FocusKind_Off) {
+            if(n->v == UI_FocusKind_Off)
+            {
                 result = 0;
                 break;
             }
@@ -868,14 +975,19 @@ ui_is_focus_hot(void) {
 }
 
 internal B32
-ui_is_focus_active(void) {
+ui_is_focus_active(void)
+{
     B32 result = (ui_state->focus_active_stack.top->v == UI_FocusKind_On);
-    if(result) {
-        for(UI_FocusHotNode *n = ui_state->focus_hot_stack.top; n != 0; n = n->next) {
-            if(n->v == UI_FocusKind_Root) {
+    if(result)
+    {
+        for(UI_FocusHotNode *n = ui_state->focus_hot_stack.top; n != 0; n = n->next)
+        {
+            if(n->v == UI_FocusKind_Root)
+            {
                 break;
             }
-            if(n->v == UI_FocusKind_Off) {
+            if(n->v == UI_FocusKind_Off)
+            {
                 result = 0;
                 break;
             }
@@ -888,7 +1000,8 @@ ui_is_focus_active(void) {
 //~ rjf: User Interaction
 
 internal UI_Signal
-ui_signal_from_box(UI_Box *box) {
+ui_signal_from_box(UI_Box *box)
+{
     UI_Signal sig = {0};
     sig.box = box;
     sig.event_flags |= os_get_modifiers();
@@ -896,15 +1009,18 @@ ui_signal_from_box(UI_Box *box) {
     Rng2F32 rect = box->rect;
 
     //- k: calculate possibly-clipped box rectangle
-    for (UI_Box *b = box->parent; !ui_box_is_nil(b); b = b->parent) {
-        if (b->flags & UI_BoxFlag_Clip) {
+    for(UI_Box *b = box->parent; !ui_box_is_nil(b); b = b->parent)
+    {
+        if(b->flags & UI_BoxFlag_Clip)
+        {
             rect = intersect_2f32(rect, b->rect);
         }
     }
 
     /////////////////////////////////////////////////////////////////////////////////////
     //- k: process events related to this box
-    for (UI_EventNode *n = ui_state->events->first, *next=0; n != 0; n = next) {
+    for(UI_EventNode *n = ui_state->events->first, *next=0; n != 0; n = next)
+    {
         B32 taken = 0;
         next = n->next;
         UI_Event *evt = &n->v;
@@ -923,10 +1039,10 @@ ui_signal_from_box(UI_Box *box) {
         sig.event_flags |= evt->modifiers;
 
         //- k: mouse pressed in box -> set hot/active, mark signal accordingly
-        if (box->flags & UI_BoxFlag_MouseClickable &&
-            evt->kind == UI_EventKind_Press &&
-            evt_mouse_in_bounds &&
-            evt_key_is_mouse)
+        if(box->flags & UI_BoxFlag_MouseClickable &&
+           evt->kind == UI_EventKind_Press &&
+           evt_mouse_in_bounds &&
+           evt_key_is_mouse)
         {
             ui_state->hot_box_key = box->key;
             ui_state->active_box_key[evt_mouse_button_kind] = box->key;
@@ -935,7 +1051,8 @@ ui_signal_from_box(UI_Box *box) {
             ui_state->drag_start_mouse = evt->pos;
             
             if(ui_key_match(box->key, ui_state->press_key_history[evt_mouse_button_kind][0]) &&
-               evt->timestamp_us-ui_state->press_timestamp_history_us[evt_mouse_button_kind][0] <= 1000000*os_get_gfx_info()->double_click_time) {
+               evt->timestamp_us-ui_state->press_timestamp_history_us[evt_mouse_button_kind][0] <= 1000000*os_get_gfx_info()->double_click_time)
+            {
                 sig.f |= (UI_SignalFlag_LeftDoubleClicked<<evt_mouse_button_kind);
             }
 
@@ -953,10 +1070,10 @@ ui_signal_from_box(UI_Box *box) {
         }
 
         //- k: mouse released in active box -> unset active
-        if (box->flags & UI_BoxFlag_MouseClickable &&
-            evt->kind == UI_EventKind_Release &&
-            ui_key_match(box->key, ui_state->active_box_key[evt_mouse_button_kind]) &&
-            evt_mouse_in_bounds && evt_key_is_mouse)
+        if(box->flags & UI_BoxFlag_MouseClickable &&
+           evt->kind == UI_EventKind_Release &&
+           ui_key_match(box->key, ui_state->active_box_key[evt_mouse_button_kind]) &&
+           evt_mouse_in_bounds && evt_key_is_mouse)
         {
             ui_state->hot_box_key = box->key;
             ui_state->active_box_key[evt_mouse_button_kind] = ui_key_zero();
@@ -969,11 +1086,11 @@ ui_signal_from_box(UI_Box *box) {
         // TODO: handle ancestors which are covering this box
 
         //- k: mouse released outside of active box -> unset hot/active
-        if (box->flags & UI_BoxFlag_MouseClickable &&
-            evt->kind == UI_EventKind_Release &&
-            ui_key_match(box->key, ui_state->active_box_key[evt_mouse_button_kind]) &&
-            !evt_mouse_in_bounds &&
-            evt_key_is_mouse)
+        if(box->flags & UI_BoxFlag_MouseClickable &&
+           evt->kind == UI_EventKind_Release &&
+           ui_key_match(box->key, ui_state->active_box_key[evt_mouse_button_kind]) &&
+           !evt_mouse_in_bounds &&
+           evt_key_is_mouse)
         {
             ui_state->hot_box_key = box->key;
             ui_state->active_box_key[evt_mouse_button_kind] = ui_key_zero();
@@ -1014,21 +1131,21 @@ ui_signal_from_box(UI_Box *box) {
         }
 
         //- k: taken -> eat event
-        if (taken) {
+        if(taken)
+        {
             ui_eat_event(ui_state->events, n);
         }
     }
 
     //////////////////////////////
     //- rjf: mouse is over this box's rect -> always mark mouse-over
-    //
-    if(contains_2f32(rect, ui_state->mouse)) {
+    if(contains_2f32(rect, ui_state->mouse))
+    {
         sig.f |= UI_SignalFlag_MouseOver;
     }
 
     //////////////////////////////
     //- rjf: mouse is over this box's rect, no other hot key? -> set hot key, mark hovering
-    //
     if(box->flags & UI_BoxFlag_MouseClickable &&
        contains_2f32(rect, ui_state->mouse) &&
        (ui_key_match(ui_state->hot_box_key, ui_key_zero()) || ui_key_match(ui_state->hot_box_key, box->key)) &&
@@ -1090,7 +1207,8 @@ ui_signal_from_box(UI_Box *box) {
 //~ rjf: Sizes
 
 internal UI_Size
-ui_size(UI_SizeKind kind, F32 value, F32 strictness) {
+ui_size(UI_SizeKind kind, F32 value, F32 strictness)
+{
     UI_Size size = {kind, value, strictness};
     return size;
 }
@@ -1098,7 +1216,8 @@ ui_size(UI_SizeKind kind, F32 value, F32 strictness) {
 ////////////////////////////////
 //~ rjf: Text Operation Functions
 internal UI_TxtOp
-ui_single_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, TxtPt cursor, TxtPt mark) {
+ui_single_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, TxtPt cursor, TxtPt mark)
+{
     TxtPt next_cursor = cursor;
     TxtPt next_mark = mark;
     TxtRng range = {0};
@@ -1127,8 +1246,10 @@ ui_single_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, 
         case UI_EventDeltaUnit_Page: 
         {
             U64 first_nonwhitespace_column = 1;
-            for(U64 idx = 0; idx < string.size; idx++) {
-                if(!char_is_space(string.str[idx])) {
+            for(U64 idx = 0; idx < string.size; idx++)
+            {
+                if(!char_is_space(string.str[idx]))
+                {
                     first_nonwhitespace_column = idx + 1;
                     break;
                 }
@@ -1139,29 +1260,34 @@ ui_single_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, 
     }
 
     // Form next cursor
-    if(txt_pt_match(cursor,mark)) {
+    if(txt_pt_match(cursor,mark))
+    {
         next_cursor.column += delta.x;
     }
 
-    if(!(event->flags & UI_EventFlag_KeepMark)) {
+    if(!(event->flags & UI_EventFlag_KeepMark))
+    {
         next_mark = next_cursor;
     }
 
     // Copying
-    if(event->flags & UI_EventFlag_Copy) {
+    if(event->flags & UI_EventFlag_Copy)
+    {
         copy = str8_substr(string, r1u64(cursor.column-1, mark.column-1));
         flags |= UI_TxtOpFlag_Copy;
     }
 
     // Pasting
-    if(event->flags & UI_EventFlag_Paste) {
+    if(event->flags & UI_EventFlag_Paste)
+    {
         range = txt_rng(cursor, mark);
         replace = os_get_clipboard_text(arena);
         next_cursor = next_mark = txt_pt(cursor.line, cursor.column+replace.size);
     }
 
     // Deletion
-    if(event->flags & UI_EventFlag_Delete) {
+    if(event->flags & UI_EventFlag_Delete)
+    {
         TxtPt new_pos = txt_pt_min(next_cursor, next_mark);
         range = txt_rng(next_cursor, next_mark);
         replace = str8_lit("");
@@ -1169,7 +1295,8 @@ ui_single_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, 
     }
 
     // Insertion
-    if(event->string.size != 0) {
+    if(event->string.size != 0)
+    {
         range = txt_rng(cursor, mark);
         replace = push_str8_copy(arena, event->string);
         next_cursor = next_mark = txt_pt(range.min.line, range.min.column+event->string.size);
@@ -1177,7 +1304,8 @@ ui_single_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, 
 
     //- rjf: determine if this event should be taken, based on bounds of cursor
     {
-        if (next_cursor.column > string.size + 1 || 1 > next_cursor.column || event->delta_2s32.y != 0) {
+        if(next_cursor.column > string.size + 1 || 1 > next_cursor.column || event->delta_2s32.y != 0)
+        {
             flags |= UI_TxtOpFlag_Invalid;
         }
         next_cursor.column = Clamp(1, next_cursor.column, string.size + replace.size + 1);
@@ -1196,7 +1324,8 @@ ui_single_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, 
 }
 
 internal String8
-ui_push_string_replace_range(Arena *arena, String8 string, Rng1S64 col_range, String8 replace) {
+ui_push_string_replace_range(Arena *arena, String8 string, Rng1S64 col_range, String8 replace)
+{
     //- rjf: convert to offset range
     Rng1U64 range =
     {

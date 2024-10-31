@@ -33,7 +33,8 @@ float rect_sdf(vec2 pos, vec2 rect_size, float r) {
 void main() {
     // Sample texture
     vec4 albedo_sample = vec4(1, 1, 1, 1);
-    if (omit_texture < 1.0) {
+    if (omit_texture < 1.0)
+    {
         // xform for sample channel map 
         albedo_sample = globals.texture_sample_channel_map * texture(tex_sampler, texcoord_pct);
     }
@@ -41,7 +42,8 @@ void main() {
     // Sample for borders
     // TODO(@k): support border color
     float border_sdf_t = 1.0;
-    if (border_thickness_px > 0) {
+    if (border_thickness_px > 0)
+    {
         float border_sdf_s = rect_sdf(sdf_sample_pos,
                                       rect_half_size_px - 2*softness_px - border_thickness_px,
                                       max(border_thickness_px-corner_radius_px, 0));
@@ -50,7 +52,8 @@ void main() {
 
     // Sample for corners
     float corner_sdf_t = 1.0;
-    if (corner_radius_px > 0 || softness_px > 0.75) {
+    if (corner_radius_px > 0 || softness_px > 0.75)
+    {
         float corner_sdf_s = rect_sdf(sdf_sample_pos, rect_half_size_px - 2*softness_px, corner_radius_px);
         corner_sdf_t = 1.0 - smoothstep(0, 2*softness_px, corner_sdf_s);
     }

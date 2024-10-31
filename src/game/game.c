@@ -11,20 +11,20 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     g_state->hot_key = (G_Key){ hot_key };
 
     // UI Box for game viewport (Handle user interaction)
-    UI_Rect(window_rect) 
-    {
-        UI_Box *box = ui_build_box_from_string(UI_BoxFlag_MouseClickable|
-                                               UI_BoxFlag_ClickToFocus|
-                                               UI_BoxFlag_Scroll,
-                                               str8_lit("game_overlay"));
-        g_state->sig = ui_signal_from_box(box);
-    }
+    ui_push_rect(window_rect);
+    UI_Box *box = ui_build_box_from_string(UI_BoxFlag_MouseClickable|
+                                            UI_BoxFlag_ClickToFocus|
+                                            UI_BoxFlag_Scroll,
+                                            str8_lit("###game_overlay"));
+    ui_push_parent(box);
+    ui_pop_rect();
 
     // G_Node *hot_node = 0;
     G_Node *active_node = 0;
 
     // Stats pane
-    ui_pane_begin(r2f32p(0, 700, 600, 1400), str8_lit("game"));
+
+    UI_CornerRadius(9) ui_pane_begin(r2f32p(10, 700, 610, 1400), str8_lit("game"));
     ui_column_begin();
     F32 dt_sec = dt/1000000.0f;
 
@@ -70,6 +70,13 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
             }
             node = g_node_df_pre(node, 0);
         }
+    }
+
+    UI_Row
+    {
+        ui_label(str8_lit("test_buttonl"));
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_button(str8_lit("test button"));
     }
 
     // Unpack camera
@@ -122,17 +129,15 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
             // Dragging started
             if((g_state->sig.f & UI_SignalFlag_LeftDragging) &&
                 g_state->is_dragging == 0 &&
-                (g_state->hot_key.u64[0] == G_SpecialKeyKind_GizmosIhat ||
-                g_state->hot_key.u64[0] == G_SpecialKeyKind_GizmosJhat  ||
-                g_state->hot_key.u64[0] == G_SpecialKeyKind_GizmosKhat))
+                (g_state->hot_key.u64[0] == G_SpecialKeyKind_GizmosIhat || g_state->hot_key.u64[0] == G_SpecialKeyKind_GizmosJhat  || g_state->hot_key.u64[0] == G_SpecialKeyKind_GizmosKhat))
             {
                 Vec3F32 direction = {0};
                 switch(g_state->hot_key.u64[0])
                 {
-                    default: { InvalidPath; }break;
-                    case G_SpecialKeyKind_GizmosIhat: { direction = local_i; }break;
-                    case G_SpecialKeyKind_GizmosJhat: { direction = local_j; }break;
-                    case G_SpecialKeyKind_GizmosKhat: { direction = local_k; }break;
+                    default: {InvalidPath;}break;
+                    case G_SpecialKeyKind_GizmosIhat: {direction = local_i;}break;
+                    case G_SpecialKeyKind_GizmosJhat: {direction = local_j;}break;
+                    case G_SpecialKeyKind_GizmosKhat: {direction = local_k;}break;
                 }
                 g_state->is_dragging = 1;
                 g_state->drag_start_direction = direction;
@@ -186,6 +191,8 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
 
     ui_column_end();
     ui_pane_end();
+    ui_pop_parent();
+    g_state->sig = ui_signal_from_box(box);
 }
 
 /////////////////////////////////
@@ -201,7 +208,6 @@ G_NODE_CUSTOM_UPDATE(camera_fn)
     if(g_state->sig.f & UI_SignalFlag_LeftDragging)
     {
         Vec2F32 delta = ui_drag_delta();
-        g_kv("left dragging delta", "%.2f %.2f", delta.x, delta.y);
     }
 
     Vec3F32 f = {0};
@@ -279,9 +285,7 @@ G_NODE_CUSTOM_UPDATE(camera_fn)
 
 // typedef struct G_PlayerData G_PlayerData;
 // struct G_PlayerData
-// {
-//     Vec3F32 face;
-// };
+// { };
 
 // G_NODE_CUSTOM_UPDATE(player_fn)
 // {

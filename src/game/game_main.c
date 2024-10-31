@@ -4,8 +4,6 @@
 #include <stdlib.h>
 
 // [h]
-// #define FAST_OBJ_IMPLEMENTATION
-// #include "external/fast_obj.h"
 #define CGLTF_IMPLEMENTATION
 #include "external/cgltf.h"
 #define STB_IMAGE_IMPLEMENTATION
@@ -23,7 +21,6 @@
 #include "./game.h"
 
 // [c]
-// #include "external/cJSON.c" // TODO: we may want to use JSMN for this
 #include "base/base_inc.c"
 #include "os/os_inc.c"
 #include "render/render_inc.c"
@@ -61,7 +58,7 @@ ui_draw(OS_Handle os_wnd)
         //- k: draw the border
         if(b->flags & UI_BoxFlag_DrawBorder)
         {
-            d_rect(b->rect, v4f32(0,0.3,1,0.3), 0,0,0);
+            d_rect(b->rect, v4f32(0.102,0.102,0.098,1.0), 0,0,0);
         }
 
         //- k: draw drop_shadw
@@ -75,8 +72,7 @@ ui_draw(OS_Handle os_wnd)
         {
             // Main rectangle
             // TODO: use color palette
-            Vec4F32 box_bg = rgba_from_u32(0x8A7F0FFF);
-            box_bg.w = 0.3;
+            Vec4F32 box_bg = rgba_from_u32(0X212121FF);
             R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), box_bg, 0, 0, 1.f);
             MemoryCopyArray(inst->corner_radii, b->corner_radii);
 
@@ -207,8 +203,14 @@ entry_point(CmdLine *cmd_line)
     Arena *frame_arena = arena_alloc();
 
     //- Time delta
-    // TODO: 
-    U64 frame_start_us = os_now_microseconds();
+    // TODO: using moving average to smooth out the value
+    U64 frame_us     = os_now_microseconds();
+    U64 cpu_start_us = 0;
+    U64 cpu_end_us   = 0;
+    U64 cpu_dt_us    = 0;
+    U64 gpu_start_us = 0;
+    U64 gpu_end_us   = 0;
+    U64 gpu_dt_us    = 0;
 
     //- Resource
     F_Tag main_font = f_tag_from_path("./fonts/Mplus1Code-Medium.ttf");
@@ -237,19 +239,14 @@ entry_point(CmdLine *cmd_line)
     // TODO: is this size per line
     U64 edit_string_size_out2[] = {4};
 
-    // int x,y,n; 
-    // U8 *demo_image_data = stbi_load("textures/the-inside-world.png", &x, &y, &n, 4);
-    // R_Handle demo_image = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Nearest, v2s32(x,y), R_Tex2DFormat_RGBA8, demo_image_data);
-    // stbi_image_free(demo_image_data);
-
     g_init(window);
     G_Scene *scene = g_scene_load();
 
     B32 window_should_close = 0;
     while(!window_should_close)
     {
-        U64 dt = os_now_microseconds() - frame_start_us;
-        frame_start_us = os_now_microseconds();
+        U64 dt = os_now_microseconds() - frame_us;
+        frame_us = os_now_microseconds();
 
         //- Poll events
         events = os_get_events(frame_arena, 0);
@@ -264,6 +261,9 @@ entry_point(CmdLine *cmd_line)
         r_begin_frame();
         U64 id = r_window_begin_frame(window, wnd);
         d_begin_frame();
+        cpu_start_us = os_now_microseconds();
+        gpu_end_us = os_now_microseconds();
+        gpu_dt_us = gpu_end_us - gpu_start_us;
 
         /////////////////////////////////
         // Create the top bucket (for UI)
@@ -365,9 +365,10 @@ entry_point(CmdLine *cmd_line)
         // ui_push_text_raster_flags(...);
 
         UI_Box *bg_box = &ui_g_nil_box;
+
         UI_Rect(window_rect)
-            UI_ChildLayoutAxis(Axis2_X)
-            UI_Focus(UI_FocusKind_On)
+        UI_ChildLayoutAxis(Axis2_X)
+        UI_Focus(UI_FocusKind_On)
         {
             bg_box = ui_build_box_from_stringf(UI_BoxFlag_FixedSize|
                                                UI_BoxFlag_Clickable|
@@ -377,38 +378,43 @@ entry_point(CmdLine *cmd_line)
 
         // UI_Flags(UI_BoxFlag_ClickToFocus) 
         ui_push_parent(bg_box);
-        UI_Pane(r2f32p(0, 0, 600, 300), str8_lit("stats"))
+        UI_Pane(r2f32p(10, 10, 710, 310), str8_lit("stats"))
         {
-            ui_pop_corner_radius();
-
             ui_set_next_pref_size(Axis2_Y, ui_pct(1.0, 1.0));
             UI_Column
             {
                 UI_Row
                 {
-                    ui_label(str8_lit("dt"));
+                    ui_label(str8_lit("frame time ms"));
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%.6f", (dt / 1000000.0));
+                    ui_labelf("%.6f", (dt/1000.0));
                 }
-
+                UI_Row
+                {
+                    ui_label(str8_lit("cpu time ms"));
+                    ui_spacer(ui_pct(1.0, 0.0));
+                    ui_labelf("%.6f", (cpu_dt_us/1000.0));
+                }
+                UI_Row
+                {
+                    ui_label(str8_lit("gpu time ms"));
+                    ui_spacer(ui_pct(1.0, 0.0));
+                    ui_labelf("%.6f", (gpu_dt_us/1000.0));
+                }
                 ui_spacer(ui_px(3.0, 0));
-
                 UI_Row
                 {
                     ui_label(str8_lit("fps"));
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%6.2f", 1 / (dt / 1000000.0));
                 }
-
                 ui_spacer(ui_px(3.0, 0));
-
                 UI_Row
                 {
                     ui_label(str8_lit("hot_box"));
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%lu", ui_state->hot_box_key.u64[0]);
                 }
-
                 Vec2F32 mouse = os_mouse_from_window(window);
                 UI_Row
                 {
@@ -416,7 +422,6 @@ entry_point(CmdLine *cmd_line)
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%.2f, %.2f", mouse.x, mouse.y);
                 }
-
                 UI_Row
                 {
                     ui_label(str8_lit("name1"));
@@ -425,7 +430,6 @@ entry_point(CmdLine *cmd_line)
                                  edit_buffer, sizeof(edit_buffer), edit_string_size_out,
                                  str8_lit("test"), str8_lit("name1"));
                 }
-
                 UI_Row
                 {
                     ui_label(str8_lit("name2"));
@@ -434,7 +438,6 @@ entry_point(CmdLine *cmd_line)
                                     edit_buffer2, sizeof(edit_buffer2), edit_string_size_out2,
                                     str8(edit_buffer2, edit_string_size_out2[0]), str8_lit("name2")))) {}
                 }
-
                 UI_Row
                 {
                     ui_label(str8_lit("drag mouse start"));
@@ -443,7 +446,7 @@ entry_point(CmdLine *cmd_line)
                 }
                 UI_Row
                 {
-                    ui_label(str8_lit("geo3d entity id"));
+                    ui_label(str8_lit("geo3d hot id"));
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%lu", id);
                 }
@@ -471,13 +474,16 @@ entry_point(CmdLine *cmd_line)
         d_sub_bucket(g_state->bucket_rect);
         d_sub_bucket(g_state->bucket_geo3d);
 
+        cpu_end_us = os_now_microseconds();
+        cpu_dt_us = cpu_end_us - cpu_start_us;
+
         /////////////////////////////////
         //~ End of frame
 
+        gpu_start_us = os_now_microseconds();
         d_submit_bucket(window, wnd, bucket, mouse);
         r_window_end_frame(window, wnd);
         r_end_frame();
-
         arena_clear(frame_arena);
     }
 

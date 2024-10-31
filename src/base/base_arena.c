@@ -1,5 +1,3 @@
-#include <unistd.h>
-
 internal Arena *
 arena_alloc_(ArenaParams *params) {
     U64 aligned_res_size = params->reserve_size + ARENA_HEADER_SIZE;
@@ -12,6 +10,8 @@ arena_alloc_(ArenaParams *params) {
         aligned_res_size = AlignPow2(params->reserve_size, os_get_system_info()->page_size);
         aligned_cmt_size = AlignPow2(params->commit_size, os_get_system_info()->page_size);
     }
+
+    printf("Allocating arena with res %.2fMB and cmt %.2fMB\n", (F32)aligned_res_size/MB(1), (F32)aligned_cmt_size/MB(1));
 
     // TODO(@k): make use of the optional_backing_buffer
     void *base = 0;
