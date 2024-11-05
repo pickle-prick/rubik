@@ -38,147 +38,273 @@ ui_draw(OS_Handle os_wnd)
     Rng2F32 w_rect = os_client_rect_from_window(os_wnd);
     Temp scratch = scratch_begin(0,0);
 
-    //- k: draw background color
-    Vec4F32 bg_color = v4f32(0,0,0,0);
-    // d_rect(w_rect, bg_color, 0,0,0);
-    // TODO: draw window border
-
     // Recusivly drawing boxes
-    UI_Box *b = ui_root_from_state(ui_state);
-    while(!ui_box_is_nil(b))
+    UI_Box *box = ui_root_from_state(ui_state);
+    while(!ui_box_is_nil(box))
     {
-        UI_BoxRec rec = ui_box_rec_df_post(b, &ui_g_nil_box);
+        UI_BoxRec rec = ui_box_rec_df_post(box, &ui_g_nil_box);
 
         // TODO: DEBUG
         if(0)
         {
-            d_rect(b->rect, v4f32(0,0.3,1,0.3), 0,1,0);
+            d_rect(box->rect, v4f32(1,0,0,1), 0,1,0);
         }
 
-        //- k: draw the border
-        if(b->flags & UI_BoxFlag_DrawBorder)
+        if(box->transparency != 0)
         {
-            d_rect(b->rect, v4f32(0.102,0.102,0.098,1.0), 0,0,0);
+            d_push_transparency(box->transparency);
         }
 
         //- k: draw drop_shadw
-        if(b->flags & UI_BoxFlag_DrawDropShadow)
+        if(box->flags & UI_BoxFlag_DrawDropShadow)
         {
-            d_rect(b->rect, v4f32(0,0.3,1,0.3), 0.8f, 0, 8.0f);
+            Rng2F32 drop_shadow_rect = shift_2f32(pad_2f32(box->rect, 8), v2f32(4, 4));
+            Vec4F32 drop_shadow_color = g_rgba_from_theme_color(RD_ThemeColor_DropShadow);
+            d_rect(drop_shadow_rect, drop_shadow_color, 0.8f, 0, 8.f);
         }
 
         //- k: draw background
-        if(b->flags & UI_BoxFlag_DrawBackground)
+        if(box->flags & UI_BoxFlag_DrawBackground)
         {
             // Main rectangle
-            // TODO: use color palette
-            Vec4F32 box_bg = rgba_from_u32(0X212121FF);
-            R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), box_bg, 0, 0, 1.f);
-            MemoryCopyArray(inst->corner_radii, b->corner_radii);
+            R_Rect2DInst *inst = d_rect(pad_2f32(box->rect, 1), box->palette->colors[UI_ColorCode_Background], 0, 0, 1.f);
+            MemoryCopyArray(inst->corner_radii, box->corner_radii);
 
-            if(b->flags & UI_BoxFlag_DrawHotEffects)
+            if(box->flags & UI_BoxFlag_DrawHotEffects)
             {
-                // TODO: blend with active_t
-                F32 effective_active_t = b->active_t;
-                if (!(b->flags & UI_BoxFlag_DrawActiveEffects))
+                F32 effective_active_t = box->active_t;
+                if (!(box->flags & UI_BoxFlag_DrawActiveEffects))
                 {
                     effective_active_t = 0;
                 }
-
-                F32 t = b->hot_t * (1 - effective_active_t);
+                F32 t = box->hot_t * (1-effective_active_t);
 
                 // Brighten
-                // TODO: use color palette
-                R_Rect2DInst *inst = d_rect(b->rect, v4f32(0,0,0,0), 0, 0, 1.f);
-                Vec4F32 color = rgba_from_u32(0xFFFFFFFF);
-                color.w *= t * 0.3f;
-                inst->colors[Corner_00] = color;
-                inst->colors[Corner_01] = color;
-                inst->colors[Corner_10] = color;
-                inst->colors[Corner_11] = color;
-                inst->colors[Corner_10].w *= t;
-                inst->colors[Corner_11].w *= t;
-                MemoryCopyArray(inst->corner_radii, b->corner_radii);
-            }
-
-            // Active effect extension
-            if(b->flags & UI_BoxFlag_DrawActiveEffects)
-            {
-                Vec4F32 shadow_color = rgba_from_u32(0xFFFFFFFF);
-                shadow_color.x *= 0.3f;
-                shadow_color.y *= 0.3f;
-                shadow_color.z *= 0.3f;
-                shadow_color.w *= 0.5f * b->active_t;
-
-                Vec2F32 shadow_size = {
-                    (b->rect.x1 - b->rect.x0) * 0.60f * b->active_t,
-                    (b->rect.y1 - b->rect.y0) * 0.60f * b->active_t,
-                };
-
-                // k: top -> button dark effect
                 {
-                    R_Rect2DInst *inst = d_rect(r2f32p(b->rect.x0, b->rect.y0, b->rect.x1, b->rect.y0 + shadow_size.y), v4f32(0, 0, 0, 0), 0, 0, 1.f);
-                    inst->colors[Corner_00] = inst->colors[Corner_10] = shadow_color;
-                    inst->colors[Corner_01] = inst->colors[Corner_11] = v4f32(0.f, 0.f, 0.f, 0.0f);
-                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
+                    R_Rect2DInst *inst = d_rect(box->rect, v4f32(0, 0, 0, 0), 0, 0, 1.f);
+                    Vec4F32 color = g_rgba_from_theme_color(RD_ThemeColor_Hover);
+                    color.w *= t*0.2f;
+                    inst->colors[Corner_00] = color;
+                    inst->colors[Corner_01] = color;
+                    inst->colors[Corner_10] = color;
+                    inst->colors[Corner_11] = color;
+                    inst->colors[Corner_10].w *= t;
+                    inst->colors[Corner_11].w *= t;
+                    MemoryCopyArray(inst->corner_radii, box->corner_radii);
                 }
 
-                // k: bottom -> top light effect
+                // rjf: slight emboss fadeoff
+                if(0)
                 {
-                    R_Rect2DInst *inst = d_rect(r2f32p(b->rect.x0, b->rect.y1 - shadow_size.y, b->rect.x1, b->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
-                    inst->colors[Corner_00] = inst->colors[Corner_10] = v4f32(0, 0, 0, 0);
-                    inst->colors[Corner_01] = inst->colors[Corner_11] = v4f32(0.3f, 0.3f, 0.3f, 0.3f*b->active_t);
-                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
+                    Rng2F32 rect = r2f32p(box->rect.x0,
+                            box->rect.y0,
+                            box->rect.x1,
+                            box->rect.y1);
+                    R_Rect2DInst *inst = d_rect(rect, v4f32(0, 0, 0, 0), 0, 0, 1.f);
+                    inst->colors[Corner_00] = v4f32(0.f, 0.f, 0.f, 0.0f*t);
+                    inst->colors[Corner_01] = v4f32(0.f, 0.f, 0.f, 0.3f*t);
+                    inst->colors[Corner_10] = v4f32(0.f, 0.f, 0.f, 0.0f*t);
+                    inst->colors[Corner_11] = v4f32(0.f, 0.f, 0.f, 0.3f*t);
+                    MemoryCopyArray(inst->corner_radii, box->corner_radii);
                 }
 
-                // k: left -> right dark effect
+                // Active effect extension
+                if(box->flags & UI_BoxFlag_DrawActiveEffects)
                 {
-                    R_Rect2DInst *inst = d_rect(r2f32p(b->rect.x0, b->rect.y0, b->rect.x0 + shadow_size.x, b->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
-                    inst->colors[Corner_00] = inst->colors[Corner_01] = shadow_color;
-                    inst->colors[Corner_10] = inst->colors[Corner_11] = v4f32(0.f, 0.f, 0.f, 0.0f);
-                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
-                }
+                    Vec4F32 shadow_color = g_rgba_from_theme_color(RD_ThemeColor_Hover);
+                    shadow_color.x *= 0.3f;
+                    shadow_color.y *= 0.3f;
+                    shadow_color.z *= 0.3f;
+                    shadow_color.w *= 0.5f*box->active_t;
 
-                // k: right -> left dark effect
-                {
-                    R_Rect2DInst *inst = d_rect(r2f32p(b->rect.x1 - shadow_size.x, b->rect.y0, b->rect.x1, b->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
-                    inst->colors[Corner_00] = inst->colors[Corner_01] = v4f32(0.f, 0.f, 0.f, 0.0f);
-                    inst->colors[Corner_10] = inst->colors[Corner_11] = shadow_color;
-                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
+                    Vec2F32 shadow_size =
+                    {
+                        (box->rect.x1 - box->rect.x0)*0.60f*box->active_t,
+                        (box->rect.y1 - box->rect.y0)*0.60f*box->active_t,
+                    };
+                    shadow_size.x = Clamp(0, shadow_size.x, box->font_size*2.f);
+                    shadow_size.y = Clamp(0, shadow_size.y, box->font_size*2.f);
+
+                    // rjf: top -> bottom dark effect
+                    {
+                        R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x0, box->rect.y0, box->rect.x1, box->rect.y0 + shadow_size.y), v4f32(0, 0, 0, 0), 0, 0, 1.f);
+                        inst->colors[Corner_00] = inst->colors[Corner_10] = shadow_color;
+                        inst->colors[Corner_01] = inst->colors[Corner_11] = v4f32(0.f, 0.f, 0.f, 0.0f);
+                        MemoryCopyArray(inst->corner_radii, box->corner_radii);
+                    }
+
+                    // rjf: bottom -> top light effect
+                    {
+                        R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x0, box->rect.y1 - shadow_size.y, box->rect.x1, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
+                        inst->colors[Corner_00] = inst->colors[Corner_10] = v4f32(0, 0, 0, 0);
+                        inst->colors[Corner_01] = inst->colors[Corner_11] = v4f32(0.4f, 0.4f, 0.4f, 0.4f*box->active_t);
+                        MemoryCopyArray(inst->corner_radii, box->corner_radii);
+                    }
+
+                    // rjf: left -> right dark effect
+                    {
+                        R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x0, box->rect.y0, box->rect.x0 + shadow_size.x, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
+                        inst->colors[Corner_10] = inst->colors[Corner_11] = v4f32(0.f, 0.f, 0.f, 0.f);
+                        inst->colors[Corner_00] = shadow_color;
+                        inst->colors[Corner_01] = shadow_color;
+                        MemoryCopyArray(inst->corner_radii, box->corner_radii);
+                    }
+
+                    // rjf: right -> left dark effect
+                    {
+                        R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x1 - shadow_size.x, box->rect.y0, box->rect.x1, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
+                        inst->colors[Corner_00] = inst->colors[Corner_01] = v4f32(0.f, 0.f, 0.f, 0.f);
+                        inst->colors[Corner_10] = shadow_color;
+                        inst->colors[Corner_11] = shadow_color;
+                        MemoryCopyArray(inst->corner_radii, box->corner_radii);
+                    }
                 }
             }
         }
 
         // Draw string
-        if(b->flags & UI_BoxFlag_DrawText)
+        if(box->flags & UI_BoxFlag_DrawText)
         {
             // TODO: handle font color
-            Vec2F32 text_position = ui_box_text_position(b);
+            Vec2F32 text_position = ui_box_text_position(box);
 
             // Max width
             F32 max_x = 100000.0f;
             F_Run ellipses_run = {0};
 
-            if(!(b->flags & UI_BoxFlag_DisableTextTrunc))
+            if(!(box->flags & UI_BoxFlag_DisableTextTrunc))
             {
-                max_x = (b->rect.x1-text_position.x-b->text_padding);
-                ellipses_run = f_push_run_from_string(scratch.arena, b->font, b->font_size, 0, b->tab_size, 0, str8_lit("..."));
+                max_x = (box->rect.x1-text_position.x-box->text_padding);
+                ellipses_run = f_push_run_from_string(scratch.arena, box->font, box->font_size, 0, box->tab_size, 0, str8_lit("..."));
             }
 
-            d_truncated_fancy_run_list(text_position, &b->display_string_runs, b->rect.max.x, ellipses_run);
+            d_truncated_fancy_run_list(text_position, &box->display_string_runs, box->rect.max.x, ellipses_run);
         }
 
-        if(b->flags & UI_BoxFlag_Clip)
+        // TODO(k): draw focus viz
+
+        if(box->flags & UI_BoxFlag_Clip)
         {
-            // TODO
+            Rng2F32 top_clip = d_top_clip();
+            Rng2F32 new_clip = pad_2f32(box->rect, -1);
+            if(top_clip.x1 != 0 || top_clip.y1 != 0)
+            {
+                new_clip = intersect_2f32(new_clip, top_clip);
+            }
+            d_push_clip(new_clip);
         }
+
+        // TODO(k): custom draw list
+        // if(box->flags & UI_BoxFlag_DrawBucket)
+        // {
+        //     Mat3x3F32 xform = make_translate_3x3f32(box->position_delta);
+        //     D_XForm2DScope(xform)
+        //     {
+        //         d_sub_bucket(box->draw_bucket);
+        //     }
+        // }
 
         // Call custom draw callback
-        if(b->custom_draw != 0)
+        if(box->custom_draw != 0)
         {
-            b->custom_draw(b, b->custom_draw_user_data);
+            box->custom_draw(box, box->custom_draw_user_data);
         }
-        b = rec.next;
+
+        // k: pop
+        {
+            S32 pop_idx = 0;
+            for(UI_Box *b = box; !ui_box_is_nil(b) && pop_idx < rec.pop_count; b = b->parent)
+            {
+                pop_idx += 1;
+
+                // k: pop clip
+                if(b->flags & UI_BoxFlag_Clip)
+                {
+                    d_pop_clip();
+                }
+
+                //- k: draw the border
+                if(b->flags & UI_BoxFlag_DrawBorder)
+                {
+                    R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1.f), b->palette->colors[UI_ColorCode_Border], 0, 1.f, 1.f);
+                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
+
+                    // rjf: hover effect
+                    if(b->flags & UI_BoxFlag_DrawHotEffects)
+                    {
+                        Vec4F32 color = g_rgba_from_theme_color(RD_ThemeColor_Hover);
+                        color.w *= b->hot_t;
+                        R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), color, 0, 1.f, 1.f);
+                        MemoryCopyArray(inst->corner_radii, b->corner_radii);
+                    }
+                }
+
+                // rjf: debug border rendering
+                if(1)
+                {
+                    R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), v4f32(1, 0, 1, 0.25f), 0, 1.f, 1.f);
+                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
+                }
+
+                // rjf: draw sides
+                {
+                    Rng2F32 r = b->rect;
+                    F32 half_thickness = 1.f;
+                    F32 softness = 0.5f;
+                    if(b->flags & UI_BoxFlag_DrawSideTop)
+                    {
+                        d_rect(r2f32p(r.x0, r.y0-half_thickness, r.x1, r.y0+half_thickness), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
+                    }
+                    if(b->flags & UI_BoxFlag_DrawSideBottom)
+                    {
+                        d_rect(r2f32p(r.x0, r.y1-half_thickness, r.x1, r.y1+half_thickness), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
+                    }
+                    if(b->flags & UI_BoxFlag_DrawSideLeft)
+                    {
+                        d_rect(r2f32p(r.x0-half_thickness, r.y0, r.x0+half_thickness, r.y1), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
+                    }
+                    if(b->flags & UI_BoxFlag_DrawSideRight)
+                    {
+                        d_rect(r2f32p(r.x1-half_thickness, r.y0, r.x1+half_thickness, r.y1), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
+                    }
+                }
+
+                // rjf: draw focus overlay
+                // TODO: fix it, every box have focus_hot_t > 0.01f
+                if(b->flags & UI_BoxFlag_Clickable && !(b->flags & UI_BoxFlag_DisableFocusOverlay) && b->focus_hot_t > 0.01f)
+                {
+                    Vec4F32 color = g_rgba_from_theme_color(RD_ThemeColor_Focus);
+                    color.w *= 0.2f*b->focus_hot_t;
+                    R_Rect2DInst *inst = d_rect(b->rect, color, 0, 0, 0.f);
+                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
+                }
+
+                // rjf: draw focus border
+                if(b->flags & UI_BoxFlag_Clickable && !(b->flags & UI_BoxFlag_DisableFocusBorder) && b->focus_active_t > 0.01f)
+                {
+                    Vec4F32 color = g_rgba_from_theme_color(RD_ThemeColor_Focus);
+                    color.w *= b->focus_active_t;
+                    R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 0.f), color, 0, 1.f, 1.f);
+                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
+                }
+
+                // rjf: disabled overlay
+                if(b->disabled_t >= 0.005f)
+                {
+                    Vec4F32 color = g_rgba_from_theme_color(RD_ThemeColor_DisabledOverlay);
+                    color.w *= b->disabled_t;
+                    R_Rect2DInst *inst = d_rect(b->rect, color, 0, 0, 1);
+                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
+                }
+
+                // k: pop transparency
+                if(b->transparency != 0)
+                {
+                    d_pop_transparency();
+                }
+            }
+        }
+        box = rec.next;
     }
     scratch_end(scratch);
 }
@@ -211,10 +337,6 @@ entry_point(CmdLine *cmd_line)
     U64 gpu_start_us = 0;
     U64 gpu_end_us   = 0;
     U64 gpu_dt_us    = 0;
-
-    //- Resource
-    F_Tag main_font = f_tag_from_path("./fonts/Mplus1Code-Medium.ttf");
-    F32 main_font_size = 30;
 
     //- User interaction
     Vec2F32 mouse = {0};
@@ -263,7 +385,7 @@ entry_point(CmdLine *cmd_line)
         d_begin_frame();
         cpu_start_us = os_now_microseconds();
         gpu_end_us = os_now_microseconds();
-        gpu_dt_us = gpu_end_us - gpu_start_us;
+        gpu_dt_us = (gpu_end_us - gpu_start_us);
 
         /////////////////////////////////
         // Create the top bucket (for UI)
@@ -357,100 +479,142 @@ entry_point(CmdLine *cmd_line)
             if(os_evt->kind == OS_EventKind_WindowClose) {window_should_close = 1;}
         }
 
-        // Begin & push initial stack values
-        ui_begin_build(window, &ui_events, dt / 1000000.0f);
-        ui_push_font(main_font);
-        ui_push_font_size(main_font_size);
-        // ui_push_text_padding(main_font_size*0.3f);
-        // ui_push_text_raster_flags(...);
 
-        UI_Box *bg_box = &ui_g_nil_box;
-
-        UI_Rect(window_rect)
-        UI_ChildLayoutAxis(Axis2_X)
-        UI_Focus(UI_FocusKind_On)
+        // Begin build ui
         {
-            bg_box = ui_build_box_from_stringf(UI_BoxFlag_FixedSize|
-                                               UI_BoxFlag_Clickable|
-                                               UI_BoxFlag_DefaultFocusNav,
-                                               "###background_%p", window.u64[0]);
+            // Gather font info
+            F_Tag main_font = g_font_from_slot(G_FontSlot_Main);
+            // TODO: set font size based on the dpi of screen
+            // F32 main_font_size = g_font_size_from_slot(G_FontSlot_Main);
+            F32 main_font_size = 30;
+            F_Tag icon_font = g_font_from_slot(G_FontSlot_Icons);
+
+            // Build icon info
+            UI_IconInfo icon_info = {0};
+            {
+                icon_info.icon_font = icon_font;
+                icon_info.icon_kind_text_map[UI_IconKind_RightArrow]     = g_icon_kind_text_table[G_IconKind_RightScroll];
+                icon_info.icon_kind_text_map[UI_IconKind_DownArrow]      = g_icon_kind_text_table[G_IconKind_DownScroll];
+                icon_info.icon_kind_text_map[UI_IconKind_LeftArrow]      = g_icon_kind_text_table[G_IconKind_LeftScroll];
+                icon_info.icon_kind_text_map[UI_IconKind_UpArrow]        = g_icon_kind_text_table[G_IconKind_UpScroll];
+                icon_info.icon_kind_text_map[UI_IconKind_RightCaret]     = g_icon_kind_text_table[G_IconKind_RightCaret];
+                icon_info.icon_kind_text_map[UI_IconKind_DownCaret]      = g_icon_kind_text_table[G_IconKind_DownCaret];
+                icon_info.icon_kind_text_map[UI_IconKind_LeftCaret]      = g_icon_kind_text_table[G_IconKind_LeftCaret];
+                icon_info.icon_kind_text_map[UI_IconKind_UpCaret]        = g_icon_kind_text_table[G_IconKind_UpCaret];
+                icon_info.icon_kind_text_map[UI_IconKind_CheckHollow]    = g_icon_kind_text_table[G_IconKind_CheckHollow];
+                icon_info.icon_kind_text_map[UI_IconKind_CheckFilled]    = g_icon_kind_text_table[G_IconKind_CheckFilled];
+            }
+
+            UI_WidgetPaletteInfo widget_palette_info = {0};
+            {
+                widget_palette_info.tooltip_palette   = g_palette_from_code(G_PaletteCode_Floating);
+                widget_palette_info.ctx_menu_palette  = g_palette_from_code(G_PaletteCode_Floating);
+                widget_palette_info.scrollbar_palette = g_palette_from_code(G_PaletteCode_ScrollBarButton);
+            }
+
+            // Build animation info
+            UI_AnimationInfo animation_info = {0};
+            {
+                animation_info.flags |= UI_AnimationInfoFlag_HotAnimations;
+                animation_info.flags |= UI_AnimationInfoFlag_ActiveAnimations;
+                animation_info.flags |= UI_AnimationInfoFlag_FocusAnimations;
+                animation_info.flags |= UI_AnimationInfoFlag_TooltipAnimations;
+                animation_info.flags |= UI_AnimationInfoFlag_ContextMenuAnimations;
+                animation_info.flags |= UI_AnimationInfoFlag_ScrollingAnimations;
+            }
+
+            // Begin & push initial stack values
+            ui_begin_build(window, &ui_events, &icon_info, &widget_palette_info, &animation_info, dt / 1000000.0f);
+
+            ui_push_font(main_font);
+            ui_push_font_size(main_font_size);
+            // ui_push_text_raster_flags(...);
+            ui_push_text_padding(main_font_size*0.2f);
+            ui_push_pref_width(ui_em(20.f, 1.f));
+            ui_push_pref_height(ui_em(1.15f, 1.f));
+            ui_push_palette(g_palette_from_code(G_PaletteCode_Base));
+            // ui_push_pref_width(ui_em(20.f, 1));
+            // ui_push_pref_height(ui_em(2.75f, 1.f));
         }
 
-        // UI_Flags(UI_BoxFlag_ClickToFocus) 
-        ui_push_parent(bg_box);
-        UI_Pane(r2f32p(10, 10, 710, 310), str8_lit("stats"))
+        d_push_clip(window_rect);
+
+        ui_set_next_flags(UI_BoxFlag_DefaultFocusNav|UI_BoxFlag_Clickable);
+        ui_set_next_focus_hot(UI_FocusKind_Root);
+        ui_set_next_focus_active(UI_FocusKind_Root);
+        // TODO: focus is not working anymore
+        UI_Pane(r2f32p(window_rect.p1.x-710, window_rect.p0.y+10, window_rect.p1.x-10, window_rect.p0.y+390), str8_lit("stats"))
         {
-            ui_set_next_pref_size(Axis2_Y, ui_pct(1.0, 1.0));
-            UI_Column
+            ui_set_next_pref_height(ui_pct(1.0,0.0));
+            UI_Box *container_box = ui_build_box_from_stringf(0, "###container");
+            ui_push_parent(container_box);
+            // TODO: no usage for now
+            UI_ScrollPt pt = {0};
+            ui_scroll_list_begin(container_box->fixed_size, &pt);
+            UI_Row
             {
-                UI_Row
+                ui_label(str8_lit("frame time ms"));
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%.6f", (dt/1000.0));
+            }
+            UI_Row
+            {
+                ui_label(str8_lit("cpu time ms"));
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%.6f", (cpu_dt_us/1000.0));
+            }
+            UI_Row
+            {
+                ui_label(str8_lit("gpu time ms"));
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%.6f", (gpu_dt_us/1000.0));
+            }
+            UI_Row
+            {
+                ui_label(str8_lit("fps"));
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%6.2f", 1 / (dt / 1000000.0));
+            }
+            UI_Row
+            {
+                ui_label(str8_lit("hot_box"));
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%lu", ui_state->hot_box_key.u64[0]);
+            }
+            Vec2F32 mouse = os_mouse_from_window(window);
+            UI_Row
+            {
+                ui_label(str8_lit("mouse"));
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%.2f, %.2f", mouse.x, mouse.y);
+            }
+            UI_Focus(UI_FocusKind_On) UI_Row
+            {
+                ui_label(str8_lit("name1"));
+                ui_spacer(ui_pct(1.0, 0.0));
+                UI_Focus(UI_FocusKind_On) UI_Flags(UI_BoxFlag_ClickToFocus)
                 {
-                    ui_label(str8_lit("frame time ms"));
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%.6f", (dt/1000.0));
-                }
-                UI_Row
-                {
-                    ui_label(str8_lit("cpu time ms"));
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%.6f", (cpu_dt_us/1000.0));
-                }
-                UI_Row
-                {
-                    ui_label(str8_lit("gpu time ms"));
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%.6f", (gpu_dt_us/1000.0));
-                }
-                ui_spacer(ui_px(3.0, 0));
-                UI_Row
-                {
-                    ui_label(str8_lit("fps"));
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%6.2f", 1 / (dt / 1000000.0));
-                }
-                ui_spacer(ui_px(3.0, 0));
-                UI_Row
-                {
-                    ui_label(str8_lit("hot_box"));
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%lu", ui_state->hot_box_key.u64[0]);
-                }
-                Vec2F32 mouse = os_mouse_from_window(window);
-                UI_Row
-                {
-                    ui_label(str8_lit("mouse"));
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%.2f, %.2f", mouse.x, mouse.y);
-                }
-                UI_Row
-                {
-                    ui_label(str8_lit("name1"));
-                    ui_spacer(ui_pct(1.0, 0.0));
                     ui_line_edit(&cursor, &mark,
-                                 edit_buffer, sizeof(edit_buffer), edit_string_size_out,
-                                 str8_lit("test"), str8_lit("name1"));
-                }
-                UI_Row
-                {
-                    ui_label(str8_lit("name2"));
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    if(ui_committed(ui_line_edit(&cursor2, &mark2,
-                                    edit_buffer2, sizeof(edit_buffer2), edit_string_size_out2,
-                                    str8(edit_buffer2, edit_string_size_out2[0]), str8_lit("name2")))) {}
-                }
-                UI_Row
-                {
-                    ui_label(str8_lit("drag mouse start"));
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%.2f, %.2f", ui_state->drag_start_mouse.x, ui_state->drag_start_mouse.y);
-                }
-                UI_Row
-                {
-                    ui_label(str8_lit("geo3d hot id"));
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%lu", id);
+                            edit_buffer, sizeof(edit_buffer), edit_string_size_out,
+                            str8_lit("test"), str8_lit("name1"));
                 }
             }
+            UI_Row
+            {
+                ui_label(str8_lit("name2"));
+                ui_spacer(ui_pct(1.0, 0.0));
+                if(ui_committed(ui_line_edit(&cursor2, &mark2,
+                                edit_buffer2, sizeof(edit_buffer2), edit_string_size_out2,
+                                str8(edit_buffer2, edit_string_size_out2[0]), str8_lit("name2")))) {}
+            }
+            UI_Row
+            {
+                ui_label(str8_lit("geo3d hot id"));
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%lu", id);
+            }
+            ui_scroll_list_end();
+            ui_pop_parent();
         }
 
         // UI_Flags(UI_BoxFlag_ClickToFocus) UI_Parent(bg_box) {

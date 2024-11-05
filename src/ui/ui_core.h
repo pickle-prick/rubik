@@ -1,6 +1,33 @@
 #ifndef UI_CORE_H
 #define UI_CORE_H
 
+////////////////////////////////
+//~ rjf: Icon Info
+
+typedef enum UI_IconKind
+{
+    UI_IconKind_Null,
+    UI_IconKind_RightArrow,
+    UI_IconKind_DownArrow,
+    UI_IconKind_LeftArrow,
+    UI_IconKind_UpArrow,
+    UI_IconKind_RightCaret,
+    UI_IconKind_DownCaret,
+    UI_IconKind_LeftCaret,
+    UI_IconKind_UpCaret,
+    UI_IconKind_CheckHollow,
+    UI_IconKind_CheckFilled,
+    UI_IconKind_COUNT
+}
+UI_IconKind;
+
+typedef struct UI_IconInfo UI_IconInfo;
+struct UI_IconInfo
+{
+    F_Tag   icon_font;
+    String8 icon_kind_text_map[UI_IconKind_COUNT];
+};
+
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: Mouse Button Kinds
 
@@ -130,14 +157,14 @@ struct UI_Key  {
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: Sizes
 
-typedef enum UI_SizeKind {
+typedef enum UI_SizeKind
+{
     UI_SizeKind_Null,
     UI_SizeKind_Pixels,      // size is computed via a preferred pixel value
     UI_SizeKind_TextContent, // size is computed via the dimensions of box's rendered string
     UI_SizeKind_ParentPct,   // size is computed via a well-determined parent or grandparent size
     UI_SizeKind_ChildrenSum, // size is computed via summing well-determined sizes of children
-}
-UI_SizeKind;
+} UI_SizeKind;
 
 typedef struct UI_Size UI_Size;
 struct UI_Size
@@ -150,7 +177,8 @@ struct UI_Size
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: Palettes
 
-typedef enum UI_ColorCode {
+typedef enum UI_ColorCode
+{
     UI_ColorCode_Null,
     UI_ColorCode_Background,
     UI_ColorCode_Text,
@@ -163,7 +191,8 @@ typedef enum UI_ColorCode {
 } UI_ColorCode;
 
 typedef struct UI_Palette UI_Palette;
-struct UI_Palette {
+struct UI_Palette
+{
     union
     {
         Vec4F32 colors[UI_ColorCode_COUNT];
@@ -178,6 +207,56 @@ struct UI_Palette {
             Vec4F32 cursor;
             Vec4F32 selection;
         };
+    };
+};
+
+typedef struct UI_WidgetPaletteInfo UI_WidgetPaletteInfo;
+struct UI_WidgetPaletteInfo
+{
+    UI_Palette *tooltip_palette;
+    UI_Palette *ctx_menu_palette;
+    UI_Palette *scrollbar_palette;
+};
+
+////////////////////////////////
+//~ rjf: Animation Info
+
+typedef U32 UI_AnimationInfoFlags;
+enum
+{
+    UI_AnimationInfoFlag_HotAnimations          = (1<<0),
+    UI_AnimationInfoFlag_ActiveAnimations       = (1<<1),
+    UI_AnimationInfoFlag_FocusAnimations        = (1<<2),
+    UI_AnimationInfoFlag_TooltipAnimations      = (1<<3),
+    UI_AnimationInfoFlag_ContextMenuAnimations  = (1<<4),
+    UI_AnimationInfoFlag_ScrollingAnimations    = (1<<5),
+    UI_AnimationInfoFlag_All = 0xffffffff,
+};
+
+typedef struct UI_AnimationInfo UI_AnimationInfo;
+struct UI_AnimationInfo
+{
+    UI_AnimationInfoFlags flags;
+};
+
+////////////////////////////////
+//~ rjf: Scroll Positions
+
+typedef struct UI_ScrollPt UI_ScrollPt;
+struct UI_ScrollPt
+{
+    // S64 idx;
+    F32 off;
+};
+
+typedef union UI_ScrollPt2 UI_ScrollPt2;
+union UI_ScrollPt2
+{
+    UI_ScrollPt v[2];
+    struct
+    {
+        UI_ScrollPt x;
+        UI_ScrollPt y;
     };
 };
 
@@ -268,7 +347,6 @@ typedef U64 UI_BoxFlags;
 # define UI_BoxFlag_DisableFocusEffects (UI_BoxFlag_DisableFocusBorder|UI_BoxFlag_DisableFocusOverlay)
 //}
 
-
 typedef struct UI_Box UI_Box;
 struct UI_Box {
     // Persistent links for map
@@ -287,6 +365,7 @@ struct UI_Box {
     // Per-build equipment
     UI_Key                       key;
     String8                      string;
+    String8                      indentifier;
     UI_TextAlign                 text_align;
     UI_BoxFlags                  flags;
     Vec2F32                      fixed_position;
@@ -301,6 +380,7 @@ struct UI_Box {
     F32                          corner_radii[Corner_COUNT];
     F32                          transparency;
     F32                          text_padding;
+    UI_Palette                   *palette;
     D_Bucket                     *draw_bucket;
     UI_BoxCustomDrawFunctionType *custom_draw;
     void                         *custom_draw_user_data;
@@ -309,12 +389,16 @@ struct UI_Box {
     // Per-build artifacts
     Rng2F32                      rect;
     D_FancyRunList               display_string_runs;
+    Vec2F32                      fixed_position_animated;
+    Vec2F32                      position_delta;
 
     // Persistent data
+    U64                          first_touched_build_index;
     U64                          last_touched_build_index;
+    U64                          first_disabled_build_index;
     F32                          hot_t;
     F32                          active_t;
-    F32                          disable_t;
+    F32                          disabled_t;
     F32                          focus_hot_t;
     F32                          focus_active_t;
     F32                          focus_active_disabled_t;
@@ -331,9 +415,8 @@ typedef struct UI_BoxRec UI_BoxRec;
 struct UI_BoxRec
 {
     UI_Box *next;
-    // TODO: don't known what's for, find it later
-    // S32 push_count;
-    // S32 pop_count;
+    S32 push_count;
+    S32 pop_count;
 };
 
 typedef struct UI_BoxNode UI_BoxNode;
@@ -499,44 +582,51 @@ internal void     ui_pop_corner_radius(void);
 /////////////////////////////////////////////////////////////////////////////////////////
 // State Types
 typedef struct UI_BoxHashSlot UI_BoxHashSlot;
-struct UI_BoxHashSlot {
+struct UI_BoxHashSlot
+{
     UI_Box *hash_first;
     UI_Box *hash_last;
 };
 
 typedef struct UI_State UI_State;
-struct UI_State {
+struct UI_State
+{
     // Main arena
-    Arena          *arena;
+    Arena                *arena;
 
     // Build arena
-    Arena          *build_arenas[2];
-    U64            build_index;
+    Arena                *build_arenas[2];
+    U64                  build_index;
 
     // Box Cache
-    UI_Box         *first_free_box;
-    U64            box_table_size;
-    UI_BoxHashSlot *box_table;
+    UI_Box               *first_free_box;
+    U64                  box_table_size;
+    UI_BoxHashSlot       *box_table;
 
-    // TODO
     // Build phase output
-    UI_Box         *root;
+    UI_Box               *root;
 
 
     // Build parameters
-    OS_Handle      os_wnd;
-    Vec2F32        mouse;
-    F32            animation_dt;
-    UI_EventList   *events;
+    UI_IconInfo          icon_info;
+    UI_WidgetPaletteInfo widget_palette_info;
+    UI_AnimationInfo     animation_info;
+    OS_Handle            os_wnd;
+    Vec2F32              mouse;
+    F32                  animation_dt;
+    F32                  default_animation_rate;
+    UI_EventList         *events;
 
     // User interaction state
-    UI_Key         hot_box_key;
-    UI_Key         active_box_key[UI_MouseButtonKind_COUNT];
+    UI_Key               hot_box_key;
+    UI_Key               active_box_key[UI_MouseButtonKind_COUNT];
     // Drag
-    Vec2F32        drag_start_mouse;
-    U64            press_timestamp_history_us[UI_MouseButtonKind_COUNT][3];
-    UI_Key         press_key_history[UI_MouseButtonKind_COUNT][3];
-    U64            last_time_mousemoved_us;
+    Vec2F32              drag_start_mouse;
+    Arena                *drag_state_arena;
+    String8              drag_state_data;
+    U64                  press_timestamp_history_us[UI_MouseButtonKind_COUNT][3];
+    UI_Key               press_key_history[UI_MouseButtonKind_COUNT][3];
+    U64                  last_time_mousemoved_us;
 
     // Build phase stacks
     UI_DeclStackNils;
@@ -579,6 +669,11 @@ internal UI_Size ui_size(UI_SizeKind kind, F32 value, F32 strictness);
 #define ui_pct(value, strictness)        ui_size(UI_SizeKind_ParentPct, value, strictness)
 #define ui_children_sum(strictness)      ui_size(UI_SizeKind_ChildrenSum, 0.f, strictness)
 
+////////////////////////////////
+//~ rjf: Color Scheme Type Functions
+
+read_only global UI_Palette ui_g_nil_palette = {0};
+
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: Box Type Functions
 
@@ -601,7 +696,7 @@ internal UI_BoxRec ui_box_rec_df(UI_Box *box, UI_Box *root, U64 sib_member_off, 
 //~ rjf: State Allocating / Selection
 
 internal UI_State *ui_state_alloc(void);
-// internal void     ui_state_release(UI_State *state);
+internal void     ui_state_release(UI_State *state);
 internal UI_Box   *ui_root_from_state(UI_State *state);
 internal void     ui_select_state(UI_State *state);
 
@@ -611,17 +706,18 @@ internal void     ui_select_state(UI_State *state);
 //- rjf: per-frame info
 internal Arena             *ui_build_arena(void);
 internal OS_Handle         ui_window(void);
-internal UI_EventList *    ui_events(void);
+internal UI_EventList      *ui_events(void);
+internal F_Tag             ui_icon_font(void);
 internal Vec2F32           ui_mouse(void);
 internal F32               ui_dt(void);
 
 //- rjf: drag data
 internal Vec2F32           ui_drag_start_mouse(void);
 internal Vec2F32           ui_drag_delta(void);
-// internal void              ui_store_drag_data(String8 string);
-// internal String8           ui_get_drag_data(U64 min_required_size);
-// #define ui_store_drag_struct(ptr) ui_store_drag_data(str8_struct(ptr))
-// #define ui_get_drag_struct(type) ((type *)ui_get_drag_data(sizeof(type)).str)
+internal void              ui_store_drag_data(String8 string);
+internal String8           ui_get_drag_data(U64 min_required_size);
+#define ui_store_drag_struct(ptr) ui_store_drag_data(str8_struct(ptr))
+#define ui_get_drag_struct(type) ((type *)ui_get_drag_data(sizeof(type)).str)
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //- rjf: interaction keys
@@ -638,7 +734,7 @@ internal UI_Box *ui_box_from_key(UI_Key key);
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: Top-Level Building API
 
-internal void ui_begin_build(OS_Handle os_wnd, UI_EventList *events, F32 dt);
+internal void ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, UI_WidgetPaletteInfo *widget_palette_info, UI_AnimationInfo *animation_info, F32 animation_dt);
 internal void ui_end_build(void);
 internal void ui_calc_sizes_standalone__in_place_rec(UI_Box *root, Axis2 axis);
 internal void ui_calc_sizes_upwards_dependent__in_place_rec(UI_Box *root, Axis2 axis);
@@ -683,6 +779,6 @@ internal UI_Signal ui_signal_from_box(UI_Box *box);
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Globals
-UI_State *ui_state = 0;
+thread_static UI_State *ui_state = 0;
 
 #endif

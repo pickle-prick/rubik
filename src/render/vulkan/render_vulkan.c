@@ -2917,7 +2917,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                         }break;
                     }
 
-                    // Bind uniform buffer
+                    //~ Bind uniform buffer
                     /////////////////////////////////////////////////
 
                     // Upload uniforms
@@ -2925,7 +2925,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                     uniforms.viewport_size = v2f32(wnd->bag->stage_color_image.extent.width, wnd->bag->stage_color_image.extent.height);
                     uniforms.opacity = 1-group_params->transparency;
                     MemoryCopyArray(uniforms.texture_sample_channel_map, &texture_sample_channel_map);
-                    // TODO(@k): what's for
+                    // TODO(k): don't know if we need it or not
                     uniforms.translate;
                     uniforms.texture_t2d_size = v2f32(texture->image.extent.width, texture->image.extent.height);
                     uniforms.xform[0] = v4f32(group_params->xform.v[0][0], group_params->xform.v[1][0], group_params->xform.v[2][0], 0);
@@ -2949,10 +2949,23 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                     viewport.maxDepth = 1.0f;
                     vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
 
-                    // TODO(@k): Setup scissor rect
                     VkRect2D scissor = {0};
-                    scissor.offset = (VkOffset2D){0, 0};
-                    scissor.extent = wnd->bag->stage_color_image.extent;
+                    if(group_params->clip.x0 == 0 && group_params->clip.x1 == 0 && group_params->clip.y0 && group_params->clip.y1 == 0)
+                    {
+                        scissor.offset = (VkOffset2D){0,0};
+                        scissor.extent = wnd->bag->stage_color_image.extent;
+                    }
+                    else if(group_params->clip.x0 > group_params->clip.x1 || group_params->clip.y0 > group_params->clip.y1)
+                    {
+                        scissor.offset = (VkOffset2D){0,0};
+                        scissor.extent = (VkExtent2D){0,0};
+                    }
+                    else
+                    {
+                        scissor.offset = (VkOffset2D){(U32)group_params->clip.p0.x, (U32)group_params->clip.p0.y};
+                        Vec2F32 clip_dim = dim_2f32(group_params->clip);
+                        scissor.extent = (VkExtent2D){(U32)clip_dim.x, (U32)clip_dim.y};
+                    }
                     vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
 
                     U64 inst_count = batches->byte_count / batches->bytes_per_inst;
@@ -3010,10 +3023,20 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                 // Setup viewport and scissor 
                 // TODO(k): make use of params->viewport/clip
                 VkViewport viewport = {0};
-                viewport.x        = 0.0f;
-                viewport.y        = 0.0f;
-                viewport.width    = wnd->bag->stage_color_image.extent.width;
-                viewport.height   = wnd->bag->stage_color_image.extent.height;
+                Vec2F32 viewport_dim = dim_2f32(params->viewport);
+                if(viewport_dim.x == 0 || viewport_dim.y == 0)
+                {
+                    viewport.width    = wnd->bag->stage_color_image.extent.width;
+                    viewport.height   = wnd->bag->stage_color_image.extent.height;
+                }
+                else
+                {
+
+                    viewport.x        = params->viewport.p0.x;
+                    viewport.y        = params->viewport.p0.y;
+                    viewport.width    = params->viewport.p1.x;
+                    viewport.height   = params->viewport.p1.y;
+                }
                 viewport.minDepth = 0.0f;
                 viewport.maxDepth = 1.0f;
                 vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
@@ -3021,6 +3044,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                 VkRect2D scissor = {0};
                 scissor.offset = (VkOffset2D){0, 0};
                 scissor.extent = wnd->bag->stage_color_image.extent;
+                // scissor.offset = (VkOffset2D){viewport.x, viewport.y};
+                // scissor.extent = (VkExtent2D){viewport.width, viewport.height};
                 vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
 
                 // Bind mesh debug pipeline

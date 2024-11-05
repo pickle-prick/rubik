@@ -1,16 +1,68 @@
 internal UI_Signal
-ui_button(String8 string) {
+ui_button(String8 string)
+{
     ui_set_next_hover_cursor(OS_Cursor_HandPoint);
-    ui_set_next_text_alignment(UI_TextAlign_Center);
-    UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable |
-                                           UI_BoxFlag_DrawBackground |
-                                           UI_BoxFlag_DrawBorder |
-                                           UI_BoxFlag_DrawText |
-                                           UI_BoxFlag_DrawHotEffects |
+    UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable|
+                                           UI_BoxFlag_DrawBackground|
+                                           UI_BoxFlag_DrawBorder|
+                                           UI_BoxFlag_DrawText|
+                                           UI_BoxFlag_DrawHotEffects|
                                            UI_BoxFlag_DrawActiveEffects,
                                            string);
     UI_Signal interact = ui_signal_from_box(box);
     return interact;
+}
+
+internal UI_Signal
+ui_buttonf(char *fmt, ...)
+{
+    Temp scratch = scratch_begin(0, 0);
+    va_list args;
+    va_start(args, fmt);
+    String8 string = push_str8fv(scratch.arena, fmt, args);
+    va_end(args);
+    UI_Signal result = ui_button(string);
+    scratch_end(scratch);
+    return result;
+}
+
+internal UI_Signal
+ui_hover_label(String8 string)
+{
+    UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable|UI_BoxFlag_DrawText, string);
+    UI_Signal interact = ui_signal_from_box(box);
+    if(ui_hovering(interact))
+    {
+        box->flags |= UI_BoxFlag_DrawBorder;
+    }
+    return interact;
+}
+
+internal UI_Signal
+ui_hover_labelf(char *fmt, ...)
+{
+  Temp scratch = scratch_begin(0, 0);
+  va_list args;
+  va_start(args, fmt);
+  String8 string = push_str8fv(scratch.arena, fmt, args);
+  va_end(args);
+  UI_Signal sig = ui_hover_label(string);
+  scratch_end(scratch);
+  return sig;
+}
+
+internal void
+ui_divider(UI_Size size)
+{
+    UI_Box *parent = ui_top_parent();
+    ui_set_next_pref_size(parent->child_layout_axis, size);
+    ui_set_next_child_layout_axis(parent->child_layout_axis);
+    UI_Box *box = ui_build_box_from_key(0, ui_key_zero());
+    UI_Parent(box) UI_PrefSize(parent->child_layout_axis, ui_pct(1, 0))
+    {
+        ui_build_box_from_key(UI_BoxFlag_DrawSideBottom, ui_key_zero());
+        ui_build_box_from_key(0, ui_key_zero());
+    }
 }
 
 internal UI_Signal
@@ -37,7 +89,8 @@ ui_labelf(char *fmt, ...)
 }
 
 internal UI_Signal
-ui_spacer(UI_Size size) {
+ui_spacer(UI_Size size)
+{
     UI_Box *parent = ui_top_parent();
     ui_set_next_pref_size(parent->child_layout_axis, size);
     UI_Box *box = ui_build_box_from_key(0, ui_key_zero());
@@ -48,7 +101,8 @@ ui_spacer(UI_Size size) {
 ////////////////////////////////
 //~ rjf: Floating Panes
 internal UI_Box *
-ui_pane_begin(Rng2F32 rect, String8 string) {
+ui_pane_begin(Rng2F32 rect, String8 string)
+{
     ui_push_rect(rect);
     ui_set_next_child_layout_axis(Axis2_Y);
     UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable | UI_BoxFlag_DrawBorder| UI_BoxFlag_DrawBackground, string);
@@ -59,7 +113,8 @@ ui_pane_begin(Rng2F32 rect, String8 string) {
 }
 
 internal UI_Signal
-ui_pane_end(void) {
+ui_pane_end(void)
+{
     ui_pop_pref_width();
     UI_Box *box = ui_pop_parent();
     UI_Signal sig = ui_signal_from_box(box);
@@ -75,7 +130,8 @@ internal UI_Box *ui_column_begin(void) { return ui_named_column_begin(str8_lit("
 internal UI_Signal ui_column_end(void) { return ui_named_column_end(); }
 
 internal UI_Box *
-ui_named_row_begin(String8 string) {
+ui_named_row_begin(String8 string)
+{
     ui_set_next_child_layout_axis(Axis2_X);
     // TODO: will this cause memory leak?
     UI_Box *box = ui_build_box_from_string(0, string);
@@ -84,14 +140,16 @@ ui_named_row_begin(String8 string) {
 }
 
 internal UI_Signal
-ui_named_row_end(void) {
+ui_named_row_end(void)
+{
     UI_Box *box = ui_pop_parent();
     UI_Signal sig = ui_signal_from_box(box);
     return sig;
 }
 
 internal UI_Box *
-ui_named_column_begin(String8 string) {
+ui_named_column_begin(String8 string)
+{
     ui_set_next_child_layout_axis(Axis2_Y);
     UI_Box *box = ui_build_box_from_string(0, string);
     ui_push_parent(box);
@@ -99,7 +157,8 @@ ui_named_column_begin(String8 string) {
 }
 
 internal UI_Signal
-ui_named_column_end(void) {
+ui_named_column_end(void)
+{
     UI_Box *box = ui_pop_parent();
     UI_Signal sig = ui_signal_from_box(box);
     return sig;
@@ -114,7 +173,8 @@ struct UI_LineEditDrawData
   Rng2F32 parent_rect;
 };
 
-internal UI_BOX_CUSTOM_DRAW(ui_line_edit_draw) {
+internal UI_BOX_CUSTOM_DRAW(ui_line_edit_draw)
+{
     UI_LineEditDrawData *draw_data = (UI_LineEditDrawData *)user_data;
 
     F_Tag font    = box->font;
@@ -144,12 +204,14 @@ internal UI_BOX_CUSTOM_DRAW(ui_line_edit_draw) {
     };
     Rng2F32 select_rect = union_2f32(cursor_rect, mark_rect);
 
-    Vec4F32 bg_color = v4f32(0.8, 0.8, 0.8, 0.3);
+    // TODO: use color palette
+    Vec4F32 bg_color = v4f32(0.8, 0.8, 0.8, 0.6);
     bg_color.w *= box->focus_active_t;
-    Vec4F32 select_color = v4f32(0, 0, 1, 0.7);
-    select_color.w *= box->focus_active_t;
-    Vec4F32 cursor_color = v4f32(0, 0, 0, 0.9);
+    Vec4F32 select_color = box->palette->colors[UI_ColorCode_Selection];
+    select_color.w *= (box->parent->parent->focus_active_t*0.2f + 0.8f);
+    Vec4F32 cursor_color = box->palette->colors[UI_ColorCode_Cursor];
     cursor_color.w *= box->focus_active_t;
+
     d_rect(draw_data->parent_rect, bg_color, 0,0,0);
     d_rect(select_rect, select_color, font_size/6.f, 0, 1.f);
     d_rect(cursor_rect, cursor_color, 0, 0, 1.f);
@@ -279,7 +341,8 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark,
     if(is_focus_active && ui_dragging(sig)) 
     {
         // Update mouse ptr
-        if(ui_pressed(sig)) {
+        if(ui_pressed(sig))
+        {
             *mark = mouse_pt;
         }
         *cursor = mouse_pt;
@@ -307,7 +370,8 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark,
 }
 
 typedef struct UI_ImageDrawData UI_ImageDrawData;
-struct UI_ImageDrawData {
+struct UI_ImageDrawData
+{
     R_Handle          texture;
     R_Tex2DSampleKind sample_kind;
     Rng2F32           region;
@@ -318,21 +382,26 @@ struct UI_ImageDrawData {
 internal UI_BOX_CUSTOM_DRAW(ui_image_draw)
 {
     UI_ImageDrawData *draw_data = (UI_ImageDrawData *)user_data;
-    if(r_handle_match(draw_data->texture, r_handle_zero())) {
+    if(r_handle_match(draw_data->texture, r_handle_zero()))
+    {
         R_Rect2DInst *inst = d_rect(box->rect, v4f32(0,0,0,0), 0,0, 1.f);
         MemoryCopyArray(inst->corner_radii, box->corner_radii);
-    } else D_Tex2DSampleKindScope(draw_data->sample_kind) {
+    }
+    else D_Tex2DSampleKindScope(draw_data->sample_kind)
+    {
         R_Rect2DInst *inst = d_img(box->rect, draw_data->region, draw_data->texture, draw_data->tint, 0,0,0);
         MemoryCopyArray(inst->corner_radii, box->corner_radii);
     }
 
-    if(draw_data->blur > 0.01) {
+    if(draw_data->blur > 0.01)
+    {
         // TODO: handle blur pass
     }
 }
 
 internal UI_Signal
-ui_image(R_Handle texture, R_Tex2DSampleKind sample_kind, Rng2F32 region, Vec4F32 tint, F32 blur, String8 string) {
+ui_image(R_Handle texture, R_Tex2DSampleKind sample_kind, Rng2F32 region, Vec4F32 tint, F32 blur, String8 string)
+{
     UI_Box *box = ui_build_box_from_string(0, string);
     UI_ImageDrawData *draw_data = push_array(ui_build_arena(), UI_ImageDrawData, 1);
     draw_data->texture     = texture;
@@ -343,4 +412,188 @@ ui_image(R_Handle texture, R_Tex2DSampleKind sample_kind, Rng2F32 region, Vec4F3
     ui_box_equip_custom_draw(box, ui_image_draw, draw_data);
     UI_Signal sig = ui_signal_from_box(box);
     return sig;
+}
+
+////////////////////////////////
+//~ rjf: Special Buttons
+
+internal UI_Signal
+ui_expander(B32 is_expanded, String8 string)
+{
+    ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+    ui_set_next_text_alignment(UI_TextAlign_Center);
+    ui_set_next_font(ui_icon_font());
+    UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable|UI_BoxFlag_DrawText, string);
+    ui_box_equip_display_string(box, is_expanded ? str8_lit("v") : str8_lit(">"));
+    UI_Signal sig = ui_signal_from_box(box);
+    return sig;
+}
+
+internal UI_Signal
+ui_expanderf(B32 is_expanded, char *fmt, ...)
+{
+    Temp scratch = scratch_begin(0, 0);
+    va_list args;
+    va_start(args, fmt);
+    String8 string = push_str8fv(scratch.arena, fmt, args);
+    va_end(args);
+    UI_Signal sig = ui_expander(is_expanded, string);
+    scratch_end(scratch);
+    return sig;
+}
+
+////////////////////////////////
+//~ k: Scroll Regions
+
+thread_static UI_ScrollPt *ui_scroll_list_scroll_pt_ptr = 0;
+
+internal UI_ScrollPt
+ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, F32 viewport_pct)
+{
+    // ui_push_palette(ui_state->widget_palette_info.scrollbar_palette);
+
+    //- k: build main container
+    ui_set_next_pref_size(axis2_flip(axis), off_axis_size);
+    ui_set_next_child_layout_axis(axis);
+    UI_Box *container_box = ui_build_box_from_key(UI_BoxFlag_DrawBorder, ui_key_zero());
+
+    //- k: main scroller area
+    UI_Signal space_before_sig = {0};
+    UI_Signal space_after_sig = {0};
+    UI_Signal scroller_sig = {0};
+    UI_Box *scroll_area_box = &ui_g_nil_box;
+    UI_Box *scroller_box = &ui_g_nil_box;
+    UI_Parent(container_box)
+    {
+        ui_set_next_pref_size(axis, ui_pct(1.0,0));
+        ui_set_next_child_layout_axis(axis);
+        scroll_area_box = ui_build_box_from_stringf(0, "###_scroll_area_%i", axis);
+        UI_Parent(scroll_area_box)
+        {
+            // k: space before
+            if(pt.off > 0)
+            {
+                ui_set_next_pref_size(axis, ui_pct(pt.off, 1.0));
+                ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+                UI_Box *space_before_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable|UI_BoxFlag_DrawBorder, "###scroll_area_before");
+                space_before_sig = ui_signal_from_box(space_before_box);
+            }
+
+            // k: scroller
+            UI_Flags(UI_BoxFlag_AnimatePosY|UI_BoxFlag_DrawDropShadow) UI_PrefSize(axis, ui_pct(viewport_pct, 1.0)) UI_CornerRadius(3)
+            {
+                scroller_sig = ui_buttonf("###_scoller_%i", axis);
+                scroller_box = scroller_sig.box;
+            }
+
+            // k: space after
+            {
+                ui_set_next_pref_size(axis, ui_pct(1, 0.0));
+                ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+                UI_Box *space_after_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable|UI_BoxFlag_DrawBorder, "###scroll_area_after");
+                space_after_sig = ui_signal_from_box(space_after_box);
+            }
+        }
+    }
+    
+    // k: handle events
+    UI_ScrollPt new_pt = pt;
+    {
+        typedef struct UI_ScrollBarDragData UI_ScrollBarDragData;
+        struct UI_ScrollBarDragData
+        {
+            UI_ScrollPt start_pt;
+        };
+
+        F32 scroll_space_px = dim_2f32(scroll_area_box->rect).v[axis];
+        if(ui_dragging(scroller_sig))
+        {
+            if(ui_pressed(scroller_sig))
+            {
+                UI_ScrollBarDragData drag_data = {pt};
+                ui_store_drag_struct(&drag_data);
+            }
+
+            UI_ScrollBarDragData *drag_data = ui_get_drag_struct(UI_ScrollBarDragData);
+
+            F32 drag_delta = ui_drag_delta().v[axis];
+            F32 drag_pct = drag_delta / scroll_space_px;
+            new_pt.off = drag_data->start_pt.off + drag_pct;
+        }
+        if(ui_dragging(space_before_sig))
+        {
+            F32 delta = ui_state->drag_start_mouse.v[axis] - scroll_area_box->rect.p0.v[axis];
+            new_pt.off = delta/scroll_space_px;
+        }
+        if(ui_dragging(space_after_sig))
+        {
+            F32 delta = ui_state->drag_start_mouse.v[axis] - scroll_area_box->rect.p0.v[axis] - scroller_box->fixed_size.v[axis];
+            new_pt.off = delta/scroll_space_px;
+        }
+    }
+    return new_pt;
+}
+
+internal void
+ui_scroll_list_begin(Vec2F32 dim_px, UI_ScrollPt *scroll_pt)
+{
+    //- k: build top-level container (contains the scrollable container and scroll bar)
+    UI_Box *container_box = &ui_g_nil_box;
+    UI_FixedWidth(dim_px.x) UI_FixedHeight(dim_px.y) UI_ChildLayoutAxis(Axis2_X)
+    {
+        container_box = ui_build_box_from_key(0, ui_key_zero());
+    }
+
+    F32 ui_scroll_list_scroll_bar_dim_px = ui_top_font_size()*0.6f;
+    ui_scroll_list_scroll_pt_ptr = scroll_pt;
+    Vec2F32 ui_scroll_list_dim_px = dim_px;
+
+    //- k: build scrollable container
+    UI_Box *scrollable_container_box = &ui_g_nil_box;
+    UI_Parent(container_box) UI_ChildLayoutAxis(Axis2_Y) UI_FixedWidth(dim_px.x-ui_scroll_list_scroll_bar_dim_px) UI_FixedHeight(dim_px.y)
+    {
+        scrollable_container_box = ui_build_box_from_stringf(UI_BoxFlag_Clip|UI_BoxFlag_AllowOverflowY|UI_BoxFlag_Scroll, "###sp");
+        // NOTE: this will disable smoothing
+        // scrollable_container_box->view_off.y = scrollable_container_box->view_off_target.y;
+    }
+
+    F32 y = scrollable_container_box->view_bounds.y;
+    if(y > 0)
+    {
+        scroll_pt->off = scrollable_container_box->view_off_target.y / y;
+    }
+    F32 viewport_pct = scrollable_container_box->fixed_size.y / Max(scrollable_container_box->view_bounds.y, scrollable_container_box->fixed_size.y);
+
+    //- k: build vertical scroll bar
+    UI_Parent(container_box) UI_Focus(UI_FocusKind_Null)
+    {
+        ui_set_next_fixed_width(ui_scroll_list_scroll_bar_dim_px);
+        ui_set_next_fixed_height(ui_scroll_list_dim_px.y);
+        *scroll_pt = ui_scroll_bar(Axis2_Y, ui_px(ui_scroll_list_scroll_bar_dim_px, 1.f), *scroll_pt, viewport_pct);
+    }
+
+    //- k: begin scrollable region
+    ui_push_parent(container_box);
+    ui_push_parent(scrollable_container_box);
+}
+
+internal void
+ui_scroll_list_end(void)
+{
+    UI_Box *scrollable_container_box = ui_pop_parent();
+    UI_Box *container_box = ui_pop_parent();
+
+    //- k: scroll
+    UI_Signal sig = ui_signal_from_box(scrollable_container_box);
+    if(sig.scroll.y != 0)
+    {
+        ui_scroll_list_scroll_pt_ptr->off += (F32)sig.scroll.y / -100.0f;
+    }
+
+    //- k: clamping
+    F32 viewport_pct = scrollable_container_box->fixed_size.y / Max(scrollable_container_box->view_bounds.y, scrollable_container_box->fixed_size.y);
+    ui_scroll_list_scroll_pt_ptr->off = Clamp(0, ui_scroll_list_scroll_pt_ptr->off, 1-viewport_pct);
+
+    F32 y = scrollable_container_box->view_bounds.y;
+    scrollable_container_box->view_off_target.y = y * ui_scroll_list_scroll_pt_ptr->off;
 }

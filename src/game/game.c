@@ -10,29 +10,182 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     g_state->bucket_geo3d = d_bucket_make();
     g_state->hot_key = (G_Key){ hot_key };
 
+    // Unpack camera
+    G_Node *camera = scene->camera;
+
     // UI Box for game viewport (Handle user interaction)
-    ui_push_rect(window_rect);
-    UI_Box *box = ui_build_box_from_string(UI_BoxFlag_MouseClickable|
-                                            UI_BoxFlag_ClickToFocus|
-                                            UI_BoxFlag_Scroll,
-                                            str8_lit("###game_overlay"));
-    ui_push_parent(box);
-    ui_pop_rect();
+    ui_set_next_rect(window_rect);
+    UI_Box *overlay = ui_build_box_from_string(UI_BoxFlag_ClickToFocus|UI_BoxFlag_Scroll, str8_lit("###game_overlay"));
+    ui_push_parent(overlay);
 
     // G_Node *hot_node = 0;
-    G_Node *active_node = 0;
+    G_Node *active_node = g_node_from_key(scene->bucket, g_state->active_key);
 
-    // Stats pane
+    ui_set_next_rect(window_rect);
+    UI_Box *row = ui_row_begin();
+    ui_set_next_flags(UI_BoxFlag_Clip);
+    UI_Box *cfg = ui_pane_begin(r2f32p(0, 0, 610, window_rect.p1.y), str8_lit("left pane"));
 
-    UI_CornerRadius(9) ui_pane_begin(r2f32p(10, 700, 610, 1400), str8_lit("game"));
-    ui_column_begin();
+    // TODO: move these cfg to some structure
+    local_persist B32 show_scene_cfg  = 1;
+    local_persist B32 show_camera_cfg = 1;
+    local_persist B32 show_node_cfg   = 1;
+
+    UI_PrefWidth(ui_pct(1.0,0.0)) UI_TextAlignment(UI_TextAlign_Left) UI_ChildLayoutAxis(Axis2_Y)
+    {
+        // Scene
+        ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
+        UI_Box *scene_tree_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow, "###scene_tree");
+        UI_Parent(scene_tree_box)
+        {
+            // Header
+            ui_set_next_child_layout_axis(Axis2_X);
+            UI_Box *header_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow, "###header");
+            UI_Parent(header_box)
+            {
+                ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
+                if(ui_clicked(ui_expander(show_scene_cfg, str8_lit("scene cfg"))))
+                {
+                    show_scene_cfg = !show_scene_cfg;
+                }
+                ui_set_next_pref_size(Axis2_X, ui_text_dim(3, 0.0));
+                ui_label(str8_lit("Scene"));
+            }
+
+            // Content container
+            F32 size = 900;
+            if(!show_scene_cfg) size = 0;
+            ui_set_next_pref_size(Axis2_Y, ui_px(size, 0.0));
+            ui_set_next_child_layout_axis(Axis2_Y);
+            UI_Box *container_box = ui_build_box_from_stringf(UI_BoxFlag_AnimatePosY|UI_BoxFlag_AllowOverflowY, "###container");
+            UI_Parent(container_box)
+            {
+                Vec2F32 dim = dim_2f32(container_box->rect);
+                // TODO: no usage for now
+                UI_ScrollPt pt = {0};
+                ui_scroll_list_begin(v2f32(container_box->fixed_size.x, dim.y), &pt);
+                G_Node *root = scene->root;
+                while(root != 0)
+                {
+                    G_NodeRec rec = g_node_df_post(root, 0);
+                    if(ui_clicked(ui_button(root->name)))
+                    {
+                        g_state->active_key = root->key;
+                    }
+                    root = rec.next;
+                }
+                ui_scroll_list_end();
+            }
+        }
+
+        ui_divider(ui_px(10, 1.0));
+
+        // Camera
+        ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
+        UI_Box *camera_cfg_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow, "###camera_cfg");
+        UI_Parent(camera_cfg_box)
+        {
+            // Header
+            ui_set_next_child_layout_axis(Axis2_X);
+            UI_Box *header_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow, "###header");
+            UI_Parent(header_box)
+            {
+                ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
+                if(ui_clicked(ui_expanderf(show_camera_cfg, "camera cfg")))
+                {
+                    show_camera_cfg = !show_camera_cfg;
+                }
+                ui_label(str8_lit("Camera"));
+            }
+
+            if(show_camera_cfg)
+            {
+                UI_Row
+                {
+                    ui_label(str8_lit("pos"));
+                    ui_spacer(ui_pct(1.0, 0.0));
+                    ui_labelf("%.2f %.2f %.2f", camera->pos.x, camera->pos.y, camera->pos.z);
+                }
+                UI_Row
+                {
+                    ui_label(str8_lit("scale"));
+                    ui_spacer(ui_pct(1.0, 0.0));
+                    ui_labelf("%.2f %.2f %.2f", camera->scale.x, camera->scale.y, camera->scale.z);
+                }
+                UI_Row
+                {
+                    ui_label(str8_lit("rot"));
+                    ui_spacer(ui_pct(1.0, 0.0));
+                    ui_labelf("%.2f %.2f %.2f %.2f", camera->rot.x, camera->rot.y, camera->rot.z);
+                }
+            }
+        }
+
+        ui_divider(ui_px(10, 1.0));
+
+        // Node Properties
+        ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
+        UI_Box *node_cfg_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow, "###node_cfg");
+        UI_Parent(node_cfg_box)
+        {
+            // Header
+            ui_set_next_child_layout_axis(Axis2_X);
+            UI_Box *header_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow, "###header");
+            UI_Parent(header_box)
+            {
+                ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
+                if(ui_clicked(ui_expander(show_node_cfg, str8_lit("node cfg"))))
+                {
+                    show_node_cfg = !show_node_cfg;
+                }
+                ui_label(str8_lit("Node Properties"));
+            }
+
+            if(show_node_cfg && active_node != 0)
+            {
+                UI_Row
+                {
+                    ui_label(str8_lit("name"));
+                    ui_spacer(ui_pct(1.0, 0.0));
+                    ui_labelf("%s", active_node->name.str);
+                }
+                UI_Row
+                {
+                    ui_label(str8_lit("pos"));
+                    ui_spacer(ui_pct(1.0, 0.0));
+                    ui_labelf("%.2f %.2f %.2f", active_node->pos.x, active_node->pos.y, active_node->pos.z);
+                }
+                UI_Row
+                {
+                    ui_label(str8_lit("scale"));
+                    ui_spacer(ui_pct(1.0, 0.0));
+                    ui_labelf("%.2f %.2f %.2f", active_node->scale.x, active_node->scale.y, active_node->scale.z);
+                }
+                UI_Row
+                {
+                    ui_label(str8_lit("rot"));
+                    ui_spacer(ui_pct(1.0, 0.0));
+                    ui_labelf("%.2f %.2f %.2f %.2f", active_node->rot.x, active_node->rot.y, active_node->rot.z);
+                }
+            }
+        }
+    }
+    ui_pane_end();
+
+    ui_set_next_pref_width(ui_pct(1.0, 0.0));
+    ui_set_next_pref_height(ui_pct(1.0, 0.0));
+    UI_Box *scene_overlay = ui_build_box_from_string(UI_BoxFlag_MouseClickable|UI_BoxFlag_ClickToFocus|UI_BoxFlag_Scroll,
+                                                     str8_lit("###scene_overlay"));
+    ui_row_end();
+
+    g_state->sig = ui_signal_from_box(scene_overlay);
     F32 dt_sec = dt/1000000.0f;
 
     B32 show_grid   = 1;
     B32 show_gizmos = 0;
     // TODO: this is kind awkward, fix it later, make it pretty
     d_push_bucket(g_state->bucket_geo3d);
-    R_PassParams_Geo3D *pass = d_geo3d_begin(window_rect, mat_4x4f32(1.f), mat_4x4f32(1.f),
+    R_PassParams_Geo3D *pass = d_geo3d_begin(scene_overlay->rect, mat_4x4f32(1.f), mat_4x4f32(1.f),
                                              show_grid, show_gizmos,
                                              mat_4x4f32(1.f), v3f32(0,0,0));
     d_pop_bucket();
@@ -42,9 +195,8 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
         G_Node *node = scene->root;
         while(node != 0)
         {
+            G_NodeRec rec = g_node_df_pre(node, 0);
             F32 dt_ms = dt / 1000.f;
-            if(g_key_match(g_state->active_key, node->key)) { active_node = node; }
-
             for(G_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
             {
                 fn->f(node, scene, os_events, dt_sec);
@@ -68,19 +220,10 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                     }break;
                 }
             }
-            node = g_node_df_pre(node, 0);
+            node = rec.next;
         }
     }
 
-    UI_Row
-    {
-        ui_label(str8_lit("test_buttonl"));
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_button(str8_lit("test button"));
-    }
-
-    // Unpack camera
-    G_Node *camera = scene->camera;
     pass->view = g_view_from_node(camera);
     pass->projection = make_perspective_vulkan_4x4f32(camera->v.camera.fov, window_dim.x/window_dim.y, camera->v.camera.zn, camera->v.camera.zf);
     Mat4x4F32 xform_m = mul_4x4f32(pass->projection, pass->view);
@@ -93,9 +236,6 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                                     pass->gizmos_xform.v[3][1],
                                     pass->gizmos_xform.v[3][2],
                                     1);
-        Vec3F32 pos = g_pos_from_node(active_node);
-        g_kv("active node", "%s", active_node->name.str);
-        g_kv("active node pos", "%.2f %.2f %.2f", pos.x, pos.y, pos.z);
     }
 
     // Update hot/active
@@ -172,8 +312,6 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                 F32 speed = 1.0/(window_dim.x*length_2f32(projected_dir));
 
                 active_node->pst_pos_delta = scale_3f32(g_state->drag_start_direction, length_2f32(delta)*speed*n);
-                g_kv("active pos_delta", "%.2f %.2f %.2f", active_node->pst_pos_delta.x, active_node->pst_pos_delta.y, active_node->pst_pos_delta.z);
-                g_kv("active pos", "%.2f %.2f %.2f", active_node->pos.x, active_node->pos.y, active_node->pos.z);
             }
         }
     }
@@ -189,10 +327,8 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
         if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
     }
 
-    ui_column_end();
-    ui_pane_end();
     ui_pop_parent();
-    g_state->sig = ui_signal_from_box(box);
+    g_state->sig = ui_signal_from_box(overlay);
 }
 
 /////////////////////////////////
@@ -224,10 +360,6 @@ G_NODE_CUSTOM_UPDATE(camera_fn)
     clean_u.x = 0;
     clean_u.z = 0;
 
-    g_kv("camera forward", "%.2f %.2f %.2f", f.x, f.y, f.z);
-    g_kv("camera side", "%.2f %.2f %.2f", s.x, s.y, s.z);
-    g_kv("camera up", "%.2f %.2f %.2f", u.x, u.y, u.z);
-
     if(g_state->sig.f & UI_SignalFlag_MiddleDragging)
     {
         Vec2F32 delta = ui_drag_delta();
@@ -239,7 +371,6 @@ G_NODE_CUSTOM_UPDATE(camera_fn)
         F32 v_dist = -2.0 * v_pct;
         node->pre_pos_delta = scale_3f32(clean_s, -h_dist * 6);
         node->pre_pos_delta = add_3f32(node->pre_pos_delta, scale_3f32(clean_u, v_dist*6));
-        g_kv("Middle dragging delta", "%.2f %.2f", delta.x, delta.y);
     }
     else if(g_state->sig.f & UI_SignalFlag_MiddleReleased)
     {
@@ -250,7 +381,6 @@ G_NODE_CUSTOM_UPDATE(camera_fn)
     if(g_state->sig.f & UI_SignalFlag_RightDragging)
     {
         Vec2F32 delta = ui_drag_delta();
-        g_kv("Right dragging delta", "%.2f %.2f", delta.x, delta.y);
 
         // TODO: float percision issue when v_turn_speed is too high, fix it later
         F32 v_turn_speed = 0.5f/(window_dim.y);

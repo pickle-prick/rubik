@@ -5,67 +5,75 @@
 //~ rjf: Rasterization Flags
 
 typedef U32 F_RasterFlags;
-enum {
-        F_RasterFlag_Smooth = (1 << 0),
-        F_RasterFlag_Hinted = (1 << 1),
+enum
+{
+    F_RasterFlag_Smooth = (1 << 0),
+    F_RasterFlag_Hinted = (1 << 1),
 };
 
 ////////////////////////////////
 //~ rjf: Handles & Tags
 
 typedef struct F_Hash F_Hash;
-struct F_Hash {
-        U64 u64[2];
+struct F_Hash
+{
+    U64 u64[2];
 };
 
 typedef struct F_Tag F_Tag;
-struct F_Tag {
-        U64 u64[2];
+struct F_Tag
+{
+    U64 u64[2];
 };
 
 ////////////////////////////////
 //~ rjf: Draw Package Types (For Cache Queries)
 
 typedef struct F_Piece F_Piece;
-struct F_Piece {
-        R_Handle texture;
-        Rng2S16  rect;
-        Rng2F32  subrect;
-        F32      advance;
-        // TODO: what is decode_size
-        U16      decode_size;
+struct F_Piece
+{
+    R_Handle texture;
+    Rng2S16  rect;
+    Rng2F32  subrect;
+    F32      advance;
+    // TODO: what is decode_size
+    U16      decode_size;
 };
 
 typedef struct F_PieceArray F_PieceArray;
-struct F_PieceArray {
-        F_Piece *v;
-        U64 count;
+struct F_PieceArray
+{
+    F_Piece *v;
+    U64 count;
 };
 
 typedef struct F_Run F_Run;
-struct F_Run {
-        F_PieceArray pieces;
-        U64          ascent;
-        U64          descent;
-        Vec2F32      dim;
+struct F_Run
+{
+    F_PieceArray pieces;
+    U64          ascent;
+    U64          descent;
+    Vec2F32      dim;
 };
 
 ////////////////////////////////
 //~ rjf: Font Path -> Handle * Metrics * Path Cache Types
 
 typedef struct F_FontHashNode F_FontHashNode;
-struct F_FontHashNode {
-        F_FontHashNode *hash_next;
-        F_Tag tag;
-        FP_Handle handle;
-        FP_Metrics metrics;
-        char *path;
+struct F_FontHashNode
+{
+    F_FontHashNode *hash_next;
+    F_Tag tag;
+    FP_Handle handle;
+    FP_Metrics metrics;
+    char *path;
 };
 
 typedef struct F_FontHashSlot F_FontHashSlot;
-struct F_FontHashSlot {
-        F_FontHashNode *first;
-        F_FontHashNode *last;
+struct F_FontHashSlot
+{
+    F_FontHashNode *first;
+    F_FontHashNode *last;
 };
 
 ////////////////////////////////
@@ -74,58 +82,62 @@ struct F_FontHashSlot {
 typedef struct F_Atlas F_Atlas;
 struct F_Atlas
 {
-        FP_Handle atlas_handle;
-        R_Handle  texture;
-        Vec2S16   dim;
+    FP_Handle atlas_handle;
+    R_Handle  texture;
+    Vec2S16   dim;
 };
 
 ////////////////////////////////
 //~ rjf: Rasterization Cache Types
 typedef struct F_Hash2StyleRasterCacheNode F_Hash2StyleRasterCacheNode;
-struct F_Hash2StyleRasterCacheNode {
-        F_Hash2StyleRasterCacheNode *hash_next;
-        F_Hash2StyleRasterCacheNode *hash_prev;
-        U64 style_hash;
-        F32 ascent;
-        F32 descent;
-        F_Atlas atlas;
+struct F_Hash2StyleRasterCacheNode
+{
+    F_Hash2StyleRasterCacheNode *hash_next;
+    F_Hash2StyleRasterCacheNode *hash_prev;
+    U64 style_hash;
+    F32 ascent;
+    F32 descent;
+    F_Atlas atlas;
 };
 
 typedef struct F_Hash2StyleRasterCacheSlot F_Hash2StyleRasterCacheSlot;
-struct F_Hash2StyleRasterCacheSlot {
-        F_Hash2StyleRasterCacheNode *first;
-        F_Hash2StyleRasterCacheNode *last;
+struct F_Hash2StyleRasterCacheSlot
+{
+    F_Hash2StyleRasterCacheNode *first;
+    F_Hash2StyleRasterCacheNode *last;
 };
 
 ////////////////////////////////
 //~ rjf: Metrics
 
 typedef struct F_Metrics F_Metrics;
-struct F_Metrics {
-        F32 ascent;
-        F32 descent;
-        F32 line_gap;
-        F32 capital_height;
+struct F_Metrics
+{
+    F32 ascent;
+    F32 descent;
+    F32 line_gap;
+    F32 capital_height;
 };
 
 ////////////////////////////////
 //~ rjf: Main State Type
 
 typedef struct F_State F_State;
-struct F_State {
-        Arena *arena;
+struct F_State
+{
+    Arena *arena;
 
-        // rjf: font table
-        U64 font_hash_table_size;
-        F_FontHashSlot *font_hash_table;
+    // rjf: font table
+    U64 font_hash_table_size;
+    F_FontHashSlot *font_hash_table;
 
-        // rjf: hash -> raster cache table
-        U64 hash2style_slots_count;
-        F_Hash2StyleRasterCacheSlot *hash2style_slots;
+    // rjf: hash -> raster cache table
+    U64 hash2style_slots_count;
+    F_Hash2StyleRasterCacheSlot *hash2style_slots;
 
-        // rjf: atlas list
-        F_Atlas *first_atlas;
-        F_Atlas *last_atlas;
+    // rjf: atlas list
+    F_Atlas *first_atlas;
+    F_Atlas *last_atlas;
 };
 
 ////////////////////////////////

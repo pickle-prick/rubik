@@ -400,6 +400,14 @@ struct G_Node
     } v;
 };
 
+typedef struct G_NodeRec G_NodeRec;
+struct G_NodeRec
+{
+    G_Node *next;
+    S32    push_count;
+    S32    pop_count;
+};
+
 typedef struct G_BucketSlot G_BucketSlot;
 struct G_BucketSlot 
 {
@@ -439,6 +447,40 @@ read_only global G_Key g_nil_seed = {0};
 
 #include "generated/game.meta.h"
 
+/////////////////////////////////
+// Theme Types 
+
+typedef struct G_Theme G_Theme;
+struct G_Theme
+{
+    Vec4F32 colors[RD_ThemeColor_COUNT];
+};
+
+typedef enum G_FontSlot
+{
+    G_FontSlot_Main,
+    G_FontSlot_Code,
+    G_FontSlot_Icons,
+    G_FontSlot_COUNT
+} G_FontSlot;
+
+typedef enum G_PaletteCode
+{
+    G_PaletteCode_Base,
+    G_PaletteCode_MenuBar,
+    G_PaletteCode_Floating,
+    G_PaletteCode_ImplicitButton,
+    G_PaletteCode_PlainButton,
+    G_PaletteCode_PositivePopButton,
+    G_PaletteCode_NegativePopButton,
+    G_PaletteCode_NeutralPopButton,
+    G_PaletteCode_ScrollBarButton,
+    G_PaletteCode_Tab,
+    G_PaletteCode_TabInactive,
+    G_PaletteCode_DropSiteOverlay,
+    G_PaletteCode_COUNT
+} G_PaletteCode;
+
 typedef struct G_State G_State;
 struct G_State
 {
@@ -455,6 +497,14 @@ struct G_State
     Vec3F32   drag_start_direction;
 
     OS_Handle os_wnd;
+
+    // Theme
+    G_Theme   cfg_theme_target;
+    G_Theme   cfg_theme;
+    F_Tag     cfg_font_tags[G_FontSlot_COUNT];
+
+    // Palette
+    UI_Palette cfg_ui_debug_palettes[G_PaletteCode_COUNT]; // derivative from theme
 
     G_DeclStackNils;
     G_DeclStacks;
@@ -505,7 +555,7 @@ internal G_Mesh *g_mesh_alloc();
 /////////////////////////////////
 // Node Type Functions
 
-internal G_Node *g_node_df(G_Node *n, G_Node *root, U64 sib_member_off, U64 child_member_off); 
+internal G_NodeRec g_node_df(G_Node *n, G_Node *root, U64 sib_member_off, U64 child_member_off);
 #define g_node_df_pre(node, root) g_node_df(node, root, OffsetOf(G_Node, next), OffsetOf(G_Node, first))
 #define g_node_df_post(node, root) g_node_df(node, root, OffsetOf(G_Node, prev), OffsetOf(G_Node, last))
 
@@ -530,6 +580,13 @@ G_SHAPE_SUPPORT_FN(G_SHAPE_RECT_SUPPORT_FN);
 
 // internal B32         gjk(Vec3F32 s1_center, Vec3F32 s2_center, void *s1_data, void *s2_data, G_SHAPE_CUSTOM_SUPPORT_FN s1_support_fn, G_SHAPE_CUSTOM_SUPPORT_FN s2_support_fn, Vec3F32 simplex[4]);
 internal Vec2F32     triple_product_2f32(Vec2F32 A, Vec2F32 B, Vec2F32 C);
+
+/////////////////////////////////
+// UI
+
+internal F_Tag      g_font_from_slot(G_FontSlot slot);
+internal UI_Palette *g_palette_from_code(G_PaletteCode code);
+internal Vec4F32    g_rgba_from_theme_color(RD_ThemeColor color);
 
 /////////////////////////////////
 // Helpers

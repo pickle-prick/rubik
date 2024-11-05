@@ -303,7 +303,10 @@ internal void d_truncated_fancy_run_list(Vec2F32 p, D_FancyRunList *list, F32 ma
             // NOTE(k): Space will have 0 extent
             if(size.x > 0 && size.y > 0)
             {
-                d_rect(dst, v4f32(1,1,1,0.3), 1.0, 1.0, 1.0);
+                if(0)
+                {
+                    d_rect(dst, n->v.color, 1.0, 1.0, 1.0);
+                }
                 d_img(dst, src, piece->texture, n->v.color, 0,0,0);
             }
         }

@@ -50,6 +50,75 @@ g_init(OS_Handle os_wnd)
     g_state->node_bucket = g_bucket_make(arena, 3000);
     g_state->os_wnd = os_wnd;
 
+    // Fonts
+    g_state->cfg_font_tags[G_FontSlot_Main]  = f_tag_from_path("./fonts/Mplus1Code-Medium.ttf");
+    g_state->cfg_font_tags[G_FontSlot_Code]  = f_tag_from_path("./fonts/Mplus1Code-Medium.ttf");
+    g_state->cfg_font_tags[G_FontSlot_Icons] = f_tag_from_path("./fonts/icons.ttf");
+
+    // Theme 
+    MemoryCopy(g_state->cfg_theme_target.colors, rd_theme_preset_colors__default_dark, sizeof(rd_theme_preset_colors__default_dark));
+    MemoryCopy(g_state->cfg_theme.colors, rd_theme_preset_colors__default_dark, sizeof(rd_theme_preset_colors__default_dark));
+
+    //////////////////////////////
+    //- k: compute ui palettes from theme
+    {
+        G_Theme *current = &g_state->cfg_theme;
+        for(EachEnumVal(G_PaletteCode, code))
+        {
+            g_state->cfg_ui_debug_palettes[code].null       = v4f32(1, 0, 1, 1);
+            g_state->cfg_ui_debug_palettes[code].cursor     = current->colors[RD_ThemeColor_Cursor];
+            g_state->cfg_ui_debug_palettes[code].selection  = current->colors[RD_ThemeColor_SelectionOverlay];
+        }
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_Base].background = current->colors[RD_ThemeColor_BaseBackground];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_Base].text       = current->colors[RD_ThemeColor_Text];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_Base].text_weak  = current->colors[RD_ThemeColor_TextWeak];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_Base].border     = current->colors[RD_ThemeColor_BaseBorder];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_MenuBar].background = current->colors[RD_ThemeColor_MenuBarBackground];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_MenuBar].text       = current->colors[RD_ThemeColor_Text];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_MenuBar].text_weak  = current->colors[RD_ThemeColor_TextWeak];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_MenuBar].border     = current->colors[RD_ThemeColor_MenuBarBorder];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_Floating].background = current->colors[RD_ThemeColor_FloatingBackground];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_Floating].text       = current->colors[RD_ThemeColor_Text];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_Floating].text_weak  = current->colors[RD_ThemeColor_TextWeak];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_Floating].border     = current->colors[RD_ThemeColor_FloatingBorder];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_ImplicitButton].background = current->colors[RD_ThemeColor_ImplicitButtonBackground];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_ImplicitButton].text       = current->colors[RD_ThemeColor_Text];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_ImplicitButton].text_weak  = current->colors[RD_ThemeColor_TextWeak];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_ImplicitButton].border     = current->colors[RD_ThemeColor_ImplicitButtonBorder];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_PlainButton].background = current->colors[RD_ThemeColor_PlainButtonBackground];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_PlainButton].text       = current->colors[RD_ThemeColor_Text];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_PlainButton].text_weak  = current->colors[RD_ThemeColor_TextWeak];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_PlainButton].border     = current->colors[RD_ThemeColor_PlainButtonBorder];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_PositivePopButton].background = current->colors[RD_ThemeColor_PositivePopButtonBackground];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_PositivePopButton].text       = current->colors[RD_ThemeColor_Text];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_PositivePopButton].text_weak  = current->colors[RD_ThemeColor_TextWeak];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_PositivePopButton].border     = current->colors[RD_ThemeColor_PositivePopButtonBorder];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_NegativePopButton].background = current->colors[RD_ThemeColor_NegativePopButtonBackground];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_NegativePopButton].text       = current->colors[RD_ThemeColor_Text];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_NegativePopButton].text_weak  = current->colors[RD_ThemeColor_TextWeak];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_NegativePopButton].border     = current->colors[RD_ThemeColor_NegativePopButtonBorder];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_NeutralPopButton].background = current->colors[RD_ThemeColor_NeutralPopButtonBackground];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_NeutralPopButton].text       = current->colors[RD_ThemeColor_Text];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_NeutralPopButton].text_weak  = current->colors[RD_ThemeColor_TextWeak];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_NeutralPopButton].border     = current->colors[RD_ThemeColor_NeutralPopButtonBorder];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_ScrollBarButton].background = current->colors[RD_ThemeColor_ScrollBarButtonBackground];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_ScrollBarButton].text       = current->colors[RD_ThemeColor_Text];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_ScrollBarButton].text_weak  = current->colors[RD_ThemeColor_TextWeak];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_ScrollBarButton].border     = current->colors[RD_ThemeColor_ScrollBarButtonBorder];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_Tab].background = current->colors[RD_ThemeColor_TabBackground];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_Tab].text       = current->colors[RD_ThemeColor_Text];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_Tab].text_weak  = current->colors[RD_ThemeColor_TextWeak];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_Tab].border     = current->colors[RD_ThemeColor_TabBorder];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_TabInactive].background = current->colors[RD_ThemeColor_TabBackgroundInactive];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_TabInactive].text       = current->colors[RD_ThemeColor_Text];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_TabInactive].text_weak  = current->colors[RD_ThemeColor_TextWeak];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_TabInactive].border     = current->colors[RD_ThemeColor_TabBorderInactive];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_DropSiteOverlay].background = current->colors[RD_ThemeColor_DropSiteOverlay];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_DropSiteOverlay].text       = current->colors[RD_ThemeColor_DropSiteOverlay];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_DropSiteOverlay].text_weak  = current->colors[RD_ThemeColor_DropSiteOverlay];
+        g_state->cfg_ui_debug_palettes[G_PaletteCode_DropSiteOverlay].border     = current->colors[RD_ThemeColor_DropSiteOverlay];
+    }
+
     G_InitStacks(g_state)
     G_InitStackNils(g_state)
 }
@@ -352,21 +421,23 @@ g_node_mesh_inst3d_alloc(String8 string)
 /////////////////////////////////
 // Node Type Functions
 
-internal G_Node *
+internal G_NodeRec
 g_node_df(G_Node *n, G_Node* root, U64 sib_member_off, U64 child_member_off)
 {
-    G_Node *result = 0;
+    G_NodeRec result = {0};
     if(*MemberFromOffset(G_Node**, n, child_member_off) != 0)
     {
-        result = *MemberFromOffset(G_Node **, n, child_member_off);
+        result.next = *MemberFromOffset(G_Node **, n, child_member_off);
+        result.push_count++;
     } 
     else for(G_Node *p = n; p != root; p = p->parent)
     {
         if(*MemberFromOffset(G_Node **, p, sib_member_off) != 0)
         {
-            result = *MemberFromOffset(G_Node **, p, sib_member_off);
+            result.next = *MemberFromOffset(G_Node **, p, sib_member_off);
             break;
         }
+        result.pop_count++;
     }
     return result;
 }
@@ -881,6 +952,27 @@ p_in_triangle(Vec2F32 P, Vec2F32 A, Vec2F32 B, Vec2F32 C) {
 //     scratch_end(temp);
 //     return result;
 // }
+
+/////////////////////////////////
+// UI
+
+internal F_Tag
+g_font_from_slot(G_FontSlot slot)
+{
+    return g_state->cfg_font_tags[slot];
+}
+
+internal UI_Palette *
+g_palette_from_code(G_PaletteCode code)
+{
+    UI_Palette *result = &g_state->cfg_ui_debug_palettes[code];
+    return result;
+}
+internal Vec4F32
+g_rgba_from_theme_color(RD_ThemeColor color)
+{
+    return g_state->cfg_theme.colors[color];
+}
 
 /////////////////////////////////
 // Helpers

@@ -26,12 +26,12 @@ UI_StackTable:
   //- rjf: interaction
   { FocusHot                           focus_hot                     UI_FocusKind          UI_FocusKind_Null                  }
   { FocusActive                        focus_active                  UI_FocusKind          UI_FocusKind_Null                  }
-  // { FastpathCodepoint                  fastpath_codepoint            U32                   0                                  }
+  // { FastpathCodepoint                  fastpath_codepoint            U32                   0                                 }
   // { GroupKey                           group_key                     UI_Key                `ui_key_zero()`                    }
   
   //- rjf: colors
   { Transparency                       transparency                  F32                   0                                  }
-  // { Palette                            palette                      `UI_Palette*    `     `&ui_g_nil_palette`                 }
+  { Palette                            palette                      `UI_Palette*    `     `&ui_g_nil_palette`                 }
   
   //- rjf: squish
   // { Squish                             squish                        F32                   0                                  }

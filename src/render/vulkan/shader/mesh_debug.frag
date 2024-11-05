@@ -153,7 +153,7 @@ float plane_intersect(vec3 ray_start, vec3 ray_end, vec3 N, vec3 p_plane)
     // Avoid division by zero
     if (abs(denom) > 1e-6)
     {
-        float t = dot(N, p_plane - ray_start) / denom;
+        float t = dot(N, p_plane-ray_start) / denom;
 
         // Check if t is within the valid range [0, 1]
         if (t >= 0.0 && t <= 1.0)

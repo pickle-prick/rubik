@@ -147,16 +147,18 @@ internal UI_Signal ui_pane_end(void);
 // internal UI_Box *  ui_table_cell_sized_begin(UI_Size size);
 
 ////////////////////////////////
-//~ rjf: Scroll Regions
+//~ k: Scroll Regions
 
 // internal void ui_scroll_list_row_block_chunk_list_push(Arena *arena, UI_ScrollListRowBlockChunkList *list, U64 cap, UI_ScrollListRowBlock *block);
 // internal UI_ScrollListRowBlockArray ui_scroll_list_row_block_array_from_chunk_list(Arena *arena, UI_ScrollListRowBlockChunkList *list);
 // internal U64 ui_scroll_list_row_from_item(UI_ScrollListRowBlockArray *blocks, U64 item);
 // internal U64 ui_scroll_list_item_from_row(UI_ScrollListRowBlockArray *blocks, U64 row);
 // 
+internal UI_ScrollPt ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, F32 viewport_pct);
 // internal UI_ScrollPt ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, Rng1S64 idx_range, S64 view_num_indices);
+internal void ui_scroll_list_begin(Vec2F32 dim_px, UI_ScrollPt *scroll_pt);
 // internal void ui_scroll_list_begin(UI_ScrollListParams *params, UI_ScrollPt *scroll_pt_out, Vec2S64 *cursor_out, Vec2S64 *mark_out, Rng1S64 *visible_row_range_out, UI_ScrollListSignal *signal_out);
-// internal void ui_scroll_list_end(void);
+internal void ui_scroll_list_end(void);
 
 ////////////////////////////////
 //~ rjf: Macro Loop Wrappers
