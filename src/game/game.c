@@ -24,7 +24,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     ui_set_next_rect(window_rect);
     UI_Box *row = ui_row_begin();
     ui_set_next_flags(UI_BoxFlag_Clip);
-    UI_Box *cfg = ui_pane_begin(r2f32p(0, 0, 610, window_rect.p1.y), str8_lit("left pane"));
+    UI_Box *cfg = ui_pane_begin(r2f32p(0, 0, 610, window_rect.p1.y), str8_lit("###left_pane"));
 
     // TODO: move these cfg to some structure
     local_persist B32 show_scene_cfg  = 1;
@@ -44,12 +44,12 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
             UI_Parent(header_box)
             {
                 ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
-                if(ui_clicked(ui_expander(show_scene_cfg, str8_lit("scene cfg"))))
+                if(ui_clicked(ui_expanderf(show_scene_cfg, "###scene_cfg")))
                 {
                     show_scene_cfg = !show_scene_cfg;
                 }
                 ui_set_next_pref_size(Axis2_X, ui_text_dim(3, 0.0));
-                ui_label(str8_lit("Scene"));
+                ui_labelf("Scene");
             }
 
             // Content container
@@ -78,7 +78,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
             }
         }
 
-        ui_divider(ui_px(10, 1.0));
+        ui_divider(ui_px(3, 1.0));
 
         // Camera
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
@@ -91,37 +91,37 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
             UI_Parent(header_box)
             {
                 ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
-                if(ui_clicked(ui_expanderf(show_camera_cfg, "camera cfg")))
+                if(ui_clicked(ui_expanderf(show_camera_cfg, "###camera_cfg")))
                 {
                     show_camera_cfg = !show_camera_cfg;
                 }
-                ui_label(str8_lit("Camera"));
+                ui_labelf("Camera");
             }
 
             if(show_camera_cfg)
             {
                 UI_Row
                 {
-                    ui_label(str8_lit("pos"));
+                    ui_labelf("pos");
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%.2f %.2f %.2f", camera->pos.x, camera->pos.y, camera->pos.z);
                 }
                 UI_Row
                 {
-                    ui_label(str8_lit("scale"));
+                    ui_labelf("scale");
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%.2f %.2f %.2f", camera->scale.x, camera->scale.y, camera->scale.z);
                 }
                 UI_Row
                 {
-                    ui_label(str8_lit("rot"));
+                    ui_labelf("rot");
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%.2f %.2f %.2f %.2f", camera->rot.x, camera->rot.y, camera->rot.z);
                 }
             }
         }
 
-        ui_divider(ui_px(10, 1.0));
+        ui_divider(ui_px(3, 1.0));
 
         // Node Properties
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
@@ -134,36 +134,36 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
             UI_Parent(header_box)
             {
                 ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
-                if(ui_clicked(ui_expander(show_node_cfg, str8_lit("node cfg"))))
+                if(ui_clicked(ui_expander(show_node_cfg, str8_lit("###node_cfg"))))
                 {
                     show_node_cfg = !show_node_cfg;
                 }
-                ui_label(str8_lit("Node Properties"));
+                ui_labelf("Node Properties");
             }
 
             if(show_node_cfg && active_node != 0)
             {
                 UI_Row
                 {
-                    ui_label(str8_lit("name"));
+                    ui_labelf("name");
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%s", active_node->name.str);
                 }
                 UI_Row
                 {
-                    ui_label(str8_lit("pos"));
+                    ui_labelf("pos");
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%.2f %.2f %.2f", active_node->pos.x, active_node->pos.y, active_node->pos.z);
                 }
                 UI_Row
                 {
-                    ui_label(str8_lit("scale"));
+                    ui_labelf("scale");
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%.2f %.2f %.2f", active_node->scale.x, active_node->scale.y, active_node->scale.z);
                 }
                 UI_Row
                 {
-                    ui_label(str8_lit("rot"));
+                    ui_labelf("rot");
                     ui_spacer(ui_pct(1.0, 0.0));
                     ui_labelf("%.2f %.2f %.2f %.2f", active_node->rot.x, active_node->rot.y, active_node->rot.z);
                 }
@@ -174,7 +174,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
 
     ui_set_next_pref_width(ui_pct(1.0, 0.0));
     ui_set_next_pref_height(ui_pct(1.0, 0.0));
-    UI_Box *scene_overlay = ui_build_box_from_string(UI_BoxFlag_MouseClickable|UI_BoxFlag_ClickToFocus|UI_BoxFlag_Scroll,
+    UI_Box *scene_overlay = ui_build_box_from_string(UI_BoxFlag_MouseClickable|UI_BoxFlag_Scroll,
                                                      str8_lit("###scene_overlay"));
     ui_row_end();
 

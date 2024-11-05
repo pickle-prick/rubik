@@ -194,15 +194,15 @@ ui_draw(OS_Handle os_wnd)
             d_push_clip(new_clip);
         }
 
-        // TODO(k): custom draw list
-        // if(box->flags & UI_BoxFlag_DrawBucket)
-        // {
-        //     Mat3x3F32 xform = make_translate_3x3f32(box->position_delta);
-        //     D_XForm2DScope(xform)
-        //     {
-        //         d_sub_bucket(box->draw_bucket);
-        //     }
-        // }
+        // k: custom draw list
+        if(box->flags & UI_BoxFlag_DrawBucket)
+        {
+            Mat3x3F32 xform = make_translate_3x3f32(box->position_delta);
+            D_XForm2DScope(xform)
+            {
+                d_sub_bucket(box->draw_bucket);
+            }
+        }
 
         // Call custom draw callback
         if(box->custom_draw != 0)
@@ -210,7 +210,7 @@ ui_draw(OS_Handle os_wnd)
             box->custom_draw(box, box->custom_draw_user_data);
         }
 
-        // k: pop
+        // k: pop stacks
         {
             S32 pop_idx = 0;
             for(UI_Box *b = box; !ui_box_is_nil(b) && pop_idx < rec.pop_count; b = b->parent)

@@ -450,7 +450,7 @@ thread_static UI_ScrollPt *ui_scroll_list_scroll_pt_ptr = 0;
 internal UI_ScrollPt
 ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, F32 viewport_pct)
 {
-    // ui_push_palette(ui_state->widget_palette_info.scrollbar_palette);
+    ui_push_palette(ui_state->widget_palette_info.scrollbar_palette);
 
     //- k: build main container
     ui_set_next_pref_size(axis2_flip(axis), off_axis_size);
@@ -475,12 +475,12 @@ ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, F32 viewport_pc
             {
                 ui_set_next_pref_size(axis, ui_pct(pt.off, 1.0));
                 ui_set_next_hover_cursor(OS_Cursor_HandPoint);
-                UI_Box *space_before_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable|UI_BoxFlag_DrawBorder, "###scroll_area_before");
+                UI_Box *space_before_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "###scroll_area_before");
                 space_before_sig = ui_signal_from_box(space_before_box);
             }
 
             // k: scroller
-            UI_Flags(UI_BoxFlag_AnimatePosY|UI_BoxFlag_DrawDropShadow) UI_PrefSize(axis, ui_pct(viewport_pct, 1.0)) UI_CornerRadius(3)
+            UI_Flags(UI_BoxFlag_AnimatePosY|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBackground) UI_PrefSize(axis, ui_pct(viewport_pct, 1.0)) UI_CornerRadius(3)
             {
                 scroller_sig = ui_buttonf("###_scoller_%i", axis);
                 scroller_box = scroller_sig.box;
@@ -490,7 +490,7 @@ ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, F32 viewport_pc
             {
                 ui_set_next_pref_size(axis, ui_pct(1, 0.0));
                 ui_set_next_hover_cursor(OS_Cursor_HandPoint);
-                UI_Box *space_after_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable|UI_BoxFlag_DrawBorder, "###scroll_area_after");
+                UI_Box *space_after_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "###scroll_area_after");
                 space_after_sig = ui_signal_from_box(space_after_box);
             }
         }
@@ -531,6 +531,7 @@ ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, F32 viewport_pc
             new_pt.off = delta/scroll_space_px;
         }
     }
+    ui_pop_palette();
     return new_pt;
 }
 
@@ -544,7 +545,7 @@ ui_scroll_list_begin(Vec2F32 dim_px, UI_ScrollPt *scroll_pt)
         container_box = ui_build_box_from_key(0, ui_key_zero());
     }
 
-    F32 ui_scroll_list_scroll_bar_dim_px = ui_top_font_size()*0.6f;
+    F32 ui_scroll_list_scroll_bar_dim_px = ui_top_font_size()*0.3f;
     ui_scroll_list_scroll_pt_ptr = scroll_pt;
     Vec2F32 ui_scroll_list_dim_px = dim_px;
 
