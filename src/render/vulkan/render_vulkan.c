@@ -1086,7 +1086,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 // 1. VK_ATTACHMENT_LOAD_OP_LOAD:      preserve the existing contents of the attachment
                 // 2. VK_ATTACHMENT_LOAD_OP_CLEAR:     clear the values to a constant at the start
                 // 3. VK_ATTACHMENT_LOAD_OP_DONT_CARE: existing contents are undefined; we don't care about them
-                att_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                att_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
                 // There are only two possibilities for the storeOp
                 // 1. VK_ATTACHMENT_STORE_OP_STORE:     rendered contents will be stored in memory and can be read later
                 // 2. VK_ATTACHMENT_STORE_OP_DONT_CARE: contents of the framebuffer will be undefined after the rendering operation
@@ -1104,7 +1104,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 // 1. VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: images used as color attachment
                 // 2. VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:          images to be presented in the swap chain
                 // 3. VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:     images to be used as destination for a memory copy operation
-                att_descs[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                att_descs[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                 att_descs[0].finalLayout   = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 
@@ -1279,12 +1279,12 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 // Color attachment
                 att_descs[0].format         = color_format;
                 att_descs[0].samples        = VK_SAMPLE_COUNT_1_BIT;
-                att_descs[0].loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;
+                att_descs[0].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
                 att_descs[0].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
                 att_descs[0].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
                 att_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-                att_descs[0].initialLayout  = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                att_descs[0].finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                att_descs[0].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+                att_descs[0].finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
                 VkAttachmentReference refs[attachment_count];
                 refs[0].attachment = 0;
@@ -1302,7 +1302,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 deps[0].dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
                 deps[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-                // Creat render pass
+                // Create render pass
                 VkRenderPassCreateInfo create_info = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
                 create_info.attachmentCount = attachment_count;
                 create_info.pAttachments    = att_descs;
@@ -2428,8 +2428,8 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
             .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA, // Optional
             .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, // Optional
             .colorBlendOp        = VK_BLEND_OP_ADD, // Optional
-            .srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA, // Optional
-            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, // Optional
+            .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE, // Optional
+            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO, // Optional
             .alphaBlendOp        = VK_BLEND_OP_ADD, // Optional
         },
         {
@@ -2446,12 +2446,9 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
     switch (kind)
     {
         default:{}break;
-        case R_Vulkan_PipelineKind_MeshDebug:
-        case R_Vulkan_PipelineKind_Mesh:
-        {
-            color_blend_attachment_state[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-            color_blend_attachment_state[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-        }break;
+        case R_Vulkan_PipelineKind_Rect: {}break;
+        case R_Vulkan_PipelineKind_MeshDebug: {}break;
+        case R_Vulkan_PipelineKind_Mesh: {}break;
         case R_Vulkan_PipelineKind_Geo3DComposite:
         {
             color_blend_attachment_state[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
@@ -2840,7 +2837,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                 VkClearValue clear_colors[1];
                 clear_colors[0].color = (VkClearColorValue){{ 0.0f, 0.0f, 0.0f, 0.0f }}; /* black with 100% opacity */
                 // Those two parameters define the clear values to use for VK_ATTACHMENT_LOAD_OP_CLEAR, which we used as load operations for the color attachment
-                begin_info.clearValueCount = 1;
+                begin_info.clearValueCount = 0;
                 begin_info.pClearValues    = clear_colors;
                 // All of the functions that record commands can be recongnized by their vkCmd prefix
                 // They all return void, so there will be no error handling until we've finished recording
@@ -2950,7 +2947,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                     vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
 
                     VkRect2D scissor = {0};
-                    if(group_params->clip.x0 == 0 && group_params->clip.x1 == 0 && group_params->clip.y0 && group_params->clip.y1 == 0)
+                    if(group_params->clip.x0 == 0 && group_params->clip.x1 == 0 && group_params->clip.y0 == 0 && group_params->clip.y1 == 0)
                     {
                         scissor.offset = (VkOffset2D){0,0};
                         scissor.extent = wnd->bag->stage_color_image.extent;
@@ -2965,6 +2962,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                         scissor.offset = (VkOffset2D){(U32)group_params->clip.p0.x, (U32)group_params->clip.p0.y};
                         Vec2F32 clip_dim = dim_2f32(group_params->clip);
                         scissor.extent = (VkExtent2D){(U32)clip_dim.x, (U32)clip_dim.y};
+                        Assert(!(clip_dim.x == 0 && clip_dim.y == 0));
                     }
                     vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
 
@@ -3185,7 +3183,11 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                     begin_info.framebuffer       = framebuffers[R_Vulkan_RenderPassKind_Geo3DComposite];
                     begin_info.renderArea.offset = (VkOffset2D){0, 0};
                     begin_info.renderArea.extent = wnd->bag->stage_color_image.extent;
-                    begin_info.clearValueCount = 0;
+                    VkClearValue clear_colors[1];
+                    clear_colors[0].color = (VkClearColorValue){{ 0.0f, 0.0f, 0.0f, 0.0f }}; /* black with 100% opacity */
+                    // Those two parameters define the clear values to use for VK_ATTACHMENT_LOAD_OP_CLEAR, which we used as load operations for the color attachment
+                    begin_info.clearValueCount = 1;
+                    begin_info.pClearValues    = clear_colors;
                     vkCmdBeginRenderPass(cmd_buf, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
                     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.geo3d_composite.h);

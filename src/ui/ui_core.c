@@ -239,7 +239,8 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
         UI_InitStacks(ui_state);
         ui_state->root = &ui_g_nil_box;
         ui_state->default_animation_rate = 1 - pow_f32(2, (-50.f * ui_state->animation_dt));
-        // ui_state->build_box_count = 0;
+        ui_state->last_build_box_count = ui_state->build_box_count;
+        ui_state->build_box_count = 0;
     }
 
     //- k: detect mouse-moves
@@ -290,6 +291,11 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
         ui_set_next_fixed_width(window_rect_size.x);
         ui_set_next_fixed_height(window_rect_size.y);
         ui_set_next_child_layout_axis(Axis2_X);
+        
+        // TODO: move this to a dedicated root box
+        ui_set_next_focus_hot(UI_FocusKind_On);
+        ui_set_next_focus_active(UI_FocusKind_On);
+        ui_set_next_flags(UI_BoxFlag_DefaultFocusNav);
         UI_Box *root = ui_build_box_from_stringf(0, "###%I64x", os_wnd.u64[0]);
         ui_push_parent(root);
         ui_state->root = root;
@@ -385,18 +391,17 @@ ui_end_build(void)
             {
                 B32 is_hot      = ui_key_match(b->key, ui_state->hot_box_key);
                 B32 is_active   = ui_key_match(b->key, ui_state->active_box_key[UI_MouseButtonKind_Left]);
-                B32 is_disabled = !!(b->flags & UI_BoxFlag_Disabled) && (b->first_disabled_build_index+2 < ui_state->build_index ||
-                                                                                 b->first_touched_build_index == b->first_disabled_build_index);
+                B32 is_disabled = !!(b->flags & UI_BoxFlag_Disabled) && (b->first_disabled_build_index+2 < ui_state->build_index || b->first_touched_build_index == b->first_disabled_build_index);
 
                 B32 is_focus_hot    = !!(b->flags & UI_BoxFlag_FocusHot) && !(b->flags & UI_BoxFlag_FocusHotDisabled);
                 B32 is_focus_active = !!(b->flags & UI_BoxFlag_FocusActive) && !(b->flags & UI_BoxFlag_FocusActiveDisabled);
 
                 // determine rates
-                F32 hot_rate          = ui_state->animation_info.flags & UI_AnimationInfoFlag_HotAnimations ? slug_rate : 1;
+                F32 hot_rate          = ui_state->animation_info.flags & UI_AnimationInfoFlag_HotAnimations    ? slug_rate : 1;
                 F32 active_rate       = ui_state->animation_info.flags & UI_AnimationInfoFlag_ActiveAnimations ? slug_rate : 1;
-                F32 disabled_rate     = ui_state->animation_info.flags & UI_AnimationInfoFlag_HotAnimations ? slug_rate : 1;
-                F32 focus_hot_rate    = ui_state->animation_info.flags & UI_AnimationInfoFlag_HotAnimations ? slug_rate : 1;
-                F32 focus_active_rate = ui_state->animation_info.flags & UI_AnimationInfoFlag_FocusAnimations ? slow_rate : 1;
+                F32 disabled_rate     = ui_state->animation_info.flags & UI_AnimationInfoFlag_HotAnimations    ? slug_rate : 1;
+                F32 focus_hot_rate    = ui_state->animation_info.flags & UI_AnimationInfoFlag_HotAnimations    ? slug_rate : 1;
+                F32 focus_active_rate = ui_state->animation_info.flags & UI_AnimationInfoFlag_FocusAnimations  ? slug_rate : 1;
 
                 // Animate interaction transition states
                 b->hot_t          += hot_rate * ((F32)is_hot - b->hot_t);
@@ -435,9 +440,7 @@ ui_end_build(void)
                     }
                 }
             }
-
         }
-
     }
 
     // k: hover cursor
@@ -471,7 +474,6 @@ ui_calc_sizes_standalone__in_place_rec(UI_Box *root, Axis2 axis)
         {
             root->fixed_size.v[axis] = root->pref_size[axis].value;
         }break;
-
         case UI_SizeKind_TextContent:
         {
             F32 padding = root->pref_size[axis].value;
@@ -508,7 +510,6 @@ ui_calc_sizes_upwards_dependent__in_place_rec(UI_Box *root, Axis2 axis)
                     break;
                 }
             }
-
             F32 size = fixed_parent->fixed_size.v[axis] * root->pref_size[axis].value;
             root->fixed_size.v[axis] = size;
         }break;
@@ -738,6 +739,8 @@ ui_layout_root(UI_Box *root, Axis2 axis)
 internal UI_Box *
 ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
 {
+    ui_state->build_box_count += 1;
+
     // Grab active parent
     UI_Box *parent = ui_top_parent();
     UI_BoxFlags last_flags = 0;

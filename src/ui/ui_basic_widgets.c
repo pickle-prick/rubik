@@ -68,7 +68,6 @@ ui_divider(UI_Size size)
 internal UI_Signal
 ui_label(String8 string)
 {
-    ui_set_next_text_padding(3);
     UI_Box *box = ui_build_box_from_string(UI_BoxFlag_DrawText, str8_zero());
     ui_box_equip_display_string(box, string);
     UI_Signal interact = ui_signal_from_box(box);
@@ -176,45 +175,37 @@ struct UI_LineEditDrawData
 internal UI_BOX_CUSTOM_DRAW(ui_line_edit_draw)
 {
     UI_LineEditDrawData *draw_data = (UI_LineEditDrawData *)user_data;
-
-    F_Tag font    = box->font;
+    F_Tag font = box->font;
     F32 font_size = box->font_size;
-    F32 tab_size  = box->tab_size;
-
+    F32 tab_size = box->tab_size;
+    Vec4F32 cursor_color = box->palette->colors[UI_ColorCode_Cursor];
+    cursor_color.w *= box->parent->parent->focus_active_t;
+    Vec4F32 select_color = box->palette->colors[UI_ColorCode_Selection];
+    select_color.w *= (box->parent->parent->focus_active_t*0.2f + 0.8f);
     Vec2F32 text_position = ui_box_text_position(box);
     String8 edited_string = draw_data->edited_string;
     TxtPt cursor = draw_data->cursor;
     TxtPt mark = draw_data->mark;
     F32 cursor_pixel_off = f_dim_from_tag_size_string(font, font_size, 0, tab_size, str8_prefix(edited_string, cursor.column-1)).x;
-    F32 mark_pixel_off = f_dim_from_tag_size_string(font, font_size, 0, tab_size, str8_prefix(edited_string, mark.column-1)).x;
-    F32 cursor_thickness = ClampBot(4.f, font_size/6.0f);
-
-    Rng2F32 cursor_rect = {
-        text_position.x + cursor_pixel_off - cursor_thickness*0.5f,
-        box->rect.y0+2.f,
-        text_position.x + cursor_pixel_off + cursor_thickness*0.50f,
-        box->rect.y1-2.f,
-    };
-
-    Rng2F32 mark_rect = {
-        text_position.x + mark_pixel_off - cursor_thickness*0.5f,
+    F32 mark_pixel_off   = f_dim_from_tag_size_string(font, font_size, 0, tab_size, str8_prefix(edited_string, mark.column-1)).x;
+    F32 cursor_thickness = ClampBot(4.f, font_size/6.f);
+    Rng2F32 cursor_rect =
+    {
+        text_position.x + cursor_pixel_off - cursor_thickness*0.50f,
         box->rect.y0+4.f,
-        text_position.x + mark_pixel_off + cursor_thickness*0.50f,
+        text_position.x + cursor_pixel_off + cursor_thickness*0.50f,
         box->rect.y1-4.f,
     };
+    Rng2F32 mark_rect =
+    {
+        text_position.x + mark_pixel_off - cursor_thickness*0.50f,
+        box->rect.y0+2.f,
+        text_position.x + mark_pixel_off + cursor_thickness*0.50f,
+        box->rect.y1-2.f,
+    };
     Rng2F32 select_rect = union_2f32(cursor_rect, mark_rect);
-
-    // TODO: use color palette
-    Vec4F32 bg_color = v4f32(0.8, 0.8, 0.8, 0.6);
-    bg_color.w *= box->focus_active_t;
-    Vec4F32 select_color = box->palette->colors[UI_ColorCode_Selection];
-    select_color.w *= (box->parent->parent->focus_active_t*0.2f + 0.8f);
-    Vec4F32 cursor_color = box->palette->colors[UI_ColorCode_Cursor];
-    cursor_color.w *= box->focus_active_t;
-
-    d_rect(draw_data->parent_rect, bg_color, 0,0,0);
     d_rect(select_rect, select_color, font_size/6.f, 0, 1.f);
-    d_rect(cursor_rect, cursor_color, 0, 0, 1.f);
+    d_rect(cursor_rect, cursor_color, 0.f, 0, 1.f);
 }
 
 internal UI_Signal
@@ -233,6 +224,8 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark,
 
     B32 is_focus_hot    = ui_is_focus_hot();
     B32 is_focus_active = ui_is_focus_active();
+    B32 is_focus_hot_disabled = (!is_focus_hot && ui_top_focus_hot() == UI_FocusKind_On);
+    B32 is_focus_active_disabled = (!is_focus_active && ui_top_focus_active() == UI_FocusKind_On);
 
     ui_set_next_hover_cursor(is_focus_active ? OS_Cursor_IBar : OS_Cursor_HandPoint);
     // Build top-level box
@@ -261,9 +254,7 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark,
             // Perform replace range
             if(!txt_pt_match(op.range.min, op.range.max) || op.replace.size != 0)
             {
-                String8 new_string = ui_push_string_replace_range(scratch.arena, edit_string,
-                                                                  r1s64(op.range.min.column, op.range.max.column),
-                                                                  op.replace);
+                String8 new_string = ui_push_string_replace_range(scratch.arena, edit_string, r1s64(op.range.min.column, op.range.max.column), op.replace);
                 new_string.size = Min(edit_buffer_size, new_string.size);
                 MemoryCopy(edit_buffer, new_string.str, new_string.size);
                 edit_string_size_out[0] = new_string.size;
@@ -296,11 +287,9 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark,
         else
         {
             // TODO
-            F32 total_text_width = f_dim_from_tag_size_string(box->font, box->font_size, 0,
-                                                              box->tab_size, edit_string).x;
+            F32 total_text_width = f_dim_from_tag_size_string(box->font, box->font_size, 0, box->tab_size, edit_string).x;
             ui_set_next_pref_width(ui_px(total_text_width, 1.f));
-            UI_Box *editstr_box = ui_build_box_from_stringf(UI_BoxFlag_DrawText|UI_BoxFlag_DisableTextTrunc,
-                                                            "###editstr");
+            UI_Box *editstr_box = ui_build_box_from_stringf(UI_BoxFlag_DrawText|UI_BoxFlag_DisableTextTrunc, "###editstr");
             UI_LineEditDrawData *draw_data = push_array(ui_build_arena(), UI_LineEditDrawData, 1);
             {
                 draw_data->edited_string = push_str8_copy(ui_build_arena(), edit_string);
@@ -365,7 +354,6 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark,
     // Pop focus
     ui_pop_focus_hot();
     ui_pop_focus_active();
-
     return sig;
 }
 
@@ -597,4 +585,183 @@ ui_scroll_list_end(void)
 
     F32 y = scrollable_container_box->view_bounds.y;
     scrollable_container_box->view_off_target.y = y * ui_scroll_list_scroll_pt_ptr->off;
+}
+
+internal UI_Signal
+ui_f32_edit(F32 *n, F32 min, F32 max, TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, U64 *edit_string_size_out, String8 string)
+{
+    String8 display_string = push_str8_copy(ui_build_arena(), ui_display_part_from_key_string(string));
+    String8 hash_part_string = push_str8_copy(ui_build_arena(), ui_hash_part_from_key_string(string));
+    String8 number_string = push_str8f(ui_build_arena(), "%.3f", display_string.str, *n);
+    String8 pre_edit_value = push_str8f(ui_build_arena(), "%s:%s", display_string.str, number_string.str);
+
+    UI_Key key = ui_key_from_string(ui_active_seed_key(), hash_part_string);
+
+    // Calculate focus
+    B32 is_auto_focus_hot    = ui_is_key_auto_focus_hot(key);
+    B32 is_auto_focus_active = ui_is_key_auto_focus_active(key);
+    ui_push_focus_hot(is_auto_focus_hot ? UI_FocusKind_On : UI_FocusKind_Null);
+    ui_push_focus_active(is_auto_focus_active ? UI_FocusKind_On : UI_FocusKind_Null);
+
+    B32 is_focus_hot    = ui_is_focus_hot();
+    B32 is_focus_active = ui_is_focus_active();
+
+    // TODO(k): cursor won't redraw if mouse isn't moved
+    ui_set_next_hover_cursor(is_focus_active ? OS_Cursor_IBar : OS_Cursor_HandPoint);
+
+    // Build top-level box
+    UI_Box *box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|
+                                        UI_BoxFlag_DrawBorder|
+                                        UI_BoxFlag_MouseClickable|
+                                        UI_BoxFlag_ClickToFocus|
+                                        UI_BoxFlag_KeyboardClickable|
+                                        UI_BoxFlag_DrawHotEffects,
+                                        key);
+
+    // Take navigation actions for editing
+    if(is_focus_active)
+    {
+        Temp scratch = scratch_begin(0,0);
+        UI_EventList *events = ui_events();
+        for(UI_EventNode *n = events->first; n!=0; n = n->next)
+        {
+            String8 edit_string = str8(edit_buffer, edit_string_size_out[0]);
+
+            // Don't consume anything that doesn't fit a single-line's operations
+            if((n->v.kind != UI_EventKind_Edit && n->v.kind != UI_EventKind_Navigate && n->v.kind != UI_EventKind_Text) || n->v.delta_2s32.y != 0) { continue; }
+
+            // Map this action to an TxtOp
+            UI_TxtOp op = ui_single_line_txt_op_from_event(scratch.arena, &n->v, edit_string, *cursor, *mark);
+
+            // Perform replace range
+            if(!txt_pt_match(op.range.min, op.range.max) || op.replace.size != 0)
+            {
+                String8 new_string = ui_push_string_replace_range(scratch.arena, edit_string, r1s64(op.range.min.column, op.range.max.column), op.replace);
+                new_string.size = Min(edit_buffer_size, new_string.size);
+                MemoryCopy(edit_buffer, new_string.str, new_string.size);
+                edit_string_size_out[0] = new_string.size;
+            }
+
+            // Commit op's changed cursor & mark to caller-provided state
+            *cursor = op.cursor;
+            *mark = op.mark;
+
+            // Consume event
+            ui_eat_event(events, n);
+        }
+        scratch_end(scratch);
+    }
+
+    // Build contents
+    TxtPt mouse_pt = {0};
+    UI_Parent(box)
+    {
+        String8 edit_string = str8(edit_buffer, edit_string_size_out[0]);
+        if(!is_focus_active && box->focus_active_t < 0.600)
+        {
+            ui_label(pre_edit_value);
+        }
+        else
+        {
+            F32 total_text_width = f_dim_from_tag_size_string(box->font, box->font_size, 0, box->tab_size, edit_string).x;
+            ui_set_next_pref_width(ui_px(total_text_width, 1.f));
+            UI_Box *editstr_box = ui_build_box_from_stringf(UI_BoxFlag_DrawText|UI_BoxFlag_DisableTextTrunc, "###editstr");
+            UI_LineEditDrawData *draw_data = push_array(ui_build_arena(), UI_LineEditDrawData, 1);
+            {
+                draw_data->edited_string = push_str8_copy(ui_build_arena(), edit_string);
+                draw_data->cursor        = *cursor;
+                draw_data->mark          = *mark;
+                draw_data->parent_rect   = box->rect;
+            }
+            ui_box_equip_display_string(editstr_box, edit_string);
+            ui_box_equip_custom_draw(editstr_box, ui_line_edit_draw, draw_data);
+            mouse_pt = txt_pt(1, 1+ui_box_char_pos_from_xy(editstr_box, ui_mouse()));
+        }
+    }
+
+    B32 has_range = min != 0 && max != 0;
+    if(!is_focus_active && has_range)
+    {
+        // TODO(k): draw pct indicator
+        F32 cursor_thickness = ClampBot(4.f, ui_top_font_size()*0.5f);
+        Rng2F32 cursor_rect = {};
+    }
+
+    // Interact
+    UI_Signal sig = ui_signal_from_box(box);
+
+    if(!is_focus_active && sig.f&(UI_SignalFlag_DoubleClicked|UI_SignalFlag_KeyboardPressed))
+    {
+        String8 edit_string = number_string;
+        edit_string.size = Min(edit_buffer_size, number_string.size);
+        MemoryCopy(edit_buffer, edit_string.str, edit_string.size);
+        edit_string_size_out[0] = edit_string.size;
+
+        ui_set_auto_focus_active_key(key);
+        ui_kill_action();
+
+        // Select all text after actived
+        *cursor = txt_pt(1, edit_string.size+1);
+        *mark = txt_pt(1, 1);
+    }
+
+    if(is_focus_active && (sig.f&UI_SignalFlag_KeyboardPressed))
+    {
+        ui_set_auto_focus_active_key(ui_key_zero());
+        sig.f |= UI_SignalFlag_Commit;
+
+        // TODO: parse string to f32, then change f
+        String8 edit_string = str8(edit_buffer, edit_string_size_out[0]);
+        *n = f64_from_str8(edit_string);
+    }
+
+    if(is_focus_active && ui_dragging(sig)) 
+    {
+        // Update mouse ptr
+        if(ui_pressed(sig))
+        {
+            *mark = mouse_pt;
+        }
+        *cursor = mouse_pt;
+    }
+
+    // TODO: fix it later, dragging will override the cursor position
+    if(is_focus_active && sig.f&UI_SignalFlag_DoubleClicked) 
+    {
+        String8 edit_string = str8(edit_buffer, edit_string_size_out[0]);
+        *cursor = txt_pt(1, edit_string.size+1);
+        *mark = txt_pt(1, 1);
+        ui_kill_action();
+    }
+
+    if(!is_focus_active && ui_dragging(sig))
+    {
+        typedef struct UI_F32DragData UI_F32DragData;
+        struct UI_F32DragData
+        {
+            F32 start_f32;
+            F32 last_delta;
+        };
+
+        if(ui_pressed(sig))
+        {
+            UI_F32DragData drag_data = {*n};
+            ui_store_drag_struct(&drag_data);
+        }
+        box->hover_cursor = OS_Cursor_LeftRight;
+        UI_F32DragData *drag_data = ui_get_drag_struct(UI_F32DragData);
+        F32 drag_delta = ui_drag_delta().v[Axis2_X];
+        if(drag_delta != 0 && drag_delta != drag_data->last_delta)
+        {
+            *n = drag_data->start_f32 + drag_delta * 0.001;
+            box->active_t = 0.0;
+            box->hot_t = 1.0;
+            drag_data->last_delta = drag_delta;
+            ui_store_drag_struct(drag_data);
+        }
+    }
+
+    ui_pop_focus_hot();
+    ui_pop_focus_active();
+    return sig;
 }

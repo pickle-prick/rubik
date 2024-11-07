@@ -13,34 +13,42 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     // Unpack camera
     G_Node *camera = scene->camera;
 
-    // UI Box for game viewport (Handle user interaction)
-    ui_set_next_rect(window_rect);
-    UI_Box *overlay = ui_build_box_from_string(UI_BoxFlag_ClickToFocus|UI_BoxFlag_Scroll, str8_lit("###game_overlay"));
-    ui_push_parent(overlay);
-
     // G_Node *hot_node = 0;
     G_Node *active_node = g_node_from_key(scene->bucket, g_state->active_key);
 
+    // UI Box for game viewport (Handle user interaction)
     ui_set_next_rect(window_rect);
-    UI_Box *row = ui_row_begin();
-    ui_set_next_flags(UI_BoxFlag_Clip);
-    UI_Box *cfg = ui_pane_begin(r2f32p(0, 0, 610, window_rect.p1.y), str8_lit("###left_pane"));
+    ui_set_next_child_layout_axis(Axis2_X);
+    UI_Box *overlay = ui_build_box_from_string(0, str8_lit("###game_overlay"));
+    ui_push_parent(overlay);
 
     // TODO: move these cfg to some structure
     local_persist B32 show_scene_cfg  = 1;
     local_persist B32 show_camera_cfg = 1;
     local_persist B32 show_node_cfg   = 1;
 
-    UI_PrefWidth(ui_pct(1.0,0.0)) UI_TextAlignment(UI_TextAlign_Left) UI_ChildLayoutAxis(Axis2_Y)
+    local_persist TxtPt cursor         = {0};
+    local_persist TxtPt mark           = {0};
+    local_persist U8 edit_buffer[30]   = {0};
+    local_persist U8 edit_buffer_size  = 30;
+    local_persist U64 edit_string_size = 0;
+
+    ui_set_next_focus_hot(UI_FocusKind_Root);
+    ui_set_next_focus_active(UI_FocusKind_Root);
+    ui_set_next_flags(UI_BoxFlag_Clip);
+    UI_Pane(r2f32p(0, 0, 610, window_rect.p1.y), str8_lit("###left_pane"))
     {
         // Scene
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
-        UI_Box *scene_tree_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow, "###scene_tree");
+        ui_set_next_child_layout_axis(Axis2_Y);
+        ui_set_next_flags(UI_BoxFlag_DrawBorder);
+        UI_Box *scene_tree_box = ui_build_box_from_stringf(0, "###scene_tree");
         UI_Parent(scene_tree_box)
         {
             // Header
             ui_set_next_child_layout_axis(Axis2_X);
-            UI_Box *header_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow, "###header");
+            ui_set_next_flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow);
+            UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
             UI_Parent(header_box)
             {
                 ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
@@ -57,7 +65,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
             if(!show_scene_cfg) size = 0;
             ui_set_next_pref_size(Axis2_Y, ui_px(size, 0.0));
             ui_set_next_child_layout_axis(Axis2_Y);
-            UI_Box *container_box = ui_build_box_from_stringf(UI_BoxFlag_AnimatePosY|UI_BoxFlag_AllowOverflowY, "###container");
+            UI_Box *container_box = ui_build_box_from_stringf(0, "###container");
             UI_Parent(container_box)
             {
                 Vec2F32 dim = dim_2f32(container_box->rect);
@@ -78,16 +86,19 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
             }
         }
 
-        ui_divider(ui_px(3, 1.0));
+        ui_spacer(ui_px(30, 1.0));
 
         // Camera
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
-        UI_Box *camera_cfg_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow, "###camera_cfg");
+        ui_set_next_child_layout_axis(Axis2_Y);
+        ui_set_next_flags(UI_BoxFlag_DrawBorder);
+        UI_Box *camera_cfg_box = ui_build_box_from_stringf(0, "###camera_cfg");
         UI_Parent(camera_cfg_box)
         {
             // Header
             ui_set_next_child_layout_axis(Axis2_X);
-            UI_Box *header_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow, "###header");
+            ui_set_next_flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow);
+            UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
             UI_Parent(header_box)
             {
                 ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
@@ -104,33 +115,42 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                 {
                     ui_labelf("pos");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%.2f %.2f %.2f", camera->pos.x, camera->pos.y, camera->pos.z);
+                    ui_f32_edit(&camera->pos.x, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("X###pos_x"));
+                    ui_f32_edit(&camera->pos.y, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Y###pos_y"));
+                    ui_f32_edit(&camera->pos.z, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Z###pos_z"));
                 }
                 UI_Row
                 {
                     ui_labelf("scale");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%.2f %.2f %.2f", camera->scale.x, camera->scale.y, camera->scale.z);
+                    ui_f32_edit(&camera->scale.x, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("X###scale_x"));
+                    ui_f32_edit(&camera->scale.y, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Y###scale_y"));
+                    ui_f32_edit(&camera->scale.z, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Z###scale_z"));
                 }
                 UI_Row
                 {
                     ui_labelf("rot");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%.2f %.2f %.2f %.2f", camera->rot.x, camera->rot.y, camera->rot.z);
+                    ui_f32_edit(&camera->rot.x, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("X###rot_x"));
+                    ui_f32_edit(&camera->rot.y, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Y###rot_y"));
+                    ui_f32_edit(&camera->rot.z, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Z###rot_z"));
+                    ui_f32_edit(&camera->rot.w, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("W###rot_w"));
                 }
             }
         }
 
-        ui_divider(ui_px(3, 1.0));
+        ui_spacer(ui_px(30, 1.0));
 
         // Node Properties
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
-        UI_Box *node_cfg_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow, "###node_cfg");
+        ui_set_next_child_layout_axis(Axis2_Y);
+        UI_Box *node_cfg_box = ui_build_box_from_stringf(0, "###node_cfg");
         UI_Parent(node_cfg_box)
         {
             // Header
             ui_set_next_child_layout_axis(Axis2_X);
-            UI_Box *header_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow, "###header");
+            ui_set_next_flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow);
+            UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
             UI_Parent(header_box)
             {
                 ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
@@ -153,30 +173,35 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                 {
                     ui_labelf("pos");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%.2f %.2f %.2f", active_node->pos.x, active_node->pos.y, active_node->pos.z);
+                    ui_f32_edit(&active_node->pos.x, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("X###pos_x"));
+                    ui_f32_edit(&active_node->pos.y, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Y###pos_y"));
+                    ui_f32_edit(&active_node->pos.z, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Z###pos_z"));
                 }
                 UI_Row
                 {
                     ui_labelf("scale");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%.2f %.2f %.2f", active_node->scale.x, active_node->scale.y, active_node->scale.z);
+                    ui_f32_edit(&active_node->scale.x, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("X###scale_x"));
+                    ui_f32_edit(&active_node->scale.y, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Y###scale_y"));
+                    ui_f32_edit(&active_node->scale.z, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Z###scale_z"));
                 }
                 UI_Row
                 {
                     ui_labelf("rot");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%.2f %.2f %.2f %.2f", active_node->rot.x, active_node->rot.y, active_node->rot.z);
+                    ui_f32_edit(&active_node->rot.x, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("X###rot_x"));
+                    ui_f32_edit(&active_node->rot.y, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Y###rot_y"));
+                    ui_f32_edit(&active_node->rot.z, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Z###rot_z"));
+                    ui_f32_edit(&active_node->rot.w, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("W###rot_w"));
                 }
             }
         }
     }
-    ui_pane_end();
 
     ui_set_next_pref_width(ui_pct(1.0, 0.0));
     ui_set_next_pref_height(ui_pct(1.0, 0.0));
-    UI_Box *scene_overlay = ui_build_box_from_string(UI_BoxFlag_MouseClickable|UI_BoxFlag_Scroll,
-                                                     str8_lit("###scene_overlay"));
-    ui_row_end();
+    UI_Box *scene_overlay = ui_build_box_from_stringf(UI_BoxFlag_MouseClickable|UI_BoxFlag_Scroll, "###scene_overlay");
+    ui_pop_parent();
 
     g_state->sig = ui_signal_from_box(scene_overlay);
     F32 dt_sec = dt/1000000.0f;

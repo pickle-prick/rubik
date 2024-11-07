@@ -44,12 +44,6 @@ ui_draw(OS_Handle os_wnd)
     {
         UI_BoxRec rec = ui_box_rec_df_post(box, &ui_g_nil_box);
 
-        // TODO: DEBUG
-        if(0)
-        {
-            d_rect(box->rect, v4f32(1,0,0,1), 0,1,0);
-        }
-
         if(box->transparency != 0)
         {
             d_push_transparency(box->transparency);
@@ -213,14 +207,22 @@ ui_draw(OS_Handle os_wnd)
         // k: pop stacks
         {
             S32 pop_idx = 0;
-            for(UI_Box *b = box; !ui_box_is_nil(b) && pop_idx < rec.pop_count; b = b->parent)
+            for(UI_Box *b = box; !ui_box_is_nil(b) && pop_idx <= rec.pop_count; b = b->parent)
             {
                 pop_idx += 1;
+                if(b == box && rec.push_count != 0) continue;
 
                 // k: pop clip
                 if(b->flags & UI_BoxFlag_Clip)
                 {
                     d_pop_clip();
+                }
+
+                // rjf: draw overlay
+                if(b->flags & UI_BoxFlag_DrawOverlay)
+                {
+                    R_Rect2DInst *inst = d_rect(b->rect, b->palette->colors[UI_ColorCode_Overlay], 0, 0, 1.f);
+                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
                 }
 
                 //- k: draw the border
@@ -239,8 +241,8 @@ ui_draw(OS_Handle os_wnd)
                     }
                 }
 
-                // rjf: debug border rendering
-                if(1)
+                // k: debug border rendering
+                if(0)
                 {
                     R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), v4f32(1, 0, 1, 0.25f), 0, 1.f, 1.f);
                     MemoryCopyArray(inst->corner_radii, b->corner_radii);
@@ -270,7 +272,6 @@ ui_draw(OS_Handle os_wnd)
                 }
 
                 // rjf: draw focus overlay
-                // TODO: fix it, every box have focus_hot_t > 0.01f
                 if(b->flags & UI_BoxFlag_Clickable && !(b->flags & UI_BoxFlag_DisableFocusOverlay) && b->focus_hot_t > 0.01f)
                 {
                     Vec4F32 color = g_rgba_from_theme_color(RD_ThemeColor_Focus);
@@ -350,16 +351,11 @@ entry_point(CmdLine *cmd_line)
     ui_select_state(ui);
 
     // TODO: Testing for now, should wrap into some kind of struct
-    TxtPt cursor = {0,4};
-    TxtPt mark   = {0,4};
-    U8 edit_buffer[300] = "test";
+    TxtPt cursor = {0};
+    TxtPt mark   = {0};
+    U8 edit_buffer[30] = "test_str";
     // TODO: is this size per line
-    U64 edit_string_size_out[] = {4};
-    TxtPt cursor2 = {0,4};
-    TxtPt mark2   = {0,4};
-    U8 edit_buffer2[300] = "test";
-    // TODO: is this size per line
-    U64 edit_string_size_out2[] = {4};
+    U64 edit_string_size_out[] = {0};
 
     g_init(window);
     G_Scene *scene = g_scene_load();
@@ -390,8 +386,8 @@ entry_point(CmdLine *cmd_line)
         /////////////////////////////////
         // Create the top bucket (for UI)
 
-        D_Bucket *bucket = d_bucket_make();
-        d_push_bucket(bucket);
+        // D_Bucket *main_ui_bucket = d_bucket_make();
+        // d_push_bucket(main_ui_bucket);
 
         /////////////////////////////////
         // Build ui
@@ -415,15 +411,16 @@ entry_point(CmdLine *cmd_line)
                 case OS_EventKind_MouseMove:   {kind = UI_EventKind_MouseMove;}break;
                 case OS_EventKind_Text:        {kind = UI_EventKind_Text;}break;
                 case OS_EventKind_Scroll:      {kind = UI_EventKind_Scroll;}break;
+                case OS_EventKind_FileDrop:    {kind = UI_EventKind_FileDrop;}break;
             }
 
             ui_evt.kind         = kind;
             ui_evt.key          = os_evt->key;
+            ui_evt.modifiers    = os_evt->modifiers;
+            ui_evt.string       = os_evt->character ? str8_from_32(ui_build_arena(), str32(&os_evt->character, 1)) : str8_zero();
             ui_evt.pos          = os_evt->pos;
             ui_evt.delta_2f32   = os_evt->delta;
-            ui_evt.string       = os_evt->character ? str8_from_32(ui_build_arena(), str32(&os_evt->character, 1)) : str8_zero();
             ui_evt.timestamp_us = os_evt->timestamp_us;
-            ui_evt.modifiers    = os_evt->modifiers;
 
             if(ui_evt.key == OS_Key_Backspace && ui_evt.kind == UI_EventKind_Press)
             {
@@ -486,7 +483,7 @@ entry_point(CmdLine *cmd_line)
             F_Tag main_font = g_font_from_slot(G_FontSlot_Main);
             // TODO: set font size based on the dpi of screen
             // F32 main_font_size = g_font_size_from_slot(G_FontSlot_Main);
-            F32 main_font_size = 30;
+            F32 main_font_size = 29;
             F_Tag icon_font = g_font_from_slot(G_FontSlot_Icons);
 
             // Build icon info
@@ -537,13 +534,16 @@ entry_point(CmdLine *cmd_line)
             // ui_push_pref_height(ui_em(2.75f, 1.f));
         }
 
-        d_push_clip(window_rect);
-
-        ui_set_next_flags(UI_BoxFlag_DefaultFocusNav|UI_BoxFlag_Clickable);
         ui_set_next_focus_hot(UI_FocusKind_Root);
         ui_set_next_focus_active(UI_FocusKind_Root);
-        // TODO: focus is not working anymore
-        UI_Pane(r2f32p(window_rect.p1.x-710, window_rect.p0.y+10, window_rect.p1.x-10, window_rect.p0.y+390), str8_lit("stats"))
+        ui_set_next_flags(UI_BoxFlag_Clickable|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow);
+        ui_set_next_corner_radius_00(3);
+        ui_set_next_corner_radius_01(3);
+        ui_set_next_corner_radius_10(3);
+        ui_set_next_corner_radius_11(3);
+        UI_Pane(r2f32p(window_rect.p1.x-710, window_rect.p0.y+10, window_rect.p1.x-10, window_rect.p0.y+590), str8_lit("###stats"))
+            UI_TextAlignment(UI_TextAlign_Left)
+            UI_TextPadding(9)
         {
             ui_set_next_pref_height(ui_pct(1.0,0.0));
             UI_Box *container_box = ui_build_box_from_stringf(0, "###container");
@@ -553,46 +553,64 @@ entry_point(CmdLine *cmd_line)
             ui_scroll_list_begin(container_box->fixed_size, &pt);
             UI_Row
             {
-                ui_label(str8_lit("frame time ms"));
+                ui_labelf("frame time ms");
                 ui_spacer(ui_pct(1.0, 0.0));
                 ui_labelf("%.6f", (dt/1000.0));
             }
             UI_Row
             {
-                ui_label(str8_lit("cpu time ms"));
+                ui_labelf("cpu time ms");
                 ui_spacer(ui_pct(1.0, 0.0));
                 ui_labelf("%.6f", (cpu_dt_us/1000.0));
             }
             UI_Row
             {
-                ui_label(str8_lit("gpu time ms"));
+                ui_labelf("gpu time ms");
                 ui_spacer(ui_pct(1.0, 0.0));
                 ui_labelf("%.6f", (gpu_dt_us/1000.0));
             }
             UI_Row
             {
-                ui_label(str8_lit("fps"));
+                ui_labelf("fps");
                 ui_spacer(ui_pct(1.0, 0.0));
                 ui_labelf("%6.2f", 1 / (dt / 1000000.0));
             }
             UI_Row
             {
-                ui_label(str8_lit("hot_box"));
+                ui_labelf("ui_hot_key");
                 ui_spacer(ui_pct(1.0, 0.0));
                 ui_labelf("%lu", ui_state->hot_box_key.u64[0]);
+            }
+            UI_Row
+            {
+                ui_labelf("ui_last_build_box_count");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%lu", ui_state->last_build_box_count);
+            }
+            UI_Row
+            {
+                ui_labelf("ui_build_box_count");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%lu", ui_state->build_box_count);
             }
             Vec2F32 mouse = os_mouse_from_window(window);
             UI_Row
             {
-                ui_label(str8_lit("mouse"));
+                ui_labelf("mouse");
                 ui_spacer(ui_pct(1.0, 0.0));
                 ui_labelf("%.2f, %.2f", mouse.x, mouse.y);
             }
-            UI_Focus(UI_FocusKind_On) UI_Row
+            UI_Row
             {
-                ui_label(str8_lit("name1"));
+                ui_labelf("drag start mouse");
                 ui_spacer(ui_pct(1.0, 0.0));
-                UI_Focus(UI_FocusKind_On) UI_Flags(UI_BoxFlag_ClickToFocus)
+                ui_labelf("%.2f, %.2f", ui_state->drag_start_mouse.x, ui_state->drag_start_mouse.y);
+            }
+            UI_Row
+            {
+                ui_labelf("name1");
+                ui_spacer(ui_pct(1.0, 0.0));
+                UI_Flags(UI_BoxFlag_ClickToFocus)
                 {
                     ui_line_edit(&cursor, &mark,
                             edit_buffer, sizeof(edit_buffer), edit_string_size_out,
@@ -601,28 +619,21 @@ entry_point(CmdLine *cmd_line)
             }
             UI_Row
             {
-                ui_label(str8_lit("name2"));
+                ui_labelf("name2");
                 ui_spacer(ui_pct(1.0, 0.0));
-                if(ui_committed(ui_line_edit(&cursor2, &mark2,
-                                edit_buffer2, sizeof(edit_buffer2), edit_string_size_out2,
-                                str8(edit_buffer2, edit_string_size_out2[0]), str8_lit("name2")))) {}
+                if(ui_committed(ui_line_edit(&cursor, &mark,
+                                edit_buffer, sizeof(edit_buffer), edit_string_size_out,
+                                str8(edit_buffer, edit_string_size_out[0]), str8_lit("name2")))) {}
             }
             UI_Row
             {
-                ui_label(str8_lit("geo3d hot id"));
+                ui_labelf("geo3d hot id");
                 ui_spacer(ui_pct(1.0, 0.0));
                 ui_labelf("%lu", id);
             }
             ui_scroll_list_end();
             ui_pop_parent();
         }
-
-        // UI_Flags(UI_BoxFlag_ClickToFocus) UI_Parent(bg_box) {
-        //     UI_FixedX(600) UI_FixedY(600) UI_PrefWidth(ui_px(x/3.0f, 1)) UI_PrefHeight(ui_px(y/3.0f, 1)) {
-        //         Rng2F32 region = r2f32p(0, 0, x, y);
-        //         ui_image(demo_image, R_Tex2DSampleKind_Nearest, region, v4f32(1,1,1,1), 0.0f, str8_lit("demo_image"));
-        //     }
-        // }
 
         /////////////////////////////////
         //~ Draw game
@@ -633,10 +644,13 @@ entry_point(CmdLine *cmd_line)
 
         /////////////////////////////////
         //~ Draw ui
-        ui_draw(window);
-        R_Rect2DInst *cursor = d_rect(r2f32p(mouse.x-15,mouse.y-15, mouse.x+15,mouse.y+15), v4f32(0,0.3,1,0.3), 15, 0.0, 0.7);
+        D_BucketScope(g_state->bucket_rect)
+        {
+            ui_draw(window);
+            R_Rect2DInst *cursor = d_rect(r2f32p(mouse.x-15,mouse.y-15, mouse.x+15,mouse.y+15), v4f32(0,0.3,1,0.3), 15, 0.0, 0.7);
+        }
+        d_push_bucket(g_state->bucket_geo3d);
         d_sub_bucket(g_state->bucket_rect);
-        d_sub_bucket(g_state->bucket_geo3d);
 
         cpu_end_us = os_now_microseconds();
         cpu_dt_us = cpu_end_us - cpu_start_us;
@@ -645,7 +659,7 @@ entry_point(CmdLine *cmd_line)
         //~ End of frame
 
         gpu_start_us = os_now_microseconds();
-        d_submit_bucket(window, wnd, bucket, mouse);
+        d_submit_bucket(window, wnd, d_top_bucket(), mouse);
         r_window_end_frame(window, wnd);
         r_end_frame();
         arena_clear(frame_arena);

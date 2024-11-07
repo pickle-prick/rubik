@@ -423,7 +423,7 @@ os_get_events(Arena *arena, B32 wait) {
                 e->key           = key;
 
                 if(keysym >= 32 && keysym < 127 && e->kind == OS_EventKind_Press && !(e->modifiers & OS_Modifier_Ctrl)) {
-                    // e->kind      = OS_EventKind_Text;
+                    e->kind      = OS_EventKind_Text;
                     e->character = os_codepoint_from_modifiers_and_key(e->modifiers, e->key);
                 }
             }break;

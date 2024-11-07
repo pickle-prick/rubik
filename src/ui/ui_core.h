@@ -60,6 +60,7 @@ typedef enum UI_EventKind {
     UI_EventKind_Edit,
     UI_EventKind_MouseMove,
     UI_EventKind_Scroll,
+    UI_EventKind_FileDrop,
     UI_EventKind_AutocompleteHint,
     UI_EventKind_COUNT
 } UI_EventKind;
@@ -605,7 +606,8 @@ struct UI_State
 
     // Build phase output
     UI_Box               *root;
-
+    U64                  build_box_count;
+    U64                  last_build_box_count;
 
     // Build parameters
     UI_IconInfo          icon_info;
