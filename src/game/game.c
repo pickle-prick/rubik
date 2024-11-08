@@ -62,10 +62,14 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
 
             // Content container
             F32 size = 900;
-            if(!show_scene_cfg) size = 0;
             ui_set_next_pref_size(Axis2_Y, ui_px(size, 0.0));
             ui_set_next_child_layout_axis(Axis2_Y);
+            if(!show_scene_cfg)
+            {
+                ui_set_next_flags(UI_BoxFlag_Disabled);
+            }
             UI_Box *container_box = ui_build_box_from_stringf(0, "###container");
+            container_box->pref_size[Axis2_Y].value = mix_1f32(size, 0, container_box->disabled_t);
             UI_Parent(container_box)
             {
                 Vec2F32 dim = dim_2f32(container_box->rect);
@@ -73,7 +77,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                 UI_ScrollPt pt = {0};
                 ui_scroll_list_begin(v2f32(container_box->fixed_size.x, dim.y), &pt);
                 G_Node *root = scene->root;
-                while(root != 0)
+                UI_Flags(UI_BoxFlag_ClickToFocus) while(root != 0)
                 {
                     G_NodeRec rec = g_node_df_post(root, 0);
                     if(ui_clicked(ui_button(root->name)))

@@ -17,6 +17,7 @@
 #include "draw/draw.h"
 #include "ui/ui_inc.h"
 #include "./game_core.h"
+#include "./game_ui.h"
 #include "./game_asset.h"
 #include "./game.h"
 
@@ -29,6 +30,7 @@
 #include "draw/draw.c"
 #include "ui/ui_inc.c"
 #include "./game_core.c"
+#include "./game_ui.c"
 #include "./game_asset.c"
 #include "./game.c"
 
@@ -534,20 +536,21 @@ entry_point(CmdLine *cmd_line)
             // ui_push_pref_height(ui_em(2.75f, 1.f));
         }
 
+        local_persist B32 show_stats = 1;
         ui_set_next_focus_hot(UI_FocusKind_Root);
         ui_set_next_focus_active(UI_FocusKind_Root);
-        ui_set_next_flags(UI_BoxFlag_Clickable|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow);
         ui_set_next_corner_radius_00(3);
         ui_set_next_corner_radius_01(3);
         ui_set_next_corner_radius_10(3);
         ui_set_next_corner_radius_11(3);
-        UI_Pane(r2f32p(window_rect.p1.x-710, window_rect.p0.y+10, window_rect.p1.x-10, window_rect.p0.y+590), str8_lit("###stats"))
+        G_UI_Pane(r2f32p(window_rect.p1.x-710, window_rect.p0.y+10, window_rect.p1.x-10, window_rect.p0.y+590), &show_stats, str8_lit("Stats###stats"))
             UI_TextAlignment(UI_TextAlign_Left)
             UI_TextPadding(9)
         {
             ui_set_next_pref_height(ui_pct(1.0,0.0));
             UI_Box *container_box = ui_build_box_from_stringf(0, "###container");
             ui_push_parent(container_box);
+            ui_set_next_pref_height(ui_pct(1.0,0.0));
             // TODO: no usage for now
             UI_ScrollPt pt = {0};
             ui_scroll_list_begin(container_box->fixed_size, &pt);

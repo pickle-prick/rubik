@@ -99,6 +99,7 @@ ui_spacer(UI_Size size)
 
 ////////////////////////////////
 //~ rjf: Floating Panes
+
 internal UI_Box *
 ui_pane_begin(Rng2F32 rect, String8 string)
 {
@@ -406,14 +407,39 @@ ui_image(R_Handle texture, R_Tex2DSampleKind sample_kind, Rng2F32 region, Vec4F3
 //~ rjf: Special Buttons
 
 internal UI_Signal
+ui_close(String8 string)
+{
+    ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+    ui_set_next_text_alignment(UI_TextAlign_Center);
+    ui_set_next_font(ui_icon_font());
+    UI_Signal sig = ui_button(string);
+    ui_box_equip_display_string(sig.box, str8_lit("x"));
+    return sig;
+}
+
+internal UI_Signal
+ui_closef(char *fmt, ...)
+{
+    Temp scratch = scratch_begin(0, 0);
+    va_list args;
+    va_start(args, fmt);
+    String8 string = push_str8fv(scratch.arena, fmt, args);
+    va_end(args);
+    UI_Signal sig = ui_close(string);
+    scratch_end(scratch);
+    return sig;
+}
+
+internal UI_Signal
 ui_expander(B32 is_expanded, String8 string)
 {
     ui_set_next_hover_cursor(OS_Cursor_HandPoint);
     ui_set_next_text_alignment(UI_TextAlign_Center);
     ui_set_next_font(ui_icon_font());
-    UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable|UI_BoxFlag_DrawText, string);
-    ui_box_equip_display_string(box, is_expanded ? str8_lit("v") : str8_lit(">"));
-    UI_Signal sig = ui_signal_from_box(box);
+    // UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable|UI_BoxFlag_DrawText, string);
+    // ui_box_equip_display_string(box, is_expanded ? str8_lit("v") : str8_lit(">"));
+    UI_Signal sig = ui_button(string);
+    ui_box_equip_display_string(sig.box, is_expanded ? str8_lit("v") : str8_lit(">"));
     return sig;
 }
 

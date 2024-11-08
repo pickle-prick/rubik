@@ -372,18 +372,24 @@ ui_end_build(void)
 
     // Animate
     {
-        // ln(0.2) means 80%
-        // critical / 0.1f means 0.1 unit time to reach this critical point (80%)
-        F32 critical = log(0.2);
-        // Exponential smoothing
-        // ref: https://lisyarus.github.io/blog/posts/exponential-smoothing.html
-        F32 vast_rate = 1 - exp_f32((critical / 0.04f) * ui_state->animation_dt);
-        F32 fast_rate = 1 - exp_f32((critical / 0.05f) * ui_state->animation_dt);
-        // F32 fast_rate_1 = 1.0f - pow_f32(2, (-60.f * ui_state->animation_dt));
-        F32 fish_rate = 1 - exp_f32((critical / 0.06f) * ui_state->animation_dt);
-        F32 slow_rate = 1 - exp_f32((critical / 0.07f) * ui_state->animation_dt);
-        F32 slug_rate = 1 - exp_f32((critical / 0.14f) * ui_state->animation_dt);
-        F32 slaf_rate = 1 - exp_f32((critical / 0.28f) * ui_state->animation_dt);
+        // // ln(0.2) means 80%
+        // // critical / 0.1f means 0.1 unit time to reach this critical point (80%)
+        // F32 critical = log(0.2);
+        // // Exponential smoothing
+        // // ref: https://lisyarus.github.io/blog/posts/exponential-smoothing.html
+        // F32 vast_rate = 1 - exp_f32((critical / 0.04f) * ui_state->animation_dt);
+        // F32 fast_rate = 1 - exp_f32((critical / 0.05f) * ui_state->animation_dt);
+        // F32 fish_rate = 1 - exp_f32((critical / 0.06f) * ui_state->animation_dt);
+        // F32 slow_rate = 1 - exp_f32((critical / 0.07f) * ui_state->animation_dt);
+        // F32 slug_rate = 1 - exp_f32((critical / 0.14f) * ui_state->animation_dt);
+        // F32 slaf_rate = 1 - exp_f32((critical / 0.28f) * ui_state->animation_dt);
+
+        F32 vast_rate = 1 - pow_f32(2, (-60.f * ui_state->animation_dt));
+        F32 fast_rate = 1 - pow_f32(2, (-50.f * ui_state->animation_dt));
+        F32 fish_rate = 1 - pow_f32(2, (-40.f * ui_state->animation_dt));
+        F32 slow_rate = 1 - pow_f32(2, (-30.f * ui_state->animation_dt));
+        F32 slug_rate = 1 - pow_f32(2, (-15.f * ui_state->animation_dt));
+        F32 slaf_rate = 1 - pow_f32(2, (-8.f * ui_state->animation_dt));
 
         for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
         {
@@ -397,23 +403,22 @@ ui_end_build(void)
                 B32 is_focus_active = !!(b->flags & UI_BoxFlag_FocusActive) && !(b->flags & UI_BoxFlag_FocusActiveDisabled);
 
                 // determine rates
-                F32 hot_rate          = ui_state->animation_info.flags & UI_AnimationInfoFlag_HotAnimations    ? slug_rate : 1;
-                F32 active_rate       = ui_state->animation_info.flags & UI_AnimationInfoFlag_ActiveAnimations ? slug_rate : 1;
-                F32 disabled_rate     = ui_state->animation_info.flags & UI_AnimationInfoFlag_HotAnimations    ? slug_rate : 1;
-                F32 focus_hot_rate    = ui_state->animation_info.flags & UI_AnimationInfoFlag_HotAnimations    ? slug_rate : 1;
-                F32 focus_active_rate = ui_state->animation_info.flags & UI_AnimationInfoFlag_FocusAnimations  ? slug_rate : 1;
+                F32 hot_rate      = ui_state->animation_info.flags & UI_AnimationInfoFlag_HotAnimations      ? fast_rate : 1;
+                F32 active_rate   = ui_state->animation_info.flags & UI_AnimationInfoFlag_ActiveAnimations   ? fast_rate : 1;
+                F32 disabled_rate = ui_state->animation_info.flags & UI_AnimationInfoFlag_HotAnimations      ? slow_rate : 1;
+                F32 focus_rate    = ui_state->animation_info.flags & UI_AnimationInfoFlag_FocusAnimations    ? fast_rate : 1;
 
                 // Animate interaction transition states
                 b->hot_t          += hot_rate * ((F32)is_hot - b->hot_t);
                 b->active_t       += active_rate * ((F32)is_active - b->active_t);
                 b->disabled_t     += disabled_rate * ((F32)is_disabled - b->disabled_t);
-                b->focus_hot_t    += focus_hot_rate * ((F32)is_focus_hot - b->focus_hot_t);
-                b->focus_active_t += focus_active_rate * ((F32)is_focus_active - b->focus_active_t);
+                b->focus_hot_t    += focus_rate * ((F32)is_focus_hot - b->focus_hot_t);
+                b->focus_active_t += focus_rate * ((F32)is_focus_active - b->focus_active_t);
 
                 //- k: animate position
                 {
-                    b->fixed_position_animated.x += slug_rate * (b->fixed_position.x - b->fixed_position_animated.x);
-                    b->fixed_position_animated.y += slug_rate * (b->fixed_position.y - b->fixed_position_animated.y);
+                    b->fixed_position_animated.x += fast_rate * (b->fixed_position.x - b->fixed_position_animated.x);
+                    b->fixed_position_animated.y += fast_rate * (b->fixed_position.y - b->fixed_position_animated.y);
                     if(abs_f32(b->fixed_position.x - b->fixed_position_animated.x) < 1)
                     {
                         b->fixed_position_animated.x = b->fixed_position.x;
@@ -424,12 +429,22 @@ ui_end_build(void)
                     }
                 }
 
-                //- TODO(k): clamp view
+                // k: clamp view
+                if(b->flags & UI_BoxFlag_ViewClamp)
+                {
+                    Vec2F32 max_view_off_target =
+                    {
+                        ClampBot(0, b->view_bounds.x - b->fixed_size.x),
+                        ClampBot(0, b->view_bounds.y - b->fixed_size.y),
+                    };
+                    if(b->flags & UI_BoxFlag_ViewClampX) { b->view_off_target.x = Clamp(0, b->view_off_target.x, max_view_off_target.x); }
+                    if(b->flags & UI_BoxFlag_ViewClampY) { b->view_off_target.y = Clamp(0, b->view_off_target.y, max_view_off_target.y); }
+                }
 
                 //- k: animate view offset
                 {
-                    b->view_off.x += slug_rate * (b->view_off_target.x - b->view_off.x);
-                    b->view_off.y += slug_rate * (b->view_off_target.y - b->view_off.y);
+                    b->view_off.x += fast_rate * (b->view_off_target.x - b->view_off.x);
+                    b->view_off.y += fast_rate * (b->view_off_target.y - b->view_off.y);
                     if(abs_f32(b->view_off.x-b->view_off_target.x) < 2)
                     {
                         b->view_off.x = b->view_off_target.x;
@@ -813,6 +828,11 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
         if(box_first_frame)
         {
             box->first_touched_build_index = ui_state->build_index;
+            box->disabled_t = (F32)!!(box->flags & UI_BoxFlag_Disabled);
+        }
+        if(box->flags & UI_BoxFlag_Disabled && (!(last_flags & UI_BoxFlag_Disabled) || box_first_frame))
+        {
+            box->first_disabled_build_index = ui_state->build_index;
         }
         if(ui_state->fixed_x_stack.top != &ui_state->fixed_x_nil_stack_top)
         {
