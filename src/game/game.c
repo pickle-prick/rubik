@@ -214,9 +214,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     B32 show_gizmos = 0;
     // TODO: this is kind awkward, fix it later, make it pretty
     d_push_bucket(g_state->bucket_geo3d);
-    R_PassParams_Geo3D *pass = d_geo3d_begin(scene_overlay->rect, mat_4x4f32(1.f), mat_4x4f32(1.f),
-                                             show_grid, show_gizmos,
-                                             mat_4x4f32(1.f), v3f32(0,0,0));
+    R_PassParams_Geo3D *pass = d_geo3d_begin(scene_overlay->rect, mat_4x4f32(1.f), mat_4x4f32(1.f), show_grid, show_gizmos, mat_4x4f32(1.f), v3f32(0,0,0));
     d_pop_bucket();
 
     // Update/draw node in the scene tree
@@ -339,7 +337,6 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
 
                 // 10.0 in word coordinate per pixel (scaled by the distance to the eye)
                 F32 speed = 1.0/(window_dim.x*length_2f32(projected_dir));
-
                 active_node->pst_pos_delta = scale_3f32(g_state->drag_start_direction, length_2f32(delta)*speed*n);
             }
         }
@@ -441,44 +438,3 @@ G_NODE_CUSTOM_UPDATE(camera_fn)
     if(os_key_is_down(OS_Key_Left)) { }
     if(os_key_is_down(OS_Key_Right)) { }
 }
-
-// typedef struct G_PlayerData G_PlayerData;
-// struct G_PlayerData
-// { };
-
-// G_NODE_CUSTOM_UPDATE(player_fn)
-// {
-//     G_PlayerData *data = (G_PlayerData *)node->custom_data;
-//     B32 grounded = 0;
-// 
-//     F32 h = 230;
-//     F32 foot_speed = 180;
-//     F32 xh = 60;
-//     F32 v0 = (-2*h*foot_speed) / xh;
-//     F32 g = (2*h*foot_speed*foot_speed) / (xh*xh);
-// 
-//     // Jump
-//     // if((os_key_press(&os_events, g_state->os_wnd, 0, OS_Key_Up) || os_key_press(&os_events, g_state->os_wnd, 0, OS_Key_Space) ) && (grounded || data->jump_counter == 1)) {}
-// 
-//     if(os_key_press(&os_events, g_state->os_wnd, 0, OS_Key_Left))
-//     {
-//         node->pos.x -= 0.5f;
-//     }
-//     if(os_key_press(&os_events, g_state->os_wnd, 0, OS_Key_Right))
-//     {
-//         node->pos.x += 0.5f;
-//     }
-//     if(os_key_press(&os_events, g_state->os_wnd, 0, OS_Key_Up))
-//     {
-//         node->pos.z += 0.5f;
-//     }
-//     if(os_key_press(&os_events, g_state->os_wnd, 0, OS_Key_Down))
-//     {
-//         node->pos.z -= 0.5f;
-//     }
-//     if(os_key_is_down(OS_Key_Left)) { }
-//     if(os_key_is_down(OS_Key_Right)) { }
-// 
-//     // Gravity
-//     if(!grounded) { } else { }
-// }

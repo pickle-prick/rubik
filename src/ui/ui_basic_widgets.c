@@ -409,7 +409,6 @@ ui_image(R_Handle texture, R_Tex2DSampleKind sample_kind, Rng2F32 region, Vec4F3
 internal UI_Signal
 ui_close(String8 string)
 {
-    ui_set_next_hover_cursor(OS_Cursor_HandPoint);
     ui_set_next_text_alignment(UI_TextAlign_Center);
     ui_set_next_font(ui_icon_font());
     UI_Signal sig = ui_button(string);
@@ -433,7 +432,7 @@ ui_closef(char *fmt, ...)
 internal UI_Signal
 ui_expander(B32 is_expanded, String8 string)
 {
-    ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+    // ui_set_next_hover_cursor(OS_Cursor_HandPoint);
     ui_set_next_text_alignment(UI_TextAlign_Center);
     ui_set_next_font(ui_icon_font());
     // UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable|UI_BoxFlag_DrawText, string);
