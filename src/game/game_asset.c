@@ -11,44 +11,6 @@ g_scene_load()
         scene->bucket = g_bucket_make(arena, 3000);
     }
 
-    // Vertex, Normal, TexCoord, Color
-    // 3+3+2+4=12 (row)
-    // const F32 vertices_src[8*12] =
-    // {
-    //      // Front face
-    //     -0.5f, -0.5f,  0.5f, 0,0,0, 0,0, 1,1,1, // Vertex 0
-    //      0.5f, -0.5f,  0.5f, 0,0,0, 0,0, 1,1,1, // Vertex 1
-    //      0.5f,  0.5f,  0.5f, 0,0,0, 0,0, 1,1,1, // Vertex 2
-    //     -0.5f,  0.5f,  0.5f, 0,0,0, 0,0, 1,1,1, // Vertex 3
-    //     
-    //     // Back face
-    //     -0.5f, -0.5f, -0.5f, 0,0,0, 0,0, 1,1,1, // Vertex 4
-    //      0.5f, -0.5f, -0.5f, 0,0,0, 0,0, 1,1,1, // Vertex 5
-    //      0.5f,  0.5f, -0.5f, 0,0,0, 0,0, 1,1,1, // Vertex 6
-    //     -0.5f,  0.5f, -0.5f, 0,0,0, 0,0, 1,1,1, // Vertex 7
-    // };
-    // const U32 indices_src[3*12] = 
-    // {
-    //     // Front face
-    //     0, 1, 2,
-    //     2, 3, 0,
-    //     // Right face
-    //     1, 5, 6,
-    //     6, 2, 1,
-    //     // Back face
-    //     5, 4, 7,
-    //     7, 6, 5,
-    //     // Left face
-    //     4, 0, 3,
-    //     3, 7, 4,
-    //     // Top face
-    //     3, 2, 6,
-    //     6, 7, 3,
-    //     // Bottom face
-    //     4, 5, 1,
-    //     1, 0, 4
-    // };
-
     // TODO: searilize scene data using yaml or gltf
 
     G_Scene_Scope(scene)
@@ -71,34 +33,33 @@ g_scene_load()
                 g_node_push_fn(scene->bucket->arena, camera, camera_fn);
 
                 // Cube
-                // G_Node *player = g_node_camera_mesh_inst3d_alloc(str8_lit("player"));
-                // G_Mesh *mesh = push_array(scene->bucket->arena, G_Mesh, 1);
-                // mesh->vertices = vertices;
-                // mesh->indices  = indices;
-                // mesh->kind     = G_MeshKind_Box;
-                // player->pos         = v3f32(0,-0.51,0);
-                // player->v.mesh      = mesh;
+                G_Node *player = g_build_node_from_stringf("player");
+                player->flags |= G_NodeFlags_NavigationRoot;
+                player->kind = G_NodeKind_Mesh;
+                player->pos         = v3f32(0,-0.51,0);
+                player->v.mesh      = g_state->predefined_meshes[G_MeshKind_Box];
                 // player->update_fn   = player_fn;
                 // player->custom_data = push_array(scene->bucket->arena, G_PlayerData, 1);
 
                 // Dummy1
-                // {
-                //     G_Model *m;
-                //     G_Path_Scope(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/"))
-                //     {
-                //         m = g_model_from_gltf(scene->arena, str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
-                //     }
-                //     G_Node *dummy = g_build_node_from_string(str8_lit("dummy"));
-                //     G_Parent_Scope(dummy) G_Seed_Scope(dummy->key) 
-                //     {
-                //         G_Node *n = g_node_from_model(m);
-                //         QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
-                //         n->rot = mul_quat_f32(flip_y, n->rot);
+                {
+                    G_Model *m;
+                    G_Path_Scope(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/"))
+                    {
+                        m = g_model_from_gltf(scene->arena, str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
+                    }
+                    G_Node *dummy = g_build_node_from_string(str8_lit("dummy"));
+                    dummy->flags |= G_NodeFlags_NavigationRoot;
+                    G_Parent_Scope(dummy) G_Seed_Scope(dummy->key) 
+                    {
+                        G_Node *n = g_node_from_model(m);
+                        QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
+                        n->rot = mul_quat_f32(flip_y, n->rot);
 
-                //         dummy->skeleton_anims = m->anims;
-                //         dummy->flags |= (G_NodeFlags_Animated | G_NodeFlags_AnimatedSkeleton);
-                //     }
-                // }
+                        dummy->skeleton_anims = m->anims;
+                        dummy->flags |= (G_NodeFlags_Animated | G_NodeFlags_AnimatedSkeleton);
+                    }
+                }
 
                 // Dummy2
                 // {
@@ -108,6 +69,7 @@ g_scene_load()
                 //         m = g_model_from_gltf(scene->arena, str8_lit("./models/blackguard/scene.gltf"));
                 //     }
                 //     G_Node *dummy = g_build_node_from_string(str8_lit("dummy2"));
+                //     dummy->flags |= G_NodeFlags_NavigationRoot;
                 //     G_Parent_Scope(dummy) G_Seed_Scope(dummy->key) 
                 //     {
                 //         G_Node *n = g_node_from_model(m);
@@ -121,24 +83,25 @@ g_scene_load()
                 // }
 
                 // Dummy3
-                {
-                    G_Model *m;
-                    G_Path_Scope(str8_lit("./models/dancing_stormtrooper/"))
-                    {
-                        m = g_model_from_gltf(scene->arena, str8_lit("./models/dancing_stormtrooper/scene.gltf"));
-                    }
-                    G_Node *dummy = g_build_node_from_string(str8_lit("dummy3"));
-                    G_Parent_Scope(dummy) G_Seed_Scope(dummy->key) 
-                    {
-                        G_Node *n = g_node_from_model(m);
-                        QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
-                        n->rot = mul_quat_f32(flip_y, n->rot);
+                // {
+                //     G_Model *m;
+                //     G_Path_Scope(str8_lit("./models/dancing_stormtrooper/"))
+                //     {
+                //         m = g_model_from_gltf(scene->arena, str8_lit("./models/dancing_stormtrooper/scene.gltf"));
+                //     }
+                //     G_Node *dummy = g_build_node_from_string(str8_lit("dummy3"));
+                //     dummy->flags |= G_NodeFlags_NavigationRoot;
+                //     G_Parent_Scope(dummy) G_Seed_Scope(dummy->key) 
+                //     {
+                //         G_Node *n = g_node_from_model(m);
+                //         QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
+                //         n->rot = mul_quat_f32(flip_y, n->rot);
 
-                        dummy->skeleton_anims = m->anims;
-                        dummy->flags |= (G_NodeFlags_Animated | G_NodeFlags_AnimatedSkeleton);
-                    }
-                    dummy->pos = v3f32(6,0,0);
-                }
+                //         dummy->skeleton_anims = m->anims;
+                //         dummy->flags |= (G_NodeFlags_Animated | G_NodeFlags_AnimatedSkeleton);
+                //     }
+                //     dummy->pos = v3f32(6,0,0);
+                // }
             }
         }
     }

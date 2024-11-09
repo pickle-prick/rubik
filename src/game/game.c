@@ -1,6 +1,7 @@
 internal void
 g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
 {
+    g_push_bucket(scene->bucket);
     arena_clear(g_state->frame_arena);
     Rng2F32 window_rect = os_client_rect_from_window(g_state->os_wnd);
     Vec2F32 window_dim = dim_2f32(window_rect);
@@ -14,7 +15,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     G_Node *camera = scene->camera;
 
     // G_Node *hot_node = 0;
-    G_Node *active_node = g_node_from_key(scene->bucket, g_state->active_key);
+    G_Node *active_node = g_node_from_key(g_state->active_key);
 
     // UI Box for game viewport (Handle user interaction)
     ui_set_next_rect(window_rect);
@@ -77,13 +78,21 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                 UI_ScrollPt pt = {0};
                 ui_scroll_list_begin(v2f32(container_box->fixed_size.x, dim.y), &pt);
                 G_Node *root = scene->root;
-                UI_Flags(UI_BoxFlag_ClickToFocus) while(root != 0)
+                U64 row_count = 0;
+                while(root != 0)
                 {
                     G_NodeRec rec = g_node_df_post(root, 0);
-                    if(ui_clicked(ui_button(root->name)))
+                    String8 string = push_str8f(ui_build_arena(), "%s###%d", root->name.str, row_count);
+                    row_count++;
+                    UI_Signal label = ui_button(string);
+
+                    if(ui_clicked(label)) g_set_active_key(root->key);
+                    if(g_key_match(g_state->active_key, root->key))
                     {
-                        g_state->active_key = root->key;
+                        ui_set_auto_focus_hot_key(label.box->key);
+                        ui_set_auto_focus_active_key(label.box->key);
                     }
+
                     root = rec.next;
                 }
                 ui_scroll_list_end();
@@ -282,7 +291,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
             g_state->hot_key.u64[0] != G_SpecialKeyKind_GizmosJhat &&
             g_state->hot_key.u64[0] != G_SpecialKeyKind_GizmosKhat)
         {
-            g_state->active_key = g_state->hot_key;
+            g_set_active_key(g_state->hot_key);
         }
 
         if(active_node != 0)
@@ -354,6 +363,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     }
 
     ui_pop_parent();
+    g_pop_bucket();
     g_state->sig = ui_signal_from_box(overlay);
 }
 

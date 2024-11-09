@@ -50,6 +50,57 @@ g_init(OS_Handle os_wnd)
     g_state->node_bucket = g_bucket_make(arena, 3000);
     g_state->os_wnd = os_wnd;
 
+    // Predefined mesh
+    for(U64 i = 0; i < G_MeshKind_COUNT-1; i++)
+    {
+        G_Mesh *mesh = &g_state->predefined_meshes[i];
+        mesh->kind = i;
+        switch(i)
+        {
+            case G_MeshKind_Box:
+            {
+                R_Vertex vertices_src[8] = {
+                    // Front face
+                    { {-0.5f, -0.5f,  0.5f}, {0}, {0}, {0}, {0}, {0} },
+                    { { 0.5f, -0.5f,  0.5f}, {0}, {0}, {0}, {0}, {0} },
+                    { { 0.5f,  0.5f,  0.5f}, {0}, {0}, {0}, {0}, {0} },
+                    { {-0.5f,  0.5f,  0.5f}, {0}, {0}, {0}, {0}, {0} },
+
+                    // Back face
+                    { {-0.5f, -0.5f, -0.5f}, {0}, {0}, {0}, {0}, {0} },
+                    { { 0.5f, -0.5f, -0.5f}, {0}, {0}, {0}, {0}, {0} },
+                    { { 0.5f,  0.5f, -0.5f}, {0}, {0}, {0}, {0}, {0} },
+                    { {-0.5f,  0.5f, -0.5f}, {0}, {0}, {0}, {0}, {0} },
+
+                };
+                const U32 indices_src[3*12] = 
+                {
+                    // Front face
+                    0, 1, 2,
+                    2, 3, 0,
+                    // Right face
+                    1, 5, 6,
+                    6, 2, 1,
+                    // Back face
+                    5, 4, 7,
+                    7, 6, 5,
+                    // Left face
+                    4, 0, 3,
+                    3, 7, 4,
+                    // Top face
+                    3, 2, 6,
+                    6, 7, 3,
+                    // Bottom face
+                    4, 5, 1,
+                    1, 0, 4
+                };
+                mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(vertices_src), (void *)vertices_src);
+                mesh->indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(indices_src), (void *)indices_src);
+            }break;
+            default: {}break;
+        }
+    }
+
     // Fonts
     g_state->cfg_font_tags[G_FontSlot_Main]  = f_tag_from_path("./fonts/Mplus1Code-Medium.ttf");
     g_state->cfg_font_tags[G_FontSlot_Code]  = f_tag_from_path("./fonts/Mplus1Code-Medium.ttf");
@@ -158,18 +209,46 @@ internal G_Key g_key_zero() { return (G_Key){0}; }
 /////////////////////////////////
 // Bucket
 
-internal G_Node *
-g_node_from_string(G_Bucket *bucket, String8 string)
+internal G_Bucket *
+g_bucket_make(Arena *arena, U64 hash_table_size)
 {
-    G_Key seed = g_top_seed();
-    G_Key key = g_key_from_string(seed, string);
-    return g_node_from_key(bucket, key);
+    G_Bucket *result = push_array(arena, G_Bucket, 1);
+    result->node_hash_table = push_array(arena, G_BucketSlot, hash_table_size);
+    result->node_hash_table_size = hash_table_size;
+    result->arena = arena;
+    return result;
+}
+
+/////////////////////////////////
+// State accessor/mutator
+
+internal void
+g_set_active_key(G_Key key)
+{
+    G_Node *node = g_node_from_key(key);
+    g_state->active_key = g_key_zero();
+    for(G_Node *n = node; n != 0; n = n->parent)
+    {
+        if(n->flags & G_NodeFlags_NavigationRoot)
+        {
+            g_state->active_key = n->key;
+        }
+    }
 }
 
 internal G_Node *
-g_node_from_key(G_Bucket *bucket, G_Key key)
+g_node_from_string(String8 string)
+{
+    G_Key seed = g_top_seed();
+    G_Key key = g_key_from_string(seed, string);
+    return g_node_from_key(key);
+}
+
+internal G_Node *
+g_node_from_key(G_Key key)
 {
     G_Node *result = 0;
+    G_Bucket *bucket = g_top_bucket();
     U64 slot_idx = key.u64[0] % bucket->node_hash_table_size;
     for(G_Node *node = bucket->node_hash_table[slot_idx].first; node != 0; node = node->hash_next)
     {
@@ -179,16 +258,6 @@ g_node_from_key(G_Bucket *bucket, G_Key key)
             break;
         }
     }
-    return result;
-}
-
-internal G_Bucket *
-g_bucket_make(Arena *arena, U64 hash_table_size)
-{
-    G_Bucket *result = push_array(arena, G_Bucket, 1);
-    result->node_hash_table = push_array(arena, G_BucketSlot, hash_table_size);
-    result->node_hash_table_size = hash_table_size;
-    result->arena = arena;
     return result;
 }
 
@@ -314,6 +383,18 @@ g_build_node_from_string(String8 string) {
     G_Node *node = g_build_node_from_key(key);
     node->name = push_str8_copy(arena, string);
     return node;
+}
+
+internal G_Node *
+g_build_node_from_stringf(char *fmt, ...) {
+    Temp scratch = scratch_begin(0,0);
+    va_list args;
+    va_start(args, fmt);
+    String8 string = push_str8fv(scratch.arena, fmt, args);
+    va_end(args);
+    G_Node *ret = g_build_node_from_string(string);
+    scratch_end(scratch);
+    return ret;
 }
 
 internal G_Node *
@@ -600,7 +681,11 @@ G_NODE_CUSTOM_UPDATE(base_fn)
             G_MeshSkeletonAnimSpline *spline = &anim->splines[i];
             G_Key target_key_pre = spline->target_key;
             G_Key target_key_pst = g_key_merge(node->key, target_key_pre);
-            G_Node *target = g_node_from_key(bucket, target_key_pst);
+            G_Node *target = 0;
+            G_Bucket_Scope(bucket)
+            {
+                target = g_node_from_key(target_key_pst);
+            }
             AssertAlways(target != 0);
 
             // TODO: only linear is supported for now  (STEP, LINEAR, CUBICSPLINE)

@@ -46,6 +46,7 @@ typedef U64 G_NodeFlags;
 # define G_NodeFlags_Animated         (G_NodeFlags)(1ull<<0)
 # define G_NodeFlags_AnimatedSkeleton (G_NodeFlags)(1ull<<1)
 # define G_NodeFlags_Float            (G_NodeFlags)(1ull<<2)
+# define G_NodeFlags_NavigationRoot   (G_NodeFlags)(1ull<<3)
 
 typedef enum G_MeshKind
 {
@@ -498,6 +499,9 @@ struct G_State
 
     OS_Handle os_wnd;
 
+    // Predefine mesh
+    G_Mesh    predefined_meshes[G_MeshKind_COUNT-1];
+
     // Theme
     G_Theme   cfg_theme_target;
     G_Theme   cfg_theme;
@@ -539,14 +543,20 @@ internal G_Key g_key_zero();
 /////////////////////////////////
 // Bucket
 
-internal G_Node   *g_node_from_string(G_Bucket *bucket, String8 string);
-internal G_Node   *g_node_from_key(G_Bucket *bucket, G_Key key);
 internal G_Bucket *g_bucket_make(Arena *arena, U64 hash_table_size);
+
+/////////////////////////////////
+// State accessor/mutator
+
+internal void   g_set_active_key(G_Key key);
+internal G_Node *g_node_from_string(String8 string);
+internal G_Node *g_node_from_key(G_Key key);
 
 /////////////////////////////////
 // Node build api
 
 internal G_Node *g_build_node_from_string(String8 name);
+internal G_Node *g_build_node_from_stringf(char *fmt, ...);
 internal G_Node *g_build_node_from_key(G_Key key);
 internal G_Node *g_node_camera3d_alloc(String8 string);
 internal G_Node *g_node_mesh_inst3d_alloc(String8 string);
