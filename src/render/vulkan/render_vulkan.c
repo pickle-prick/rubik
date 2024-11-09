@@ -472,19 +472,6 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         VK_Assert(vkAllocateCommandBuffers(r_vulkan_state->device.h, &alloc_info, &r_vulkan_state->oneshot_cmd_buf), "Failed to allocate command buffer");
     }
 
-    // Create VMA allocator
-    {
-        VmaAllocatorCreateInfo create_info = {
-            // TODO(@k): enable some optional Vulkan extension later
-            .flags            = 0,
-            .vulkanApiVersion = VK_API_VERSION_1_0,
-            .physicalDevice   = r_vulkan_state->gpu.h,
-            .device           = r_vulkan_state->device.h,
-            .instance         = r_vulkan_state->instance,
-        };
-        VK_Assert(vmaCreateAllocator(&create_info, &r_vulkan_state->vma), "Failed to create vma allocator");
-    }
-
     // Create samplers
     {
         r_vulkan_state->samplers[R_Tex2DSampleKind_Nearest] = r_vulkan_sampler2d(R_Tex2DSampleKind_Nearest);
@@ -741,18 +728,24 @@ r_window_equip(OS_Handle wnd_handle)
                 create_info.size        = MB(64);
                 create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
                 create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer->h), "Failed to create vk buffer");
 
-                VmaAllocationCreateInfo alloc_create_info = {};
-                alloc_create_info.usage = VMA_MEMORY_USAGE_AUTO;
-                alloc_create_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-                alloc_create_info.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-                VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &create_info, &alloc_create_info, &buffer->h, &buffer->alloc, NULL), "Failed to create/allocate buffer/memory");
-                VK_Assert(vmaMapMemory(r_vulkan_state->vma, buffer->alloc, &buffer->mapped), "Failed to map memory");
+                VkMemoryRequirements mem_requirements;
+                vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer->h, &mem_requirements);
+                buffer->size = mem_requirements.size;
+
+                VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+                VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+                alloc_info.allocationSize = mem_requirements.size;
+                alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+                
+                VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer->memory), "Failed to allocate buffer memory");
+                VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer->h, buffer->memory, 0), "Failed to bind buffer memory");
+                Assert(buffer->size != 0);
+                VK_Assert(vkMapMemory(r_vulkan_state->device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped), "Failed to map buffer memory");
             }
         }
-
     }
-
     ret = r_vulkan_handle_from_window(window);
     return ret;
 }
@@ -785,6 +778,38 @@ r_vulkan_handle_from_buffer(R_Vulkan_Buffer *buffer)
     handle.u64[0] = (U64)buffer;
     handle.u64[1] = buffer->generation;
     return handle;
+}
+
+internal S32
+r_vulkan_memory_index_from_type_filer(U32 type_filter, VkMemoryPropertyFlags properties)
+{
+    // The VkMemoryRequirements struct has three fields
+    // 1.           size: the size of the required amount of memory in bytes, may differ from vertex_buffer.size, e.g. (60 requested vs 64 got, alignment is 16)
+    // 2.      alignment: the offset in bytes where the buffer begins in the allocated region of memory, depends on vertex_buffer.usage and vertex_buffer.flags
+    // 3. memoryTypeBits: bit field of the memory types that are suitable for the buffer
+    // Graphics cards can offer different tyeps of memory to allcoate from
+    // Each type of memory varies in terms of allowed operations and performance characteristics
+    // We need to combine the requirements of the buffer and our own application requirements to find the right type of memory to use
+    // First we need to query info about the available types of memory using vkGetPhysicalDeviceMemoryProperties
+    // TODO(@k): we should query mem_properties once in the initial fn
+    // The VkPhyscicalDeviceMemoryProperties structure has two arrays memoryTypes and memoryHeaps
+    // Memory heaps are distinct memory resources like didicated VRAM and swap space in RAM for when VRAM runs out
+    // The different types of memory exist within these heaps
+    // TODO(k): Right now we'll only concern ourselves with the type of memory and not the heap it comes from, but you can imagine that this can affect performance
+    S32 ret = -1;
+    VkMemoryType *mem_types = r_vulkan_state->gpu.mem_properties.memoryTypes;
+    U32 mem_type_count = r_vulkan_state->gpu.mem_properties.memoryTypeCount;
+    for(U64 i = 0; i < mem_type_count; i++)
+    {
+        // However, we're not just interested in a memory type that is suitable for the vertex buffer
+        // We also need to be able to write our vertex data to that memory
+        // The memoryTypes array consist of VkMemoryType structs that specify the heap and properties of each type of memory
+        // The properties define special features of the memory, like being able to map it so we can write to it from the CPU
+        // This property is indicated with VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, but we also need to the VK_MEMORY_PROPERTY_HOST_COHERENT_BIT property
+        if((type_filter & (1<<i)) && (mem_types[i].propertyFlags & properties) == properties) { ret = i; }
+    }
+    AssertAlways(ret != -1);
+    return ret;
 }
 
 internal R_Vulkan_Swapchain
@@ -1462,24 +1487,30 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
     AssertAlways(data != 0);
 
     // Staging buffer
-    VkBuffer staging_buffer;
-    VmaAllocation staging_alloc;
+    VkBuffer       staging_buffer;
+    VkDeviceMemory staging_memory;
     {
         VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
         create_info.size        = vk_image_size;
         create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &staging_buffer), "Failed to create vk buffer");
 
-        VmaAllocationCreateInfo alloc_create_info = {};
-        alloc_create_info.usage         = VMA_MEMORY_USAGE_AUTO;
-        alloc_create_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        alloc_create_info.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-        VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &create_info, &alloc_create_info, &staging_buffer, &staging_alloc, NULL), "Failed to create/allocate buffer/memory");
+        VkMemoryRequirements mem_requirements;
+        vkGetBufferMemoryRequirements(r_vulkan_state->device.h, staging_buffer, &mem_requirements);
 
-        void *pdata;
-        VK_Assert(vmaMapMemory(r_vulkan_state->vma, staging_alloc, &pdata), "Failed to map memory to host");
-        MemoryCopy(pdata, data, vk_image_size);
-        vmaUnmapMemory(r_vulkan_state->vma, staging_alloc);
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &staging_memory), "Failed to allocate buffer memory");
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, staging_buffer, staging_memory, 0), "Failed to bind buffer memory");
+
+        void *mapped;
+        VK_Assert(vkMapMemory(r_vulkan_state->device.h, staging_memory, 0, mem_requirements.size, 0, &mapped), "Failed to map buffer memory");
+        MemoryCopy(mapped, data, vk_image_size);
+        vkUnmapMemory(r_vulkan_state->device.h, staging_memory);
     }
 
     // Create the gpu device local buffer
@@ -1536,11 +1567,18 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
         // Sparse images are images where only certain regions are actually backed by memory
         // If you were using a 3D texture for a voxel terrain, for example, then you could use this avoid allocating memory to storage large volumes of "air" values
         create_info.flags = 0; // Optional
+        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &texture->image.h), "Failed to create vk buffer");
 
-        VmaAllocationCreateInfo alloc_create_info = {0};
-        alloc_create_info.usage = VMA_MEMORY_USAGE_AUTO;
-        alloc_create_info.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-        VK_Assert(vmaCreateImage(r_vulkan_state->vma, &create_info, &alloc_create_info, &texture->image.h, &texture->image.alloc, NULL), "Failed to create/allocate buffer/memory");
+        VkMemoryRequirements mem_requirements;
+        vkGetImageMemoryRequirements(r_vulkan_state->device.h, texture->image.h, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &texture->image.memory), "Failed to allocate buffer memory");
+        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, texture->image.h, texture->image.memory, 0), "Failed to bind buffer memory");
     }
 
     // Create image view
@@ -1592,6 +1630,10 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
         // Right now we're only copying one chunk of pixels to the whole image, but it's possible to specify an array of VkBufferImageCopy to perform many different copies from this buffer to the image in on operation 
         vkCmdCopyBufferToImage(cmd, staging_buffer, texture->image.h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
     }
+
+    // Free staging buffer and memory
+    vkDestroyBuffer(r_vulkan_state->device.h, staging_buffer, 0);
+    vkFreeMemory(r_vulkan_state->device.h, staging_memory, 0);
 
     r_vulkan_image_transition(texture->image.h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
@@ -1665,38 +1707,50 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
     if(kind == R_ResourceKind_Static)
     {
         VkBuffer staging_buffer;
-        VmaAllocation staging_alloc;
+        VkDeviceMemory staging_memory;
         {
             VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
             create_info.size        = size;
             create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
             create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &staging_buffer), "Failed to create vk buffer");
 
-            VmaAllocationCreateInfo alloc_create_info = {};
-            alloc_create_info.usage         = VMA_MEMORY_USAGE_AUTO;
-            alloc_create_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-            alloc_create_info.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+            VkMemoryRequirements mem_requirements;
+            vkGetBufferMemoryRequirements(r_vulkan_state->device.h, staging_buffer, &mem_requirements);
 
-            VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &create_info, &alloc_create_info, &staging_buffer, &staging_alloc, NULL), "Failed to create/allocate buffer/memory");
+            VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+            VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+            alloc_info.allocationSize = mem_requirements.size;
+            alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+            
+            VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &staging_memory), "Failed to allocate buffer memory");
+            VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, staging_buffer, staging_memory, 0), "Failed to bind buffer memory");
 
-            void *pdata;
-            VK_Assert(vmaMapMemory(r_vulkan_state->vma, staging_alloc, &pdata), "Failed to map memory to host");
-            MemoryCopy(pdata, data, size);
-            vmaUnmapMemory(r_vulkan_state->vma, staging_alloc);
+            void *mapped;
+            VK_Assert(vkMapMemory(r_vulkan_state->device.h, staging_memory, 0, mem_requirements.size, 0, &mapped), "Failed to map buffer memory");
+            MemoryCopy(mapped, data, size);
+            vkUnmapMemory(r_vulkan_state->device.h, staging_memory);
         }
 
         // Create buffer <GPU Device Local> 
-        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        create_info.size        = size;
-        // TODO(@k): we may want to differiciate index and vertex buffer
-        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        {
+            VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+            create_info.size        = size;
+            create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+            create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer->h), "Failed to create vk buffer");
 
-        VmaAllocationCreateInfo alloc_create_info = {};
-        alloc_create_info.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-        alloc_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+            VkMemoryRequirements mem_requirements;
+            vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer->h, &mem_requirements);
 
-        VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &create_info, &alloc_create_info, &buffer->h, &buffer->alloc, NULL), "Failed to create/allocate buffer/memory");
+            VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+            VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+            alloc_info.allocationSize = mem_requirements.size;
+            alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+            VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer->memory), "Failed to allocate buffer memory");
+            VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer->h, buffer->memory, 0), "Failed to bind buffer memory");
+        }
 
         // Copy buffer
         VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
@@ -1711,8 +1765,10 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
             // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
             vkCmdCopyBuffer(cmd, staging_buffer, buffer->h, 1, &copy_region);
         }
-        vmaDestroyBuffer(r_vulkan_state->vma, staging_buffer, staging_alloc);
 
+        // Free staging buffer and memory
+        vkDestroyBuffer(r_vulkan_state->device.h, staging_buffer, NULL);
+        vkFreeMemory(r_vulkan_state->device.h, staging_memory, NULL);
     } 
     else
     {
@@ -1722,12 +1778,20 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
         create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
         create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        VmaAllocationCreateInfo alloc_create_info = {};
-        alloc_create_info.usage = VMA_MEMORY_USAGE_AUTO;
-        alloc_create_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        alloc_create_info.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-        VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &create_info, &alloc_create_info, &buffer->h, &buffer->alloc, NULL), "Failed to create/allocate buffer/memory");
-        VK_Assert(vmaMapMemory(r_vulkan_state->vma, buffer->alloc, &buffer->mapped), "Failed to map memory");
+        VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer->h), "Failed to create vk buffer");
+
+        VkMemoryRequirements mem_requirements;
+        vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer->h, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer->memory), "Failed to allocate buffer memory");
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer->h, buffer->memory, 0), "Failed to bind buffer memory");
+        Assert(buffer->size != 0);
+        VK_Assert(vkMapMemory(r_vulkan_state->device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped), "Failed to map buffer memory");
 
         if(data != 0) { MemoryCopy(buffer->mapped, data, size); }
     }
@@ -3253,12 +3317,19 @@ r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count)
     // memory or that require efficient streaming of data in and out of GPU memory
     buf_ci.flags = 0;
 
-    VmaAllocationCreateInfo alloc_ci = {};
-    alloc_ci.usage         = VMA_MEMORY_USAGE_AUTO;
-    alloc_ci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    alloc_ci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-    VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &buf_ci, &alloc_ci, &uniform_buffer.buffer.h, &uniform_buffer.buffer.alloc, NULL), "Failed to create buffer");
-    VK_Assert(vmaMapMemory(r_vulkan_state->vma, uniform_buffer.buffer.alloc, &uniform_buffer.buffer.mapped), "Failed to map memory");
+    VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &buf_ci, NULL, &uniform_buffer.buffer.h), "Failed to create vk buffer");
+    VkMemoryRequirements mem_requirements;
+    vkGetBufferMemoryRequirements(r_vulkan_state->device.h, uniform_buffer.buffer.h, &mem_requirements);
+
+    VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    alloc_info.allocationSize  = mem_requirements.size;
+    alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+    VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &uniform_buffer.buffer.memory), "Failed to allocate buffer memory");
+    VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, uniform_buffer.buffer.h, uniform_buffer.buffer.memory, 0), "Failed to bind buffer memory");
+    Assert(uniform_buffer.buffer.size != 0);
+    VK_Assert(vkMapMemory(r_vulkan_state->device.h, uniform_buffer.buffer.memory, 0, uniform_buffer.buffer.size, 0, &uniform_buffer.buffer.mapped), "Failed to map buffer memory");
 
     // Create descriptor set
     R_Vulkan_DescriptorSetKind ds_type = 0;
@@ -3304,12 +3375,20 @@ r_vulkan_storage_buffer_alloc(R_Vulkan_StorageTypeKind kind, U64 unit_count)
     // memory or that require efficient streaming of data in and out of GPU memory
     buf_ci.flags = 0;
 
-    VmaAllocationCreateInfo alloc_ci = {};
-    alloc_ci.usage         = VMA_MEMORY_USAGE_AUTO;
-    alloc_ci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    alloc_ci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-    VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &buf_ci, &alloc_ci, &storage_buffer.buffer.h, &storage_buffer.buffer.alloc, NULL), "Failed to create buffer");
-    VK_Assert(vmaMapMemory(r_vulkan_state->vma, storage_buffer.buffer.alloc, &storage_buffer.buffer.mapped), "Failed to map memory");
+    VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &buf_ci, NULL, &storage_buffer.buffer.h), "Failed to create vk buffer");
+    VkMemoryRequirements mem_requirements;
+    vkGetBufferMemoryRequirements(r_vulkan_state->device.h, storage_buffer.buffer.h, &mem_requirements);
+
+    VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    alloc_info.allocationSize  = mem_requirements.size;
+    alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+    VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &storage_buffer.buffer.memory), "Failed to allocate buffer memory");
+    VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, storage_buffer.buffer.h, storage_buffer.buffer.memory, 0), "Failed to bind buffer memory");
+    Assert(storage_buffer.buffer.size != 0);
+    VK_Assert(vkMapMemory(r_vulkan_state->device.h, storage_buffer.buffer.memory, 0, storage_buffer.buffer.size, 0, &storage_buffer.buffer.mapped), "Failed to map buffer memory");
+
 
     // Create descriptor set
     R_Vulkan_DescriptorSetKind ds_type = 0;
@@ -3646,12 +3725,17 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         create_info.sharingMode       = VK_SHARING_MODE_EXCLUSIVE;
         create_info.samples           = VK_SAMPLE_COUNT_1_BIT;
         create_info.flags             = 0; // Optional
+        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &stage_color_image->h), "Failed to create vk image");
 
-        VmaAllocationCreateInfo alloc_create_info = {0};
-        alloc_create_info.usage    = VMA_MEMORY_USAGE_AUTO;
-        alloc_create_info.flags    = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-        alloc_create_info.priority = 1.0f;
-        VK_Assert(vmaCreateImage(r_vulkan_state->vma, &create_info, &alloc_create_info, &stage_color_image->h, &stage_color_image->alloc, NULL), "Failed to create/allocate image/memory");
+        VkMemoryRequirements mem_requirements;
+        vkGetImageMemoryRequirements(r_vulkan_state->device.h, stage_color_image->h, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT; 
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &stage_color_image->memory), "Failed to allocate buffer memory");
+        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, stage_color_image->h, stage_color_image->memory, 0), "Failed to map image memory");
 
         VkImageViewCreateInfo image_view_create_info = {
             .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -3696,11 +3780,17 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         create_info.samples           = VK_SAMPLE_COUNT_1_BIT;
         create_info.flags             = 0; // Optional
 
-        VmaAllocationCreateInfo alloc_create_info = {};
-        alloc_create_info.usage    = VMA_MEMORY_USAGE_GPU_ONLY;
-        alloc_create_info.flags    = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-        alloc_create_info.priority = 1.0f;
-        VK_Assert(vmaCreateImage(r_vulkan_state->vma, &create_info, &alloc_create_info, &geo3d_id_image->h, &geo3d_id_image->alloc, NULL), "Failed to create/allocate image/memory");
+        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &geo3d_id_image->h), "Failed to create vk image");
+
+        VkMemoryRequirements mem_requirements;
+        vkGetImageMemoryRequirements(r_vulkan_state->device.h, geo3d_id_image->h, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &geo3d_id_image->memory), "Failed to allocate buffer memory");
+        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, geo3d_id_image->h, geo3d_id_image->memory, 0), "Failed to map image memory");
 
         VkImageViewCreateInfo image_view_create_info = {
             .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -3720,17 +3810,24 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
     {
         // VkDeviceSize size = geo3d_id_image->extent.width * geo3d_id_image->extent.height * sizeof(U64);
         VkDeviceSize size = 1*1*sizeof(U64);
-        VkBufferCreateInfo buf_ci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-        buf_ci.size = size;
-        buf_ci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        buf_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        create_info.size = size;
+        create_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &geo3d_id_cpu->h), "Failed to create vk buffer");
+        VkMemoryRequirements mem_requirements;
+        vkGetBufferMemoryRequirements(r_vulkan_state->device.h, geo3d_id_cpu->h, &mem_requirements);
+        geo3d_id_cpu->size = mem_requirements.size;
 
-        VmaAllocationCreateInfo alloc_create_info = {};
-        alloc_create_info.usage    = VMA_MEMORY_USAGE_CPU_ONLY;
-        alloc_create_info.flags    = 0;
-        alloc_create_info.priority = 1.0f;
-        VK_Assert(vmaCreateBuffer(r_vulkan_state->vma, &buf_ci, &alloc_create_info, &geo3d_id_cpu->h, &geo3d_id_cpu->alloc, NULL), "Failed to create/allocate image/memory");
-        VK_Assert(vmaMapMemory(r_vulkan_state->vma, geo3d_id_cpu->alloc, &geo3d_id_cpu->mapped), "Failed to map memory");
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &geo3d_id_cpu->memory), "Failed to allocate buffer memory");
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, geo3d_id_cpu->h, geo3d_id_cpu->memory, 0), "Failed to bind buffer memory");
+        Assert(geo3d_id_cpu->size != 0);
+        VK_Assert(vkMapMemory(r_vulkan_state->device.h, geo3d_id_cpu->memory, 0, geo3d_id_cpu->size, 0, &geo3d_id_cpu->mapped), "Failed to map geo3d_id_cpu memory");
     }
 
     // Create geo3d_color_att and its sampler descriptor set
@@ -3753,12 +3850,18 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         create_info.sharingMode       = VK_SHARING_MODE_EXCLUSIVE;
         create_info.samples           = VK_SAMPLE_COUNT_1_BIT;
         create_info.flags             = 0; // Optional
+        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &geo3d_color_image->h), "Failed to create vk buffer");
 
-        VmaAllocationCreateInfo alloc_create_info = {};
-        alloc_create_info.usage    = VMA_MEMORY_USAGE_AUTO;
-        alloc_create_info.flags    = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-        alloc_create_info.priority = 1.0f;
-        VK_Assert(vmaCreateImage(r_vulkan_state->vma, &create_info, &alloc_create_info, &geo3d_color_image->h, &geo3d_color_image->alloc, NULL), "Failed to create/allocate image/memory");
+        VkMemoryRequirements mem_requirements;
+        vkGetImageMemoryRequirements(r_vulkan_state->device.h, geo3d_color_image->h, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &geo3d_color_image->memory), "Failed to allocate buffer memory");
+        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, geo3d_color_image->h, geo3d_color_image->memory, 0), "Failed to bind buffer memory");
 
         VkImageViewCreateInfo image_view_create_info = {
             .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -3836,12 +3939,18 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         // If you were using a 3D texture for a voxel terrain, for example
         //      then you could use this avoid allocating memory to storage large volumes of "air" values
         create_info.flags = 0; // Optional
+        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &geo3d_depth_image->h), "Failed to create vk buffer");
 
-        VmaAllocationCreateInfo alloc_create_info = {0};
-        alloc_create_info.usage    = VMA_MEMORY_USAGE_AUTO;
-        alloc_create_info.flags    = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-        alloc_create_info.priority = 1.0f;
-        VK_Assert(vmaCreateImage(r_vulkan_state->vma, &create_info, &alloc_create_info, &geo3d_depth_image->h, &geo3d_depth_image->alloc, NULL), "Failed to create/allocate image/memory");
+        VkMemoryRequirements mem_requirements;
+        vkGetImageMemoryRequirements(r_vulkan_state->device.h, geo3d_depth_image->h, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &geo3d_depth_image->memory), "Failed to allocate buffer memory");
+        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, geo3d_depth_image->h, geo3d_depth_image->memory, 0), "Failed to bind buffer memory");
 
         VkImageViewCreateInfo image_view_create_info = {
             .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -3980,21 +4089,25 @@ r_vulkan_bag_destroy(R_Vulkan_Bag *bag)
         }
     }
 
-    vmaDestroyImage(r_vulkan_state->vma, bag->stage_color_image.h, bag->stage_color_image.alloc);
+    vkDestroyImage(r_vulkan_state->device.h, bag->stage_color_image.h, NULL);
     vkDestroyImageView(r_vulkan_state->device.h, bag->stage_color_image.view, NULL);
     r_vulkan_descriptor_set_destroy(&bag->stage_color_ds);
+    vkFreeMemory(r_vulkan_state->device.h, bag->stage_color_image.memory, NULL);
 
-    vmaDestroyImage(r_vulkan_state->vma, bag->geo3d_id_image.h, bag->geo3d_id_image.alloc);
+    vkDestroyImage(r_vulkan_state->device.h, bag->geo3d_id_image.h, NULL);
     vkDestroyImageView(r_vulkan_state->device.h, bag->geo3d_id_image.view, NULL);
-    vmaUnmapMemory(r_vulkan_state->vma, bag->geo3d_id_cpu.alloc);
-    vmaDestroyBuffer(r_vulkan_state->vma, bag->geo3d_id_cpu.h, bag->geo3d_id_cpu.alloc);
+    vkUnmapMemory(r_vulkan_state->device.h, bag->geo3d_id_cpu.memory);
+    vkDestroyBuffer(r_vulkan_state->device.h, bag->geo3d_id_cpu.h, NULL);
+    vkFreeMemory(r_vulkan_state->device.h, bag->geo3d_id_cpu.memory, NULL);
 
-    vmaDestroyImage(r_vulkan_state->vma, bag->geo3d_color_image.h, bag->geo3d_color_image.alloc);
+    vkDestroyImage(r_vulkan_state->device.h, bag->geo3d_color_image.h, NULL);
     vkDestroyImageView(r_vulkan_state->device.h, bag->geo3d_color_image.view, NULL);
     r_vulkan_descriptor_set_destroy(&bag->geo3d_color_ds);
+    vkFreeMemory(r_vulkan_state->device.h, bag->geo3d_color_image.memory, NULL);
 
-    vmaDestroyImage(r_vulkan_state->vma, bag->geo3d_depth_image.h, bag->geo3d_depth_image.alloc);
+    vkDestroyImage(r_vulkan_state->device.h, bag->geo3d_depth_image.h, NULL);
     vkDestroyImageView(r_vulkan_state->device.h, bag->geo3d_depth_image.view, NULL);
+    vkFreeMemory(r_vulkan_state->device.h, bag->geo3d_depth_image.memory, NULL);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

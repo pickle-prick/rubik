@@ -14,7 +14,6 @@
 #define VK_USE_PLATFORM_XLIB_KHR
 #define VK_PROTOTYPES
 #include <vulkan/vulkan.h>
-#include "render/vulkan/vk_mem_alloc.h"
 
 #define VK_Assert(result, message) \
     do { \
@@ -155,12 +154,13 @@ typedef struct {
     VkPresentModeKHR         prest_modes[MAX_SURFACE_PRESENT_MODE_COUNT];
 } R_Vulkan_Surface;
 
-typedef struct {
-    VkImage       h;
-    VkFormat      format;
-    VmaAllocation alloc;
-    VkImageView   view;
-    VkExtent2D    extent;
+typedef struct
+{
+    VkImage        h;
+    VkFormat       format;
+    VkDeviceMemory memory;
+    VkImageView    view;
+    VkExtent2D     extent;
 } R_Vulkan_Image;
 
 #define MAX_IMAGE_COUNT 6
@@ -204,7 +204,7 @@ struct R_Vulkan_Buffer {
     U64             generation;
 
     VkBuffer        h;
-    VmaAllocation   alloc;
+    VkDeviceMemory  memory;
 
     R_ResourceKind  kind;
     U64             size;
@@ -367,7 +367,6 @@ struct R_Vulkan_State {
     VkInstance                          instance;
     R_Vulkan_Device                     device;
     R_Vulkan_GPU                        gpu;
-    VmaAllocator                        vma;
 
     VkSampler                           samplers[R_Tex2DSampleKind_COUNT];
     R_Vulkan_DescriptorSetLayout        set_layouts[R_Vulkan_DescriptorSetKind_COUNT];
@@ -403,6 +402,7 @@ internal R_Vulkan_Tex2D           *r_vulkan_tex2d_from_handle(R_Handle handle);
 internal R_Handle                 r_vulkan_handle_from_tex2d(R_Vulkan_Tex2D *texture);
 internal R_Vulkan_Buffer          *r_vulkan_buffer_from_handle(R_Handle handle);
 internal R_Handle                 r_vulkan_handle_from_buffer(R_Vulkan_Buffer *buffer);
+internal S32                      r_vulkan_memory_index_from_type_filer(U32 type_filter, VkMemoryPropertyFlags properties);
 // internal ID3D11Buffer *r_vulkan_instance_buffer_from_size(U64 size);
 // internal void r_usage_access_flags_from_resource_kind(R_ResourceKind kind, D3D11_USAGE *out_vulkan_usage, UINT *out_cpu_access_flags);
 internal void                     r_vulkan_format_for_swapchain(VkSurfaceFormatKHR *formats, U64 count, VkFormat *format, VkColorSpaceKHR *color_space);
