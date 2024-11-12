@@ -66,7 +66,7 @@ struct R_Vulkan_Uniforms_Mesh
     Mat4x4F32 view;
     Mat4x4F32 proj;
 
-    // TODO: Global Light
+    Vec4F32   global_light;
 
     // Debug
     Vec4F32   gizmos_origin;

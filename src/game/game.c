@@ -26,6 +26,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     // TODO: move these settings into somekind of state
     local_persist B32 show_scene_cfg  = 1;
     local_persist B32 show_camera_cfg = 1;
+    local_persist B32 show_light_cfg  = 1;
     local_persist B32 show_node_cfg   = 1;
 
     local_persist TxtPt cursor         = {0};
@@ -35,6 +36,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     local_persist U64 edit_string_size = 0;
 
     local_persist G_ViewportShadingKind viewport_shading = G_ViewportShadingKind_Wireframe;
+    local_persist Vec3F32 global_light = {0,0,1};
 
     ui_set_next_focus_hot(UI_FocusKind_Root);
     ui_set_next_focus_active(UI_FocusKind_Root);
@@ -126,9 +128,9 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
             {
                 ui_labelf("viewport shading");
                 ui_spacer(ui_pct(1.0, 0.0));
-                if(ui_clicked(ui_buttonf("wireframe")))        {viewport_shading = G_ViewportShadingKind_Wireframe;};
-                if(ui_clicked(ui_buttonf("solid")))            {viewport_shading = G_ViewportShadingKind_Solid;};
-                if(ui_clicked(ui_buttonf("material")))         {viewport_shading = G_ViewportShadingKind_MaterialPreview;};
+                if(ui_clicked(ui_buttonf("wireframe"))) {viewport_shading = G_ViewportShadingKind_Wireframe;};
+                if(ui_clicked(ui_buttonf("solid")))     {viewport_shading = G_ViewportShadingKind_Solid;};
+                if(ui_clicked(ui_buttonf("material")))  {viewport_shading = G_ViewportShadingKind_MaterialPreview;};
             }
 
             if(show_camera_cfg)
@@ -157,6 +159,42 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                     ui_f32_edit(&camera->rot.y, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Y###rot_y"));
                     ui_f32_edit(&camera->rot.z, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Z###rot_z"));
                     ui_f32_edit(&camera->rot.w, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("W###rot_w"));
+                }
+            }
+        }
+
+        ui_spacer(ui_px(30, 1.0));
+
+        // Light
+        ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
+        ui_set_next_child_layout_axis(Axis2_Y);
+        ui_set_next_flags(UI_BoxFlag_DrawBorder);
+        UI_Box *light_cfg_box = ui_build_box_from_stringf(0, "###light_cfg");
+        UI_Parent(light_cfg_box)
+        {
+            // Header
+            ui_set_next_child_layout_axis(Axis2_X);
+            ui_set_next_flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow);
+            UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
+            UI_Parent(header_box)
+            {
+                ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
+                if(ui_clicked(ui_expanderf(show_camera_cfg, "###light_cfg")))
+                {
+                    show_light_cfg = !show_light_cfg;
+                }
+                ui_labelf("Light");
+            }
+
+            if(show_light_cfg)
+            {
+                UI_Row
+                {
+                    ui_labelf("global_light");
+                    ui_spacer(ui_pct(1.0, 0.0));
+                    ui_f32_edit(&global_light.x, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("X###pos_x"));
+                    ui_f32_edit(&global_light.y, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Y###pos_y"));
+                    ui_f32_edit(&global_light.z, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Z###pos_z"));
                 }
             }
         }
@@ -232,7 +270,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     B32 show_gizmos = 0;
     // TODO: this is kind awkward, fix it later, make it pretty
     d_push_bucket(g_state->bucket_geo3d);
-    R_PassParams_Geo3D *pass = d_geo3d_begin(scene_overlay->rect, mat_4x4f32(1.f), mat_4x4f32(1.f), show_grid, show_gizmos, mat_4x4f32(1.f), v3f32(0,0,0));
+    R_PassParams_Geo3D *pass = d_geo3d_begin(scene_overlay->rect, mat_4x4f32(1.f), mat_4x4f32(1.f), normalize_3f32(global_light), show_grid, show_gizmos, mat_4x4f32(1.f), v3f32(0,0,0));
     d_pop_bucket();
 
     R_GeoPolygonKind polygon_mode;
@@ -270,6 +308,10 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                                                     joint_xforms, joint_count,
                                                     mat_4x4f32(1.f), node->key.u64[0]);
                         inst->xform = node->fixed_xform;
+                        if(r_handle_match(node->v.mesh.albedo_tex, r_handle_zero()))
+                        {
+                            inst->white_texture_override = 1.0f;
+                        }
                     }break;
                 }
             }

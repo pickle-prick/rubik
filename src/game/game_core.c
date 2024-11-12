@@ -1280,7 +1280,8 @@ g_mesh_primitive_capsule(Arena *arena, R_Vertex **vertices_out, U64 *vertices_co
     vertex_idx = 0;
     indice_idx = 0;
 
-    Vec3F32 pos,nor;
+    Vec3F32 pos,nor,col;
+    col = v3f32(1.0,1.0,1.0);
 
     // top hemisphere
     thisrow = 0;
@@ -1301,10 +1302,10 @@ g_mesh_primitive_capsule(Arena *arena, R_Vertex **vertices_out, U64 *vertices_co
             z = cosf(u*tau32);
 
             pos = (Vec3F32){x*radius*w, y, -z*radius*w};
-            pos = add_3f32(pos, v3f32(0.0, 0.5*height - radius, 0.0));
             nor = normalize_3f32(pos);
+            pos = add_3f32(pos, v3f32(0.0, 0.5*height - radius, 0.0));
 
-            vertices[vertex_idx++] = (R_Vertex){ .pos = pos, .nor = nor };
+            vertices[vertex_idx++] = (R_Vertex){ .pos = pos, .nor = nor, .col = col };
 
             if(i > 0 && j > 0)
             {
@@ -1344,7 +1345,7 @@ g_mesh_primitive_capsule(Arena *arena, R_Vertex **vertices_out, U64 *vertices_co
             pos = (Vec3F32){x*radius, y, -z*radius};
             nor = (Vec3F32){x, 0.0, -z};
 
-            vertices[vertex_idx++] = (R_Vertex){ .pos = pos, .nor = nor };
+            vertices[vertex_idx++] = (R_Vertex){ .pos = pos, .nor = nor, .col = col };
 
             if(i > 0 && j > 0)
             {
@@ -1383,10 +1384,10 @@ g_mesh_primitive_capsule(Arena *arena, R_Vertex **vertices_out, U64 *vertices_co
             z = cosf(u*tau32);
 
             pos = (Vec3F32){x*radius*w, y, -z*radius*w};
-            pos = add_3f32(pos, v3f32(0.0, -0.5*height + radius, 0.0));
             nor = normalize_3f32(pos);
+            pos = add_3f32(pos, v3f32(0.0, -0.5*height + radius, 0.0));
 
-            vertices[vertex_idx++] = (R_Vertex){ .pos = pos, .nor = nor };
+            vertices[vertex_idx++] = (R_Vertex){ .pos = pos, .nor = nor, .col = col };
 
             if(i > 0 && j > 0)
             {

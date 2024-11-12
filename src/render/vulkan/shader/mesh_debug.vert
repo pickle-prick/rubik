@@ -16,7 +16,7 @@ layout(location = 16) flat out uint frag_show_gizmos;
 layout(set = 0, binding = 0) uniform UniformBufferObject {
     mat4  view;
     mat4  proj;
-    // vec4 light_pos;
+    vec4  global_light;
     vec4  gizmos_origin;
     mat4  gizmos_xform;
     uint  show_grid;

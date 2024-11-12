@@ -9,21 +9,23 @@ layout(location = 4)  in uvec4  joints;
 layout(location = 5)  in vec4   weights;
 
 // Instance buffer
-layout(location = 6)  in mat4   model;
-layout(location = 10) in uvec2  id;
-layout(location = 11) in uint   first_joint;
-layout(location = 12) in uint   joint_count;
+layout(location = 6)  in float  omit_texture;
+layout(location = 7)  in mat4   model;
+layout(location = 11) in uvec2  id;
+layout(location = 12) in uint   first_joint;
+layout(location = 13) in uint   joint_count;
 
 // It is important to know that some types, like dvec3 64 bit vectors, use multiple slots
 // That means that the index after it must be at least 2 higher
-layout(location = 0) out  vec2 frag_texcoord;
-layout(location = 1) out  vec3 frag_color;
+layout(location = 0)      out  vec2  frag_texcoord;
+layout(location = 1)      out  vec4  frag_color;
 layout(location = 2) flat out  uvec2 frag_id;
+layout(location = 3) flat out  float frag_omit_texture;
 
 layout(set = 0, binding = 0) uniform UniformBufferObject {
     mat4 view;
     mat4 proj;
-    // vec4 light_pos;
+    vec4 global_light;
 } ubo;
 
 layout(std430, set = 1, binding = 0) readonly buffer Joints {
@@ -145,8 +147,13 @@ void main() {
 
         gl_Position = ubo.proj * ubo.view * model * position;
 
+        float light_alignment = dot(-ubo.global_light.xyz, nor);
+        float intensity = 0.5*light_alignment + 0.5;
+        intensity = intensity < 0.3 ? 0.3 : intensity;
+
         // Output
-        frag_color    = vec3(1, 1, 1);
+        frag_color    = vec4((col*intensity).xyz, 1.0);
         frag_texcoord = tex;
         frag_id       = id;
+        frag_omit_texture = omit_texture;
 }

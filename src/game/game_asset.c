@@ -37,7 +37,7 @@ g_scene_load()
                 {
                     player->flags |= G_NodeFlags_NavigationRoot;
                     player->kind = G_NodeKind_Mesh;
-                    player->pos         = v3f32(0,-0.51,0);
+                    player->pos = v3f32(6,-1.5,0);
                     // Mesh
                     {
                         Temp temp = scratch_begin(0,0);
@@ -46,7 +46,7 @@ g_scene_load()
                         U32 *indices_src       = 0;
                         U64 indices_count      = 0;
                         // g_mesh_primitive_sphere(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 3, 6, 30, 16, 0);
-                        g_mesh_primitive_capsule(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 3, 16, 30, 16);
+                        g_mesh_primitive_capsule(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 0.7, 3, 30, 16);
                         player->v.mesh.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
                         player->v.mesh.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
                         scratch_end(temp);
@@ -63,7 +63,7 @@ g_scene_load()
                     {
                         m = g_model_from_gltf(scene->arena, str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
                     }
-                    G_Node *dummy = g_build_node_from_string(str8_lit("dummy"));
+                    G_Node *dummy = g_build_node_from_stringf("dummy");
                     dummy->flags |= G_NodeFlags_NavigationRoot;
                     G_Parent_Scope(dummy) G_Seed_Scope(dummy->key) 
                     {
@@ -83,7 +83,7 @@ g_scene_load()
                 //     {
                 //         m = g_model_from_gltf(scene->arena, str8_lit("./models/blackguard/scene.gltf"));
                 //     }
-                //     G_Node *dummy = g_build_node_from_string(str8_lit("dummy2"));
+                //     G_Node *dummy = g_build_node_from_stringf("dummy2");
                 //     dummy->flags |= G_NodeFlags_NavigationRoot;
                 //     G_Parent_Scope(dummy) G_Seed_Scope(dummy->key) 
                 //     {
@@ -104,7 +104,7 @@ g_scene_load()
                 //     {
                 //         m = g_model_from_gltf(scene->arena, str8_lit("./models/dancing_stormtrooper/scene.gltf"));
                 //     }
-                //     G_Node *dummy = g_build_node_from_string(str8_lit("dummy3"));
+                //     G_Node *dummy = g_build_node_from_stringf("dummy3");
                 //     dummy->flags |= G_NodeFlags_NavigationRoot;
                 //     G_Parent_Scope(dummy) G_Seed_Scope(dummy->key) 
                 //     {

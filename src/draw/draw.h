@@ -171,7 +171,7 @@ internal inline R_Rect2DInst *d_img(Rng2F32 dst, Rng2F32 src, R_Handle texture, 
 // internal R_PassParams_Blur *d_blur(Rng2F32 rect, F32 blur_size, F32 corner_radius);
 
 //- rjf: 3d rendering pass params
-internal R_PassParams_Geo3D *d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection, B32 show_grid, B32 show_gizmos, Mat4x4F32 gizmos_coord, Vec3F32 gizmos_origin);
+internal R_PassParams_Geo3D *d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection, Vec3F32 global_light, B32 show_grid, B32 show_gizmos, Mat4x4F32 gizmos_coord, Vec3F32 gizmos_origin);
 
 //- rjf: meshes
 internal R_Mesh3DInst * d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags, R_Handle albedo_tex, Mat4x4F32 *joint_xforms, U64 joint_count, Mat4x4F32 inst_xform, U64 inst_key);

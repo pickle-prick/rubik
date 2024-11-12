@@ -113,6 +113,7 @@ struct R_Mesh3DInst
     // NOTE: Only these two sent to the instance buffer
     Mat4x4F32 xform;
     U64       key;
+    F32       white_texture_override;
 
     // TODO(k): material idx, a primitive could have array of materials
     Mat4x4F32 *joint_xforms;
@@ -229,6 +230,7 @@ struct R_PassParams_Geo3D
     Mat4x4F32         view;
     Mat4x4F32         projection;
     R_BatchGroup3DMap mesh_batches;
+    Vec3F32           global_light;
 
     // Debug usage
     Vec4F32           gizmos_origin;
@@ -267,8 +269,8 @@ struct R_PassList
 ////////////////////////////////
 //~ rjf: Handle Type Functions
 
-// internal R_Handle r_handle_zero(void);
-// internal B32 r_handle_match(R_Handle a, R_Handle b);
+internal R_Handle r_handle_zero(void);
+internal B32 r_handle_match(R_Handle a, R_Handle b);
 
 ////////////////////////////////
 //~ rjf: Batch Type Functions
