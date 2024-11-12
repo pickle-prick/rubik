@@ -42,6 +42,14 @@ typedef enum G_InterpolationMethod
     G_InterpolationMethod_COUNT,
 } G_InterpolationMethod;
 
+typedef enum G_ViewportShadingKind
+{
+    G_ViewportShadingKind_Wireframe,
+    G_ViewportShadingKind_Solid,
+    G_ViewportShadingKind_MaterialPreview,
+    G_ViewportShadingKind_COUNT,
+} G_ViewportShadingKind;
+
 typedef U64 G_NodeFlags;
 # define G_NodeFlags_Animated         (G_NodeFlags)(1ull<<0)
 # define G_NodeFlags_AnimatedSkeleton (G_NodeFlags)(1ull<<1)

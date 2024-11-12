@@ -23,7 +23,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     UI_Box *overlay = ui_build_box_from_string(0, str8_lit("###game_overlay"));
     ui_push_parent(overlay);
 
-    // TODO: move these cfg to some structure
+    // TODO: move these settings into somekind of state
     local_persist B32 show_scene_cfg  = 1;
     local_persist B32 show_camera_cfg = 1;
     local_persist B32 show_node_cfg   = 1;
@@ -33,6 +33,8 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     local_persist U8 edit_buffer[30]   = {0};
     local_persist U8 edit_buffer_size  = 30;
     local_persist U64 edit_string_size = 0;
+
+    local_persist G_ViewportShadingKind viewport_shading = G_ViewportShadingKind_Wireframe;
 
     ui_set_next_focus_hot(UI_FocusKind_Root);
     ui_set_next_focus_active(UI_FocusKind_Root);
@@ -117,6 +119,16 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                     show_camera_cfg = !show_camera_cfg;
                 }
                 ui_labelf("Camera");
+            }
+
+            // Viewport shading
+            UI_Row
+            {
+                ui_labelf("viewport shading");
+                ui_spacer(ui_pct(1.0, 0.0));
+                if(ui_clicked(ui_buttonf("wireframe")))        {viewport_shading = G_ViewportShadingKind_Wireframe;};
+                if(ui_clicked(ui_buttonf("solid")))            {viewport_shading = G_ViewportShadingKind_Solid;};
+                if(ui_clicked(ui_buttonf("material")))         {viewport_shading = G_ViewportShadingKind_MaterialPreview;};
             }
 
             if(show_camera_cfg)
@@ -223,6 +235,14 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     R_PassParams_Geo3D *pass = d_geo3d_begin(scene_overlay->rect, mat_4x4f32(1.f), mat_4x4f32(1.f), show_grid, show_gizmos, mat_4x4f32(1.f), v3f32(0,0,0));
     d_pop_bucket();
 
+    R_GeoPolygonKind polygon_mode;
+    switch(viewport_shading)
+    {
+        case G_ViewportShadingKind_Wireframe: {polygon_mode = R_GeoPolygonKind_Line;}break;
+        case G_ViewportShadingKind_Solid: {polygon_mode = R_GeoPolygonKind_Fill;}break;
+        default: {InvalidPath;}break;
+    }
+
     // Update/draw node in the scene tree
     {
         G_Node *node = scene->root;
@@ -245,7 +265,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                         Mat4x4F32 *joint_xforms = node->parent->v.mesh_grp.joint_xforms;
                         U64 joint_count = node->parent->v.mesh_grp.joint_count;
                         R_Mesh3DInst *inst = d_mesh(node->v.mesh.vertices, node->v.mesh.indices,
-                                                    R_GeoTopologyKind_Triangles, R_GeoPolygonKind_Line,
+                                                    R_GeoTopologyKind_Triangles, polygon_mode,
                                                     R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, node->v.mesh.albedo_tex,
                                                     joint_xforms, joint_count,
                                                     mat_4x4f32(1.f), node->key.u64[0]);

@@ -51,6 +51,7 @@ g_scene_load()
                         player->v.mesh.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
                         scratch_end(temp);
                     }
+
                     // player->update_fn   = player_fn;
                     // player->custom_data = push_array(scene->bucket->arena, G_PlayerData, 1);
                 }
