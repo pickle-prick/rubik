@@ -245,7 +245,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                         Mat4x4F32 *joint_xforms = node->parent->v.mesh_grp.joint_xforms;
                         U64 joint_count = node->parent->v.mesh_grp.joint_count;
                         R_Mesh3DInst *inst = d_mesh(node->v.mesh.vertices, node->v.mesh.indices,
-                                                    R_GeoTopologyKind_Triangles,
+                                                    R_GeoTopologyKind_Triangles, R_GeoPolygonKind_Line,
                                                     R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, node->v.mesh.albedo_tex,
                                                     joint_xforms, joint_count,
                                                     mat_4x4f32(1.f), node->key.u64[0]);

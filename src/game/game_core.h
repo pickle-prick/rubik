@@ -48,17 +48,6 @@ typedef U64 G_NodeFlags;
 # define G_NodeFlags_Float            (G_NodeFlags)(1ull<<2)
 # define G_NodeFlags_NavigationRoot   (G_NodeFlags)(1ull<<3)
 
-typedef enum G_MeshKind
-{
-    G_MeshKind_Box,
-    G_MeshKind_Plane,
-    G_MeshKind_Capsule,
-    G_MeshKind_Cylinder,
-    G_MeshKind_Sphere,
-    G_MeshKind_Custom,
-    G_MeshKind_COUNT,
-} G_MeshKind;
-
 typedef U64 G_SpecialKeyKind;
 #define G_SpecialKeyKind_GizmosIhat (U64)(0xffffffffffffffffull-0)
 #define G_SpecialKeyKind_GizmosJhat (U64)(0xffffffffffffffffull-1)
@@ -246,7 +235,6 @@ struct G_MeshGroup
 typedef struct G_Mesh G_Mesh;
 struct G_Mesh
 {
-    G_MeshKind    kind;
     R_Handle      vertices;
     R_Handle      indices;
     R_Handle      albedo_tex;
@@ -498,9 +486,6 @@ struct G_State
     Vec3F32   drag_start_direction;
 
     OS_Handle os_wnd;
-
-    // Predefine mesh
-    G_Mesh    predefined_meshes[G_MeshKind_COUNT-1];
 
     // Theme
     G_Theme   cfg_theme_target;

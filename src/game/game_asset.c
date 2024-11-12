@@ -34,14 +34,25 @@ g_scene_load()
 
                 // Cube
                 G_Node *player = g_build_node_from_stringf("player");
-                player->flags |= G_NodeFlags_NavigationRoot;
-                player->kind = G_NodeKind_Mesh;
-                player->pos         = v3f32(0,-0.51,0);
-                // player->v.mesh      = g_state->predefined_meshes[G_MeshKind_Box];
-                // player->v.mesh      = g_state->predefined_meshes[G_MeshKind_Sphere];
-                player->v.mesh      = g_state->predefined_meshes[G_MeshKind_Cylinder];
-                // player->update_fn   = player_fn;
-                // player->custom_data = push_array(scene->bucket->arena, G_PlayerData, 1);
+                {
+                    player->flags |= G_NodeFlags_NavigationRoot;
+                    player->kind = G_NodeKind_Mesh;
+                    player->pos         = v3f32(0,-0.51,0);
+                    // Mesh
+                    {
+                        Temp temp = scratch_begin(0,0);
+                        R_Vertex *vertices_src = 0;
+                        U64 vertices_count     = 0;
+                        U32 *indices_src       = 0;
+                        U64 indices_count      = 0;
+                        g_mesh_primitive_sphere(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 3, 6, 30, 16, 0);
+                        player->v.mesh.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
+                        player->v.mesh.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
+                        scratch_end(temp);
+                    }
+                    // player->update_fn   = player_fn;
+                    // player->custom_data = push_array(scene->bucket->arena, G_PlayerData, 1);
+                }
 
                 // Dummy1
                 {
@@ -424,7 +435,6 @@ g_node_from_model(G_Model *model)
     if(is_mesh)
     {
         n->kind              = G_NodeKind_Mesh;
-        n->v.mesh.kind       = G_MeshKind_Custom;
         n->v.mesh.vertices   = model->vertices;
         n->v.mesh.indices    = model->indices;
         n->v.mesh.albedo_tex = model->albedo_tex;

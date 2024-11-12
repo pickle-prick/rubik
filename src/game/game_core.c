@@ -50,53 +50,6 @@ g_init(OS_Handle os_wnd)
     g_state->node_bucket = g_bucket_make(arena, 3000);
     g_state->os_wnd = os_wnd;
 
-    // Predefined mesh
-    for(U64 i = 0; i < G_MeshKind_COUNT-1; i++)
-    {
-        G_Mesh *mesh = &g_state->predefined_meshes[i];
-        mesh->kind = i;
-        switch(i)
-        {
-            case G_MeshKind_Box:
-            {
-                Temp temp = scratch_begin(0,0);
-                R_Vertex *vertices_src = 0;
-                U64 vertices_count     = 0;
-                U32 *indices_src       = 0;
-                U64 indices_count      = 0;
-                g_mesh_primitive_box(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count);
-                mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
-                mesh->indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
-                scratch_end(temp);
-            }break;
-            case G_MeshKind_Sphere:
-            {
-                Temp temp = scratch_begin(0,0);
-                R_Vertex *vertices_src = 0;
-                U64 vertices_count     = 0;
-                U32 *indices_src       = 0;
-                U64 indices_count      = 0;
-                g_mesh_primitive_sphere(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 3, 6, 30, 16, 0);
-                mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
-                mesh->indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
-                scratch_end(temp);
-            }break;
-            case G_MeshKind_Cylinder:
-            {
-                Temp temp = scratch_begin(0,0);
-                R_Vertex *vertices_src = 0;
-                U64 vertices_count     = 0;
-                U32 *indices_src       = 0;
-                U64 indices_count      = 0;
-                g_mesh_primitive_cylinder(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 3, 9, 69, 3, 1, 1);
-                mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
-                mesh->indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
-                scratch_end(temp);
-            }
-            default: {}break;
-        }
-    }
-
     // Fonts
     g_state->cfg_font_tags[G_FontSlot_Main]  = f_tag_from_path("./fonts/Mplus1Code-Medium.ttf");
     g_state->cfg_font_tags[G_FontSlot_Code]  = f_tag_from_path("./fonts/Mplus1Code-Medium.ttf");

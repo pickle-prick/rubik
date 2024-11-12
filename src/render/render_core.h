@@ -7,9 +7,9 @@
 typedef U32 R_GeoVertexFlags;
 enum {
     R_GeoVertexFlag_TexCoord = (1 << 0),
-    R_GeoVertexFlag_Normals = (1 << 1),
-    R_GeoVertexFlag_RGB = (1 << 2),
-    R_GeoVertexFlag_RGBA = (1 << 3),
+    R_GeoVertexFlag_Normals  = (1 << 1),
+    R_GeoVertexFlag_RGB      = (1 << 2),
+    R_GeoVertexFlag_RGBA     = (1 << 3),
 };
 
 typedef enum R_Tex2DFormat
@@ -49,6 +49,14 @@ typedef enum R_GeoTopologyKind
     R_GeoTopologyKind_TriangleStrip,
     R_GeoTopologyKind_COUNT,
 } R_GeoTopologyKind;
+
+typedef enum R_GeoPolygonKind
+{
+    R_GeoPolygonKind_Fill,
+    R_GeoPolygonKind_Line,
+    R_GeoPolygonKind_Point,
+    R_GeoPolygonKind_COUNT,
+} R_GeoPolygonKind;
 
 typedef enum R_PassKind
 {
@@ -172,6 +180,7 @@ struct R_BatchGroup3DParams
     R_Handle          mesh_vertices;
     R_Handle          mesh_indices;
     R_GeoTopologyKind mesh_geo_topology;
+    R_GeoPolygonKind  mesh_geo_polygon;
     R_GeoVertexFlags  mesh_geo_vertex_flags;
     R_Handle          albedo_tex;
     R_Tex2DSampleKind albedo_tex_sample_kind;

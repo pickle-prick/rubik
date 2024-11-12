@@ -138,7 +138,7 @@ d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection, B32 show_g
 
 internal R_Mesh3DInst *
 d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices,
-       R_GeoTopologyKind mesh_geo_topology, R_GeoVertexFlags mesh_geo_vertex_flags, R_Handle albedo_tex,
+       R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags, R_Handle albedo_tex,
        Mat4x4F32 *joint_xforms, U64 joint_count,
        Mat4x4F32 inst_xform, U64 inst_key)
 {
@@ -163,6 +163,7 @@ d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices,
             mesh_indices.u64[0],
             mesh_indices.u64[1],
             (U64)mesh_geo_topology,
+            (U64)mesh_geo_polygon,
             (U64)mesh_geo_vertex_flags,
             albedo_tex.u64[0],
             albedo_tex.u64[1],
@@ -194,6 +195,7 @@ d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices,
         node->params.mesh_vertices          = mesh_vertices;
         node->params.mesh_indices           = mesh_indices;
         node->params.mesh_geo_topology      = mesh_geo_topology;
+        node->params.mesh_geo_polygon       = mesh_geo_polygon;
         node->params.mesh_geo_vertex_flags  = mesh_geo_vertex_flags;
         node->params.albedo_tex             = albedo_tex;
         node->params.albedo_tex_sample_kind = d_top_tex2d_sample_kind();

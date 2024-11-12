@@ -1209,7 +1209,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 // Create pipelines
                 R_Vulkan_Pipeline *old_p_rect = 0;
                 if(old_rendpass) {old_p_rect = &old_rendpass->pipeline.rect;};
-                rendpass->pipeline.rect = r_vulkan_pipeline(R_Vulkan_PipelineKind_Rect, rendpass->h, old_p_rect);
+                rendpass->pipeline.rect = r_vulkan_pipeline(R_Vulkan_PipelineKind_Rect, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p_rect);
             } break;
             case R_Vulkan_RenderPassKind_Mesh:
             {
@@ -1284,12 +1284,24 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 // Create pipelines
                 R_Vulkan_Pipeline *old_p = 0;
                 // Mesh debug pipeline
-                if(old_rendpass) old_p = &old_rendpass->pipeline.mesh[0];
-                rendpass->pipeline.mesh[0] = r_vulkan_pipeline(R_Vulkan_PipelineKind_MeshDebug, rendpass->h, old_p);
+                if(old_rendpass) old_p = old_rendpass->pipeline.mesh[0];
+                for(U64 i = 0; i < R_GeoTopologyKind_COUNT; i++)
+                {
+                    for(U64 j = 0; j < R_GeoPolygonKind_COUNT; j++)
+                    {
+                        rendpass->pipeline.mesh[0][i*R_GeoPolygonKind_COUNT + j] = r_vulkan_pipeline(R_Vulkan_PipelineKind_MeshDebug, i, j, rendpass->h, old_p);
+                    }
+                }
 
                 // Mesh pipeline
-                if(old_rendpass) old_p = &old_rendpass->pipeline.mesh[1];
-                rendpass->pipeline.mesh[1] = r_vulkan_pipeline(R_Vulkan_PipelineKind_Mesh, rendpass->h, old_p);
+                if(old_rendpass) old_p = old_rendpass->pipeline.mesh[1];
+                for(U64 i = 0; i < R_GeoTopologyKind_COUNT; i++)
+                {
+                    for(U64 j = 0; j < R_GeoPolygonKind_COUNT; j++)
+                    {
+                        rendpass->pipeline.mesh[1][i*R_GeoPolygonKind_COUNT + j] = r_vulkan_pipeline(R_Vulkan_PipelineKind_Mesh, i, j, rendpass->h, old_p);
+                    }
+                }
             } break;
             case R_Vulkan_RenderPassKind_Geo3DComposite:
             {
@@ -1340,7 +1352,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 // Create pipelines
                 R_Vulkan_Pipeline *old_p_geo3d_composite = 0;
                 if(old_rendpass) {old_p_geo3d_composite = &old_rendpass->pipeline.geo3d_composite;};
-                rendpass->pipeline.geo3d_composite = r_vulkan_pipeline(R_Vulkan_PipelineKind_Geo3DComposite, rendpass->h, old_p_geo3d_composite);
+                rendpass->pipeline.geo3d_composite = r_vulkan_pipeline(R_Vulkan_PipelineKind_Geo3DComposite, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p_geo3d_composite);
             } break;
             case R_Vulkan_RenderPassKind_Finalize:
             {
@@ -1391,7 +1403,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 // Create pipelines
                 R_Vulkan_Pipeline *old_p_finalize = 0;
                 if(old_rendpass) {old_p_finalize = &old_rendpass->pipeline.finalize;};
-                rendpass->pipeline.finalize = r_vulkan_pipeline(R_Vulkan_PipelineKind_Finalize, rendpass->h, old_p_finalize);
+                rendpass->pipeline.finalize = r_vulkan_pipeline(R_Vulkan_PipelineKind_Finalize, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p_finalize);
             } break;
             default: {InvalidPath;}break;
         }
@@ -1969,7 +1981,7 @@ r_vulkan_sampler2d(R_Tex2DSampleKind kind)
 }
 
 internal R_Vulkan_Pipeline
-r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_Pipeline *old)
+r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoPolygonKind polygon, VkRenderPass renderpass, R_Vulkan_Pipeline *old)
 {
     R_Vulkan_Pipeline pipeline;
     pipeline.kind = kind;
@@ -2315,23 +2327,33 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
     // If you set the primitiveRestartEnable member to VK_TRUE, then it's possible to break up lines and triangles in the _STRIP topology modes by using a special index of 0xFFFF or 0xFFFFFFFF
     // Now we intend to draw a simple triangle, so ...
     VkPipelineInputAssemblyStateCreateInfo input_assembly_state_create_info = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
-    switch(kind)
+    VkPrimitiveTopology vk_topology;
+
+    switch(topology)
     {
-        case (R_Vulkan_PipelineKind_MeshDebug):
-        case (R_Vulkan_PipelineKind_Mesh):
-            { input_assembly_state_create_info.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; }break;
-        case (R_Vulkan_PipelineKind_Rect):
-        case (R_Vulkan_PipelineKind_Geo3DComposite):
-        case (R_Vulkan_PipelineKind_Finalize):
-            { input_assembly_state_create_info.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP; }break;
-        default: {InvalidPath;}break;
+        case R_GeoTopologyKind_Lines:         {vk_topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;}break;
+        case R_GeoTopologyKind_LineStrip:     {vk_topology = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;}break;
+        case R_GeoTopologyKind_Triangles:     {vk_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;}break;
+        case R_GeoTopologyKind_TriangleStrip: {vk_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;}break;
+        default:                              {InvalidPath;}break;
     }
+    input_assembly_state_create_info.topology = vk_topology;
     input_assembly_state_create_info.primitiveRestartEnable = VK_FALSE;
 
     // Resterizer stage
     // The rasterizer takes the geometry that is shaped by the vertices from the vertex shader and turns it into fragments to be colored by the fragment shader
     // It also performs depth testing, face culling and the scissor test, and it can be configured to output fragments that fill entire polygons or just the edges (wireframe rendering)
     // All this is configured using the VkPipelineRasterizationStateCreateInfo structure
+    
+    VkPolygonMode vk_polygon;
+    switch(polygon)
+    {
+        case R_GeoPolygonKind_Fill:           {vk_polygon = VK_POLYGON_MODE_FILL;}break;
+        case R_GeoPolygonKind_Line:           {vk_polygon = VK_POLYGON_MODE_LINE;}break;
+        case R_GeoPolygonKind_Point:          {vk_polygon = VK_POLYGON_MODE_POINT;}break;
+        default:                              {InvalidPath;}break;
+    }
+
     VkPipelineRasterizationStateCreateInfo rasterization_state_create_info = {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         // If depthClampEnable is set to VK_TRUE, then fragments that are beyond the near and far planes are clamped to them as opposed to discarding them
@@ -2345,7 +2367,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
         // 2. VK_POLYGON_MODE_LINE:  polygon edges are drawn as lines
         // 3. VK_POLYGON_MODE_POINT: polygon vertices are drawn as points
         // Using any mode other than fill requires enabling a GPU feature
-        .polygonMode             = VK_POLYGON_MODE_FILL,
+        .polygonMode             = vk_polygon,
         // The lineWidth member is strightforward, it describes the thickness of lines in terms of number of fragments
         // The maximum line width that is supported depends on the hardware and any line thicker than 1.0f requires you to enable wideLines GPU feature
         .lineWidth               = 1.0f,
@@ -2366,7 +2388,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
     {
         case (R_Vulkan_PipelineKind_Mesh):
         {
-            rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_LINE;
+            // rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_LINE;
             rasterization_state_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         }break;
         case (R_Vulkan_PipelineKind_MeshDebug):
@@ -3036,8 +3058,16 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
             }break;
             case R_PassKind_Geo3D: 
             {
-                // Unpack renderpass and pipeline
+                // Unpack params
+                R_PassParams_Geo3D *params = pass->params_geo3d;
+                R_BatchGroup3DMap *mesh_group_map = &params->mesh_batches;
+
+                // Unpack renderpass and pipelines
                 R_Vulkan_RenderPass *renderpass = &renderpasses[R_Vulkan_RenderPassKind_Mesh];
+
+                R_Vulkan_Pipeline *mesh_debug_pipelines = renderpass->pipeline.mesh[0];
+                R_Vulkan_Pipeline *mesh_pipelines       = renderpass->pipeline.mesh[1];
+
                 // Start renderpass
                 VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
                 begin_info.renderPass        = renderpass->h;
@@ -3056,10 +3086,6 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                 begin_info.pClearValues    = clear_colors;
                 vkCmdBeginRenderPass(cmd_buf, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-                // Unpack params
-                R_PassParams_Geo3D *params = pass->params_geo3d;
-                R_BatchGroup3DMap *mesh_group_map = &params->mesh_batches;
-
                 // Unpack uniform buffer
                 R_Vulkan_UniformBuffer *uniform_buffer = &frame->uniform_buffers[R_Vulkan_UniformTypeKind_Mesh];
                 // TODO(@k): dynamic allocate uniform buffer if needed
@@ -3074,9 +3100,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                 uniforms.gizmos_origin = params->gizmos_origin;
 
                 MemoryCopy((U8 *)uniform_buffer->buffer.mapped, &uniforms, sizeof(R_Vulkan_Uniforms_Mesh));
-                vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                        renderpass->pipeline.mesh[1].layout, 0, 1,
-                                        &uniform_buffer->set.h, 0, NULL);
+                vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipelines[0].layout, 0, 1, &uniform_buffer->set.h, 0, NULL);
 
                 // Setup viewport and scissor 
                 VkViewport viewport = {0};
@@ -3106,7 +3130,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                 vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
 
                 // Bind mesh debug pipeline
-                vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.mesh[0].h);
+                vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_debug_pipelines[R_GeoPolygonKind_COUNT * R_GeoTopologyKind_Triangles + R_GeoPolygonKind_Fill].h);
                 // Draw mesh debug info (grid, gizmos e.g.)
                 vkCmdDraw(cmd_buf, 6, 1, 0, 0);
 
@@ -3114,8 +3138,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                 R_Vulkan_StorageBuffer *storage_buffer = &frame->storage_buffers[R_Vulkan_StorageTypeKind_Mesh];
                 U8 *storage_buffer_dst = (U8 *)(storage_buffer->buffer.mapped);
                 U32 storage_buffer_offset = 0;
-                vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                        renderpass->pipeline.mesh[1].layout, 1, 1, &storage_buffer->set.h, 0, 0);
+                vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipelines[0].layout, 1, 1, &storage_buffer->set.h, 0, 0);
 
                 for(U64 slot_idx = 0; slot_idx < mesh_group_map->slots_count; slot_idx++)
                 {
@@ -3127,6 +3150,11 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                         R_Vulkan_Buffer *mesh_vertices = r_vulkan_buffer_from_handle(group_params->mesh_vertices);
                         R_Vulkan_Buffer *mesh_indices = r_vulkan_buffer_from_handle(group_params->mesh_indices);
                         U64 inst_count = batches->byte_count / batches->bytes_per_inst;
+
+                        // Unpack specific pipeline for topology and polygon mode
+                        R_GeoTopologyKind topology = group_params->mesh_geo_topology;
+                        R_GeoPolygonKind polygon = group_params->mesh_geo_polygon;
+                        R_Vulkan_Pipeline *pipeline = &mesh_pipelines[R_GeoPolygonKind_COUNT*topology + polygon];
 
                         // Get & fill instance buffer
                         // TODO(k): Dynamic allocate instance buffer if needed
@@ -3162,7 +3190,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                             tex_handle = r_vulkan_state->backup_texture;
                         }
                         R_Vulkan_Tex2D *texture = r_vulkan_tex2d_from_handle(tex_handle);
-                        vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.mesh[1].layout, 2, 1, &texture->desc_set.h, 0, NULL);
+                        vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->layout, 2, 1, &texture->desc_set.h, 0, NULL);
 
                         vkCmdBindVertexBuffers(cmd_buf, 0, 1, &mesh_vertices->h, &(VkDeviceSize){0});
                         vkCmdBindIndexBuffer(cmd_buf, mesh_indices->h, (VkDeviceSize){0}, VK_INDEX_TYPE_UINT32);
@@ -3172,7 +3200,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                         // Bind mesh pipeline
                         // The second parameter specifies if the pipeline object is a graphics or compute pipelinVK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BITe
                         // We've now told Vulkan which operations to execute in the graphcis pipeline and which attachment to use in the fragment shader
-                        vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.mesh[1].h);
+                        vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->h);
 
                         // Draw mesh
                         vkCmdDrawIndexed(cmd_buf, mesh_indices->size/sizeof(U32), inst_count, 0, 0, 0);

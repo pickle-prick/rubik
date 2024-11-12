@@ -237,7 +237,7 @@ struct R_Vulkan_RenderPass {
     union {
         R_Vulkan_Pipeline first;
         R_Vulkan_Pipeline rect;
-        R_Vulkan_Pipeline mesh[2];
+        R_Vulkan_Pipeline mesh[2][R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT];
         R_Vulkan_Pipeline geo3d_composite;
         R_Vulkan_Pipeline finalize;
     } pipeline;
@@ -413,7 +413,7 @@ internal R_Vulkan_Swapchain       r_vulkan_swapchain(R_Vulkan_Surface *surface, 
 internal void                     r_vulkan_bag_destroy(R_Vulkan_Bag *bag);
 internal R_Vulkan_RenderPassGroup *r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_RenderPassGroup *old);
 internal void                     r_vulkan_rendpass_grp_destroy(R_Vulkan_RenderPassGroup *grp);
-internal R_Vulkan_Pipeline        r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_Pipeline *old);
+internal R_Vulkan_Pipeline        r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoPolygonKind polygon, VkRenderPass renderpass, R_Vulkan_Pipeline *old);
 internal void                     r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind, U64 set_count, U64 cap, VkBuffer *buffers, VkImageView *image_views, VkSampler *sampler, R_Vulkan_DescriptorSet *sets);
 internal void                     r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp);
 internal R_Vulkan_UniformBuffer   r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count);
