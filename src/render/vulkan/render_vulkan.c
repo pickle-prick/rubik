@@ -491,7 +491,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     {
         VkShaderModule *vshad_mo = &r_vulkan_state->vshad_modules[kind];
         String8 vshad_path;
-        switch (kind)
+        switch(kind)
         {
             case (R_Vulkan_VShadKind_Rect):           {vshad_path = str8_lit("src/render/vulkan/shader/rect_vert.spv");}break;
             case (R_Vulkan_VShadKind_MeshDebug):      {vshad_path = str8_lit("src/render/vulkan/shader/mesh_debug_vert.spv");}break;
@@ -516,7 +516,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     {
         VkShaderModule *fshad_mo = &r_vulkan_state->fshad_modules[kind];
         String8 fshad_path;
-        switch (kind)
+        switch(kind)
         {
             case (R_Vulkan_FShadKind_Rect):           {fshad_path = str8_lit("src/render/vulkan/shader/rect_frag.spv");}break;
             case (R_Vulkan_FShadKind_MeshDebug):      {fshad_path = str8_lit("src/render/vulkan/shader/mesh_debug_frag.spv");}break;
@@ -1084,7 +1084,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
         R_Vulkan_RenderPass *rendpass = &rendpass_grp->passes[kind];
         R_Vulkan_RenderPass *old_rendpass = 0;
         if(old) old_rendpass = &old->passes[kind];
-        switch (kind)
+        switch(kind)
         {
             case R_Vulkan_RenderPassKind_Rect:
             {
@@ -1475,7 +1475,7 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
     VkDeviceSize vk_image_size = size.x * size.y;
     VkFormat vk_image_format   = 0;
 
-    switch (format)
+    switch(format)
     {
         case R_Tex2DFormat_R8:    {vk_image_format = VK_FORMAT_R8_UNORM;}break;
         case R_Tex2DFormat_RGBA8: {vk_image_format = VK_FORMAT_R8G8B8A8_SRGB; vk_image_size *= 4;}break;
@@ -1912,8 +1912,8 @@ r_vulkan_sampler2d(R_Tex2DSampleKind kind)
     // The magFilter and minFilter fields specify how to interpolate texels that are magnified or minified
     // Magnification concerns the oversampling proble describes above
     // Minification concerns undersampling
-    // The choices are VK_FILTER_NEAREST and VK_FILTER_LINEAR 
-    switch (kind)
+    // The choices are VK_FILTER_NEAREST and VK_FILTER_LINEAR render_vulkan
+    switch(kind)
     {
         case (R_Tex2DSampleKind_Nearest): {create_info.magFilter = VK_FILTER_NEAREST; create_info.minFilter = VK_FILTER_NEAREST;}break;
         case (R_Tex2DSampleKind_Linear):  {create_info.magFilter = VK_FILTER_LINEAR; create_info.minFilter = VK_FILTER_LINEAR;}break;
@@ -1976,7 +1976,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
 
     // We will need to recreate the pipeline if the format of swapchain image changed thus changed renderpass
     VkShaderModule vshad_mo, fshad_mo;
-    switch (kind)
+    switch(kind)
     {
         case (R_Vulkan_PipelineKind_Rect):
         {
@@ -2117,7 +2117,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
 
     U64 vtx_binding_desc_count = 0;
     U64 vtx_attr_desc_cnt      = 0;
-    switch (kind)
+    switch(kind)
     {
         case (R_Vulkan_PipelineKind_MeshDebug):
         {
@@ -2315,7 +2315,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
     // If you set the primitiveRestartEnable member to VK_TRUE, then it's possible to break up lines and triangles in the _STRIP topology modes by using a special index of 0xFFFF or 0xFFFFFFFF
     // Now we intend to draw a simple triangle, so ...
     VkPipelineInputAssemblyStateCreateInfo input_assembly_state_create_info = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
-    switch (kind)
+    switch(kind)
     {
         case (R_Vulkan_PipelineKind_MeshDebug):
         case (R_Vulkan_PipelineKind_Mesh):
@@ -2362,13 +2362,12 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
         .depthBiasSlopeFactor    = 0.0f, // Optional
     };
 
-    switch (kind)
+    switch(kind)
     {
         case (R_Vulkan_PipelineKind_Mesh):
         {
-            // rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_LINE;
+            rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_LINE;
             rasterization_state_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-
         }break;
         case (R_Vulkan_PipelineKind_MeshDebug):
         case (R_Vulkan_PipelineKind_Rect):
@@ -2399,7 +2398,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
     //      VkPipelineDepthStencilStateCreateInfo. 
     // We don't have one right now, so we can simply pass a NULL instead of a pointer to such a struct
     VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
-    switch (kind)
+    switch(kind)
     {
         case (R_Vulkan_PipelineKind_MeshDebug): 
         case (R_Vulkan_PipelineKind_Mesh): 
@@ -2507,7 +2506,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
             .alphaBlendOp        = VK_BLEND_OP_ADD, // Optional
         }
     };
-    switch (kind)
+    switch(kind)
     {
         default:{}break;
         case R_Vulkan_PipelineKind_Rect: {}break;
@@ -2567,7 +2566,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
 #define __MAX_PIPELINE_SET_LAYOUTS 9
         VkDescriptorSetLayout set_layouts[__MAX_PIPELINE_SET_LAYOUTS];
 
-        switch (kind)
+        switch(kind)
         {
             case (R_Vulkan_PipelineKind_Rect): 
             {
@@ -2630,7 +2629,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
         // It is also possible to use other render passes with this pipeline instead of this specific instance, but they have to be compatible with renderPass 
         create_info.renderPass          = renderpass;
         // subpass index within the render_pass
-        switch (kind)
+        switch(kind)
         {
             case (R_Vulkan_PipelineKind_Rect):           {create_info.subpass = 0;}break;
             case (R_Vulkan_PipelineKind_MeshDebug):      {create_info.subpass = 0;}break;
@@ -2646,12 +2645,12 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, VkRenderPass renderpass, R_Vulkan_
         // These values are only used if the VK_PIPELINE_CREATE_DERIVATIVE_BIT flag is also specified in the flags field of VkGraphicsPipelineCreateInfo
         create_info.basePipelineHandle  = VK_NULL_HANDLE; // Optional
         create_info.basePipelineIndex   = -1; // Optional
-                                              // TODO(@k): not sure if we should do it
+        // TODO(@k): not sure if we should do it
         create_info.flags = VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT;
         if(old != NULL)
         {
             create_info.basePipelineHandle = old->h;
-            create_info.flags              |= VK_PIPELINE_CREATE_DERIVATIVE_BIT;
+            create_info.flags |= VK_PIPELINE_CREATE_DERIVATIVE_BIT;
         }
 
         // The vkCreateGraphicsPipelines function actually has more parameters than the usual object creation functions in Vulkan
@@ -2682,9 +2681,6 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
     R_Vulkan_Window *wnd = r_vulkan_window_from_handle(window_equip);
     R_Vulkan_Frame *frame = &wnd->frames[wnd->curr_frame_idx];
     R_Vulkan_Device *device = &r_vulkan_state->device;
-
-    // Get resolution
-    // TODO
 
     // Wait until the previous frame has finished
     // This function takes an array of fences and waits on the host for either any or all of the fences to be signaled before returning
@@ -2963,7 +2959,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                         {0, 0, 0, 1},
                     };
 
-                    switch (texture->format)
+                    switch(texture->format)
                     {
                         default: break;
                         case R_Tex2DFormat_R8: 
@@ -3083,7 +3079,6 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                                         &uniform_buffer->set.h, 0, NULL);
 
                 // Setup viewport and scissor 
-                // TODO(k): make use of params->viewport/clip
                 VkViewport viewport = {0};
                 Vec2F32 viewport_dim = dim_2f32(params->viewport);
                 if(viewport_dim.x == 0 || viewport_dim.y == 0)
@@ -3287,7 +3282,7 @@ r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count)
 
     U64 stride = 0;
 
-    switch (kind)
+    switch(kind)
     {
         case R_Vulkan_UniformTypeKind_Rect: {stride = AlignPow2(sizeof(R_Vulkan_Uniforms_Rect), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
         case R_Vulkan_UniformTypeKind_Mesh: {stride = AlignPow2(sizeof(R_Vulkan_Uniforms_Mesh), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
@@ -3333,7 +3328,7 @@ r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count)
 
     // Create descriptor set
     R_Vulkan_DescriptorSetKind ds_type = 0;
-    switch (kind)
+    switch(kind)
     {
         case R_Vulkan_UniformTypeKind_Rect: {ds_type = R_Vulkan_DescriptorSetKind_UBO_Rect;}break;
         case R_Vulkan_UniformTypeKind_Mesh: {ds_type = R_Vulkan_DescriptorSetKind_UBO_Mesh;}break;
@@ -3350,7 +3345,7 @@ r_vulkan_storage_buffer_alloc(R_Vulkan_StorageTypeKind kind, U64 unit_count)
     R_Vulkan_StorageBuffer storage_buffer = {0};
     U64 stride = 0;
 
-    switch (kind)
+    switch(kind)
     {
         case R_Vulkan_StorageTypeKind_Mesh: {stride = AlignPow2(sizeof(R_Vulkan_Storage_Mesh), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);}break;
         default:                            {InvalidPath;}break;
@@ -3389,10 +3384,9 @@ r_vulkan_storage_buffer_alloc(R_Vulkan_StorageTypeKind kind, U64 unit_count)
     Assert(storage_buffer.buffer.size != 0);
     VK_Assert(vkMapMemory(r_vulkan_state->device.h, storage_buffer.buffer.memory, 0, storage_buffer.buffer.size, 0, &storage_buffer.buffer.mapped), "Failed to map buffer memory");
 
-
     // Create descriptor set
     R_Vulkan_DescriptorSetKind ds_type = 0;
-    switch (kind)
+    switch(kind)
     {
         case R_Vulkan_StorageTypeKind_Mesh: {ds_type = R_Vulkan_DescriptorSetKind_Storage_Mesh;}break;
         default:                            {InvalidPath;}break;
@@ -3482,7 +3476,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         for(U64 j = 0; j < set_layout.binding_count; j++)
         {
             U64 set_idx = i + j;
-            switch (kind)
+            switch(kind)
             {
                 case (R_Vulkan_DescriptorSetKind_UBO_Rect):
                 {
@@ -3878,9 +3872,9 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
 
         // Create geo3d_color sampler descriptor set
         r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind_Tex2D,
-                1, 16, NULL, &geo3d_color_image->view,
-                &r_vulkan_state->samplers[R_Tex2DSampleKind_Nearest],
-                geo3d_color_ds);
+                                      1, 16, NULL, &geo3d_color_image->view,
+                                      &r_vulkan_state->samplers[R_Tex2DSampleKind_Nearest],
+                                      geo3d_color_ds);
     }
 
     // Create geo3d_depth_image
@@ -3991,7 +3985,7 @@ r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
         R_Vulkan_Image *geo3d_depth_image = &bag->geo3d_depth_image;
         R_Vulkan_RenderPass *renderpass   = &grp->passes[kind];
 
-        switch (kind)
+        switch(kind)
         {
             case R_Vulkan_RenderPassKind_Rect:
             {

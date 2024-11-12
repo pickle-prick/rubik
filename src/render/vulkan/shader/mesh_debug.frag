@@ -111,8 +111,9 @@ vec4 grid(vec3 pos, float scale) {
     // minimumx *= 89;
 
     // vec4 color = vec4(0.0, 0.0, 0.0, 1.0-min(line, 1.0));
-    vec3 base_color = vec3(0.984,0.98,0.855);
-    vec3 line_color = vec3(0.094,0.11,0.078);
+    vec3 base_color = vec3(0.102,0.102,0.098);
+    vec3 line_color = vec3(0.965,0.988,0.875);
+
     vec4 color = vec4(mix(base_color, line_color, 1.0-min(line, 1.0)).xyz, 1.0);
 
     // z axis

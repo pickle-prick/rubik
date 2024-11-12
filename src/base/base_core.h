@@ -487,7 +487,8 @@ global U32 mantissa32 = 0x007FFFFF;
 global F32   big_golden32 = 1.61803398875f;
 global F32 small_golden32 = 0.61803398875f;
 
-global F32 pi32 = 3.1415926535897f;
+global F32 pi32  = 3.1415926535897f;
+global F32 tau32 = 6.283185307179586f;
 
 global F64 machine_epsilon64 = 4.94065645841247e-324;
 

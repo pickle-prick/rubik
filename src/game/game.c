@@ -86,12 +86,9 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                     row_count++;
                     UI_Signal label = ui_button(string);
 
+                    // TODO: make it regoniziable
+                    if(g_key_match(g_state->active_key, root->key)) {}
                     if(ui_clicked(label)) g_set_active_key(root->key);
-                    if(g_key_match(g_state->active_key, root->key))
-                    {
-                        ui_set_auto_focus_hot_key(label.box->key);
-                        ui_set_auto_focus_active_key(label.box->key);
-                    }
 
                     root = rec.next;
                 }
@@ -405,8 +402,8 @@ G_NODE_CUSTOM_UPDATE(camera_fn)
         // Vertical
         F32 v_pct = delta.y / window_dim.y;
         F32 v_dist = -2.0 * v_pct;
-        node->pre_pos_delta = scale_3f32(clean_s, -h_dist * 6);
-        node->pre_pos_delta = add_3f32(node->pre_pos_delta, scale_3f32(clean_u, v_dist*6));
+        node->pre_pos_delta = scale_3f32(s, -h_dist * 6);
+        node->pre_pos_delta = add_3f32(node->pre_pos_delta, scale_3f32(u, v_dist*6));
     }
     else if(g_state->sig.f & UI_SignalFlag_MiddleReleased)
     {

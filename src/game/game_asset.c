@@ -37,7 +37,9 @@ g_scene_load()
                 player->flags |= G_NodeFlags_NavigationRoot;
                 player->kind = G_NodeKind_Mesh;
                 player->pos         = v3f32(0,-0.51,0);
-                player->v.mesh      = g_state->predefined_meshes[G_MeshKind_Box];
+                // player->v.mesh      = g_state->predefined_meshes[G_MeshKind_Box];
+                // player->v.mesh      = g_state->predefined_meshes[G_MeshKind_Sphere];
+                player->v.mesh      = g_state->predefined_meshes[G_MeshKind_Cylinder];
                 // player->update_fn   = player_fn;
                 // player->custom_data = push_array(scene->bucket->arena, G_PlayerData, 1);
 
