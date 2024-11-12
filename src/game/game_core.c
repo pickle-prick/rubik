@@ -1123,12 +1123,12 @@ g_mesh_primitive_sphere(Arena *arena,
             if(i > 0 && j > 0)
             {
                 indices[indice_idx++] = prevrow + i - 1;
-                indices[indice_idx++] = prevrow + i;
                 indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = prevrow + i;
 
                 indices[indice_idx++] = prevrow + i;
-                indices[indice_idx++] = thisrow + i;
                 indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = thisrow + i;
             }
         }
 
@@ -1252,6 +1252,156 @@ g_mesh_primitive_cylinder(Arena *arena,
                 indices[indice_idx++] = vertex_idx-1;
             }
         }
+    }
+
+    Assert(vertex_count == vertex_idx);
+    Assert(indice_count == indice_idx);
+    *vertices_out = vertices;
+    *vertices_count_out = vertex_count;
+    *indices_out = indices;
+    *indices_count_out = indice_count;
+}
+
+internal void
+g_mesh_primitive_capsule(Arena *arena, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out, F32 radius, F32 height, U64 radial_segments, U64 rings)
+{
+    U64 i,j,prevrow,thisrow,vertex_idx,indice_idx;
+    F32 x,y,z,u,v,w,vertex_count,indice_count;
+
+    // TODO: fix it
+    vertex_count = (rings+2)*(radial_segments+1)*3;
+    indice_count = (rings+1)*radial_segments*6*3;
+
+    // TODO: calculate uv2
+
+    R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
+    U32 *indices       = push_array(arena, U32, indice_count);
+
+    vertex_idx = 0;
+    indice_idx = 0;
+
+    Vec3F32 pos,nor;
+
+    // top hemisphere
+    thisrow = 0;
+    prevrow = 0;
+    for(j = 0; j < (rings+2); j++)
+    {
+        v = j;
+        v /= (rings+1);
+        w = sinf(0.5*pi32*v);
+        y = radius * cosf(0.5*pi32*v);
+
+        for(i = 0; i < (radial_segments+1); i++)
+        {
+            u = i;
+            u /= radial_segments;
+
+            x = -sinf(u*tau32);
+            z = cosf(u*tau32);
+
+            pos = (Vec3F32){x*radius*w, y, -z*radius*w};
+            pos = add_3f32(pos, v3f32(0.0, 0.5*height - radius, 0.0));
+            nor = normalize_3f32(pos);
+
+            vertices[vertex_idx++] = (R_Vertex){ .pos = pos, .nor = nor };
+
+            if(i > 0 && j > 0)
+            {
+                indices[indice_idx++] = prevrow + i - 1;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = prevrow + i;
+
+                indices[indice_idx++] = prevrow + i;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = thisrow + i;
+            }
+        }
+
+        prevrow = thisrow;
+        thisrow = vertex_idx;
+    }
+
+    // cylinder
+    // thisrow = vertex_idx;
+    prevrow = 0;
+    for(j = 0; j < (rings+2); j++)
+    {
+        v = j;
+        v /= (rings+1);
+
+        y = (height - 2.0*radius) * v;
+        y = (0.5*height - radius) - y;
+
+        for(i = 0; i < (radial_segments+1); i++)
+        {
+            u = i;
+            u /= radial_segments;
+
+            x = -sinf(u*tau32);
+            z = cosf(u*tau32);
+
+            pos = (Vec3F32){x*radius, y, -z*radius};
+            nor = (Vec3F32){x, 0.0, -z};
+
+            vertices[vertex_idx++] = (R_Vertex){ .pos = pos, .nor = nor };
+
+            if(i > 0 && j > 0)
+            {
+                indices[indice_idx++] = prevrow + i - 1;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = prevrow + i;
+
+                indices[indice_idx++] = prevrow + i;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = thisrow + i;
+            }
+        }
+
+        prevrow = thisrow;
+        thisrow = vertex_idx;
+    }
+
+    // bottom hemisphere
+    // thisrow = vertex_idx;
+    prevrow = 0;
+    for(j = 0; j < (rings+2); j++)
+    {
+        v = j;
+
+        v /= (rings+1);
+        v += 1.0;
+        w = sinf(0.5*pi32*v);
+        y = radius * cosf(0.5*pi32*v);
+
+        for(i = 0; i < (radial_segments+1); i++)
+        {
+            u = i;
+            u /= radial_segments;
+
+            x = -sinf(u*tau32);
+            z = cosf(u*tau32);
+
+            pos = (Vec3F32){x*radius*w, y, -z*radius*w};
+            pos = add_3f32(pos, v3f32(0.0, -0.5*height + radius, 0.0));
+            nor = normalize_3f32(pos);
+
+            vertices[vertex_idx++] = (R_Vertex){ .pos = pos, .nor = nor };
+
+            if(i > 0 && j > 0)
+            {
+                indices[indice_idx++] = prevrow + i - 1;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = prevrow + i;
+
+                indices[indice_idx++] = prevrow + i;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = thisrow + i;
+            }
+        }
+
+        prevrow = thisrow;
+        thisrow = vertex_idx;
     }
 
     Assert(vertex_count == vertex_idx);
