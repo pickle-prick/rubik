@@ -2,6 +2,8 @@
 
 ## Development Setup Instructions
 
+![Screenshot of a 3D scene](./screenshots/001.jpg)
+
 **Note: Currently, only x64 linux development is supported.**
 
 * linux
