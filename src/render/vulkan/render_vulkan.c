@@ -725,7 +725,7 @@ r_window_equip(OS_Handle wnd_handle)
             {
                 R_Vulkan_Buffer *buffer = buffers[i];
                 VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-                create_info.size        = MB(64);
+                create_info.size        = MB(16);
                 create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
                 create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
                 VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer->h), "Failed to create vk buffer");

@@ -1,128 +1,3 @@
-/////////////////////////////////
-// Scene build api
-
-internal G_Scene *
-g_scene_load()
-{
-    Arena *arena = arena_alloc(.reserve_size = MB(64), .commit_size = MB(64));
-    G_Scene *scene = push_array(arena, G_Scene, 1);
-    {
-        scene->arena = arena;
-        scene->bucket = g_bucket_make(arena, 3000);
-    }
-
-    // TODO: searilize scene data using yaml or gltf
-
-    G_Scene_Scope(scene)
-    {
-        G_Bucket_Scope(scene->bucket)
-        {
-            // Create the origin/world node
-            G_Node *root = g_build_node_from_string(str8_lit("root"));
-            root->pos = v3f32(0, 0, 0);
-            scene->root = root;
-
-            G_Parent_Scope(root)
-            {
-                G_Node *camera = g_node_camera3d_alloc(str8_lit("main_camera"));
-                scene->camera = camera;
-                camera->pos          = v3f32(0,-3,-3);
-                camera->v.camera.fov = 0.25;
-                camera->v.camera.zn  = 0.1f;
-                camera->v.camera.zf  = 200.f;
-                g_node_push_fn(scene->bucket->arena, camera, camera_fn);
-
-                // Cube
-                G_Node *player = g_build_node_from_stringf("player");
-                {
-                    player->flags |= G_NodeFlags_NavigationRoot;
-                    player->kind = G_NodeKind_Mesh;
-                    player->pos = v3f32(6,-1.5,0);
-                    // Mesh
-                    {
-                        Temp temp = scratch_begin(0,0);
-                        R_Vertex *vertices_src = 0;
-                        U64 vertices_count     = 0;
-                        U32 *indices_src       = 0;
-                        U64 indices_count      = 0;
-                        // g_mesh_primitive_sphere(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 3, 6, 30, 16, 0);
-                        g_mesh_primitive_capsule(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 0.7, 3, 30, 16);
-                        player->v.mesh.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
-                        player->v.mesh.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
-                        scratch_end(temp);
-                    }
-
-                    // player->update_fn   = player_fn;
-                    // player->custom_data = push_array(scene->bucket->arena, G_PlayerData, 1);
-                }
-
-                // Dummy1
-                {
-                    G_Model *m;
-                    G_Path_Scope(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/"))
-                    {
-                        m = g_model_from_gltf(scene->arena, str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
-                    }
-                    G_Node *dummy = g_build_node_from_stringf("dummy");
-                    dummy->flags |= G_NodeFlags_NavigationRoot;
-                    G_Parent_Scope(dummy) G_Seed_Scope(dummy->key) 
-                    {
-                        G_Node *n = g_node_from_model(m);
-                        QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
-                        n->rot = mul_quat_f32(flip_y, n->rot);
-
-                        dummy->skeleton_anims = m->anims;
-                        dummy->flags |= (G_NodeFlags_Animated | G_NodeFlags_AnimatedSkeleton);
-                    }
-                }
-
-                // Dummy2
-                // {
-                //     G_Model *m;
-                //     G_Path_Scope(str8_lit("./models/blackguard/"))
-                //     {
-                //         m = g_model_from_gltf(scene->arena, str8_lit("./models/blackguard/scene.gltf"));
-                //     }
-                //     G_Node *dummy = g_build_node_from_stringf("dummy2");
-                //     dummy->flags |= G_NodeFlags_NavigationRoot;
-                //     G_Parent_Scope(dummy) G_Seed_Scope(dummy->key) 
-                //     {
-                //         G_Node *n = g_node_from_model(m);
-                //         QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
-                //         n->rot = mul_quat_f32(flip_y, n->rot);
-
-                //         dummy->skeleton_anims = m->anims;
-                //         dummy->flags |= (G_NodeFlags_Animated | G_NodeFlags_AnimatedSkeleton);
-                //     }
-                //     dummy->pos = v3f32(3,0,0);
-                // }
-
-                // Dummy3
-                // {
-                //     G_Model *m;
-                //     G_Path_Scope(str8_lit("./models/dancing_stormtrooper/"))
-                //     {
-                //         m = g_model_from_gltf(scene->arena, str8_lit("./models/dancing_stormtrooper/scene.gltf"));
-                //     }
-                //     G_Node *dummy = g_build_node_from_stringf("dummy3");
-                //     dummy->flags |= G_NodeFlags_NavigationRoot;
-                //     G_Parent_Scope(dummy) G_Seed_Scope(dummy->key) 
-                //     {
-                //         G_Node *n = g_node_from_model(m);
-                //         QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
-                //         n->rot = mul_quat_f32(flip_y, n->rot);
-
-                //         dummy->skeleton_anims = m->anims;
-                //         dummy->flags |= (G_NodeFlags_Animated | G_NodeFlags_AnimatedSkeleton);
-                //     }
-                //     dummy->pos = v3f32(6,0,0);
-                // }
-            }
-        }
-    }
-    return scene;
-}
-
 internal G_Model *
 g_model_from_gltf(Arena *arena, String8 gltf_path)
 {
@@ -531,4 +406,604 @@ g_skeleton_anim_from_gltf_animation(cgltf_animation *cgltf_anim)
     anim->splines      = splines;
     anim->spline_count = spline_count;
     return anim;
+}
+
+/////////////////////////////////
+// Mesh primitives
+
+internal void
+g_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
+{
+    // R_Vertex vertices_src[8] = {
+    //     // Front face
+    //     { {-0.5f, -0.5f,  0.5f}, {0}, {0}, {0}, {0}, {0} },
+    //     { { 0.5f, -0.5f,  0.5f}, {0}, {0}, {0}, {0}, {0} },
+    //     { { 0.5f,  0.5f,  0.5f}, {0}, {0}, {0}, {0}, {0} },
+    //     { {-0.5f,  0.5f,  0.5f}, {0}, {0}, {0}, {0}, {0} },
+
+    //     // Back face
+    //     { {-0.5f, -0.5f, -0.5f}, {0}, {0}, {0}, {0}, {0} },
+    //     { { 0.5f, -0.5f, -0.5f}, {0}, {0}, {0}, {0}, {0} },
+    //     { { 0.5f,  0.5f, -0.5f}, {0}, {0}, {0}, {0}, {0} },
+    //     { {-0.5f,  0.5f, -0.5f}, {0}, {0}, {0}, {0}, {0} },
+    // };
+    // *vertices_count_out = ArrayCount(vertices_src);
+    // *vertices_out = push_array(arena, R_Vertex, *vertices_count_out);
+    // MemoryCopy(*vertices_out, vertices_src, sizeof(vertices_src));
+
+    // U32 indices_src[3*12] = {
+    //     // Front face
+    //     0, 1, 2,
+    //     2, 3, 0,
+    //     // Right face
+    //     1, 5, 6,
+    //     6, 2, 1,
+    //     // Back face
+    //     5, 4, 7,
+    //     7, 6, 5,
+    //     // Left face
+    //     4, 0, 3,
+    //     3, 7, 4,
+    //     // Top face
+    //     3, 2, 6,
+    //     6, 7, 3,
+    //     // Bottom face
+    //     4, 5, 1,
+    //     1, 0, 4
+    // };
+    // *indices_count_out = ArrayCount(indices_src);
+    // *indices_out = push_array(arena, U32, *indices_count_out);
+    // MemoryCopy(*indices_out, indices_src, sizeof(indices_src));
+
+    U64 i,j,prevrow,thisrow,vertex_idx,indice_idx;
+    F32 x,y,z;
+
+    Vec3F32 start_pos = scale_3f32(size, -0.5);
+
+    // TODO: fix it
+    U64 vertex_count = (subdivide_h+2) * (subdivide_w+2)*2 + (subdivide_h+2) * (subdivide_d+2)*2 + (subdivide_d+2) * (subdivide_w+2)*2; 
+    U64 indice_count = (subdivide_h+1) * (subdivide_w+1)*12 + (subdivide_h+1) * (subdivide_d+1)*12 + (subdivide_d+1) * (subdivide_w+1)*12;
+
+    R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
+    U32 *indices       = push_array(arena, U32, indice_count);
+
+    vertex_idx = 0;
+    indice_idx = 0;
+
+    Vec3F32 pos,nor;
+
+    // front + back
+    y = start_pos.y;
+    thisrow = 0;
+    prevrow = 0;
+    for(j = 0; j < (subdivide_h+2); j++)
+    {
+        F32 v = j; 
+        F32 v2 = v / (subdivide_w + 1.0);
+        v /= (2.0 * (subdivide_h+1.0));
+
+        x = start_pos.x;
+        for(i = 0; i < (subdivide_w+2); i++)
+        {
+            F32 u = i;
+            F32 u2 = u / (subdivide_w+1.0);
+            u /= (3.0 * (subdivide_w+1.0));
+
+            // front
+            pos = (Vec3F32){x, -y, -start_pos.z};
+            nor = (Vec3F32){0.0, 0.0, 1.0};
+            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor};
+
+            // back
+            pos = (Vec3F32){-x, -y, start_pos.z};
+            nor = (Vec3F32){0.0, 0.0, -1.0};
+            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor};
+
+            if(i > 0 && j > 0)
+            {
+                U64 i2 = i*2;
+
+                // front
+                indices[indice_idx++] = prevrow + i2 - 2;
+                indices[indice_idx++] = thisrow + i2 - 2;
+                indices[indice_idx++] = prevrow + i2;
+
+                indices[indice_idx++] = prevrow + i2;
+                indices[indice_idx++] = thisrow + i2 - 2;
+                indices[indice_idx++] = thisrow + i2;
+
+                // back
+                indices[indice_idx++] = prevrow + i2 - 1;
+                indices[indice_idx++] = thisrow + i2 - 1;
+                indices[indice_idx++] = prevrow + i2 + 1;
+
+                indices[indice_idx++] = prevrow + i2 + 1;
+                indices[indice_idx++] = thisrow + i2 - 1;
+                indices[indice_idx++] = thisrow + i2 + 1;
+            }
+            x += size.x / (subdivide_w + 1.0);
+        }
+
+        y += size.y / (subdivide_h + 1.0);
+        prevrow = thisrow;
+        thisrow = vertex_idx;
+    }
+
+    // left + right
+    y = start_pos.y;
+    thisrow = vertex_idx;
+    prevrow = 0;
+    for(j = 0; j < (subdivide_h+2); j++)
+    {
+        F32 v = j; 
+        F32 v2 = v / (subdivide_h + 1.0);
+        v /= (2.0 * (subdivide_h+1.0));
+
+        z = start_pos.z;
+        for(i = 0; i < (subdivide_d+2); i++)
+        {
+            F32 u = i;
+            F32 u2 = u / (subdivide_d+1.0);
+            u /= (3.0 * (subdivide_d+1.0));
+
+            // right
+            pos = (Vec3F32){-start_pos.x, -y, -z};
+            nor = (Vec3F32){1.0, 0.0, 0.0};
+            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor};
+
+            // left
+            pos = (Vec3F32){start_pos.x, -y, z};
+            nor = (Vec3F32){-1.0, 0.0, 0.0};
+            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor};
+
+            if(i > 0 && j > 0)
+            {
+                U64 i2 = i*2;
+
+                // right
+                indices[indice_idx++] = prevrow + i2 - 2;
+                indices[indice_idx++] = thisrow + i2 - 2;
+                indices[indice_idx++] = prevrow + i2;
+
+                indices[indice_idx++] = prevrow + i2;
+                indices[indice_idx++] = thisrow + i2 - 2;
+                indices[indice_idx++] = thisrow + i2;
+
+                // left
+                indices[indice_idx++] = prevrow + i2 - 1;
+                indices[indice_idx++] = thisrow + i2 - 1;
+                indices[indice_idx++] = prevrow + i2 + 1;
+
+                indices[indice_idx++] = prevrow + i2 + 1;
+                indices[indice_idx++] = thisrow + i2 - 1;
+                indices[indice_idx++] = thisrow + i2 + 1;
+            }
+            z += size.z / (subdivide_d + 1.0);
+        }
+        y += size.y / (subdivide_h + 1.0);
+        prevrow = thisrow;
+        thisrow = vertex_idx;
+    }
+
+    // top + bottom
+    z = start_pos.z;
+    thisrow = vertex_idx;
+    prevrow = 0;
+    for(j = 0; j < (subdivide_d+2); j++)
+    {
+        F32 v = j; 
+        F32 v2 = v / (subdivide_d+1.0);
+        v /= (2.0 * (subdivide_d+1.0));
+
+        x = start_pos.x;
+        for(i = 0; i < (subdivide_w+2); i++)
+        {
+            F32 u = i;
+            F32 u2 = u / (subdivide_w+1.0);
+            u /= (3.0 * (subdivide_w+1.0));
+
+            // top
+            pos = (Vec3F32){-x, -start_pos.y, -z};
+            nor = (Vec3F32){0.0, 1.0, 0.0};
+            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor};
+
+            // bottom
+            pos = (Vec3F32){x, start_pos.y, -z};
+            nor = (Vec3F32){0.0, -1.0, 0.0};
+            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor};
+
+            if(i > 0 && j > 0)
+            {
+                U64 i2 = i*2;
+
+                // right
+                indices[indice_idx++] = prevrow + i2 - 2;
+                indices[indice_idx++] = thisrow + i2 - 2;
+                indices[indice_idx++] = prevrow + i2;
+
+                indices[indice_idx++] = prevrow + i2;
+                indices[indice_idx++] = thisrow + i2 - 2;
+                indices[indice_idx++] = thisrow + i2;
+
+                // left
+                indices[indice_idx++] = prevrow + i2 - 1;
+                indices[indice_idx++] = thisrow + i2 - 1;
+                indices[indice_idx++] = prevrow + i2 + 1;
+
+                indices[indice_idx++] = prevrow + i2 + 1;
+                indices[indice_idx++] = thisrow + i2 - 1;
+                indices[indice_idx++] = thisrow + i2 + 1;
+            }
+            x += size.x / (subdivide_w + 1.0);
+        }
+
+        z += size.z / (subdivide_d + 1.0);
+        prevrow = thisrow;
+        thisrow = vertex_idx;
+    }
+
+    Assert(vertex_count == vertex_idx);
+    Assert(indice_count == indice_idx);
+    *vertices_out = vertices;
+    *vertices_count_out = vertex_count;
+    *indices_out = indices;
+    *indices_count_out = indice_count;
+}
+
+internal void
+g_mesh_primitive_sphere(Arena *arena,
+                        R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out,
+                        F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere)
+{
+    U64 i,j,prevrow,thisrow,vertex_idx,indice_idx;
+    F32 x,y,z;
+    F32 scale = height * (is_hemisphere ? 1.0 : 0.5);
+
+    // NOTE(k): only used if we calculate UV2
+    // F32 circumference = radius * tau32;
+	// F32 horizontal_length = circumference + p_uv2_padding;
+	// F32 center_h = 0.5 * circumference / horizontal_length;
+
+    U64 vertex_count = (rings+2)*(radial_segments+1);
+    U64 indice_count  = (rings+1)*(radial_segments)*6;
+
+    R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
+    U32 *indices       = push_array(arena, U32, indice_count);
+
+    vertex_idx = 0;
+    indice_idx = 0;
+
+    thisrow = 0;
+    prevrow = 0;
+    // NOTE(k): Inlcude north and south pole
+    for(j = 0; j < (rings+2); j++)
+    {
+        F32 v = j;
+        F32 w;
+
+        v /= (rings+1);
+        w = sinf(pi32*v);
+        y = cosf(pi32*v) * (-scale);
+
+        for(i = 0; i < (radial_segments+1); i++)
+        {
+            F32 u = i;
+            u /= radial_segments;
+
+            Vec3F32 pos;
+            Vec3F32 nor;
+
+            x = cosf(u*tau32);
+            z = sinf(u*tau32);
+
+            if(is_hemisphere && y < 0.0)
+            { 
+                pos = v3f32(x*radius*w, 0, z*radius*w);
+                nor = v3f32(0, -1.0, 0.0);
+            }
+            else
+            {
+                pos = v3f32(x*radius*w, y, z*radius*w);
+                // TODO: don't understand this yet
+                nor = normalize_3f32(v3f32(x*scale*w, radius*(y/scale), z*scale*w));
+            }
+
+            // TODO: add tangent
+            vertices[vertex_idx++] = (R_Vertex){
+                .pos = pos,
+                .nor = nor,
+            };
+
+            if(i > 0 && j > 0)
+            {
+                indices[indice_idx++] = prevrow + i - 1;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = prevrow + i;
+
+                indices[indice_idx++] = prevrow + i;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = thisrow + i;
+            }
+        }
+
+        prevrow = thisrow;
+        thisrow = vertex_idx;
+    }
+
+    Assert(vertex_count == vertex_idx);
+    Assert(indice_count == indice_idx);
+    *vertices_out = vertices;
+    *vertices_count_out = vertex_count;
+    *indices_out = indices;
+    *indices_count_out = indice_count;
+}
+
+internal void
+g_mesh_primitive_cylinder(Arena *arena,
+                          R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out,
+                          F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom)
+{
+    Assert(rings >= 2);
+    U64 i,j,prevrow,thisrow;
+    F32 x,y,z,half_height;
+
+    half_height = height/2.0f;
+
+    U64 vertex_count = rings*(radial_segments+1);
+    U64 indice_count = (rings-1)*(radial_segments)*6;
+    if(cap_top)
+    {
+        vertex_count++;
+        indice_count += (radial_segments) * 3;
+    }
+    if(cap_bottom)
+    {
+        vertex_count++;
+        indice_count += (radial_segments) * 3;
+    }
+
+    R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
+    U32 *indices       = push_array(arena, U32, indice_count);
+
+    U64 vertex_idx = 0;
+    U64 indice_idx = 0;
+
+    Vec3F32 pos,nor;
+    
+    thisrow = 0;
+    prevrow = 0;
+    for(j = 0; j < rings; j++)
+    {
+        F32 v = j;
+        v /= (rings-1);
+        y = mix_1f32(-half_height, half_height, v);
+
+        for(i = 0; i < (radial_segments+1); i++)
+        {
+            F32 u = i;
+            u /= radial_segments;
+
+            x = cosf(u*tau32);
+            z = sinf(u*tau32);
+
+            pos = (Vec3F32){x*radius, y, z*radius};
+            nor = (Vec3F32){x, 0, z};
+            nor = normalize_3f32(nor);
+
+            vertices[vertex_idx++] = (R_Vertex){
+                .pos = pos,
+                // TODO: normal, tagnent
+                .nor = nor,
+            };
+
+            if(i > 0 && j > 0) 
+            { 
+                // side segment
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = prevrow + i;
+                indices[indice_idx++] = prevrow + i - 1;
+
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = thisrow + i;
+                indices[indice_idx++] = prevrow + i;
+            }
+        }
+
+        prevrow = thisrow;
+        thisrow = vertex_idx;
+    }
+
+    if(cap_top)
+    {
+        y = -half_height;
+        pos = (Vec3F32){0,y,0};
+        nor = (Vec3F32){0,-1,0};
+        vertices[vertex_idx++] = (R_Vertex){pos, nor}; // circle origin 
+
+        for(i = 0; i < (radial_segments+1); i++)
+        {
+            if(i > 0)
+            {
+                indices[indice_idx++] = i;
+                indices[indice_idx++] = vertex_idx-1;
+                indices[indice_idx++] = i-1;
+            }
+        }
+    }
+
+    if(cap_bottom)
+    {
+        y = half_height;
+        pos = (Vec3F32){0,y,0};
+        nor = (Vec3F32){0,1,0};
+        vertices[vertex_idx++] = (R_Vertex){pos, nor}; // circle origin 
+
+        for(i = 0; i < (radial_segments+1); i++)
+        {
+            if(i > 0)
+            {
+                indices[indice_idx++] = prevrow + i;
+                indices[indice_idx++] = prevrow + i -1;
+                indices[indice_idx++] = vertex_idx-1;
+            }
+        }
+    }
+
+    Assert(vertex_count == vertex_idx);
+    Assert(indice_count == indice_idx);
+    *vertices_out = vertices;
+    *vertices_count_out = vertex_count;
+    *indices_out = indices;
+    *indices_count_out = indice_count;
+}
+
+internal void
+g_mesh_primitive_capsule(Arena *arena, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out, F32 radius, F32 height, U64 radial_segments, U64 rings)
+{
+    U64 i,j,prevrow,thisrow,vertex_idx,indice_idx;
+    F32 x,y,z,u,v,w,vertex_count,indice_count;
+
+    // TODO: fix it
+    vertex_count = (rings+2)*(radial_segments+1)*3;
+    indice_count = (rings+1)*radial_segments*6*3;
+
+    // TODO: calculate uv2
+
+    R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
+    U32 *indices       = push_array(arena, U32, indice_count);
+
+    vertex_idx = 0;
+    indice_idx = 0;
+
+    Vec3F32 pos,nor,col;
+    col = v3f32(1.0,1.0,1.0);
+
+    // top hemisphere
+    thisrow = 0;
+    prevrow = 0;
+    for(j = 0; j < (rings+2); j++)
+    {
+        v = j;
+        v /= (rings+1);
+        w = sinf(0.5*pi32*v);
+        y = radius * cosf(0.5*pi32*v);
+
+        for(i = 0; i < (radial_segments+1); i++)
+        {
+            u = i;
+            u /= radial_segments;
+
+            x = -sinf(u*tau32);
+            z = cosf(u*tau32);
+
+            pos = (Vec3F32){x*radius*w, y, -z*radius*w};
+            nor = normalize_3f32(pos);
+            pos = add_3f32(pos, v3f32(0.0, 0.5*height - radius, 0.0));
+
+            vertices[vertex_idx++] = (R_Vertex){ .pos = pos, .nor = nor, .col = col };
+
+            if(i > 0 && j > 0)
+            {
+                indices[indice_idx++] = prevrow + i - 1;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = prevrow + i;
+
+                indices[indice_idx++] = prevrow + i;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = thisrow + i;
+            }
+        }
+
+        prevrow = thisrow;
+        thisrow = vertex_idx;
+    }
+
+    // cylinder
+    // thisrow = vertex_idx;
+    prevrow = 0;
+    for(j = 0; j < (rings+2); j++)
+    {
+        v = j;
+        v /= (rings+1);
+
+        y = (height - 2.0*radius) * v;
+        y = (0.5*height - radius) - y;
+
+        for(i = 0; i < (radial_segments+1); i++)
+        {
+            u = i;
+            u /= radial_segments;
+
+            x = -sinf(u*tau32);
+            z = cosf(u*tau32);
+
+            pos = (Vec3F32){x*radius, y, -z*radius};
+            nor = (Vec3F32){x, 0.0, -z};
+
+            vertices[vertex_idx++] = (R_Vertex){ .pos = pos, .nor = nor, .col = col };
+
+            if(i > 0 && j > 0)
+            {
+                indices[indice_idx++] = prevrow + i - 1;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = prevrow + i;
+
+                indices[indice_idx++] = prevrow + i;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = thisrow + i;
+            }
+        }
+
+        prevrow = thisrow;
+        thisrow = vertex_idx;
+    }
+
+    // bottom hemisphere
+    // thisrow = vertex_idx;
+    prevrow = 0;
+    for(j = 0; j < (rings+2); j++)
+    {
+        v = j;
+
+        v /= (rings+1);
+        v += 1.0;
+        w = sinf(0.5*pi32*v);
+        y = radius * cosf(0.5*pi32*v);
+
+        for(i = 0; i < (radial_segments+1); i++)
+        {
+            u = i;
+            u /= radial_segments;
+
+            x = -sinf(u*tau32);
+            z = cosf(u*tau32);
+
+            pos = (Vec3F32){x*radius*w, y, -z*radius*w};
+            nor = normalize_3f32(pos);
+            pos = add_3f32(pos, v3f32(0.0, -0.5*height + radius, 0.0));
+
+            vertices[vertex_idx++] = (R_Vertex){ .pos = pos, .nor = nor, .col = col };
+
+            if(i > 0 && j > 0)
+            {
+                indices[indice_idx++] = prevrow + i - 1;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = prevrow + i;
+
+                indices[indice_idx++] = prevrow + i;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = thisrow + i;
+            }
+        }
+
+        prevrow = thisrow;
+        thisrow = vertex_idx;
+    }
+
+    Assert(vertex_count == vertex_idx);
+    Assert(indice_count == indice_idx);
+    *vertices_out = vertices;
+    *vertices_count_out = vertex_count;
+    *indices_out = indices;
+    *indices_count_out = indice_count;
 }

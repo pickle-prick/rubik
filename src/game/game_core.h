@@ -430,8 +430,6 @@ struct G_Scene
     G_Bucket *bucket;
     G_Node   *root;
     G_Node   *camera;
-
-    G_Mesh   *first_free_mesh;
 };
 
 /////////////////////////////////
@@ -486,7 +484,7 @@ struct G_State
     G_Bucket  *node_bucket;
     D_Bucket  *bucket_rect;
     D_Bucket  *bucket_geo3d;
-    UI_Signal sig;
+    G_Scene   *default_scene;
 
     G_Key     hot_key;
     G_Key     active_key;
@@ -494,6 +492,7 @@ struct G_State
     Vec3F32   drag_start_direction;
 
     OS_Handle os_wnd;
+    UI_Signal sig;
 
     // Theme
     G_Theme   cfg_theme_target;
@@ -590,14 +589,6 @@ internal Vec2F32     triple_product_2f32(Vec2F32 A, Vec2F32 B, Vec2F32 C);
 internal F_Tag      g_font_from_slot(G_FontSlot slot);
 internal UI_Palette *g_palette_from_code(G_PaletteCode code);
 internal Vec4F32    g_rgba_from_theme_color(RD_ThemeColor color);
-
-/////////////////////////////////
-// Mesh primitives
-
-internal void g_mesh_primitive_box(Arena *arena, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out);
-internal void g_mesh_primitive_sphere(Arena *arena, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere);
-internal void g_mesh_primitive_cylinder(Arena *arena, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom);
-internal void g_mesh_primitive_capsule(Arena *arena, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out, F32 radius, F32 height, U64 radial_segments, U64 rings);
 
 /////////////////////////////////
 // Helpers

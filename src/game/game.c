@@ -126,7 +126,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
             // Viewport shading
             UI_Row
             {
-                ui_labelf("viewport shading");
+                ui_labelf("shading");
                 ui_spacer(ui_pct(1.0, 0.0));
                 if(ui_clicked(ui_buttonf("wireframe"))) {viewport_shading = G_ViewportShadingKind_Wireframe;};
                 if(ui_clicked(ui_buttonf("solid")))     {viewport_shading = G_ViewportShadingKind_Solid;};
@@ -276,9 +276,10 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     R_GeoPolygonKind polygon_mode;
     switch(viewport_shading)
     {
-        case G_ViewportShadingKind_Wireframe: {polygon_mode = R_GeoPolygonKind_Line;}break;
-        case G_ViewportShadingKind_Solid: {polygon_mode = R_GeoPolygonKind_Fill;}break;
-        default: {InvalidPath;}break;
+        case G_ViewportShadingKind_Wireframe:       {polygon_mode = R_GeoPolygonKind_Line;}break;
+        case G_ViewportShadingKind_Solid:           {polygon_mode = R_GeoPolygonKind_Fill;}break;
+        case G_ViewportShadingKind_MaterialPreview: {polygon_mode = R_GeoPolygonKind_Fill;}break;
+        default:                                    {InvalidPath;}break;
     }
 
     // Update/draw node in the scene tree
@@ -308,9 +309,13 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                                                     joint_xforms, joint_count,
                                                     mat_4x4f32(1.f), node->key.u64[0]);
                         inst->xform = node->fixed_xform;
-                        if(r_handle_match(node->v.mesh.albedo_tex, r_handle_zero()))
+                        if(r_handle_match(node->v.mesh.albedo_tex, r_handle_zero()) || viewport_shading == G_ViewportShadingKind_Solid)
                         {
                             inst->white_texture_override = 1.0f;
+                        }
+                        else 
+                        {
+                            inst->white_texture_override = 0.0f;
                         }
                     }break;
                 }

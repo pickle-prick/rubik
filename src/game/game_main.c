@@ -19,6 +19,7 @@
 #include "./game_core.h"
 #include "./game_ui.h"
 #include "./game_asset.h"
+#include "./scenes/scene_inc.h"
 #include "./game.h"
 
 // [c]
@@ -32,6 +33,7 @@
 #include "./game_core.c"
 #include "./game_ui.c"
 #include "./game_asset.c"
+#include "./scenes/scene_inc.c"
 #include "./game.c"
 
 internal void
@@ -360,7 +362,8 @@ entry_point(CmdLine *cmd_line)
     U64 edit_string_size_out[] = {0};
 
     g_init(window);
-    G_Scene *scene = g_scene_load();
+    G_Scene *default_scene = g_scene_000_load();
+    g_state->default_scene = default_scene;
 
     B32 window_should_close = 0;
     while(!window_should_close)
@@ -641,7 +644,7 @@ entry_point(CmdLine *cmd_line)
         /////////////////////////////////
         //~ Draw game
 
-        g_update_and_render(scene, events, dt, id);
+        g_update_and_render(g_state->default_scene, events, dt, id);
 
         ui_end_build();
 

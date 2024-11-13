@@ -147,12 +147,13 @@ void main() {
 
         gl_Position = ubo.proj * ubo.view * model * position;
 
-        float light_alignment = dot(-ubo.global_light.xyz, nor);
+        float light_alignment = dot(-ubo.global_light.xyz, (model*vec4(nor.xyz,0.0)).xyz);
+        // float light_alignment = dot(-ubo.global_light.xyz, nor);
         float intensity = 0.5*light_alignment + 0.5;
         intensity = intensity < 0.3 ? 0.3 : intensity;
 
         // Output
-        frag_color    = vec4((col*intensity).xyz, 1.0);
+        frag_color    = vec4((vec3(1,1,1)*intensity).xyz, 1.0);
         frag_texcoord = tex;
         frag_id       = id;
         frag_omit_texture = omit_texture;
