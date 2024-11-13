@@ -836,7 +836,7 @@ g_mesh_primitive_cylinder(Arena *arena,
             if(i > 0)
             {
                 indices[indice_idx++] = thisrow + i;
-                indices[indice_idx++] = thisrow;
+                indices[indice_idx++] = thisrow - 1;
                 indices[indice_idx++] = thisrow + i - 1;
             }
         }
@@ -866,7 +866,7 @@ g_mesh_primitive_cylinder(Arena *arena,
             {
                 indices[indice_idx++] = thisrow + i;
                 indices[indice_idx++] = thisrow + i - 1;
-                indices[indice_idx++] = thisrow;
+                indices[indice_idx++] = thisrow - 1;
             }
         }
     }

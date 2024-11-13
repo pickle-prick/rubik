@@ -243,6 +243,7 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
         ui_state->build_box_count = 0;
     }
 
+    ui_state->last_mouse = ui_state->mouse;
     //- k: detect mouse-moves
     for(UI_EventNode *n = events->first; n!=0; n = n->next)
     {
@@ -251,6 +252,11 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
             ui_state->mouse = n->v.pos;
             ui_state->last_time_mousemoved_us = os_now_microseconds();
         }
+    }
+
+    if(ui_state->build_index == 0)
+    {
+        ui_state->mouse = ui_state->last_mouse = os_mouse_from_window(os_wnd);
     }
 
     //- k: fill build phase parameters
@@ -707,21 +713,22 @@ ui_layout_position__in_place_rec(UI_Box *root, Axis2 axis)
             {
                 child->fixed_position_animated = child->fixed_position;
             }
-            child->rect.p0.v[axis] = root->rect.p0.v[axis] +
-                                     child->fixed_position_animated.v[axis] -
-                                     !(child->flags&(UI_BoxFlag_SkipViewOffX<<axis))*floor_f32(root->view_off.v[axis]);
+            child->rect.p0.v[axis] = root->rect.p0.v[axis] + child->fixed_position_animated.v[axis] - !(child->flags&(UI_BoxFlag_SkipViewOffX<<axis))*floor_f32(root->view_off.v[axis]);
         }
         else
         {
-            child->rect.p0.v[axis] = root->rect.p0.v[axis] +
-                                     child->fixed_position.v[axis] -
-                                     !(child->flags&(UI_BoxFlag_SkipViewOffX<<axis)) * (root->view_off.v[axis]);
+            child->rect.p0.v[axis] = root->rect.p0.v[axis] + child->fixed_position.v[axis] - !(child->flags&(UI_BoxFlag_SkipViewOffX<<axis))*floor_f32(root->view_off.v[axis]);
         }
         child->rect.p1.v[axis] = child->rect.p0.v[axis] + child->fixed_size.v[axis];
+        child->rect.p0.x = floor_f32(child->rect.p0.x);
+        child->rect.p0.y = floor_f32(child->rect.p0.y);
+        child->rect.p1.x = floor_f32(child->rect.p1.x);
+        child->rect.p1.y = floor_f32(child->rect.p1.y);
 
-        // grab new position
+        // rjf: grab new position
         F32 new_position = Min(child->rect.p0.v[axis], child->rect.p1.v[axis]);
-        // store position delta
+
+        // rjf: store position delta
         child->position_delta.v[axis] = new_position - original_position;
     }
 
@@ -740,7 +747,6 @@ internal void
 ui_layout_root(UI_Box *root, Axis2 axis)
 {
     ui_calc_sizes_standalone__in_place_rec(root, axis);
-    ui_layout_position__in_place_rec(root, axis);
     ui_calc_sizes_upwards_dependent__in_place_rec(root, axis);
     ui_calc_sizes_downwards_dependent__in_place_rec(root, axis);
     ui_layout_enforce_constraints__in_place_rec(root, axis);
@@ -816,7 +822,7 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
     {
         DLLPushBack_NPZ(&ui_g_nil_box, parent->first, parent->last, box, next, prev);
         parent->child_count+=1;
-        AssertAlways(parent->child_count < 1000);
+        AssertAlways(parent->child_count < 10000);
         box->parent = parent;
     }
 

@@ -9,7 +9,7 @@ internal void g_update_and_render(G_Scene *scene, OS_EventList events, U64 dt, U
 /////////////////////////////////
 //~ Scripting
 
-G_NODE_CUSTOM_UPDATE(camera_fn);
+G_NODE_CUSTOM_UPDATE(editor_camera_fn);
 
 /////////////////////////////////
 // Game ui

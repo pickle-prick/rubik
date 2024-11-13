@@ -1,3 +1,80 @@
+typedef struct G_PlayerData G_PlayerData;
+struct G_PlayerData {};
+
+G_NODE_CUSTOM_UPDATE(player_fn)
+{
+    G_PlayerData *data = (G_PlayerData *)node->custom_data;
+
+    Vec2F32 mouse_delta = sub_2f32(ui_state->mouse, ui_state->last_mouse);
+    Rng2F32 window_rect = os_client_rect_from_window(g_state->os_wnd);
+    Vec2F32 window_dim = dim_2f32(window_rect);
+
+    Vec3F32 f = {0};
+    Vec3F32 s = {0};
+    Vec3F32 u = {0};
+    g_local_coord_from_node(node, &f, &s, &u);
+
+    Vec3F32 clean_f = f;
+    clean_f.y = 0;
+    Vec3F32 clean_s = s;
+    clean_s.y = 0;
+    Vec3F32 clean_u = u;
+    clean_u.x = 0;
+    clean_u.z = 0;
+
+    // TODO: float percision issue when v_turn_speed is too high, fix it later
+    F32 h_turn_speed = 1.5f/(window_dim.x);
+    F32 v_turn_speed = 0.5f/(window_dim.y);
+
+    // TODO: we may need to clamp the turns to 0-1
+    F32 v_turn = -mouse_delta.y * v_turn_speed;
+    F32 h_turn = mouse_delta.x * h_turn_speed;
+
+    QuatF32 v_quat = make_rotate_quat_f32(clean_s, v_turn);
+    QuatF32 h_quat = make_rotate_quat_f32(v3f32(0,1,0), h_turn);
+    QuatF32 rot_quat = mul_quat_f32(v_quat,h_quat);
+    node->rot = mul_quat_f32(rot_quat, node->rot);
+
+    // Check if player is grounded or not
+    // Zero out force
+    // Zero out velocity on x axis
+    // Zero out jump counter
+
+    F32 h = 230;
+    F32 foot_speed = 180;
+    F32 xh = 60;
+    F32 v0 = (-2*h*foot_speed) / xh;
+    F32 g = (2*h*foot_speed*foot_speed) / (xh*xh);
+
+    // TODO: Jump
+    // if(os_key_press(&os_events, g_state->os_wnd, 0, OS_Key_Space) ) && (grounded || data->jump_counter == 1)) {}
+    // if(os_key_press(&os_events, g_state->os_wnd, 0, OS_Key_Left)) {}
+
+    Vec3F32 move_dir = {0,0,0};
+    if(os_key_is_down(OS_Key_Left) || os_key_is_down(OS_Key_A)) 
+    {
+        move_dir = sub_3f32(move_dir, s);
+    }
+    if(os_key_is_down(OS_Key_Right) || os_key_is_down(OS_Key_D))
+    { 
+        move_dir = add_3f32(move_dir, s);
+    }
+    if(os_key_is_down(OS_Key_Up) || os_key_is_down(OS_Key_W))
+    { 
+        move_dir = add_3f32(move_dir, f);
+    }
+    if(os_key_is_down(OS_Key_Down) || os_key_is_down(OS_Key_S))
+    { 
+        move_dir = sub_3f32(move_dir, f);
+    }
+
+    F32 velocity = 6.f;
+    if(move_dir.x != 0 && move_dir.y != 0 && move_dir.z != 0) move_dir = normalize_3f32(move_dir);
+    node->pos = add_3f32(node->pos, scale_3f32(move_dir, velocity*dt_sec));
+
+    // TODO: Gravity
+}
+
 internal G_Scene *
 g_scene_000_load()
 {
@@ -19,13 +96,18 @@ g_scene_000_load()
 
             G_Parent_Scope(root)
             {
-                G_Node *camera = g_node_camera3d_alloc(str8_lit("main_camera"));
-                scene->camera = camera;
-                camera->pos          = v3f32(0,-3,-3);
-                camera->v.camera.fov = 0.25;
-                camera->v.camera.zn  = 0.1f;
-                camera->v.camera.zf  = 200.f;
-                g_node_push_fn(scene->bucket->arena, camera, camera_fn);
+                G_Node *camera = g_node_camera3d_alloc(str8_lit("editor_camera"));
+                {
+                    camera->pos          = v3f32(0,-3,-3);
+                    camera->v.camera.fov = 0.25;
+                    camera->v.camera.zn  = 0.1f;
+                    camera->v.camera.zf  = 200.f;
+                    g_node_push_fn(scene->bucket->arena, camera, editor_camera_fn);
+                }
+                G_CameraNode *camera_node = push_array(arena, G_CameraNode, 1);
+                camera_node->v = camera;
+                DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
+                scene->active_camera = camera_node;
 
                 // Player
                 G_Node *player = g_build_node_from_stringf("player");
@@ -46,9 +128,25 @@ g_scene_000_load()
                         player->v.mesh.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
                         scratch_end(temp);
                     }
+                    g_node_push_fn(arena, player, player_fn);
+                    player->custom_data = push_array(scene->bucket->arena, G_PlayerData, 1);
 
-                    // player->update_fn   = player_fn;
-                    // player->custom_data = push_array(scene->bucket->arena, G_PlayerData, 1);
+                    // Player camera
+                    {
+                        g_push_parent(player);
+                        G_Node *camera = g_node_camera3d_alloc(str8_lit("player_camera"));
+                        {
+                            camera->pos          = v3f32(0,-3,0);
+                            camera->v.camera.fov = 0.25;
+                            camera->v.camera.zn  = 0.1f;
+                            camera->v.camera.zf  = 200.f;
+                            // g_node_push_fn(scene->bucket->arena, camera, pov_camera_fn);
+                        }
+                        g_pop_parent();
+                        G_CameraNode *camera_node = push_array(arena, G_CameraNode, 1);
+                        camera_node->v = camera;
+                        DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
+                    }
                 }
 
                 // Cube
@@ -119,16 +217,20 @@ g_scene_000_load()
                     {
                         m = g_model_from_gltf(scene->arena, str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
                     }
-                    G_Node *dummy = g_build_node_from_stringf("dummy");
-                    dummy->flags |= G_NodeFlags_NavigationRoot;
-                    G_Parent_Scope(dummy) G_Seed_Scope(dummy->key) 
+                    for(U64 i = 0; i < 1; i++)
                     {
-                        G_Node *n = g_node_from_model(m);
-                        QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
-                        n->rot = mul_quat_f32(flip_y, n->rot);
+                        G_Node *dummy = g_build_node_from_stringf("dummy%d", i);
+                        dummy->pos.x = i;
+                        dummy->flags |= G_NodeFlags_NavigationRoot;
+                        G_Parent_Scope(dummy) G_Seed_Scope(dummy->key) 
+                        {
+                            G_Node *n = g_node_from_model(m);
+                            QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
+                            n->rot = mul_quat_f32(flip_y, n->rot);
 
-                        dummy->skeleton_anims = m->anims;
-                        dummy->flags |= (G_NodeFlags_Animated | G_NodeFlags_AnimatedSkeleton);
+                            dummy->skeleton_anims = m->anims;
+                            dummy->flags |= (G_NodeFlags_Animated | G_NodeFlags_AnimatedSkeleton);
+                        }
                     }
                 }
 

@@ -423,13 +423,23 @@ struct G_Bucket
     G_Node       *first_free_node;
 };
 
+typedef struct G_CameraNode G_CameraNode;
+struct G_CameraNode
+{
+    G_CameraNode *next;
+    G_CameraNode *prev;
+    G_Node       *v;
+};
+
 typedef struct G_Scene G_Scene;
 struct G_Scene 
 {
-    Arena    *arena;
-    G_Bucket *bucket;
-    G_Node   *root;
-    G_Node   *camera;
+    Arena        *arena;
+    G_Bucket     *bucket;
+    G_Node       *root;
+    G_CameraNode *active_camera;
+    G_CameraNode *first_camera;
+    G_CameraNode *last_camera;
 };
 
 /////////////////////////////////

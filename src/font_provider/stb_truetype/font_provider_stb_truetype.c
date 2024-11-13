@@ -129,7 +129,7 @@ fp_raster(Arena *arena, FP_Handle font_handle, F32 size, FP_RasterFlags flags, R
 fp_hook FP_PackedQuad fp_get_packed_quad(FP_Handle atlas_handle, int char_index, float *xpos, float *ypos) {
         U64 gen = atlas_handle.u64[1];
         FP_STBTT_Atlas *atlas = (FP_STBTT_Atlas *)atlas_handle.u64[0];
-        AssertAlways(atlas->generation == gen);
+        Assert(atlas->generation == gen);
 
         // TODO(@k): fix it later, what is "aligned to int"
         FP_PackedQuad ret = {0};

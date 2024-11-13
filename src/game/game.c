@@ -12,7 +12,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     g_state->hot_key = (G_Key){ hot_key };
 
     // Unpack camera
-    G_Node *camera = scene->camera;
+    G_Node *camera = scene->active_camera->v;
 
     // G_Node *hot_node = 0;
     G_Node *active_node = g_node_from_key(g_state->active_key);
@@ -121,6 +121,23 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                     show_camera_cfg = !show_camera_cfg;
                 }
                 ui_labelf("Camera");
+            }
+
+            // Active cameras
+            UI_Row
+            {
+                ui_labelf("active camera");
+                ui_spacer(ui_pct(1.0, 0.0));
+                g_ui_dropdown_begin(str8_lit("cameras"));
+                for(G_CameraNode *c = scene->first_camera; c!=0; c = c->next)
+                {
+                    if(ui_clicked(ui_button(c->v->name)))
+                    {
+                        scene->active_camera = c;
+                        g_ui_dropdown_hide();
+                    }
+                }
+                g_ui_dropdown_end();
             }
 
             // Viewport shading
@@ -435,7 +452,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
 //~ Scripting
 
 // Camera (editor camera)
-G_NODE_CUSTOM_UPDATE(camera_fn)
+G_NODE_CUSTOM_UPDATE(editor_camera_fn)
 {
     G_Camera3D *camera = &node->v.camera;
     Rng2F32 window_rect = os_client_rect_from_window(g_state->os_wnd);

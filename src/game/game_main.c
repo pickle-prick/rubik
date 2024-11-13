@@ -19,8 +19,8 @@
 #include "./game_core.h"
 #include "./game_ui.h"
 #include "./game_asset.h"
-#include "./scenes/scene_inc.h"
 #include "./game.h"
+#include "./scenes/scene_inc.h"
 
 // [c]
 #include "base/base_inc.c"
@@ -33,8 +33,8 @@
 #include "./game_core.c"
 #include "./game_ui.c"
 #include "./game_asset.c"
-#include "./scenes/scene_inc.c"
 #include "./game.c"
+#include "./scenes/scene_inc.c"
 
 internal void
 ui_draw(OS_Handle os_wnd)
@@ -599,12 +599,17 @@ entry_point(CmdLine *cmd_line)
                 ui_spacer(ui_pct(1.0, 0.0));
                 ui_labelf("%lu", ui_state->build_box_count);
             }
-            Vec2F32 mouse = os_mouse_from_window(window);
+            UI_Row
+            {
+                ui_labelf("last_mouse");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%.2f, %.2f", ui_state->last_mouse.x, ui_state->last_mouse.y);
+            }
             UI_Row
             {
                 ui_labelf("mouse");
                 ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%.2f, %.2f", mouse.x, mouse.y);
+                ui_labelf("%.2f, %.2f", ui_state->mouse.x, ui_state->mouse.y);
             }
             UI_Row
             {

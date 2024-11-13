@@ -614,6 +614,7 @@ struct UI_State
     UI_WidgetPaletteInfo widget_palette_info;
     UI_AnimationInfo     animation_info;
     OS_Handle            os_wnd;
+    Vec2F32              last_mouse;
     Vec2F32              mouse;
     F32                  animation_dt;
     F32                  default_animation_rate;

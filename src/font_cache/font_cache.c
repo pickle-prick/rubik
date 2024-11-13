@@ -33,9 +33,9 @@ internal F_Hash2StyleRasterCacheNode
         Temp temp = scratch_begin(0,0);
         FP_RasterResult raster_ret = fp_raster(temp.arena, f_handle_from_tag(tag), size, flags, rng_1u64(32, 126));
         R_Handle texture_handle = r_tex2d_alloc(R_ResourceKind_Static,
-                R_Tex2DSampleKind_Linear,
-                vec_2s32(raster_ret.atlas_dim.x, raster_ret.atlas_dim.y),
-                R_Tex2DFormat_R8, raster_ret.atlas);
+                                                R_Tex2DSampleKind_Linear,
+                                                vec_2s32(raster_ret.atlas_dim.x, raster_ret.atlas_dim.y),
+                                                R_Tex2DFormat_R8, raster_ret.atlas);
 
         hash2style_node->style_hash         = style_hash;
         hash2style_node->ascent             = metrics.ascent;

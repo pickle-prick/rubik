@@ -269,8 +269,7 @@ d_fancy_run_list_from_fancy_string_list(Arena *arena, F32 tab_size_px, F_RasterF
     for(D_FancyStringNode *n = strs->first; n != 0; n = n->next)
     {
         D_FancyRunNode *dst_n = push_array(arena, D_FancyRunNode, 1);
-        dst_n->v.run = f_push_run_from_string(arena, n->v.font, n->v.size,
-                base_align_px, tab_size_px, flags, n->v.string);
+        dst_n->v.run = f_push_run_from_string(arena, n->v.font, n->v.size, base_align_px, tab_size_px, flags, n->v.string);
         dst_n->v.color = n->v.color;
         dst_n->v.underline_thickness = n->v.underline_thickness;
         dst_n->v.strikethrough_thickness = n->v.strikethrough_thickness;
@@ -299,9 +298,10 @@ internal void d_truncated_fancy_run_list(Vec2F32 p, D_FancyRunList *list, F32 ma
 
         for(F_Piece *piece = piece_first; piece < piece_opl; piece++)
         {
-            Rng2F32 dst = r2f32p(piece->rect.x0+off_x, piece->rect.y0+off_y,
-                                 piece->rect.x1+off_x, piece->rect.y1+off_y);
+            Rng2F32 dst = r2f32p(piece->rect.x0+off_x, piece->rect.y0+off_y, piece->rect.x1+off_x, piece->rect.y1+off_y);
             Rng2F32 src = r2f32p(piece->subrect.x0, piece->subrect.y0, piece->subrect.x1, piece->subrect.y1);
+            // TODO: src wil be all zeros in release build, fix it later
+            AssertAlways((src.x0 + src.x1 + src.y0 + src.y1) != 0);
             Vec2F32 size = dim_2f32(dst);
             AssertAlways(!r_handle_match(piece->texture, r_handle_zero()));
 
