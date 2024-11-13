@@ -753,13 +753,13 @@ g_mesh_primitive_cylinder(Arena *arena,
     U64 indice_count = (rings-1)*(radial_segments)*6;
     if(cap_top)
     {
-        vertex_count++;
-        indice_count += (radial_segments) * 3;
+        vertex_count += 1 + radial_segments + 1;
+        indice_count += radial_segments*3;
     }
     if(cap_bottom)
     {
-        vertex_count++;
-        indice_count += (radial_segments) * 3;
+        vertex_count += 1 + radial_segments + 1;
+        indice_count += radial_segments*3;
     }
 
     R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
@@ -819,14 +819,25 @@ g_mesh_primitive_cylinder(Arena *arena,
         pos = (Vec3F32){0,y,0};
         nor = (Vec3F32){0,-1,0};
         vertices[vertex_idx++] = (R_Vertex){pos, nor}; // circle origin 
+        thisrow = vertex_idx;
 
         for(i = 0; i < (radial_segments+1); i++)
         {
+            F32 u =i;
+            u /= radial_segments;
+
+            x = cosf(u*tau32);
+            z = sinf(u*tau32);
+
+            pos = (Vec3F32){x*radius, y, z*radius};
+            nor = normalize_3f32(nor);
+            vertices[vertex_idx++] = (R_Vertex){.pos = pos, .nor = nor};
+
             if(i > 0)
             {
-                indices[indice_idx++] = i;
-                indices[indice_idx++] = vertex_idx-1;
-                indices[indice_idx++] = i-1;
+                indices[indice_idx++] = thisrow + i;
+                indices[indice_idx++] = thisrow;
+                indices[indice_idx++] = thisrow + i - 1;
             }
         }
     }
@@ -837,14 +848,25 @@ g_mesh_primitive_cylinder(Arena *arena,
         pos = (Vec3F32){0,y,0};
         nor = (Vec3F32){0,1,0};
         vertices[vertex_idx++] = (R_Vertex){pos, nor}; // circle origin 
+        thisrow = vertex_idx;
 
         for(i = 0; i < (radial_segments+1); i++)
         {
+            F32 u =i;
+            u /= radial_segments;
+
+            x = cosf(u*tau32);
+            z = sinf(u*tau32);
+
+            pos = (Vec3F32){x*radius, y, z*radius};
+            nor = normalize_3f32(nor);
+            vertices[vertex_idx++] = (R_Vertex){.pos = pos, .nor = nor};
+
             if(i > 0)
             {
-                indices[indice_idx++] = prevrow + i;
-                indices[indice_idx++] = prevrow + i -1;
-                indices[indice_idx++] = vertex_idx-1;
+                indices[indice_idx++] = thisrow + i;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = thisrow;
             }
         }
     }

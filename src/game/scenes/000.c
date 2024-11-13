@@ -56,7 +56,7 @@ g_scene_000_load()
                 {
                     cube1->flags |= G_NodeFlags_NavigationRoot;
                     cube1->kind = G_NodeKind_Mesh;
-                    cube1->pos = v3f32(0,-1.5,3);
+                    cube1->pos = v3f32(-6,-1.5,3);
                     // Mesh
                     {
                         Temp temp = scratch_begin(0,0);
@@ -97,7 +97,7 @@ g_scene_000_load()
                 {
                     cylinder1->flags |= G_NodeFlags_NavigationRoot;
                     cylinder1->kind = G_NodeKind_Mesh;
-                    cylinder1->pos = v3f32(0,-9.5,3);
+                    cylinder1->pos = v3f32(6,-9.5,3);
                     // Mesh
                     {
                         Temp temp = scratch_begin(0,0);
