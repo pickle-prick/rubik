@@ -6,9 +6,9 @@
 
 internal UI_Box    *g_ui_pane_begin(Rng2F32 rect, B32 *open, String8 string);
 internal UI_Signal g_ui_pane_end(void);
-internal UI_Box    g_ui_dropdown_begin(String8 string);
+internal UI_Box    *g_ui_dropdown_begin(String8 string);
 internal UI_Signal g_ui_dropdown_end(void);
-internal UI_Signal g_ui_dropdown_hide(void);
+internal void      g_ui_dropdown_hide(void);
 
 ////////////////////////////////
 //~ k: Macro Loop Wrappers

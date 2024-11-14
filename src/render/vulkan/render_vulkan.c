@@ -88,12 +88,12 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     {
         layer_count = 1;
         U32 count;
-        vkEnumerateInstanceLayerProperties(&count, NULL);
+        VK_Assert(vkEnumerateInstanceLayerProperties(&count, NULL), "failed to enumerate instance layer properties");
         VkLayerProperties available_layers[count];
-        vkEnumerateInstanceLayerProperties(&count, available_layers);
+        VK_Assert(vkEnumerateInstanceLayerProperties(&count, available_layers), "failed to enumerate instance layer properties");
 
         bool support_validation_layer;
-        for(U64 i; i < count; i++)
+        for(U64 i = 0; i < count; i++)
         {
             if(strcmp(available_layers[i].layerName, layers[0]))
             {

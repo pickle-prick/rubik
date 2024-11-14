@@ -54,7 +54,7 @@ g_ui_pane_end(void)
     return sig;
 }
 
-internal UI_Box
+internal UI_Box *
 g_ui_dropdown_begin(String8 string)
 {
     // Make key
@@ -120,6 +120,7 @@ g_ui_dropdown_begin(String8 string)
     ui_push_parent(list_container);
     ui_push_pref_width(ui_pct(1.0, 0.0));
     ui_push_text_alignment(UI_TextAlign_Center);
+    return list_container;
 }
 
 internal UI_Signal
@@ -132,7 +133,7 @@ g_ui_dropdown_end(void)
     return sig;
 }
 
-internal UI_Signal
+internal void
 g_ui_dropdown_hide(void)
 {
     ui_set_auto_focus_hot_key(ui_key_zero());
