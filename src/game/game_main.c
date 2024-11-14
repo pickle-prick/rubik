@@ -3,14 +3,19 @@
 #include <string.h>
 #include <stdlib.h>
 
-// [h]
+
+// Third Party
 #define CGLTF_IMPLEMENTATION
 #include "external/cgltf.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "external/stb/stb_image.h"
+// #include "external/linmath.h"
+#include "external/xxHash/xxhash.c"
+#include "external/xxHash/xxhash.h"
+
+// [h]
 #include "base/base_inc.h"
 #include "os/os_inc.h"
-#include "external/linmath.h"
 #include "render/render_inc.h"
 #include "font_provider/font_provider_inc.h"
 #include "font_cache/font_cache.h"

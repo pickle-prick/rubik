@@ -51,9 +51,9 @@ g_init(OS_Handle os_wnd)
     g_state->os_wnd = os_wnd;
 
     // Fonts
-    g_state->cfg_font_tags[G_FontSlot_Main]  = f_tag_from_path("./fonts/Mplus1Code-Medium.ttf");
-    g_state->cfg_font_tags[G_FontSlot_Code]  = f_tag_from_path("./fonts/Mplus1Code-Medium.ttf");
-    g_state->cfg_font_tags[G_FontSlot_Icons] = f_tag_from_path("./fonts/icons.ttf");
+    g_state->cfg_font_tags[G_FontSlot_Main]  = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
+    g_state->cfg_font_tags[G_FontSlot_Code]  = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
+    g_state->cfg_font_tags[G_FontSlot_Icons] = f_tag_from_path(str8_lit("./fonts/icons.ttf"));
 
     // Theme 
     MemoryCopy(g_state->cfg_theme_target.colors, rd_theme_preset_colors__default_dark, sizeof(rd_theme_preset_colors__default_dark));
@@ -143,11 +143,7 @@ g_key_merge(G_Key a, G_Key b)
 internal U64
 g_hash_from_string(U64 seed, String8 string)
 {
-    U64 result = seed;
-    for(U64 i = 0; i < string.size; i += 1)
-    {
-        result = ((result << 5) + result) + string.str[i];
-    }
+    U64 result = XXH3_64bits_withSeed(string.str, string.size, seed);
     return result;
 }
 

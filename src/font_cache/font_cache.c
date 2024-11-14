@@ -48,13 +48,15 @@ internal F_Hash2StyleRasterCacheNode
     return hash2style_node;
 }
 internal F_Tag
-f_tag_from_path(char *path) {
+f_tag_from_path(String8 path) {
     // Produce tag hash from hash of path
     F_Tag result = {0};
-    F_Hash hash = f_hash_from_string(path);
-    MemoryCopy(&result, &hash, sizeof(F_Tag));
-    // TODO(@k): why
-    // result.u64[1] |= bit64;
+    {
+        U128 hash = f_hash_from_string(path);
+        MemoryCopy(&result, &hash, sizeof(result));
+        // TODO(@k): why
+        result.u64[1] |= bit64;
+    }
 
     // tag -> slot index
     U64 slot_idx = result.u64[1] % f_state->font_hash_table_size;
@@ -76,9 +78,7 @@ f_tag_from_path(char *path) {
         new_node->handle  = fp_font_open(path);
         new_node->metrics = fp_metrics_from_font(new_node->handle);
 
-        U64 path_size = strlen(path);
-        new_node->path = push_array(f_state->arena, char, path_size);
-        MemoryCopy(&new_node->path, path, path_size);
+        new_node->path = push_str8_copy(f_state->arena, path);
         SLLQueuePush_N(slot->first, slot->last, new_node, hash_next);
     }
 
@@ -113,12 +113,16 @@ f_metrics_from_tag_size(F_Tag tag, F32 size) {
     return ret;
 }
 
-internal F_Hash
-f_hash_from_string(char *string) {
-    // TODO(@k): use more robust hashing function
-    F_Hash ret = {0};
-    ret.u64[0] = f_little_hash_from_string(string);
-    return ret;
+internal U128
+f_hash_from_string(String8 string) {
+    union
+    {
+        XXH128_hash_t xxhash;
+        U128 u128;
+    }
+    hash;
+    hash.xxhash = XXH3_128bits(string.str, string.size);
+    return hash.u128;
 }
 
 internal F_Tag f_tag_zero(void) {
@@ -145,13 +149,9 @@ f_handle_from_tag(F_Tag tag) {
 }
 
 internal U64
-f_little_hash_from_string(char *str) {
-    U64 hash = 5381;
-    U8 c;
-    while ((c = *(str++))) {
-        hash = ((hash << 5) + hash) + c; // hash * 33 + c
-    }
-    return hash;
+f_little_hash_from_string(String8 string) {
+    U64 result = XXH3_64bits(string.str, string.size);
+    return result;
 }
 
 internal U64

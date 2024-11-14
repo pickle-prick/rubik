@@ -10,10 +10,10 @@ fp_init(void) {
 }
 
 fp_hook FP_Handle
-fp_font_open(char *path) {
+fp_font_open(String8 path) {
         Arena *arena = fp_stbtt_state->arena;
 
-        OS_Handle file = os_file_open(OS_AccessFlag_Read, str8_cstring(path));
+        OS_Handle file = os_file_open(OS_AccessFlag_Read, path);
         FileProperties props = os_properties_from_file(file);
 
         FP_STBTT_Font *font = fp_stbtt_state->first_free_font;

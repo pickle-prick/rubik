@@ -14,12 +14,6 @@ enum
 ////////////////////////////////
 //~ rjf: Handles & Tags
 
-typedef struct F_Hash F_Hash;
-struct F_Hash
-{
-    U64 u64[2];
-};
-
 typedef struct F_Tag F_Tag;
 struct F_Tag
 {
@@ -66,7 +60,7 @@ struct F_FontHashNode
     F_Tag tag;
     FP_Handle handle;
     FP_Metrics metrics;
-    char *path;
+    String8 path;
 };
 
 typedef struct F_FontHashSlot F_FontHashSlot;
@@ -148,8 +142,8 @@ global F_State *f_state = 0;
 ////////////////////////////////
 //~ rjf: Basic Functions
 
-internal F_Hash f_hash_from_string(char *string);
-internal U64 f_little_hash_from_string(char *string);
+internal U128 f_hash_from_string(String8 string);
+internal U64 f_little_hash_from_string(String8 string);
 internal U64 f_little_hash_from_bytes(U8 *bytes, U64 count);
 // internal Vec2S32 f_vertex_from_corner(Corner corner);
 
@@ -160,7 +154,7 @@ internal F_Tag f_tag_zero(void);
 // internal B32 f_tag_match(F_Tag a, F_Tag b);
 internal FP_Handle f_handle_from_tag(F_Tag tag);
 internal FP_Metrics f_fp_metrics_from_tag(F_Tag tag);
-internal F_Tag f_tag_from_path(char *path);
+internal F_Tag f_tag_from_path(String8 path);
 // internal F_Tag f_tag_from_static_data_string(String8 *data_ptr);
 // internal String8 f_path_from_tag(F_Tag tag);
 

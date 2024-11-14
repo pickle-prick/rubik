@@ -4,11 +4,7 @@
 internal U64
 ui_hash_from_string(U64 seed, String8 string)
 {
-    U64 result = seed;
-    for(U64 i = 0; i < string.size; i++)
-    {
-        result = ((result << 5) + result) + string.str[i];
-    }
+    U64 result = XXH3_64bits_withSeed(string.str, string.size, seed);
     return result;
 }
 
