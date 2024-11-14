@@ -566,7 +566,7 @@ ui_scroll_list_begin(Vec2F32 dim_px, UI_ScrollPt *scroll_pt)
     UI_Box *scrollable_container_box = &ui_g_nil_box;
     UI_Parent(container_box) UI_ChildLayoutAxis(Axis2_Y) UI_FixedWidth(dim_px.x-ui_scroll_list_scroll_bar_dim_px) UI_FixedHeight(dim_px.y)
     {
-        scrollable_container_box = ui_build_box_from_stringf(UI_BoxFlag_Clip|UI_BoxFlag_AllowOverflowY|UI_BoxFlag_Scroll, "###sp");
+        scrollable_container_box = ui_build_box_from_stringf(UI_BoxFlag_Clip|UI_BoxFlag_AllowOverflowY|UI_BoxFlag_Scroll|UI_BoxFlag_ViewClamp, "###sp");
         // NOTE: this will disable smoothing
         // scrollable_container_box->view_off.y = scrollable_container_box->view_off_target.y;
     }
@@ -606,7 +606,8 @@ ui_scroll_list_end(void)
 
     //- k: clamping
     F32 viewport_pct = scrollable_container_box->fixed_size.y / Max(scrollable_container_box->view_bounds.y, scrollable_container_box->fixed_size.y);
-    ui_scroll_list_scroll_pt_ptr->off = Clamp(0, ui_scroll_list_scroll_pt_ptr->off, 1-viewport_pct);
+    // NOTE(k): UI_BoxFlag_ViewClamp will do the same
+    // ui_scroll_list_scroll_pt_ptr->off = Clamp(0, ui_scroll_list_scroll_pt_ptr->off, 1-viewport_pct);
 
     F32 y = scrollable_container_box->view_bounds.y;
     scrollable_container_box->view_off_target.y = y * ui_scroll_list_scroll_pt_ptr->off;

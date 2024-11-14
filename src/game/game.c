@@ -6,6 +6,7 @@ internal void g_ui_inspector(G_Scene *scene)
     G_Node *camera = scene->active_camera->v;
     G_Node *active_node = g_node_from_key(g_state->active_key);
 
+    local_persist B32 show_inspector  = 1;
     local_persist B32 show_scene_cfg  = 1;
     local_persist B32 show_camera_cfg = 1;
     local_persist B32 show_light_cfg  = 1;
@@ -21,20 +22,15 @@ internal void g_ui_inspector(G_Scene *scene)
     Rng2F32 panel_rect = window_rect;
     panel_rect.p1.x = 800;
     panel_rect = pad_2f32(panel_rect,-30);
-    ui_set_next_rect(panel_rect);
-    ui_set_next_focus_hot(UI_FocusKind_Root);
-    ui_set_next_focus_active(UI_FocusKind_Root);
-    ui_set_next_child_layout_axis(Axis2_Y);
-    ui_set_next_transparency(0.1);
-    UI_Box *pane = ui_build_box_from_stringf(UI_BoxFlag_Clickable|
-                                             UI_BoxFlag_DrawBorder|
-                                             // UI_BoxFlag_Floating|
-                                             UI_BoxFlag_Clip|
-                                             UI_BoxFlag_DrawBackground, "###inspector");
-    UI_Parent(pane) UI_PrefWidth(ui_pct(1.0,0))
+    UI_Box *pane;
+    UI_FocusActive(UI_FocusKind_Root) UI_FocusHot(UI_FocusKind_Root) UI_Transparency(0.1)
     {
-        UI_ScrollPt pt = {0};
-        ui_scroll_list_begin(pane->fixed_size, &pt);
+        pane = g_ui_pane_begin(panel_rect, &show_inspector, str8_lit("INSPECTOR"));
+    }
+
+    {
+        // UI_ScrollPt pt = {0};
+        // ui_scroll_list_begin(pane->fixed_size, &pt);
 
         // Scene
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
@@ -73,7 +69,7 @@ internal void g_ui_inspector(G_Scene *scene)
                 Vec2F32 dim = dim_2f32(container_box->rect);
                 // TODO: no usage for now
                 UI_ScrollPt pt = {0};
-                ui_scroll_list_begin(v2f32(container_box->fixed_size.x, dim.y), &pt);
+                ui_scroll_list_begin(container_box->fixed_size, &pt);
                 G_Node *root = scene->root;
                 U64 row_count = 0;
                 while(root != 0)
@@ -266,8 +262,8 @@ internal void g_ui_inspector(G_Scene *scene)
                 }
             }
         }
-        ui_scroll_list_end();
     }
+    g_ui_pane_end();
 }
 
 internal void
