@@ -434,12 +434,16 @@ struct G_CameraNode
 typedef struct G_Scene G_Scene;
 struct G_Scene 
 {
-    Arena        *arena;
-    G_Bucket     *bucket;
-    G_Node       *root;
-    G_CameraNode *active_camera;
-    G_CameraNode *first_camera;
-    G_CameraNode *last_camera;
+    Arena                 *arena;
+    G_Bucket              *bucket;
+    G_Node                *root;
+    G_CameraNode          *active_camera;
+    G_CameraNode          *first_camera;
+    G_CameraNode          *last_camera;
+
+    G_ViewportShadingKind viewport_shading;
+    Vec3F32               global_light;
+    R_GeoPolygonKind      polygon_mode;
 };
 
 /////////////////////////////////

@@ -704,7 +704,7 @@ r_window_equip(OS_Handle wnd_handle)
             for(U64 kind = 0; kind < R_Vulkan_UniformTypeKind_COUNT; kind++)
             {
                 // TODO(@k): not ideal, since mesh uniform wouldn't grow
-                window->frames[i].uniform_buffers[kind] = r_vulkan_uniform_buffer_alloc(kind, 300);
+                window->frames[i].uniform_buffers[kind] = r_vulkan_uniform_buffer_alloc(kind, 900);
             }
 
             // Create storage buffers
@@ -2941,7 +2941,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                 // Unpack uniform buffer
                 R_Vulkan_UniformBuffer *uniform_buffer = &frame->uniform_buffers[R_Vulkan_UniformTypeKind_Rect];
                 // TODO(@k): dynamic allocate uniform buffer if needed
-                AssertAlways(rect_batch_groups->count <= 300);
+                AssertAlways(rect_batch_groups->count <= 900);
 
                 // Bind pipeline
                 // The second parameter specifies if the pipeline object is a graphics or compute pipelinVK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BITe

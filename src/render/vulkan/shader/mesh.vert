@@ -51,76 +51,10 @@ layout(std430, set = 1, binding = 0) readonly buffer Joints {
 //        vec2(-0.5,  0.5)
 //);
 
-mat4 translate(vec3 t) {
-        return mat4(
-            1.0, 0.0, 0.0,   0,
-            0.0, 1.0, 0.0,   0,
-            0.0, 0.0, 1.0,   0,
-            t.x, t.y, t.z, 1.0
-        );
-        // return mat4(
-        //         1.0, 0.0, 0.0, t.x,
-        //         0.0, 1.0, 0.0, t.y,
-        //         0.0, 0.0, 1.0, t.z,
-        //         0.0, 0.0, 0.0, 1.0
-        // );
-}
-
-mat4 scale(float s) {
-    return mat4(
-        s,   0.0, 0.0, 0.0,
-        0.0, s,   0.0, 0.0,
-        0.0, 0.0, s,   0.0,
-        0.0, 0.0, 0.0, 1.0);
-}
-
-mat4 rotateX(float angle) {
-    float s = sin(angle);
-    float c = cos(angle);
-    return mat4(
-        1.0, 0.0, 0.0, 0.0,
-        0.0,   c,   s, 0.0,
-        0.0,  -s,   c, 0.0,
-        0.0, 0.0, 0.0, 1.0);
-}
-
-mat4 rotateY(float angle) {
-    float c = cos(angle);
-    float s = sin(angle);
-    return mat4(
-          c, 0.0,  -s, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-          s, 0.0,   c, 0.0,
-        0.0, 0.0, 0.0, 1.0
-    );
-}
-
-mat4 rotateZ(float angle) {
-    float c = cos(angle);
-    float s = sin(angle);
-    return mat4(
-          c,   s, 0.0, 0.0,
-         -s,   c, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0
-    );
-}
-
-mat4 indentity() {
-    return mat4(
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0);
-}
-
-mat4 rotate(vec3 rotation) {
-    return rotateZ(rotation.z) * rotateY(rotation.y) * rotateX(rotation.x);
-}
-
 void main() {
         // instance_t instance = instances[gl_InstanceIndex];
         vec4 position = vec4(pos, 1.0);
+        vec4 normal = vec4(nor, 0.0);
 
         // Method 1
         if(joint_count > 0)
@@ -132,6 +66,7 @@ void main() {
                 weights[3] * global_joints.xforms[first_joint+joints[3]];
             
             position = skin_mat * position;
+            normal = normalize(skin_mat * normal);
         }
 
         // Method 2
@@ -147,8 +82,8 @@ void main() {
 
         gl_Position = ubo.proj * ubo.view * model * position;
 
-        float light_alignment = dot(-ubo.global_light.xyz, (model*vec4(nor.xyz,0.0)).xyz);
-        // float light_alignment = dot(-ubo.global_light.xyz, nor);
+        float light_alignment = dot(-ubo.global_light.xyz, (model*normal).xyz);
+        // float light_alignment = dot(-ubo.global_light.xyz, normal.xyz);
         float intensity = 0.5*light_alignment + 0.5;
         intensity = intensity < 0.3 ? 0.3 : intensity;
 

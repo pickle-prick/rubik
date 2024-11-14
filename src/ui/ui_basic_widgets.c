@@ -615,6 +615,7 @@ ui_scroll_list_end(void)
 internal UI_Signal
 ui_f32_edit(F32 *n, F32 min, F32 max, TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, U64 *edit_string_size_out, String8 string)
 {
+    // TODO: make use of min/max
     String8 display_string = push_str8_copy(ui_build_arena(), ui_display_part_from_key_string(string));
     String8 hash_part_string = push_str8_copy(ui_build_arena(), ui_hash_part_from_key_string(string));
     String8 number_string = push_str8f(ui_build_arena(), "%.3f", display_string.str, *n);

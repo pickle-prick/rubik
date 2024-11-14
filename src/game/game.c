@@ -1,29 +1,11 @@
-internal void
-g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
+internal void g_ui_inspector(G_Scene *scene)
 {
-    g_push_bucket(scene->bucket);
-    arena_clear(g_state->frame_arena);
     Rng2F32 window_rect = os_client_rect_from_window(g_state->os_wnd);
     Vec2F32 window_dim = dim_2f32(window_rect);
 
-    // Remake bucket every frame
-    g_state->bucket_rect = d_bucket_make();
-    g_state->bucket_geo3d = d_bucket_make();
-    g_state->hot_key = (G_Key){ hot_key };
-
-    // Unpack camera
     G_Node *camera = scene->active_camera->v;
-
-    // G_Node *hot_node = 0;
     G_Node *active_node = g_node_from_key(g_state->active_key);
 
-    // UI Box for game viewport (Handle user interaction)
-    ui_set_next_rect(window_rect);
-    ui_set_next_child_layout_axis(Axis2_X);
-    UI_Box *overlay = ui_build_box_from_string(0, str8_lit("###game_overlay"));
-    ui_push_parent(overlay);
-
-    // TODO: move these settings into somekind of state
     local_persist B32 show_scene_cfg  = 1;
     local_persist B32 show_camera_cfg = 1;
     local_persist B32 show_light_cfg  = 1;
@@ -35,14 +17,25 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     local_persist U8 edit_buffer_size  = 30;
     local_persist U64 edit_string_size = 0;
 
-    local_persist G_ViewportShadingKind viewport_shading = G_ViewportShadingKind_Wireframe;
-    local_persist Vec3F32 global_light = {0,0,1};
-
+    // Build top-level panel container
+    Rng2F32 panel_rect = window_rect;
+    panel_rect.p1.x = 800;
+    panel_rect = pad_2f32(panel_rect,-30);
+    ui_set_next_rect(panel_rect);
     ui_set_next_focus_hot(UI_FocusKind_Root);
     ui_set_next_focus_active(UI_FocusKind_Root);
-    ui_set_next_flags(UI_BoxFlag_Clip);
-    UI_Pane(r2f32p(0, 0, 610, window_rect.p1.y), str8_lit("###left_pane"))
+    ui_set_next_child_layout_axis(Axis2_Y);
+    ui_set_next_transparency(0.1);
+    UI_Box *pane = ui_build_box_from_stringf(UI_BoxFlag_Clickable|
+                                             UI_BoxFlag_DrawBorder|
+                                             // UI_BoxFlag_Floating|
+                                             UI_BoxFlag_Clip|
+                                             UI_BoxFlag_DrawBackground, "###inspector");
+    UI_Parent(pane) UI_PrefWidth(ui_pct(1.0,0))
     {
+        UI_ScrollPt pt = {0};
+        ui_scroll_list_begin(pane->fixed_size, &pt);
+
         // Scene
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
         ui_set_next_child_layout_axis(Axis2_Y);
@@ -145,9 +138,9 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
             {
                 ui_labelf("shading");
                 ui_spacer(ui_pct(1.0, 0.0));
-                if(ui_clicked(ui_buttonf("wireframe"))) {viewport_shading = G_ViewportShadingKind_Wireframe;};
-                if(ui_clicked(ui_buttonf("solid")))     {viewport_shading = G_ViewportShadingKind_Solid;};
-                if(ui_clicked(ui_buttonf("material")))  {viewport_shading = G_ViewportShadingKind_MaterialPreview;};
+                if(ui_clicked(ui_buttonf("wireframe"))) {scene->viewport_shading = G_ViewportShadingKind_Wireframe;};
+                if(ui_clicked(ui_buttonf("solid")))     {scene->viewport_shading = G_ViewportShadingKind_Solid;};
+                if(ui_clicked(ui_buttonf("material")))  {scene->viewport_shading = G_ViewportShadingKind_MaterialPreview;};
             }
 
             if(show_camera_cfg)
@@ -209,9 +202,9 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                 {
                     ui_labelf("global_light");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&global_light.x, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("X###pos_x"));
-                    ui_f32_edit(&global_light.y, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Y###pos_y"));
-                    ui_f32_edit(&global_light.z, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Z###pos_z"));
+                    ui_f32_edit(&scene->global_light.x, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("X###pos_x"));
+                    ui_f32_edit(&scene->global_light.y, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Y###pos_y"));
+                    ui_f32_edit(&scene->global_light.z, -100, 100, &cursor, &mark, edit_buffer, edit_buffer_size, &edit_string_size, str8_lit("Z###pos_z"));
                 }
             }
         }
@@ -273,25 +266,50 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                 }
             }
         }
+        ui_scroll_list_end();
+    }
+}
+
+internal void
+g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
+{
+    g_push_bucket(scene->bucket);
+    arena_clear(g_state->frame_arena);
+
+    Rng2F32 window_rect = os_client_rect_from_window(g_state->os_wnd);
+    Vec2F32 window_dim = dim_2f32(window_rect);
+    F32 dt_sec = dt/1000000.0f;
+
+    // Remake bucket every frame
+    g_state->bucket_rect = d_bucket_make();
+    g_state->bucket_geo3d = d_bucket_make();
+    g_state->hot_key = (G_Key){ hot_key };
+
+    D_BucketScope(g_state->bucket_rect)
+    {
+        g_ui_inspector(scene);
     }
 
-    ui_set_next_pref_width(ui_pct(1.0, 0.0));
-    ui_set_next_pref_height(ui_pct(1.0, 0.0));
-    UI_Box *scene_overlay = ui_build_box_from_stringf(UI_BoxFlag_MouseClickable|UI_BoxFlag_Scroll, "###scene_overlay");
-    ui_pop_parent();
+    // Unpack camera
+    G_Node *camera = scene->active_camera->v;
 
-    g_state->sig = ui_signal_from_box(scene_overlay);
-    F32 dt_sec = dt/1000000.0f;
+    // G_Node *hot_node = 0;
+    G_Node *active_node = g_node_from_key(g_state->active_key);
+
+    // UI Box for game viewport (Handle user interaction)
+    ui_set_next_rect(window_rect);
+    ui_set_next_child_layout_axis(Axis2_X);
+    UI_Box *overlay = ui_build_box_from_string(UI_BoxFlag_MouseClickable|UI_BoxFlag_ClickToFocus|UI_BoxFlag_Scroll, str8_lit("###game_overlay"));
+    g_state->sig = ui_signal_from_box(overlay);
 
     B32 show_grid   = 1;
     B32 show_gizmos = 0;
-    // TODO: this is kind awkward, fix it later, make it pretty
     d_push_bucket(g_state->bucket_geo3d);
-    R_PassParams_Geo3D *pass = d_geo3d_begin(scene_overlay->rect, mat_4x4f32(1.f), mat_4x4f32(1.f), normalize_3f32(global_light), show_grid, show_gizmos, mat_4x4f32(1.f), v3f32(0,0,0));
+    R_PassParams_Geo3D *pass = d_geo3d_begin(overlay->rect, mat_4x4f32(1.f), mat_4x4f32(1.f), normalize_3f32(scene->global_light), show_grid, show_gizmos, mat_4x4f32(1.f), v3f32(0,0,0));
     d_pop_bucket();
 
     R_GeoPolygonKind polygon_mode;
-    switch(viewport_shading)
+    switch(scene->viewport_shading)
     {
         case G_ViewportShadingKind_Wireframe:       {polygon_mode = R_GeoPolygonKind_Line;}break;
         case G_ViewportShadingKind_Solid:           {polygon_mode = R_GeoPolygonKind_Fill;}break;
@@ -326,7 +344,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                                                     joint_xforms, joint_count,
                                                     mat_4x4f32(1.f), node->key.u64[0]);
                         inst->xform = node->fixed_xform;
-                        if(r_handle_match(node->v.mesh.albedo_tex, r_handle_zero()) || viewport_shading == G_ViewportShadingKind_Solid)
+                        if(r_handle_match(node->v.mesh.albedo_tex, r_handle_zero()) || scene->viewport_shading == G_ViewportShadingKind_Solid)
                         {
                             inst->white_texture_override = 1.0f;
                         }
@@ -443,9 +461,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
         if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
     }
 
-    ui_pop_parent();
     g_pop_bucket();
-    g_state->sig = ui_signal_from_box(overlay);
 }
 
 /////////////////////////////////

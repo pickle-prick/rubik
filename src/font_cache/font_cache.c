@@ -1,5 +1,6 @@
-internal F_Hash2StyleRasterCacheNode
-*f_hash2style_from_tag_size_flags(F_Tag tag, F32 size, F_RasterFlags flags) {
+internal F_Hash2StyleRasterCacheNode *
+f_hash2style_from_tag_size_flags(F_Tag tag, F32 size, F_RasterFlags flags)
+{
     U64 style_hash = {0};
     {
         F64 size_f64 = size;
@@ -17,14 +18,17 @@ internal F_Hash2StyleRasterCacheNode
     U64 slot_idx = style_hash % f_state->hash2style_slots_count;
     F_Hash2StyleRasterCacheSlot *slot = &f_state->hash2style_slots[slot_idx];
 
-    for (F_Hash2StyleRasterCacheNode *n = slot->first; n != 0; n = n->hash_next) {
-        if (n->style_hash == style_hash) {
+    for(F_Hash2StyleRasterCacheNode *n = slot->first; n != 0; n = n->hash_next)
+    {
+        if(n->style_hash == style_hash)
+        {
             hash2style_node = n;
             break;
         }
     }
 
-    if (Unlikely(hash2style_node == 0)) {
+    if(Unlikely(hash2style_node == 0))
+    {
         F_Metrics metrics = f_metrics_from_tag_size(tag, size);
         hash2style_node = push_array(f_state->arena, F_Hash2StyleRasterCacheNode, 1);
         DLLPushBack_NP(slot->first, slot->last, hash2style_node, hash_next, hash_prev);
@@ -47,14 +51,16 @@ internal F_Hash2StyleRasterCacheNode
 
     return hash2style_node;
 }
+
 internal F_Tag
-f_tag_from_path(String8 path) {
+f_tag_from_path(String8 path)
+{
     // Produce tag hash from hash of path
     F_Tag result = {0};
     {
         U128 hash = f_hash_from_string(path);
         MemoryCopy(&result, &hash, sizeof(result));
-        // TODO(@k): why
+        // TODO(k): don't quite understand this
         result.u64[1] |= bit64;
     }
 
@@ -62,8 +68,10 @@ f_tag_from_path(String8 path) {
     U64 slot_idx = result.u64[1] % f_state->font_hash_table_size;
 
     F_FontHashNode *existing_node = 0;
-    for (F_FontHashNode *n = f_state->font_hash_table[slot_idx].first; n != 0; n = n->hash_next) {
-        if (MemoryMatchStruct(&result, &n->tag)) {
+    for(F_FontHashNode *n = f_state->font_hash_table[slot_idx].first; n != 0; n = n->hash_next) 
+    {
+        if(MemoryMatchStruct(&result, &n->tag)) 
+        {
             existing_node = n;
             break;
         }
@@ -71,7 +79,8 @@ f_tag_from_path(String8 path) {
 
     // Allocate & push new node if we don't have an existing one
     F_FontHashNode *new_node = 0;
-    if (existing_node == 0) {
+    if(existing_node == 0)
+    {
         F_FontHashSlot *slot = &f_state->font_hash_table[slot_idx];
         new_node          = push_array(f_state->arena, F_FontHashNode, 1);
         new_node->tag     = result;
@@ -86,11 +95,14 @@ f_tag_from_path(String8 path) {
 }
 
 internal FP_Metrics
-f_fp_metrics_from_tag(F_Tag tag) {
+f_fp_metrics_from_tag(F_Tag tag)
+{
     U64 slot_idx = tag.u64[1] % f_state->font_hash_table_size;
     F_FontHashNode *existing_node = 0;
-    for (F_FontHashNode *n = f_state->font_hash_table[slot_idx].first; n != 0; n = n->hash_next) {
-        if (MemoryMatchStruct(&tag, &n->tag)) {
+    for(F_FontHashNode *n = f_state->font_hash_table[slot_idx].first; n != 0; n = n->hash_next) 
+    {
+        if(MemoryMatchStruct(&tag, &n->tag))
+        {
             existing_node = n;
             break;
         }
@@ -103,7 +115,8 @@ f_fp_metrics_from_tag(F_Tag tag) {
 }
 
 internal F_Metrics
-f_metrics_from_tag_size(F_Tag tag, F32 size) {
+f_metrics_from_tag_size(F_Tag tag, F32 size) 
+{
     FP_Metrics font_metrics = f_fp_metrics_from_tag(tag);
 
     F_Metrics ret = {0};
@@ -114,7 +127,8 @@ f_metrics_from_tag_size(F_Tag tag, F32 size) {
 }
 
 internal U128
-f_hash_from_string(String8 string) {
+f_hash_from_string(String8 string)
+{
     union
     {
         XXH128_hash_t xxhash;
@@ -125,46 +139,55 @@ f_hash_from_string(String8 string) {
     return hash.u128;
 }
 
-internal F_Tag f_tag_zero(void) {
+internal F_Tag f_tag_zero(void) 
+{
     F_Tag result = {0};
     return result;
 }
 
 internal FP_Handle
-f_handle_from_tag(F_Tag tag) {
+f_handle_from_tag(F_Tag tag)
+{
     U64 slot_idx = tag.u64[1] % f_state->font_hash_table_size;
     F_FontHashNode *existing_node = 0;
-    for (F_FontHashNode *n = f_state->font_hash_table[slot_idx].first; n != 0; n = n->hash_next) {
-        if (MemoryMatchStruct(&tag, &n->tag)) {
+    for(F_FontHashNode *n = f_state->font_hash_table[slot_idx].first; n != 0; n = n->hash_next)
+    {
+        if(MemoryMatchStruct(&tag, &n->tag))
+        {
             existing_node = n;
             break;
         }
     }
 
     FP_Handle ret = {0};
-    if (existing_node != 0) {
+    if(existing_node != 0)
+    {
         ret = existing_node->handle;
     }
     return ret;
 }
 
 internal U64
-f_little_hash_from_string(String8 string) {
+f_little_hash_from_string(String8 string)
+{
     U64 result = XXH3_64bits(string.str, string.size);
     return result;
 }
 
 internal U64
-f_little_hash_from_bytes(U8 *bytes, U64 count) {
+f_little_hash_from_bytes(U8 *bytes, U64 count)
+{
     U64 hash = 5381;
-    for (U64 i = 0; i < count; i++) {
+    for(U64 i = 0; i < count; i++)
+    {
         hash = ((hash << 5) + hash) + bytes[i]; // hash * 33 + c
     }
     return hash;
 }
 
 internal F_Run
-f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32 tab_size_px, F_RasterFlags flags, String8 string) {
+f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32 tab_size_px, F_RasterFlags flags, String8 string)
+{
     // TODO: handle tab_size_px
     F_Hash2StyleRasterCacheNode *hash2style_node = f_hash2style_from_tag_size_flags(tag, size, flags);
 
@@ -178,7 +201,8 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
     float xpos = base_align_px;
     float ypos = 0;
     // TODO(@k): we could get left bearing of this glphy, then add it to the offsetX
-    for (U64 i = 0; i < ret.pieces.count; i++) {
+    for(U64 i = 0; i < ret.pieces.count; i++)
+    {
         float x = xpos;
         float y = ypos;
 
@@ -202,7 +226,8 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
     return ret;
 }
 
-internal Vec2F32 f_dim_from_tag_size_string(F_Tag tag, F32 size, F32 base_align_px, F32 tab_size_px, String8 string) {
+internal Vec2F32 f_dim_from_tag_size_string(F_Tag tag, F32 size, F32 base_align_px, F32 tab_size_px, String8 string)
+{
     Temp scratch = scratch_begin(0,0);
     Vec2F32 result = {0};
     F_Run run = f_push_run_from_string(scratch.arena, tag, size, base_align_px, tab_size_px, 0, string);
@@ -211,7 +236,8 @@ internal Vec2F32 f_dim_from_tag_size_string(F_Tag tag, F32 size, F32 base_align_
     return result;
 }
 
-internal U64 f_char_pos_from_tag_size_string_p(F_Tag tag, F32 size, F32 base_align_px, F32 tab_size_px, String8 string, F32 p) {
+internal U64 f_char_pos_from_tag_size_string_p(F_Tag tag, F32 size, F32 base_align_px, F32 tab_size_px, String8 string, F32 p)
+{
     Temp scratch = scratch_begin(0, 0);
     U64 best_offset_bytes = 0;
     F32 best_offset_px    = inf32();
@@ -239,12 +265,13 @@ internal U64 f_char_pos_from_tag_size_string_p(F_Tag tag, F32 size, F32 base_ali
 }
 
 internal void
-f_init(void) {
-        Arena *arena = arena_alloc();
-        f_state = push_array(arena, F_State, 1);
-        f_state->arena = arena;
-        f_state->font_hash_table_size = 64;
-        f_state->font_hash_table = push_array(arena, F_FontHashSlot, f_state->font_hash_table_size);
-        f_state->hash2style_slots_count = 1024;
-        f_state->hash2style_slots = push_array(arena, F_Hash2StyleRasterCacheSlot, f_state->hash2style_slots_count);
+f_init(void)
+{
+    Arena *arena = arena_alloc();
+    f_state = push_array(arena, F_State, 1);
+    f_state->arena = arena;
+    f_state->font_hash_table_size = 64;
+    f_state->font_hash_table = push_array(arena, F_FontHashSlot, f_state->font_hash_table_size);
+    f_state->hash2style_slots_count = 1024;
+    f_state->hash2style_slots = push_array(arena, F_Hash2StyleRasterCacheSlot, f_state->hash2style_slots_count);
 }
