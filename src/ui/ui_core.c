@@ -1118,6 +1118,7 @@ ui_set_auto_focus_active_key(UI_Key key)
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: focus tree coloring
+
 internal B32
 ui_is_focus_hot(void)
 {

@@ -6,3 +6,4 @@ debug/
 .gdbinit
 .vscode/
 tmp/
+gmon.out
