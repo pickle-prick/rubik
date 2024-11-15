@@ -445,8 +445,8 @@ ui_end_build(void)
 
                 //- k: animate view offset
                 {
-                    b->view_off.x += fast_rate * (b->view_off_target.x - b->view_off.x);
-                    b->view_off.y += fast_rate * (b->view_off_target.y - b->view_off.y);
+                    b->view_off.x += fish_rate * (b->view_off_target.x - b->view_off.x);
+                    b->view_off.y += fish_rate * (b->view_off_target.y - b->view_off.y);
                     if(abs_f32(b->view_off.x-b->view_off_target.x) < 2)
                     {
                         b->view_off.x = b->view_off_target.x;
@@ -484,7 +484,7 @@ ui_end_build(void)
 internal void 
 ui_calc_sizes_standalone__in_place_rec(UI_Box *root, Axis2 axis)
 {
-    switch (root->pref_size[axis].kind)
+    switch(root->pref_size[axis].kind)
     {
         default:{}break;
         case UI_SizeKind_Pixels:
@@ -494,6 +494,7 @@ ui_calc_sizes_standalone__in_place_rec(UI_Box *root, Axis2 axis)
         case UI_SizeKind_TextContent:
         {
             F32 padding = root->pref_size[axis].value;
+            // F32 text_size = root->display_string_runs.dim.x;
             F32 text_size = root->display_string_runs.dim.v[axis];
             root->fixed_size.v[axis] = padding + text_size + root->text_padding*2;
         }break;
@@ -509,7 +510,7 @@ ui_calc_sizes_standalone__in_place_rec(UI_Box *root, Axis2 axis)
 internal void
 ui_calc_sizes_upwards_dependent__in_place_rec(UI_Box *root, Axis2 axis)
 {
-    switch (root->pref_size[axis].kind)
+    switch(root->pref_size[axis].kind)
     {
         default:{}break;
         case UI_SizeKind_ParentPct: 
@@ -548,7 +549,7 @@ ui_calc_sizes_downwards_dependent__in_place_rec(UI_Box *root, Axis2 axis)
         ui_calc_sizes_downwards_dependent__in_place_rec(child, axis);
     }
 
-    switch (root->pref_size[axis].kind)
+    switch(root->pref_size[axis].kind)
     {
         default:{}break;
         case UI_SizeKind_ChildrenSum: 
@@ -556,7 +557,6 @@ ui_calc_sizes_downwards_dependent__in_place_rec(UI_Box *root, Axis2 axis)
             F32 sum = 0;
             for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
             {
-
                 if(!(child->flags & (UI_BoxFlag_FloatingX<<axis)))
                 {
                     if(axis == root->child_layout_axis)
@@ -568,10 +568,8 @@ ui_calc_sizes_downwards_dependent__in_place_rec(UI_Box *root, Axis2 axis)
                 {
                     sum = Max(sum, child->fixed_size.v[axis]);
                 }
-
-                root->fixed_size.v[axis] = sum;
             }
-
+            root->fixed_size.v[axis] = sum;
         }break;
     }
 }
@@ -579,10 +577,13 @@ ui_calc_sizes_downwards_dependent__in_place_rec(UI_Box *root, Axis2 axis)
 internal void
 ui_layout_enforce_constraints__in_place_rec(UI_Box *root, Axis2 axis)
 {
-    Temp scratch = scratch_begin(0,0);
+    Temp scratch = scratch_begin(0, 0);
 
-    // Fixup children sizes (along the *non-layout* axis)
-    if(axis != root->child_layout_axis && !(root->flags & (UI_BoxFlag_AllowOverflowX<<axis)))
+    // NOTE(rjf): The "layout axis" is the direction in which children
+    // of some node are intended to be laid out.
+
+    //- rjf: fixup children sizes (if we're solving along the *non-layout* axis)
+    if(axis != root->child_layout_axis && !(root->flags & (UI_BoxFlag_AllowOverflowX << axis)))
     {
         F32 allowed_size = root->fixed_size.v[axis];
         for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
@@ -595,19 +596,20 @@ ui_layout_enforce_constraints__in_place_rec(UI_Box *root, Axis2 axis)
                 F32 fixup = Clamp(0, violation, max_fixup);
                 if(fixup > 0)
                 {
-                    child->fixed_size.v[axis] = fixup;
+                    child->fixed_size.v[axis] -= fixup;
                 }
             }
         }
+
     }
 
-    // Fixup children sizes (along the layout axis)
-    if(axis == root->child_layout_axis && !(root->flags & (UI_BoxFlag_AllowOverflowX<<axis)))
+    //- rjf: fixup children sizes (in the direction of the layout axis)
+    if(axis == root->child_layout_axis && !(root->flags & (UI_BoxFlag_AllowOverflowX << axis)))
     {
+        // rjf: figure out total allowed size & total size
         F32 total_allowed_size = root->fixed_size.v[axis];
         F32 total_size = 0;
         F32 total_weighted_size = 0;
-
         for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
         {
             if(!(child->flags & (UI_BoxFlag_FloatingX<<axis)))
@@ -617,48 +619,48 @@ ui_layout_enforce_constraints__in_place_rec(UI_Box *root, Axis2 axis)
             }
         }
 
-        // k: if we have a violation, we need to subtract some amount from all children 
+        // rjf: if we have a violation, we need to subtract some amount from all children
         F32 violation = total_size - total_allowed_size;
         if(violation > 0)
         {
-            // Figure out how much we can take for each child
-            F32 *child_fixups = push_array(scratch.arena, F32, root->child_count);
+            // rjf: figure out how much we can take in totality
             F32 child_fixup_sum = 0;
+            F32 *child_fixups = push_array(scratch.arena, F32, root->child_count);
             {
                 U64 child_idx = 0;
-                for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next, child_idx++)
+                for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next, child_idx += 1)
                 {
-                    if(!(child->flags & (UI_BoxFlag_FloatingX<<axis))) 
+                    if(!(child->flags & (UI_BoxFlag_FloatingX<<axis)))
                     {
                         F32 fixup_size_this_child = child->fixed_size.v[axis] * (1-child->pref_size[axis].strictness);
-                        AssertAlways(fixup_size_this_child >= 0);
+                        fixup_size_this_child = ClampBot(0, fixup_size_this_child);
                         child_fixups[child_idx] = fixup_size_this_child;
                         child_fixup_sum += fixup_size_this_child;
                     }
                 }
             }
 
-            // fixup child sizes
+            // rjf: fixup child sizes
             {
                 U64 child_idx = 0;
-                // TODO: total_weighted_size could be zero 
-                F32 fixup_pct = (violation / total_weighted_size);
-                fixup_pct = Clamp(0, fixup_pct, 1);
-                for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next, child_idx++)
+                for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next, child_idx += 1)
                 {
                     if(!(child->flags & (UI_BoxFlag_FloatingX<<axis)))
                     {
+                        F32 fixup_pct = (violation / total_weighted_size);
+                        fixup_pct = Clamp(0, fixup_pct, 1);
                         child->fixed_size.v[axis] -= child_fixups[child_idx] * fixup_pct;
                     }
                 }
             }
         }
+
     }
 
-    // Fixup upward-relative sizes, since root's size could be changed during this "fixation"
-    if(root->flags & (UI_BoxFlag_AllowOverflowX<<axis))
+    //- rjf: fixup upwards-relative sizes
+    if(root->flags & (UI_BoxFlag_AllowOverflowX << axis))
     {
-        for(UI_Box *child = root->first; !(ui_box_is_nil(child)); child = child->next)
+        for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
         {
             if(child->pref_size[axis].kind == UI_SizeKind_ParentPct)
             {
@@ -666,12 +668,13 @@ ui_layout_enforce_constraints__in_place_rec(UI_Box *root, Axis2 axis)
             }
         }
     }
-   
-    // Recurse
-    for(UI_Box *child = root->first; !(ui_box_is_nil(child)); child = child->next) 
+
+    //- rjf: recurse
+    for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
     {
         ui_layout_enforce_constraints__in_place_rec(child, axis);
     }
+
     scratch_end(scratch);
 }
 
@@ -680,14 +683,14 @@ ui_layout_position__in_place_rec(UI_Box *root, Axis2 axis)
 {
     F32 layout_position = 0;
 
+    //- rjf: lay out children
     F32 bounds = 0;
-    // Lay out children 
-    for(UI_Box *child = root->first; !(ui_box_is_nil(child)); child = child->next)
+    for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
     {
-        // Grab original position
+        // rjf: grab original position
         F32 original_position = Min(child->rect.p0.v[axis], child->rect.p1.v[axis]);
 
-        // Calculate fixed position & size
+        // rjf: calculate fixed position & size
         if(!(child->flags & (UI_BoxFlag_FloatingX<<axis)))
         {
             child->fixed_position.v[axis] = layout_position;
@@ -702,7 +705,7 @@ ui_layout_position__in_place_rec(UI_Box *root, Axis2 axis)
             }
         }
 
-        // Determine final rect for child, given fixed_position & size
+        // rjf: determine final rect for child, given fixed_position & size
         if(child->flags & (UI_BoxFlag_AnimatePosX<<axis))
         {
             if(child->first_touched_build_index == child->last_touched_build_index)
@@ -728,12 +731,13 @@ ui_layout_position__in_place_rec(UI_Box *root, Axis2 axis)
         child->position_delta.v[axis] = new_position - original_position;
     }
 
-    // store view bounds
+    //- rjf: store view bounds
     {
         root->view_bounds.v[axis] = bounds;
     }
 
-    for(UI_Box *child = root->first; !(ui_box_is_nil(child)); child = child->next)
+    //- rjf: recurse
+    for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
     {
         ui_layout_position__in_place_rec(child, axis);
     }

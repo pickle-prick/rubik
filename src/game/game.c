@@ -29,8 +29,8 @@ internal void g_ui_inspector(G_Scene *scene)
     }
 
     {
-        // UI_ScrollPt pt = {0};
-        // ui_scroll_list_begin(pane->fixed_size, &pt);
+        UI_ScrollPt pt = {0};
+        ui_scroll_list_begin(pane->fixed_size, &pt);
 
         // Scene
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
@@ -262,6 +262,7 @@ internal void g_ui_inspector(G_Scene *scene)
                 }
             }
         }
+        ui_scroll_list_end();
     }
     g_ui_pane_end();
 }

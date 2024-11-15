@@ -251,7 +251,7 @@ ui_draw(OS_Handle os_wnd)
                 }
 
                 // k: debug border rendering
-                if(0)
+                if(1)
                 {
                     R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), v4f32(1, 0, 1, 0.25f), 0, 1.f, 1.f);
                     MemoryCopyArray(inst->corner_radii, b->corner_radii);
@@ -547,11 +547,7 @@ entry_point(CmdLine *cmd_line)
         local_persist B32 show_stats = 1;
         ui_set_next_focus_hot(UI_FocusKind_Root);
         ui_set_next_focus_active(UI_FocusKind_Root);
-        ui_set_next_corner_radius_00(3);
-        ui_set_next_corner_radius_01(3);
-        ui_set_next_corner_radius_10(3);
-        ui_set_next_corner_radius_11(3);
-        G_UI_Pane(r2f32p(window_rect.p1.x-710, window_rect.p0.y+10, window_rect.p1.x-10, window_rect.p0.y+590), &show_stats, str8_lit("Stats###stats"))
+        G_UI_Pane(r2f32p(window_rect.p1.x-710, window_rect.p0.y+10, window_rect.p1.x-10, window_rect.p0.y+590), &show_stats, str8_lit("STATS###stats"))
             UI_TextAlignment(UI_TextAlign_Left)
             UI_TextPadding(9)
         {
