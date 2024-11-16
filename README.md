@@ -1,6 +1,6 @@
 # A "Unnamed" Game Project
 
-![Screenshot of a 3D scene](./screenshots/001.jpg)
+![Screenshot of a 3D scene](./screenshots/002.jpg)
 
 ## Development Setup Instructions
 
