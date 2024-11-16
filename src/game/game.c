@@ -1,7 +1,7 @@
 internal void g_ui_inspector(G_Scene *scene)
 {
-    Rng2F32 window_rect = os_client_rect_from_window(g_state->os_wnd);
-    Vec2F32 window_dim = dim_2f32(window_rect);
+    g_state->last_cursor = g_state->cursor;
+    g_state->cursor = os_mouse_from_window(g_state->os_wnd);
 
     G_Node *camera = scene->active_camera->v;
     G_Node *active_node = g_node_from_key(g_state->active_key);
@@ -19,7 +19,7 @@ internal void g_ui_inspector(G_Scene *scene)
     local_persist U64 edit_string_size = 0;
 
     // Build top-level panel container
-    Rng2F32 panel_rect = window_rect;
+    Rng2F32 panel_rect = g_state->window_rect;
     panel_rect.p1.x = 800;
     panel_rect = pad_2f32(panel_rect,-30);
     UI_Box *pane;
@@ -270,17 +270,7 @@ internal void g_ui_inspector(G_Scene *scene)
 internal void
 g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
 {
-    g_push_bucket(scene->bucket);
-    arena_clear(g_state->frame_arena);
-
-    Rng2F32 window_rect = os_client_rect_from_window(g_state->os_wnd);
-    Vec2F32 window_dim = dim_2f32(window_rect);
-    F32 dt_sec = dt/1000000.0f;
-
-    // Remake bucket every frame
-    g_state->bucket_rect = d_bucket_make();
-    g_state->bucket_geo3d = d_bucket_make();
-    g_state->hot_key = (G_Key){ hot_key };
+    g_begin(scene, dt, os_events, hot_key);
 
     D_BucketScope(g_state->bucket_rect)
     {
@@ -294,7 +284,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     G_Node *active_node = g_node_from_key(g_state->active_key);
 
     // UI Box for game viewport (Handle user interaction)
-    ui_set_next_rect(window_rect);
+    ui_set_next_rect(g_state->window_rect);
     ui_set_next_child_layout_axis(Axis2_X);
     UI_Box *overlay = ui_build_box_from_string(UI_BoxFlag_MouseClickable|UI_BoxFlag_ClickToFocus|UI_BoxFlag_Scroll, str8_lit("###game_overlay"));
     g_state->sig = ui_signal_from_box(overlay);
@@ -302,7 +292,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     B32 show_grid   = 1;
     B32 show_gizmos = 0;
     d_push_bucket(g_state->bucket_geo3d);
-    R_PassParams_Geo3D *pass = d_geo3d_begin(overlay->rect, mat_4x4f32(1.f), mat_4x4f32(1.f), normalize_3f32(scene->global_light), show_grid, show_gizmos, mat_4x4f32(1.f), v3f32(0,0,0));
+    R_PassParams_Geo3D *geo3d_pass = d_geo3d_begin(overlay->rect, mat_4x4f32(1.f), mat_4x4f32(1.f), normalize_3f32(scene->global_light), show_grid, show_gizmos, mat_4x4f32(1.f), v3f32(0,0,0));
     d_pop_bucket();
 
     R_GeoPolygonKind polygon_mode;
@@ -320,10 +310,9 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
         while(node != 0)
         {
             G_NodeRec rec = g_node_df_pre(node, 0);
-            F32 dt_ms = dt / 1000.f;
             for(G_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
             {
-                fn->f(node, scene, os_events, dt_sec);
+                fn->f(node, scene, os_events, g_state->dt_sec);
             }
 
             D_BucketScope(g_state->bucket_geo3d)
@@ -356,18 +345,18 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
         }
     }
 
-    pass->view = g_view_from_node(camera);
-    pass->projection = make_perspective_vulkan_4x4f32(camera->v.camera.fov, window_dim.x/window_dim.y, camera->v.camera.zn, camera->v.camera.zf);
-    Mat4x4F32 xform_m = mul_4x4f32(pass->projection, pass->view);
+    geo3d_pass->view = g_view_from_node(camera);
+    geo3d_pass->projection = make_perspective_vulkan_4x4f32(camera->v.camera.fov, g_state->window_dim.x/g_state->window_dim.y, camera->v.camera.zn, camera->v.camera.zf);
+    Mat4x4F32 xform_m = mul_4x4f32(geo3d_pass->projection, geo3d_pass->view);
 
     if(active_node != 0) 
     {
-        pass->show_gizmos = 1;
-        pass->gizmos_xform = active_node->fixed_xform;
-        pass->gizmos_origin = v4f32(pass->gizmos_xform.v[3][0],
-                                    pass->gizmos_xform.v[3][1],
-                                    pass->gizmos_xform.v[3][2],
-                                    1);
+        geo3d_pass->show_gizmos = 1;
+        geo3d_pass->gizmos_xform = active_node->fixed_xform;
+        geo3d_pass->gizmos_origin = v4f32(geo3d_pass->gizmos_xform.v[3][0],
+                                          geo3d_pass->gizmos_xform.v[3][1],
+                                          geo3d_pass->gizmos_xform.v[3][2],
+                                          1);
     }
 
     // Update hot/active
@@ -441,24 +430,31 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                 S32 n = dot_2f32(delta, projected_dir) > 0 ? 1 : -1;
 
                 // 10.0 in word coordinate per pixel (scaled by the distance to the eye)
-                F32 speed = 1.0/(window_dim.x*length_2f32(projected_dir));
+                F32 speed = 1.0/(g_state->window_dim.x*length_2f32(projected_dir));
                 active_node->pst_pos_delta = scale_3f32(g_state->drag_start_direction, length_2f32(delta)*speed*n);
             }
         }
     }
 
-    // Process events
-    OS_Event *os_evt_first = os_events.first;
-    OS_Event *os_evt_opl = os_events.last + 1;
-    for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
+    if(camera->v.camera.hide_cursor && (!g_state->cursor_hidden))
     {
-        if(os_evt == 0) continue;
-        if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_A) {}
-        if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_D) {}
-        if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
+        os_hide_cursor(g_state->os_wnd);
+        g_state->cursor_hidden = 1;
     }
 
-    g_pop_bucket();
+    if(!camera->v.camera.hide_cursor && g_state->cursor_hidden)
+    {
+        os_show_cursor(g_state->os_wnd);
+        g_state->cursor_hidden = 0;
+    }
+    if(camera->v.camera.lock_cursor)
+    {
+        Vec2F32 cursor = center_2f32(g_state->window_rect);
+        os_wrap_cursor(g_state->os_wnd, cursor.x, cursor.y);
+        g_state->cursor = cursor;
+    }
+
+    g_end();
 }
 
 /////////////////////////////////
@@ -468,8 +464,6 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
 G_NODE_CUSTOM_UPDATE(editor_camera_fn)
 {
     G_Camera3D *camera = &node->v.camera;
-    Rng2F32 window_rect = os_client_rect_from_window(g_state->os_wnd);
-    Vec2F32 window_dim = dim_2f32(window_rect);
 
     if(g_state->sig.f & UI_SignalFlag_LeftDragging)
     {
@@ -494,10 +488,10 @@ G_NODE_CUSTOM_UPDATE(editor_camera_fn)
     {
         Vec2F32 delta = ui_drag_delta();
         // Horizontal
-        F32 h_pct = delta.x / window_dim.x;
+        F32 h_pct = delta.x / g_state->window_dim.x;
         F32 h_dist = 2.0 * h_pct;
         // Vertical
-        F32 v_pct = delta.y / window_dim.y;
+        F32 v_pct = delta.y / g_state->window_dim.y;
         F32 v_dist = -2.0 * v_pct;
         node->pre_pos_delta = scale_3f32(s, -h_dist * 6);
         node->pre_pos_delta = add_3f32(node->pre_pos_delta, scale_3f32(u, v_dist*6));
@@ -513,8 +507,8 @@ G_NODE_CUSTOM_UPDATE(editor_camera_fn)
         Vec2F32 delta = ui_drag_delta();
 
         // TODO: float percision issue when v_turn_speed is too high, fix it later
-        F32 v_turn_speed = 0.5f/(window_dim.y);
-        F32 h_turn_speed = 2.0f/(window_dim.x);
+        F32 v_turn_speed = 0.5f/(g_state->window_dim.y);
+        F32 h_turn_speed = 2.0f/(g_state->window_dim.x);
 
         // TODO: we may need to clamp the turns to 0-1
         F32 v_turn = -delta.y * v_turn_speed;

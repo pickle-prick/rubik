@@ -1005,6 +1005,45 @@ g_rgba_from_theme_color(RD_ThemeColor color)
 }
 
 /////////////////////////////////
+// State
+
+internal void
+g_begin(G_Scene *scene, U64 dt, OS_EventList os_events, U64 hot_key)
+{
+    arena_clear(g_state->frame_arena);
+    g_push_bucket(scene->bucket);
+    g_push_scene(scene);
+
+    g_state->dt = dt;
+    g_state->dt_sec = dt/1000000.0f;
+    g_state->dt_ms = dt/1000.0f;
+    g_state->hot_key = (G_Key){ hot_key };
+    g_state->window_rect = os_client_rect_from_window(g_state->os_wnd);
+    g_state->window_dim = dim_2f32(g_state->window_rect);
+
+    // Remake bucket every frame
+    g_state->bucket_rect = d_bucket_make();
+    g_state->bucket_geo3d = d_bucket_make();
+
+    // Process events
+    // OS_Event *os_evt_first = os_events.first;
+    // OS_Event *os_evt_opl = os_events.last + 1;
+    // for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
+    // {
+    //     if(os_evt == 0) continue;
+    //     if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_A) {}
+    //     if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_D) {}
+    //     if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
+    // }
+}
+
+internal void g_end(void)
+{
+    g_pop_bucket();
+    g_pop_scene();
+}
+
+/////////////////////////////////
 // Helpers
 
 internal void

@@ -324,6 +324,8 @@ struct G_Camera3D
     F32     fov;
     F32     zn;
     F32     zf;
+    B32     hide_cursor;
+    B32     lock_cursor;
 };
 
 /////////////////////////////////
@@ -493,27 +495,50 @@ typedef enum G_PaletteCode
 typedef struct G_State G_State;
 struct G_State
 {
-    Arena     *arena;
-    Arena     *frame_arena;
-    G_Bucket  *node_bucket;
-    D_Bucket  *bucket_rect;
-    D_Bucket  *bucket_geo3d;
-    G_Scene   *default_scene;
+    Arena      *arena;
+    Arena      *frame_arena;
+    G_Scene    *default_scene;
 
-    G_Key     hot_key;
-    G_Key     active_key;
-    B32       is_dragging;
-    Vec3F32   drag_start_direction;
+    //~ Persistent
 
-    OS_Handle os_wnd;
-    UI_Signal sig;
+    B32        is_dragging;
+    Vec3F32    drag_start_direction;
 
-    // Theme
-    G_Theme   cfg_theme_target;
-    G_Theme   cfg_theme;
-    F_Tag     cfg_font_tags[G_FontSlot_COUNT];
+    OS_Handle  os_wnd;
 
-    // Palette
+    //~ Per frame
+
+    UI_Signal  sig;
+
+    //- Delta
+    U64        dt;
+    F32        dt_sec;
+    F32        dt_ms;
+
+    //- Bucket
+    G_Bucket   *node_bucket;
+    D_Bucket   *bucket_rect;
+    D_Bucket   *bucket_geo3d;
+
+    //- Window rect
+    Rng2F32    window_rect;
+    Vec2F32    window_dim;
+
+    //- key
+    G_Key      hot_key;
+    G_Key      active_key;
+
+    //- Cursor
+    Vec2F32    cursor;
+    Vec2F32    last_cursor;
+    B32        cursor_hidden;
+
+    //- Theme
+    G_Theme    cfg_theme_target;
+    G_Theme    cfg_theme;
+    F_Tag      cfg_font_tags[G_FontSlot_COUNT];
+
+    //- Palette
     UI_Palette cfg_ui_debug_palettes[G_PaletteCode_COUNT]; // derivative from theme
 
     G_DeclStackNils;
@@ -603,6 +628,12 @@ internal Vec2F32     triple_product_2f32(Vec2F32 A, Vec2F32 B, Vec2F32 C);
 internal F_Tag      g_font_from_slot(G_FontSlot slot);
 internal UI_Palette *g_palette_from_code(G_PaletteCode code);
 internal Vec4F32    g_rgba_from_theme_color(RD_ThemeColor color);
+
+/////////////////////////////////
+// State
+
+internal void g_begin(G_Scene *scene, U64 dt, OS_EventList os_events, U64 hot_key);
+internal void g_end(void);
 
 /////////////////////////////////
 // Helpers

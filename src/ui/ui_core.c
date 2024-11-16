@@ -239,7 +239,6 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
         ui_state->build_box_count = 0;
     }
 
-    ui_state->last_mouse = ui_state->mouse;
     //- k: detect mouse-moves
     for(UI_EventNode *n = events->first; n!=0; n = n->next)
     {
@@ -252,7 +251,7 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
 
     if(ui_state->build_index == 0)
     {
-        ui_state->mouse = ui_state->last_mouse = os_mouse_from_window(os_wnd);
+        ui_state->mouse = os_mouse_from_window(os_wnd);
     }
 
     //- k: fill build phase parameters

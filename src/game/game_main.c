@@ -251,7 +251,7 @@ ui_draw(OS_Handle os_wnd)
                 }
 
                 // k: debug border rendering
-                if(1)
+                if(0)
                 {
                     R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), v4f32(1, 0, 1, 0.25f), 0, 1.f, 1.f);
                     MemoryCopyArray(inst->corner_radii, b->corner_radii);
@@ -373,8 +373,16 @@ entry_point(CmdLine *cmd_line)
     B32 window_should_close = 0;
     while(!window_should_close)
     {
-        U64 dt = os_now_microseconds() - frame_us;
+        U64 dt = os_now_microseconds()-frame_us;
         frame_us = os_now_microseconds();
+
+        //- k: begin of frame
+        r_begin_frame();
+        U64 id = r_window_begin_frame(window, wnd);
+        gpu_end_us = os_now_microseconds();
+        gpu_dt_us = (gpu_end_us - gpu_start_us);
+        cpu_start_us = os_now_microseconds();
+        d_begin_frame();
 
         //- Poll events
         events = os_get_events(frame_arena, 0);
@@ -382,16 +390,6 @@ entry_point(CmdLine *cmd_line)
         // TODO: don't need to fetch rect every frame
         window_rect = os_client_rect_from_window(window);
         mouse = os_mouse_from_window(window);
-
-        /////////////////////////////////
-        //- Begin of frame
-
-        r_begin_frame();
-        U64 id = r_window_begin_frame(window, wnd);
-        d_begin_frame();
-        cpu_start_us = os_now_microseconds();
-        gpu_end_us = os_now_microseconds();
-        gpu_dt_us = (gpu_end_us - gpu_start_us);
 
         /////////////////////////////////
         // Create the top bucket (for UI)
@@ -562,25 +560,25 @@ entry_point(CmdLine *cmd_line)
             {
                 ui_labelf("frame time ms");
                 ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%.6f", (dt/1000.0));
+                ui_labelf("%.3f", (dt/1000.0));
             }
             UI_Row
             {
                 ui_labelf("cpu time ms");
                 ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%.6f", (cpu_dt_us/1000.0));
+                ui_labelf("%.3f", (cpu_dt_us/1000.0));
             }
             UI_Row
             {
                 ui_labelf("gpu time ms");
                 ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%.6f", (gpu_dt_us/1000.0));
+                ui_labelf("%.3f", (gpu_dt_us/1000.0));
             }
             UI_Row
             {
                 ui_labelf("fps");
                 ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%6.2f", 1 / (dt / 1000000.0));
+                ui_labelf("%.2f", 1 / (dt / 1000000.0));
             }
             UI_Row
             {
@@ -599,12 +597,6 @@ entry_point(CmdLine *cmd_line)
                 ui_labelf("ui_build_box_count");
                 ui_spacer(ui_pct(1.0, 0.0));
                 ui_labelf("%lu", ui_state->build_box_count);
-            }
-            UI_Row
-            {
-                ui_labelf("last_mouse");
-                ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%.2f, %.2f", ui_state->last_mouse.x, ui_state->last_mouse.y);
             }
             UI_Row
             {
@@ -651,21 +643,19 @@ entry_point(CmdLine *cmd_line)
         //~ Draw game
 
         g_update_and_render(g_state->default_scene, events, dt, id);
-
         ui_end_build();
 
         /////////////////////////////////
         //~ Draw ui
+
         D_BucketScope(g_state->bucket_rect)
         {
             ui_draw(window);
             R_Rect2DInst *cursor = d_rect(r2f32p(mouse.x-15,mouse.y-15, mouse.x+15,mouse.y+15), v4f32(0,0.3,1,0.3), 15, 0.0, 0.7);
         }
+        // geo3d => rect in this order
         d_push_bucket(g_state->bucket_geo3d);
         d_sub_bucket(g_state->bucket_rect);
-
-        cpu_end_us = os_now_microseconds();
-        cpu_dt_us = cpu_end_us - cpu_start_us;
 
         /////////////////////////////////
         //~ End of frame
@@ -675,6 +665,9 @@ entry_point(CmdLine *cmd_line)
         r_window_end_frame(window, wnd);
         r_end_frame();
         arena_clear(frame_arena);
+
+        cpu_end_us = os_now_microseconds();
+        cpu_dt_us = cpu_end_us - cpu_start_us;
     }
 
     /////////////////////////////////

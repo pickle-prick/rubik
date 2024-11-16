@@ -5,7 +5,7 @@ G_NODE_CUSTOM_UPDATE(player_fn)
 {
     G_PlayerData *data = (G_PlayerData *)node->custom_data;
 
-    Vec2F32 mouse_delta = sub_2f32(ui_state->mouse, ui_state->last_mouse);
+    Vec2F32 mouse_delta = sub_2f32(g_state->cursor, g_state->last_cursor);
     Rng2F32 window_rect = os_client_rect_from_window(g_state->os_wnd);
     Vec2F32 window_dim = dim_2f32(window_rect);
 
@@ -141,10 +141,12 @@ g_scene_000_load()
                         g_push_parent(player);
                         G_Node *camera = g_node_camera3d_alloc(str8_lit("player_camera"));
                         {
-                            camera->pos          = v3f32(0,-3,0);
-                            camera->v.camera.fov = 0.25;
-                            camera->v.camera.zn  = 0.1f;
-                            camera->v.camera.zf  = 200.f;
+                            camera->pos                  = v3f32(0,-3,0);
+                            camera->v.camera.fov         = 0.25;
+                            camera->v.camera.zn          = 0.1f;
+                            camera->v.camera.zf          = 200.f;
+                            camera->v.camera.hide_cursor = 1;
+                            camera->v.camera.lock_cursor = 1;
                             // g_node_push_fn(scene->bucket->arena, camera, pov_camera_fn);
                         }
                         g_pop_parent();

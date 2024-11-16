@@ -180,6 +180,9 @@ internal Vec2F32        os_mouse_from_window(OS_Handle window);
 //~ rjf: @os_hooks Cursors (Implemented Per-OS)
 
 internal void           os_set_cursor(OS_Cursor cursor);
+internal void           os_hide_cursor(OS_Handle window);
+internal void           os_show_cursor(OS_Handle window);
+internal void           os_wrap_cursor(OS_Handle window, F32 dst_x, F32 dst_y);
 
 ////////////////////////////////
 //~ rjf: @os_hooks Native User-Facing Graphical Messages (Implemented Per-OS)
