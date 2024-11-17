@@ -6,34 +6,48 @@ G_NODE_CUSTOM_UPDATE(player_fn)
     G_PlayerData *data = (G_PlayerData *)node->custom_data;
 
     Vec2F32 mouse_delta = sub_2f32(g_state->cursor, g_state->last_cursor);
-    Rng2F32 window_rect = os_client_rect_from_window(g_state->os_wnd);
-    Vec2F32 window_dim = dim_2f32(window_rect);
 
     Vec3F32 f = {0};
     Vec3F32 s = {0};
     Vec3F32 u = {0};
     g_local_coord_from_node(node, &f, &s, &u);
 
-    Vec3F32 clean_f = f;
-    clean_f.y = 0;
-    Vec3F32 clean_s = s;
-    clean_s.y = 0;
-    Vec3F32 clean_u = u;
-    clean_u.x = 0;
-    clean_u.z = 0;
+    B32 is_player_camera = 0;
+    {
+        G_Key camera_key = g_key_from_string(g_top_seed(), str8_lit("player_camera"));
+        if(g_key_match(scene->active_camera->v->key, camera_key))
+        {
+            is_player_camera = 1;
+        }
+    }
 
-    // TODO: float percision issue when v_turn_speed is too high, fix it later
-    F32 h_turn_speed = 1.5f/(window_dim.x);
-    F32 v_turn_speed = 0.5f/(window_dim.y);
+    if(1)
+    {
 
-    // TODO: we may need to clamp the turns to 0-1
-    F32 v_turn = -mouse_delta.y * v_turn_speed;
-    F32 h_turn = mouse_delta.x * h_turn_speed;
+        Vec3F32 clean_f = f;
+        clean_f.y = 0;
+        Vec3F32 clean_s = s;
+        clean_s.y = 0;
+        Vec3F32 clean_u = u;
+        clean_u.x = 0;
+        clean_u.z = 0;
 
-    QuatF32 v_quat = make_rotate_quat_f32(clean_s, v_turn);
-    QuatF32 h_quat = make_rotate_quat_f32(v3f32(0,1,0), h_turn);
-    QuatF32 rot_quat = mul_quat_f32(v_quat,h_quat);
-    node->rot = mul_quat_f32(rot_quat, node->rot);
+        // TODO: float percision issue when v_turn_speed is too high, fix it later
+        F32 h_turn_speed = 1.5f/(g_state->window_dim.x);
+        F32 v_turn_speed = 0.5f/(g_state->window_dim.y);
+
+        // TODO: we may need to clamp the turns to 0-1
+        F32 v_turn = -mouse_delta.y * v_turn_speed;
+        F32 h_turn = -mouse_delta.x * h_turn_speed;
+
+        QuatF32 h_quat = make_rotate_quat_f32(v3f32(0, -1, 0), h_turn);
+        Vec3F32 s_after_h = mul_quat_f32_v3f32(h_quat, s);
+        // QuatF32 h_quat = make_indentity_quat_f32();
+        QuatF32 v_quat = make_rotate_quat_f32(s_after_h, v_turn);
+        // QuatF32 v_quat = make_indentity_quat_f32();
+        QuatF32 rot_quat = mul_quat_f32(v_quat,h_quat);
+        node->rot = mul_quat_f32(rot_quat, node->rot);
+    }
 
     // Check if player is grounded or not
     // Zero out force
@@ -67,6 +81,12 @@ G_NODE_CUSTOM_UPDATE(player_fn)
     { 
         move_dir = sub_3f32(move_dir, f);
     }
+    if(os_key_is_down(OS_Key_Space))
+    {
+        node->rot = make_indentity_quat_f32();
+    }
+
+    move_dir.y = 0;
 
     F32 velocity = 6.f;
     if(move_dir.x != 0 && move_dir.y != 0 && move_dir.z != 0) move_dir = normalize_3f32(move_dir);

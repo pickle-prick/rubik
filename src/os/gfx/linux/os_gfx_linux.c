@@ -532,6 +532,7 @@ os_key_is_down(OS_Key key)
         case OS_Key_S:     { keysym = XK_S; }break;
         case OS_Key_A:     { keysym = XK_A; }break;
         case OS_Key_D:     { keysym = XK_D; }break;
+        case OS_Key_Space: { keysym = XK_space; }break;
         default:           { InvalidPath; }break;
     }
     

@@ -388,7 +388,7 @@ g_node_camera3d_alloc(String8 string)
 
     G_Node *result = g_build_node_from_string(string);
     {
-        result->kind           = G_NodeKind_Camera3D;
+        result->kind = G_NodeKind_Camera3D;
     }
     return result;
 }
