@@ -28,6 +28,13 @@ g_scene_from_se_node(SE_Node* root)
             ret->polygon_mode = n->v.se_uint;
         }
 
+        if(str8_match(n->tag, str8_lit("global_light"), 0))
+        {
+            ret->global_light.x = se_f64_from_struct(n, str8_lit("x"));
+            ret->global_light.y = se_f64_from_struct(n, str8_lit("y"));
+            ret->global_light.z = se_f64_from_struct(n, str8_lit("z"));
+        }
+
         if(str8_match(n->tag, str8_lit("nodes"), 0))     
         {
             nodes = n;
@@ -218,6 +225,12 @@ g_scene_to_file(G_Scene *scene, String8 path)
             se_string(str8_lit("name"), scene->name);
             se_int(str8_lit("viewport_shading"), scene->viewport_shading);
             se_int(str8_lit("polygon_mode"), scene->polygon_mode);
+            SE_Struct(str8_lit("global_light"))
+            {
+                se_float(str8_lit("x"), scene->global_light.x);
+                se_float(str8_lit("y"), scene->global_light.y);
+                se_float(str8_lit("z"), scene->global_light.z);
+            }
         }
 
         // Generate nodes
@@ -446,7 +459,6 @@ g_model_from_gltf(Arena *arena, String8 gltf_path)
     cgltf_options opts = {0};
     cgltf_data *data;
     cgltf_result ret = cgltf_parse_file(&opts, (char *)gltf_path.str, &data);
-
 
     if(ret == cgltf_result_success)
     {
