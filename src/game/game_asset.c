@@ -1,3 +1,444 @@
+/////////////////////////////////
+// Scene serialization/deserialization
+
+internal G_Scene *
+g_scene_from_se_node(SE_Node* root)
+{
+    G_Scene *ret = g_scene_alloc();
+    Arena *arena = ret->arena;
+
+    SE_Node *nodes = 0;
+
+    // Parse scene basic info
+    // TODO: refactor this
+    for(SE_Node *n = root->first; n != 0; n = n->next)
+    {
+        if(str8_match(n->tag, str8_lit("name"), 0))     
+        {
+            ret->name = push_str8_copy(arena, n->v.se_string);
+        }
+
+        if(str8_match(n->tag, str8_lit("viewport_shading"), 0))     
+        {
+            ret->viewport_shading = n->v.se_uint;
+        }
+
+        if(str8_match(n->tag, str8_lit("polygon_mode"), 0))     
+        {
+            ret->polygon_mode = n->v.se_uint;
+        }
+
+        if(str8_match(n->tag, str8_lit("nodes"), 0))     
+        {
+            nodes = n;
+        }
+    }
+
+    if(nodes != 0)
+    {
+        G_Bucket_Scope(ret->bucket)
+        {
+            U64 total_push_count = 0;
+            U64 total_pop_count = 0;
+            for(SE_Node *n = nodes->first; n != 0; n = n->next)
+            {
+                String8 name      = se_string_from_struct(n, str8_lit("name"));
+                G_NodeKind kind   = se_u64_from_struct(n, str8_lit("kind"));
+                G_NodeFlags flags = se_u64_from_struct(n, str8_lit("flags"));
+                F64 animation_dt  = se_f64_from_struct(n, str8_lit("animation_dt"));
+
+                // Position
+                SE_Node *pos_senode = se_node_from_tag(n->first, str8_lit("pos"));
+                Vec3F32 pos = {0};
+                {
+                    pos.x = se_f64_from_struct(pos_senode, str8_lit("x"));
+                    pos.y = se_f64_from_struct(pos_senode, str8_lit("y"));
+                    pos.z = se_f64_from_struct(pos_senode, str8_lit("z"));
+                }
+
+                // Scale
+                SE_Node *scale_senode = se_node_from_tag(n->first, str8_lit("scale"));
+                Vec3F32 scale = {0};
+                {
+                    scale.x = se_f64_from_struct(scale_senode, str8_lit("x"));
+                    scale.y = se_f64_from_struct(scale_senode, str8_lit("y"));
+                    scale.z = se_f64_from_struct(scale_senode, str8_lit("z"));
+                }
+
+                // Rotation
+                SE_Node *rot_senode = se_node_from_tag(n->first, str8_lit("rot"));
+                Vec4F32 rot = {0};
+                {
+                    rot.x = se_f64_from_struct(rot_senode, str8_lit("x"));
+                    rot.y = se_f64_from_struct(rot_senode, str8_lit("y"));
+                    rot.z = se_f64_from_struct(rot_senode, str8_lit("z"));
+                    rot.w = se_f64_from_struct(rot_senode, str8_lit("w"));
+                }
+
+                // Allocate/fill info
+                G_Node *g_node = g_build_node_from_string(0, name);
+                g_node->name    = name;
+                g_node->kind    = kind;
+                g_node->flags   = flags;
+                g_node->pos     = pos;
+                g_node->scale   = scale;
+                g_node->rot     = rot;
+                g_node->anim_dt = animation_dt;
+
+                U64 push_count = se_u64_from_struct(n, str8_lit("push_count"));
+                U64 pop_count = se_u64_from_struct(n, str8_lit("pop_count"));
+                U64 children_count = se_u64_from_struct(n, str8_lit("children_count"));
+                for(U64 i = 0; i < pop_count; i++)
+                {
+                    g_pop_parent();
+                    total_pop_count++;
+                }
+
+                switch(kind)
+                {
+                    case G_NodeKind_Camera3D:
+                    {
+                        SE_Node *senode = se_node_from_tag(n->first, str8_lit("camera"));
+                        g_node->v.camera.fov = se_f64_from_struct(senode, str8_lit("fov"));
+                        g_node->v.camera.zn = se_f64_from_struct(senode, str8_lit("zn"));
+                        g_node->v.camera.zf = se_f64_from_struct(senode, str8_lit("zf"));
+                        g_node->v.camera.hide_cursor = se_b32_from_struct(senode, str8_lit("hide_cursor"));
+                        g_node->v.camera.lock_cursor = se_b32_from_struct(senode, str8_lit("lock_cursor"));
+
+                        B32 is_active = se_b32_from_struct(senode, str8_lit("is_active"));
+
+                        G_CameraNode *camera_node = push_array(arena, G_CameraNode, 1);
+                        camera_node->v = g_node;
+                        SLLQueuePush(ret->first_camera, ret->last_camera, camera_node);
+                        if(is_active)
+                        {
+                            ret->active_camera = camera_node;
+                        }
+                    }break;
+                    case G_NodeKind_MeshRoot:
+                    {
+                        SE_Node *mesh_node = se_node_from_tag(n->first, str8_lit("mesh"));
+                        U64 mesh_kind = se_u64_from_struct(mesh_node, str8_lit("kind"));
+                        String8 model_path = se_string_from_struct(mesh_node, str8_lit("path"));
+                        g_node->v.mesh_root.kind = mesh_kind;
+                        g_node->v.mesh_root.path = push_str8_copy(arena, model_path);
+
+                        g_push_parent(g_node);
+                        switch(mesh_kind)
+                        {
+                            case G_MeshRootKind_Box:
+                            {
+                                g_box_node(arena, name);
+                            }break;
+                            case G_MeshRootKind_Sphere:
+                            {
+                                g_sphere_node(arena, name);
+                            }break;
+                            case G_MeshRootKind_Capsule:
+                            {
+                                g_capsule_node(arena, name);
+                            }break;
+                            case G_MeshRootKind_Cylinder:
+                            {
+                                g_cylinder_node(arena, name);
+                            }break;
+                            case G_MeshRootKind_Model:
+                            {
+                                // TODO(k): cache models
+                                String8 model_directory = str8_chop_last_slash(model_path);
+                                G_Model *model;
+                                G_Path_Scope(model_directory)
+                                {
+                                    model = g_model_from_gltf(arena, model_path);
+                                }
+                                g_node_from_model(model, g_active_seed_key());
+                                g_node->skeleton_anims = model->anims; 
+                            }break;
+                            default:{InvalidPath;}break;
+                        }
+                        g_pop_parent();
+                    }break;
+                    default: {}break;
+                }
+
+                if(ret->root == 0) ret->root = g_node;
+
+                // Load functions
+                SE_Node *functions_node = se_node_from_tag(n->first, str8_lit("update_functions"));
+                for(SE_Node *sn = functions_node->first; sn != 0; sn = sn->next)
+                {
+                    AssertAlways(sn->kind == SE_NodeKind_String);
+                    String8 fn_name = sn->v.se_string;
+                    G_FunctionNode *fn = g_function_from_string(fn_name);
+                    g_node_push_fn(arena, g_node, fn->ptr, fn->alias);
+                }
+
+                if(children_count > 0)
+                {
+                    g_push_parent(g_node);
+                    total_push_count++;
+                }
+            }
+
+            // NOTE(k): pop remaining parents?
+            U64 rest_pop_count = total_push_count-total_pop_count;
+            for(U64 i = 0; i < rest_pop_count; i++)
+            {
+                g_pop_parent();
+            }
+        }
+    }
+    return ret;
+}
+
+internal G_Scene *
+g_scene_from_file(String8 path)
+{
+    Temp temp = scratch_begin(0,0);
+    SE_Node *se_node = se_yml_node_from_file(temp.arena, path);
+    G_Scene *ret = g_scene_from_se_node(se_node);
+    ret->path = push_str8_copy(ret->arena, path);
+    temp_end(temp);
+    return ret;
+}
+
+internal void *
+g_scene_to_file(G_Scene *scene, String8 path)
+{
+    String8List strs = {0};
+    Temp temp = scratch_begin(0,0);
+
+    se_build_begin(temp.arena);
+
+    SE_Node *root = se_struct(str8_zero());
+    SE_Parent(root)
+    {
+        // Generate base cfg (name, viewport_shading, global_light, polygon_mode)
+        {
+            se_string(str8_lit("name"), scene->name);
+            se_int(str8_lit("viewport_shading"), scene->viewport_shading);
+            se_int(str8_lit("polygon_mode"), scene->polygon_mode);
+        }
+
+        // Generate nodes
+        SE_Node *nodes = se_array(str8_lit("nodes"));
+        SE_Parent(nodes)
+        {
+            G_Key parent_key = {0};
+            G_Node *node = scene->root;
+
+            U64 level = 0;
+            S64 pass_level = -1;
+            U64 push_count = 0;
+            U64 pop_count = 0;
+            while(node != 0)
+            {
+                G_NodeRec rec = g_node_df_pre(node, 0);
+
+                // TODO(k): this is not the prettiest thing in the word
+                if(pass_level != -1 && level <= pass_level)
+                {
+                    push_count = 0;
+                    pop_count = pass_level - level;
+                    pass_level = -1;
+                }
+                if(pass_level == -1)
+                {
+                    if(node->parent)
+                    {
+                        parent_key = node->parent->key;
+                    }
+
+                    SE_Struct(str8_zero())
+                    {
+                        se_string(str8_lit("name"), node->name);
+                        se_uint(str8_lit("key"), node->key.u64[0]);
+                        se_uint(str8_lit("parent_key"), parent_key.u64[0]);
+                        se_uint(str8_lit("kind"), node->kind);
+                        se_uint(str8_lit("flags"), node->flags);
+                        se_uint(str8_lit("push_count"), push_count);
+                        se_uint(str8_lit("pop_count"), pop_count);
+                        U64 children_count = node->children_count;
+                        if(node->kind == G_NodeKind_MeshRoot) children_count = 0;
+                        se_uint(str8_lit("children_count"), children_count);
+                        se_float(str8_lit("animation_dt"), node->anim_dt);
+
+                        SE_Struct(str8_lit("pos"))
+                        {
+                            se_float(str8_lit("x"), node->pos.x);
+                            se_float(str8_lit("y"), node->pos.y);
+                            se_float(str8_lit("z"), node->pos.z);
+                        }
+                        SE_Struct(str8_lit("rot"))
+                        {
+                            se_float(str8_lit("x"), node->rot.x);
+                            se_float(str8_lit("y"), node->rot.y);
+                            se_float(str8_lit("z"), node->rot.z);
+                            se_float(str8_lit("w"), node->rot.w);
+                        }
+                        SE_Struct(str8_lit("scale"))
+                        {
+                            se_float(str8_lit("x"), node->scale.x);
+                            se_float(str8_lit("y"), node->scale.y);
+                            se_float(str8_lit("z"), node->scale.z);
+                        }
+
+                        SE_Array(str8_lit("update_functions"))
+                        {
+                            for(G_UpdateFnNode *n = node->first_update_fn; n != 0; n = n->next)
+                            {
+                                se_string(str8_zero(), n->name);
+                            }
+                        }
+
+                        if(node->kind == G_NodeKind_MeshRoot)
+                        {
+                            SE_Struct(str8_lit("mesh"))
+                            {
+                                se_uint(str8_lit("kind"), node->v.mesh_root.kind);
+                                se_string(str8_lit("path"), node->v.mesh_root.path);
+                            }
+                            // NOTE: we want to ignore its children
+                            pass_level = level;
+                        }
+
+                        if(node->kind == G_NodeKind_Camera3D)
+                        {
+                            SE_Struct(str8_lit("camera"))
+                            {
+                                se_float(str8_lit("fov"), node->v.camera.fov);
+                                se_float(str8_lit("zn"), node->v.camera.zn);
+                                se_float(str8_lit("zf"), node->v.camera.zf);
+                                se_boolean(str8_lit("hide_cursor"), node->v.camera.hide_cursor);
+                                se_boolean(str8_lit("lock_cursor"), node->v.camera.lock_cursor);
+                                se_boolean(str8_lit("is_active"), node == scene->active_camera->v);
+                            }
+                        }
+                    }
+                }
+
+                node = rec.next;
+                push_count = rec.push_count;
+                pop_count = rec.pop_count;
+                level += (push_count - pop_count);
+            }
+        }
+    }
+
+    se_yml_node_to_file(root, path);
+    se_build_end();
+    scratch_end(temp);
+}
+
+internal G_Scene *
+g_default_scene()
+{
+    Arena *arena = arena_alloc(.reserve_size = MB(64), .commit_size = MB(64));
+    G_Scene *scene = push_array(arena, G_Scene, 1);
+    {
+        scene->arena = arena;
+        scene->bucket = g_bucket_make(arena, 3000);
+    }
+
+    // Fill base info
+    scene->name             = str8_lit("default_scene");
+    scene->path             = str8_lit("./src/game/scenes/default.scene");
+    scene->viewport_shading = G_ViewportShadingKind_Wireframe;
+    scene->global_light     = v3f32(0,0,1);
+    scene->polygon_mode     = R_GeoPolygonKind_Fill;
+
+    G_Scene_Scope(scene)
+    {
+        G_Bucket_Scope(scene->bucket)
+        {
+            // Create the origin/world node
+            G_Node *root = g_build_node_from_string(0, str8_lit("root"));
+            root->pos = v3f32(0, 0, 0);
+            scene->root = root;
+
+            G_Parent_Scope(root)
+            {
+                G_Node *camera = g_build_node_from_string(0, str8_lit("editor_camera"));
+                {
+                    camera->kind         = G_NodeKind_Camera3D;
+                    camera->pos          = v3f32(0,-3,-3);
+                    camera->v.camera.fov = 0.25;
+                    camera->v.camera.zn  = 0.1f;
+                    camera->v.camera.zf  = 200.f;
+                    G_FunctionNode *fn = g_function_from_string(str8_lit("editor_camera_fn"));
+                    g_node_push_fn(scene->bucket->arena, camera, fn->ptr, fn->alias);
+                }
+                G_CameraNode *camera_node = push_array(arena, G_CameraNode, 1);
+                camera_node->v = camera;
+                DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
+                scene->active_camera = camera_node;
+
+                // Player
+                G_Node *player = g_build_node_from_stringf(0, "player");
+                {
+                    player->flags |= G_NodeFlags_NavigationRoot;
+                    player->pos = v3f32(6,-1.5,0);
+                    player->kind = G_NodeKind_MeshRoot;
+                    player->v.mesh_root.kind = G_MeshRootKind_Capsule;
+                    G_FunctionNode *fn = g_function_from_string(str8_lit("player_fn"));
+                    g_node_push_fn(arena, player, fn->ptr, fn->alias);
+
+                    G_Parent_Scope(player)
+                    {
+                        //- k: mesh
+                        g_capsule_node(arena, str8_lit("body"));
+                        //- k: camera
+                        G_Node *camera = g_build_node_from_stringf(0, "player_camera");
+                        camera->kind = G_NodeKind_Camera3D;
+                        {
+                            camera->pos                  = v3f32(0,-3,0);
+                            camera->v.camera.fov         = 0.25;
+                            camera->v.camera.zn          = 0.1f;
+                            camera->v.camera.zf          = 200.f;
+                            camera->v.camera.hide_cursor = 1;
+                            camera->v.camera.lock_cursor = 1;
+                        }
+                        G_CameraNode *camera_node = push_array(arena, G_CameraNode, 1);
+                        camera_node->v = camera;
+                        DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
+                    }
+                }
+
+                // Dummy1
+                {
+                    // TODO: cache models
+                    G_Model *m;
+                    String8 model_path = str8_lit("./models/dancing_stormtrooper/scene.gltf");
+                    String8 model_directory = str8_chop_last_slash(model_path);
+                    G_Path_Scope(model_directory)
+                    {
+                        m = g_model_from_gltf(scene->arena, model_path);
+                    }
+                    G_Node *dummy = g_build_node_from_stringf(0, "dummy1");
+                    dummy->kind             = G_NodeKind_MeshRoot;
+                    dummy->skeleton_anims   = m->anims;
+                    dummy->flags            = G_NodeFlags_NavigationRoot|G_NodeFlags_Animated|G_NodeFlags_AnimatedSkeleton;
+                    dummy->pos              = v3f32(6,0,0);
+                    dummy->v.mesh_root.kind = G_MeshRootKind_Model;
+                    dummy->v.mesh_root.path = push_str8_copy(arena, model_path);
+                    dummy->v.mesh_root.kind = G_MeshRootKind_Model;
+                    QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
+                    dummy->rot = mul_quat_f32(flip_y, dummy->rot);
+
+                    G_Parent_Scope(dummy)
+                    {
+                        g_node_from_model(m, g_active_seed_key());
+                    }
+                }
+            }
+        }
+    }
+    return scene;
+}
+
+/////////////////////////////////
+// GLTF2.0
+
 internal G_Model *
 g_model_from_gltf(Arena *arena, String8 gltf_path)
 {
@@ -5,40 +446,38 @@ g_model_from_gltf(Arena *arena, String8 gltf_path)
     cgltf_options opts = {0};
     cgltf_data *data;
     cgltf_result ret = cgltf_parse_file(&opts, (char *)gltf_path.str, &data);
-    G_Key model_key = g_key_from_string(g_top_seed(), gltf_path);
 
-    G_Seed_Scope(model_key)
+
+    if(ret == cgltf_result_success)
     {
-        if(ret == cgltf_result_success)
+        //- Load buffers
+        cgltf_options buf_ld_opts = {0};
+        cgltf_result buf_ld_ret = cgltf_load_buffers(&buf_ld_opts, data, (char *)gltf_path.str);
+        AssertAlways(buf_ld_ret == cgltf_result_success);
+        AssertAlways(data->scenes_count == 1);
+
+        //- Select the first scene (TODO: only load default scene for now)
+        cgltf_scene *root_scene = &data->scenes[0];
+        AssertAlways(root_scene->nodes_count == 1);
+        cgltf_node *root= root_scene->nodes[0];
+        model = g_mnode_from_gltf_node(arena, root, 0, 0, 1024);
+
+        //- Load skeleton animations after model is loaded
+        U64 anim_count = data->animations_count;
+        G_MeshSkeletonAnimation **anims = push_array(arena, G_MeshSkeletonAnimation*, anim_count);
+        for(U64 i = 0; i < anim_count; i++)
         {
-            //- Load buffers
-            cgltf_options buf_ld_opts = {0};
-            cgltf_result buf_ld_ret = cgltf_load_buffers(&buf_ld_opts, data, (char *)gltf_path.str);
-            AssertAlways(buf_ld_ret == cgltf_result_success);
-            AssertAlways(data->scenes_count == 1);
-
-            //- Select the first scene (TODO: only load default scene for now)
-            cgltf_scene *root_scene = &data->scenes[0];
-            AssertAlways(root_scene->nodes_count == 1);
-            cgltf_node *root= root_scene->nodes[0];
-            model = g_mnode_from_gltf_node(arena, root, 0, 0, 1024);
-
-            //- Load skeleton animations after model is loaded
-            U64 anim_count = data->animations_count;
-            G_MeshSkeletonAnimation **anims = push_array(arena, G_MeshSkeletonAnimation*, anim_count);
-            for(U64 i = 0; i < anim_count; i++)
-            {
-                anims[i] = g_skeleton_anim_from_gltf_animation(&data->animations[i]);
-            }
-            model->anim_count = anim_count;
-            model->anims = anims;
-
-            cgltf_free(data);
+            anims[i] = g_skeleton_anim_from_gltf_animation(&data->animations[i]);
         }
-        else
-        {
-            InvalidPath;
-        }
+        model->anim_count = anim_count;
+        model->anims = anims;
+        model->path = push_str8_copy(arena, gltf_path);
+
+        cgltf_free(data);
+    }
+    else
+    {
+        InvalidPath;
     }
     return model;
 }
@@ -46,7 +485,7 @@ g_model_from_gltf(Arena *arena, String8 gltf_path)
 internal G_Key
 g_key_from_gltf_node(cgltf_node *cn)
 {
-    return g_key_from_string(g_top_seed(), str8((U8*)(&cn), 8));
+    return g_key_from_string(g_key_zero(), str8((U8*)(&cn), 8));
 }
 
 internal G_ModelNode *
@@ -151,10 +590,10 @@ g_mnode_from_gltf_node(Arena *arena, cgltf_node *cn, G_ModelNode *parent, G_Mode
             G_Key key = g_key_from_string(mnode->key, name);
 
             G_ModelNode *mesh_node = push_array(arena, G_ModelNode, 1);
-            mesh_node->key         = key;
-            mesh_node->name        = name;
-            mesh_node->xform       = mat_4x4f32(1.0f);
-            mesh_node->is_mesh     = 1;
+            mesh_node->key               = key;
+            mesh_node->name              = name;
+            mesh_node->xform             = mat_4x4f32(1.0f);
+            mesh_node->is_mesh_primitive = 1;
 
             mesh_node->parent      = mnode;
             DLLPushBack(mnode->first, mnode->last, mesh_node);
@@ -166,9 +605,13 @@ g_mnode_from_gltf_node(Arena *arena, cgltf_node *cn, G_ModelNode *parent, G_Mode
             // Texture
             // TODO(k): implement full PBR rendering
             {
-                Temp temp = scratch_begin(0,0);
+                Temp temp = scratch_begin(&arena,1);
                 cgltf_texture *tex = primitive->material->pbr_metallic_roughness.base_color_texture.texture;
-                String8 path = push_str8_cat(temp.arena, g_top_path(), str8_cstring(tex->image->uri));
+
+                String8List path_parts = {0};
+                str8_list_push(temp.arena, &path_parts, g_top_path());
+                str8_list_push(temp.arena, &path_parts, str8_cstring(tex->image->uri));
+                String8 path = str8_path_list_join_by_style(temp.arena, &path_parts, PathStyle_Relative);
 
                 int x,y,n;
                 U8 *image_data = stbi_load((char*)path.str, &x, &y, &n, 4);
@@ -261,12 +704,12 @@ g_mnode_from_gltf_node(Arena *arena, cgltf_node *cn, G_ModelNode *parent, G_Mode
 }
 
 internal G_Node *
-g_node_from_model(G_Model *model)
+g_node_from_model(G_Model *model, G_Key seed_key)
 {
     G_Bucket *bucket = g_top_bucket();
     Arena *arena = bucket->arena;
 
-    G_Key key = g_key_merge(g_top_seed(), model->key);
+    G_Key key = g_key_merge(seed_key, model->key);
     G_Node *n = 0;
 
     U64 slot_idx = key.u64[0] % bucket->node_hash_table_size;
@@ -280,7 +723,7 @@ g_node_from_model(G_Model *model)
     }
     if(n != 0) { return n; }
 
-    n = g_build_node_from_key(key);
+    n = g_build_node_from_key(0, key);
 
     n->name = push_str8_copy(arena, model->name);
     model->rc++; // TODO: make use of rc
@@ -288,10 +731,10 @@ g_node_from_model(G_Model *model)
     // translation, rotation, scale
     g_trs_from_matrix(&model->xform, &n->pos, &n->rot, &n->scale);
 
-    B32 is_mesh_group = model->is_mesh_group;
-    B32 is_mesh       = model->is_mesh;
-    B32 is_joint      = model->is_joint;
-    B32 is_skin       = model->is_skin; // root joint
+    B32 is_mesh_group     = model->is_mesh_group;
+    B32 is_mesh_primitive = model->is_mesh_primitive;
+    B32 is_joint          = model->is_joint;
+    B32 is_skin           = model->is_skin; // root joint
 
     if(is_mesh_group)
     {
@@ -300,27 +743,28 @@ g_node_from_model(G_Model *model)
         n->v.mesh_grp.joint_count  = model->joint_count;
         n->v.mesh_grp.joints       = push_array(arena, G_Node*, model->joint_count);
         n->v.mesh_grp.joint_xforms = push_array(arena, Mat4x4F32, model->joint_count);
-        g_node_push_fn(arena, n, mesh_grp_fn);
+        G_FunctionNode *fn = g_function_from_string(str8_lit("mesh_grp_fn"));
+        g_node_push_fn(arena, n, fn->ptr, fn->alias);
 
         for(U64 i = 0; i < model->joint_count; i++)
         {
-            n->v.mesh_grp.joints[i] = g_node_from_model(model->joints[i]);
+            n->v.mesh_grp.joints[i] = g_node_from_model(model->joints[i], seed_key);
         }
         n->v.mesh_grp.root_joint = n->v.mesh_grp.joints[0];
     }
 
-    if(is_mesh)
+    if(is_mesh_primitive)
     {
-        n->kind              = G_NodeKind_Mesh;
-        n->v.mesh.vertices   = model->vertices;
-        n->v.mesh.indices    = model->indices;
-        n->v.mesh.albedo_tex = model->albedo_tex;
+        n->kind                        = G_NodeKind_MeshPrimitive;
+        n->v.mesh_primitive.vertices   = model->vertices;
+        n->v.mesh_primitive.indices    = model->indices;
+        n->v.mesh_primitive.albedo_tex = model->albedo_tex;
     }
 
     if(is_joint)
     {
         n->kind = G_NodeKind_MeshJoint;
-        n->v.joint.inverse_bind_matrix = model->inverse_bind_matrix;
+        n->v.mesh_joint.inverse_bind_matrix = model->inverse_bind_matrix;
     }
 
     if(is_skin)
@@ -330,7 +774,10 @@ g_node_from_model(G_Model *model)
 
     G_Parent_Scope(n)
     {
-        for(G_ModelNode *c = model->first; c != 0; c = c->next) { g_node_from_model(c); }
+        for(G_ModelNode *c = model->first; c != 0; c = c->next)
+        {
+            g_node_from_model(c, seed_key);
+        }
     }
     return n;
 }
@@ -375,7 +822,7 @@ g_skeleton_anim_from_gltf_animation(cgltf_animation *cgltf_anim)
             default:                                    { InvalidPath; }break;
         }
 
-        G_Key target_key = g_key_from_string(g_top_seed(), str8((U8*)(&channel->target_node), 8));
+        G_Key target_key = g_key_from_gltf_node(channel->target_node);
 
         // Timestamps
         cgltf_accessor *input_accessor = sampler->input;
@@ -1029,3 +1476,122 @@ g_mesh_primitive_capsule(Arena *arena, R_Vertex **vertices_out, U64 *vertices_co
     *indices_out = indices;
     *indices_count_out = indice_count;
 }
+
+/////////////////////////////////
+// Node building helpers
+
+internal G_Node *
+g_box_node(Arena *arena, String8 string)
+{
+    Temp temp = scratch_begin(&arena,1);
+
+    R_Vertex *vertices_src = 0;
+    U64 vertices_count     = 0;
+    U32 *indices_src       = 0;
+    U64 indices_count      = 0;
+    g_mesh_primitive_box(temp.arena, v3f32(1,1,1), 2,2,2, &vertices_src, &vertices_count, &indices_src, &indices_count);
+
+    G_Node *n = g_build_node_from_stringf(0, "primitive");
+    n->kind                      = G_NodeKind_MeshPrimitive;
+    n->v.mesh_primitive.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
+    n->v.mesh_primitive.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
+    scratch_end(temp);
+    return n;
+}
+
+internal G_Node *
+g_sphere_node(Arena *arena, String8 string)
+{
+    Temp temp = scratch_begin(&arena,1);
+
+    R_Vertex *vertices_src = 0;
+    U64 vertices_count     = 0;
+    U32 *indices_src       = 0;
+    U64 indices_count      = 0;
+    g_mesh_primitive_sphere(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 0.5, 0.5, 30, 8, 0);
+
+    G_Node *n = g_build_node_from_stringf(0, "primitive");
+    n->kind                      = G_NodeKind_MeshPrimitive;
+    n->v.mesh_primitive.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
+    n->v.mesh_primitive.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
+
+    scratch_end(temp);
+    return n;
+}
+
+internal G_Node *
+g_cylinder_node(Arena *arena, String8 string)
+{
+    Temp temp = scratch_begin(&arena,1);
+
+    R_Vertex *vertices_src = 0;
+    U64 vertices_count     = 0;
+    U32 *indices_src       = 0;
+    U64 indices_count      = 0;
+    g_mesh_primitive_cylinder(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 0.5, 1, 30, 8, 1, 1);
+
+    G_Node *n = g_build_node_from_stringf(0, "primitive");
+    n->kind                      = G_NodeKind_MeshPrimitive;
+    n->v.mesh_primitive.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
+    n->v.mesh_primitive.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
+
+    scratch_end(temp);
+    return n;
+}
+
+internal G_Node *
+g_capsule_node(Arena *arena, String8 string)
+{
+    Temp temp = scratch_begin(&arena,1);
+
+    R_Vertex *vertices_src = 0;
+    U64 vertices_count     = 0;
+    U32 *indices_src       = 0;
+    U64 indices_count      = 0;
+    g_mesh_primitive_capsule(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 0.5, 2.5, 30, 8);
+
+    G_Node *n = g_build_node_from_stringf(0, "primitive");
+    n->kind                      = G_NodeKind_MeshPrimitive;
+    n->v.mesh_primitive.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
+    n->v.mesh_primitive.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
+
+    scratch_end(temp);
+}
+
+// internal G_Node *
+// g_n2d_anim_sprite2d_from_spritesheet(Arena *arena, String8 string, G_SpriteSheet2D *spritesheet2d) {
+//     G_Node *result = g_build_node2d_from_string(arena, string);
+//     result->kind = G_NodeKind_AnimatedSprite2D;
+// 
+//     U64 anim2d_hash_table_size = 3000;
+//     G_Animation2DHashSlot *anim2d_hash_table = push_array(arena, G_Animation2DHashSlot, anim2d_hash_table_size);
+// 
+//     for(U64 i = 0; i < spritesheet2d->tag_count; i++) {
+//         G_Sprite2D_FrameTag *tag = &spritesheet2d->tags[i];
+//         U64 animation_key = g_hash_from_string(5381, tag->name);
+//         U64 slot_idx = animation_key % anim2d_hash_table_size;
+// 
+//         G_Animation2D *anim2d = push_array(arena, G_Animation2D, 1);
+// 
+//         F32 total_duration = 0;
+//         U64 frame_count = tag->to - tag->from + 1;
+//         G_Sprite2D_Frame *first_frame = spritesheet2d->frames + tag->from;
+//         for(U64 frame_idx = 0; frame_idx < frame_count; frame_idx++) {
+//             total_duration += (first_frame+frame_idx)->duration;
+//         }
+// 
+//         anim2d->key         = animation_key;
+//         anim2d->frames      = first_frame;
+//         anim2d->frame_count = frame_count;
+//         anim2d->duration    = total_duration;
+//         DLLPushBack_NP(anim2d_hash_table[slot_idx].first, anim2d_hash_table[slot_idx].last, anim2d, hash_next, hash_prev);
+//         AssertAlways(total_duration > 0);
+//     }
+// 
+//     result->anim_sprite2d.flip_h      = 0;
+//     result->anim_sprite2d.flip_v      = 0;
+//     result->anim_sprite2d.speed_scale = 1.0f;
+//     result->anim_sprite2d.anim2d_hash_table_size = anim2d_hash_table_size;
+//     result->anim_sprite2d.anim2d_hash_table = anim2d_hash_table;
+//     return result;
+// }

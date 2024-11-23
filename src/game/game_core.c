@@ -119,6 +119,9 @@ g_init(OS_Handle os_wnd)
         g_state->cfg_ui_debug_palettes[G_PaletteCode_DropSiteOverlay].border     = current->colors[RD_ThemeColor_DropSiteOverlay];
     }
 
+    g_state->function_hash_table_size = 1000;
+    g_state->function_hash_table = push_array(arena, G_FunctionSlot, g_state->function_hash_table_size);
+
     G_InitStacks(g_state)
     G_InitStackNils(g_state)
 }
@@ -135,6 +138,21 @@ g_key_from_string(G_Key seed_key, String8 string)
 }
 
 internal G_Key
+g_active_seed_key(void)
+{
+    G_Key key = g_key_zero();
+    for(G_Node *n = g_top_parent(); n != 0; n = n->parent)
+    {
+        if(!g_key_match(g_key_zero(), n->key))
+        {
+            key = n->key;
+            break;
+        }
+    }
+    return key;
+}
+
+internal G_Key
 g_key_merge(G_Key a, G_Key b)
 {
     return g_key_from_string(a, str8((U8*)(&b), 8));
@@ -147,9 +165,15 @@ g_hash_from_string(U64 seed, String8 string)
     return result;
 }
 
-internal B32 g_key_match(G_Key a, G_Key b) { return a.u64[0] == b.u64[0]; }
+internal B32 g_key_match(G_Key a, G_Key b)
+{
+    return a.u64[0] == b.u64[0];
+}
 
-internal G_Key g_key_zero() { return (G_Key){0}; }
+internal G_Key g_key_zero()
+{
+    return (G_Key){0}; 
+}
 
 /////////////////////////////////
 // Bucket
@@ -182,14 +206,6 @@ g_set_active_key(G_Key key)
 }
 
 internal G_Node *
-g_node_from_string(String8 string)
-{
-    G_Key seed = g_top_seed();
-    G_Key key = g_key_from_string(seed, string);
-    return g_node_from_key(key);
-}
-
-internal G_Node *
 g_node_from_key(G_Key key)
 {
     G_Node *result = 0;
@@ -204,6 +220,41 @@ g_node_from_key(G_Key key)
         }
     }
     return result;
+}
+
+internal void 
+g_register_function(String8 string, void *ptr)
+{
+    G_Key key = g_key_from_string(g_key_zero(), string);
+    G_FunctionNode *node = push_array(g_state->arena, G_FunctionNode, 1);
+    {
+        node->key   = key;
+        node->alias = push_str8_copy(g_state->arena, string);
+        node->ptr   = ptr;
+    }
+
+    U64 slot_idx = key.u64[0] % g_state->function_hash_table_size;
+    G_FunctionSlot *slot = &g_state->function_hash_table[slot_idx];
+    DLLPushBack(slot->first, slot->last, node);
+}
+
+internal G_FunctionNode *
+g_function_from_string(String8 string)
+{
+    G_FunctionNode *ret = 0;
+    G_Key key = g_key_from_string(g_key_zero(), string);
+    U64 slot_idx = key.u64[0] % g_state->function_hash_table_size;
+    G_FunctionSlot *slot = &g_state->function_hash_table[slot_idx];
+
+    for(G_FunctionNode *n = slot->first; n != 0; n = n->next)
+    {
+        if(g_key_match(n->key, key))
+        {
+            ret = n;
+            break;
+        }
+    }
+    return ret;
 }
 
 /////////////////////////////////
@@ -322,37 +373,40 @@ g_node_from_key(G_Key key)
 // Node build api
 
 internal G_Node *
-g_build_node_from_string(String8 string) {
+g_build_node_from_string(G_NodeFlags flags, String8 string) {
     Arena *arena = g_top_bucket()->arena;
-    G_Key key = g_key_from_string(g_top_seed(), string);
-    G_Node *node = g_build_node_from_key(key);
+    G_Key key = g_key_from_string(g_active_seed_key(), string);
+    G_Node *node = g_build_node_from_key(flags, key);
     node->name = push_str8_copy(arena, string);
     return node;
 }
 
 internal G_Node *
-g_build_node_from_stringf(char *fmt, ...) {
+g_build_node_from_stringf(G_NodeFlags flags, char *fmt, ...) {
     Temp scratch = scratch_begin(0,0);
     va_list args;
     va_start(args, fmt);
     String8 string = push_str8fv(scratch.arena, fmt, args);
     va_end(args);
-    G_Node *ret = g_build_node_from_string(string);
+    G_Node *ret = g_build_node_from_string(flags, string);
     scratch_end(scratch);
     return ret;
 }
 
 internal G_Node *
-g_build_node_from_key(G_Key key) {
+g_build_node_from_key(G_NodeFlags flags, G_Key key) {
     G_Node *parent = g_top_parent();
     G_Bucket *bucket = g_top_bucket();
     Arena *arena = bucket->arena;
 
+    // TODO(k): reuse free node
     G_Node *result = push_array(arena, G_Node, 1);
 
     // Fill info
     {
         result->key             = key;
+        // TODO: make a flag stack
+        result->flags           = flags;
         result->pos             = v3f32(0,0,0);
         result->pre_pos_delta   = v3f32(0,0,0);
         result->pst_pos_delta   = v3f32(0,0,0);
@@ -363,7 +417,6 @@ g_build_node_from_key(G_Key key) {
         result->pre_scale_delta = v3f32(0,0,0);
         result->pst_scale_delta = v3f32(1,1,1);
         result->parent          = parent;
-        g_node_push_fn(arena, result, base_fn);
     }
 
     // Insert to the bucket
@@ -379,70 +432,6 @@ g_build_node_from_key(G_Key key) {
     }
     return result;
 }
-
-internal G_Node *
-g_node_camera3d_alloc(String8 string)
-{
-    G_Bucket *bucket = g_top_bucket();
-    Arena *arena = bucket->arena;
-
-    G_Node *result = g_build_node_from_string(string);
-    {
-        result->kind = G_NodeKind_Camera3D;
-    }
-    return result;
-}
-
-internal G_Node *
-g_node_mesh_inst3d_alloc(String8 string) 
-{
-    G_Bucket *bucket = g_top_bucket();
-    Arena *arena = bucket->arena;
-
-    G_Node *result = g_build_node_from_string(string);
-    {
-        result->kind = G_NodeKind_Mesh;
-    }
-    return result;
-}
-
-// internal G_Node *
-// g_n2d_anim_sprite2d_from_spritesheet(Arena *arena, String8 string, G_SpriteSheet2D *spritesheet2d) {
-//     G_Node *result = g_build_node2d_from_string(arena, string);
-//     result->kind = G_NodeKind_AnimatedSprite2D;
-// 
-//     U64 anim2d_hash_table_size = 3000;
-//     G_Animation2DHashSlot *anim2d_hash_table = push_array(arena, G_Animation2DHashSlot, anim2d_hash_table_size);
-// 
-//     for(U64 i = 0; i < spritesheet2d->tag_count; i++) {
-//         G_Sprite2D_FrameTag *tag = &spritesheet2d->tags[i];
-//         U64 animation_key = g_hash_from_string(5381, tag->name);
-//         U64 slot_idx = animation_key % anim2d_hash_table_size;
-// 
-//         G_Animation2D *anim2d = push_array(arena, G_Animation2D, 1);
-// 
-//         F32 total_duration = 0;
-//         U64 frame_count = tag->to - tag->from + 1;
-//         G_Sprite2D_Frame *first_frame = spritesheet2d->frames + tag->from;
-//         for(U64 frame_idx = 0; frame_idx < frame_count; frame_idx++) {
-//             total_duration += (first_frame+frame_idx)->duration;
-//         }
-// 
-//         anim2d->key         = animation_key;
-//         anim2d->frames      = first_frame;
-//         anim2d->frame_count = frame_count;
-//         anim2d->duration    = total_duration;
-//         DLLPushBack_NP(anim2d_hash_table[slot_idx].first, anim2d_hash_table[slot_idx].last, anim2d, hash_next, hash_prev);
-//         AssertAlways(total_duration > 0);
-//     }
-// 
-//     result->anim_sprite2d.flip_h      = 0;
-//     result->anim_sprite2d.flip_v      = 0;
-//     result->anim_sprite2d.speed_scale = 1.0f;
-//     result->anim_sprite2d.anim2d_hash_table_size = anim2d_hash_table_size;
-//     result->anim_sprite2d.anim2d_hash_table = anim2d_hash_table;
-//     return result;
-// }
 
 /////////////////////////////////
 // Node Type Functions
@@ -544,10 +533,11 @@ g_node_delta_commit(G_Node *node)
 }
 
 internal void
-g_node_push_fn(Arena *arena, G_Node *n, G_NodeCustomUpdateFunctionType *fn)
+g_node_push_fn(Arena *arena, G_Node *n, G_NodeCustomUpdateFunctionType *fn, String8 name)
 {
     G_UpdateFnNode *fn_node = push_array(arena, G_UpdateFnNode, 1);
     fn_node->f = fn;
+    fn_node->name = push_str8_copy(arena, name);
     DLLPushBack(n->first_update_fn, n->last_update_fn, fn_node);
 }
 
@@ -621,11 +611,12 @@ G_NODE_CUSTOM_UPDATE(base_fn)
             node->anim_dt -= anim->duration;
         }
 
+        G_Key seed_key = node->key;
         for(U64 i = 0; i < anim->spline_count; i++)
         {
             G_MeshSkeletonAnimSpline *spline = &anim->splines[i];
             G_Key target_key_pre = spline->target_key;
-            G_Key target_key_pst = g_key_merge(node->key, target_key_pre);
+            G_Key target_key_pst = g_key_merge(seed_key, target_key_pre);
             G_Node *target = 0;
             G_Bucket_Scope(bucket)
             {
@@ -671,22 +662,6 @@ G_NODE_CUSTOM_UPDATE(base_fn)
                 }break;
                 default: {}break;
             }
-        }
-    }
-}
-
-G_NODE_CUSTOM_UPDATE(mesh_grp_fn)
-{
-    if(node->v.mesh_grp.is_skinned)
-    {
-        for(U64 i = 0; i < node->v.mesh_grp.joint_count; i++)
-        {
-            G_Node *joint_node = node->v.mesh_grp.joints[i];
-            Mat4x4F32 joint_xform = joint_node->v.joint.inverse_bind_matrix;
-            joint_xform = mul_4x4f32(joint_node->fixed_xform, joint_xform);
-            // NOTE(k): we can either set the root joint float or we multiply with the inverse of mesh's global transform
-            // joint_xform = mul_4x4f32(inverse_4x4f32(node->fixed_xform), joint_xform);
-            node->v.mesh_grp.joint_xforms[i] = joint_xform;
         }
     }
 }
@@ -1041,6 +1016,13 @@ internal void g_end(void)
 {
     g_pop_bucket();
     g_pop_scene();
+
+    G_Scene *s = g_state->first_to_free_scene;
+    for(G_Scene *s = g_state->first_to_free_scene; s != 0; s = g_state->first_to_free_scene)
+    {
+        SLLStackPop(g_state->first_to_free_scene);
+        SLLStackPush(g_state->first_free_scene, s);
+    }
 }
 
 /////////////////////////////////
@@ -1076,4 +1058,27 @@ g_trs_from_matrix(Mat4x4F32 *m, Vec3F32 *trans, QuatF32 *rot, Vec3F32 *scale)
         }
     };
     *rot = quat_f32_from_4x4f32(rot_m);
+}
+
+/////////////////////////////////
+// Scene creation and destruction
+
+internal G_Scene *
+g_scene_alloc()
+{
+    Arena *arena = 0;
+    G_Scene *scene = 0;
+    if(g_state->first_free_scene == 0)
+    {
+        arena = arena_alloc();
+    }
+    else
+    {
+        arena = g_state->first_free_scene->arena;
+        arena_clear(arena);
+    }
+    scene = push_array(arena, G_Scene, 1);
+    scene->arena = arena;
+    scene->bucket = g_bucket_make(arena, 1000);
+    return scene;
 }

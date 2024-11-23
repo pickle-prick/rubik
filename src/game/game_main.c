@@ -21,11 +21,12 @@
 #include "font_cache/font_cache.h"
 #include "draw/draw.h"
 #include "ui/ui_inc.h"
+#include "serialize/serialize_inc.h"
 #include "./game_core.h"
 #include "./game_ui.h"
 #include "./game_asset.h"
 #include "./game.h"
-#include "./scenes/scene_inc.h"
+#include "./scenes/scenes_inc.h"
 
 // [c]
 #include "base/base_inc.c"
@@ -35,11 +36,12 @@
 #include "font_cache/font_cache.c"
 #include "draw/draw.c"
 #include "ui/ui_inc.c"
+#include "serialize/serialize_inc.c"
 #include "./game_core.c"
 #include "./game_ui.c"
 #include "./game_asset.c"
 #include "./game.c"
-#include "./scenes/scene_inc.c"
+#include "./scenes/scenes_inc.c"
 
 internal void
 ui_draw(OS_Handle os_wnd)
@@ -359,16 +361,16 @@ entry_point(CmdLine *cmd_line)
     UI_State *ui = ui_state_alloc();
     ui_select_state(ui);
 
-    // TODO: Testing for now, should wrap into some kind of struct
-    TxtPt cursor = {0};
-    TxtPt mark   = {0};
-    U8 edit_buffer[30] = "test_str";
-    // TODO: is this size per line
-    U64 edit_string_size_out[] = {0};
-
+    // Init game state
     g_init(window);
-    G_Scene *default_scene = g_scene_000_load();
-    g_state->default_scene = default_scene;
+    // Load functions
+    for(U64 i = 0; i < ArrayCount(g_scenes_fn_table); i++)
+    {
+        g_register_function(g_scenes_fn_table[i].name, g_scenes_fn_table[i].ptr);
+    }
+    // G_Scene *default_scene = g_scene_from_file(str8_lit("./src/game/scenes/default.scene"));
+    G_Scene *default_scene = g_default_scene();
+    g_state->active_scene = default_scene;
 
     B32 window_should_close = 0;
     while(!window_should_close)
@@ -612,25 +614,6 @@ entry_point(CmdLine *cmd_line)
             }
             UI_Row
             {
-                ui_labelf("name1");
-                ui_spacer(ui_pct(1.0, 0.0));
-                UI_Flags(UI_BoxFlag_ClickToFocus)
-                {
-                    ui_line_edit(&cursor, &mark,
-                            edit_buffer, sizeof(edit_buffer), edit_string_size_out,
-                            str8_lit("test"), str8_lit("name1"));
-                }
-            }
-            UI_Row
-            {
-                ui_labelf("name2");
-                ui_spacer(ui_pct(1.0, 0.0));
-                if(ui_committed(ui_line_edit(&cursor, &mark,
-                                edit_buffer, sizeof(edit_buffer), edit_string_size_out,
-                                str8(edit_buffer, edit_string_size_out[0]), str8_lit("name2")))) {}
-            }
-            UI_Row
-            {
                 ui_labelf("geo3d hot id");
                 ui_spacer(ui_pct(1.0, 0.0));
                 ui_labelf("%lu", id);
@@ -642,7 +625,7 @@ entry_point(CmdLine *cmd_line)
         /////////////////////////////////
         //~ Draw game
 
-        g_update_and_render(g_state->default_scene, events, dt, id);
+        g_update_and_render(g_state->active_scene, events, dt, id);
         ui_end_build();
 
         /////////////////////////////////

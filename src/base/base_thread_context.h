@@ -7,12 +7,12 @@
 typedef struct TCTX TCTX;
 struct TCTX
 {
-  Arena *arenas[3];
+    Arena *arenas[3];
 
-  char thread_name[32];
+    char thread_name[32];
 
-  char *file_name;
-  U64 line_number;
+    char *file_name;
+    U64 line_number;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////

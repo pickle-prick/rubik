@@ -205,6 +205,7 @@ internal String8 backslashed_from_str8(Arena *arena, String8 string);
 
 internal B32 str8_match(String8 a, String8 b, StringMatchFlags flags);
 internal U64 str8_find_needle(String8 string, U64 start_pos, String8 needle, StringMatchFlags flags);
+internal B32 str8_starts_with(String8 string, String8 start, StringMatchFlags flags);
 internal B32 str8_ends_with(String8 string, String8 end, StringMatchFlags flags);
 
 ////////////////////////////////
@@ -372,7 +373,8 @@ internal void    str8_serial_push_string(Arena *arena, String8List *srl, String8
 
 internal U64    str8_deserial_read(String8 string, U64 off, void *read_dst, U64 read_size, U64 granularity);
 internal U64    str8_deserial_find_first_match(String8 string, U64 off, U16 scan_val);
-internal void * str8_deserial_get_raw_ptr(String8 string, U64 off, U64 size);internal U64 str8_deserial_read_cstr(String8 string, U64 off, String8 *cstr_out);
+internal void * str8_deserial_get_raw_ptr(String8 string, U64 off, U64 size);
+internal U64    str8_deserial_read_cstr(String8 string, U64 off, String8 *cstr_out);
 internal U64    str8_deserial_read_windows_utf16_string16(String8 string, U64 off, String16 *str_out);
 internal U64    str8_deserial_read_block(String8 string, U64 off, U64 size, String8 *block_out);
 #define str8_deserial_read_array(string, off, ptr, count) str8_deserial_read((string), (off), (ptr), sizeof(*(ptr))*(count), sizeof(*(ptr)))

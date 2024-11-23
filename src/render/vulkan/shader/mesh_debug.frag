@@ -24,18 +24,15 @@ vec3 red   = vec3(1.,0.271,0.271);
 vec3 green = vec3(0.,0.416,0.404);
 vec3 blue  = vec3(0.,0.192,0.38);
 
-//////////////////////////////
-//~ Transform
-
-mat4 translate(vec3 t)
-{
-    return mat4(
-        1.0, 0.0, 0.0,   0,
-        0.0, 1.0, 0.0,   0,
-        0.0, 0.0, 1.0,   0,
-        t.x, t.y, t.z, 1.0
-    );
-}
+// mat4 translate(vec3 t)
+// {
+//     return mat4(
+//         1.0, 0.0, 0.0,   0,
+//         0.0, 1.0, 0.0,   0,
+//         0.0, 0.0, 1.0,   0,
+//         t.x, t.y, t.z, 1.0
+//     );
+// }
 
 float ndc_depth(vec3 pos)
 {

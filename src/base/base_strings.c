@@ -323,10 +323,19 @@ str8_find_needle(String8 string, U64 start_pos, String8 needle, StringMatchFlags
 }
 
 internal B32
-str8_ends_with(String8 string, String8 end, StringMatchFlags flags){
-  String8 postfix = str8_postfix(string, end.size);
-  B32 is_match = str8_match(end, postfix, flags);
-  return is_match;
+str8_starts_with(String8 string, String8 start, StringMatchFlags flags)
+{
+    String8 prefix = str8_prefix(string, start.size);
+    B32 is_match = str8_match(start, prefix, flags);
+    return is_match;
+}
+
+internal B32
+str8_ends_with(String8 string, String8 end, StringMatchFlags flags)
+{
+    String8 postfix = str8_postfix(string, end.size);
+    B32 is_match = str8_match(end, postfix, flags);
+    return is_match;
 }
 
 ////////////////////////////////

@@ -1,36 +1,49 @@
-#ifndef BASE_AREAN_H
-#define BASE_AREAN_H
+// Copyright (c) 2024 Epic Games Tools
+// Licensed under the MIT license (https://opensource.org/license/mit/)
 
-typedef U32 ArenaFlags;
-enum {
-        ArenaFlag_NoChain    = (1<<0),
-        ArenaFlag_LargePages = (1<<1),
+#ifndef BASE_ARENA_H
+#define BASE_ARENA_H
+
+////////////////////////////////
+//~ rjf: Constants
+
+#define ARENA_HEADER_SIZE 128
+
+////////////////////////////////
+//~ rjf: Types
+
+typedef U64 ArenaFlags;
+enum
+{
+  ArenaFlag_NoChain    = (1<<0),
+  ArenaFlag_LargePages = (1<<1),
 };
 
 typedef struct ArenaParams ArenaParams;
 struct ArenaParams
 {
-        ArenaFlags flags;
-        U64 reserve_size;
-        U64 commit_size;
-        // void *optional_backing_buffer;
+  ArenaFlags flags;
+  U64 reserve_size;
+  U64 commit_size;
+  void *optional_backing_buffer;
 };
 
-#define ARENA_HEADER_SIZE 64
 typedef struct Arena Arena;
-struct Arena {
-        Arena *prev;
-        Arena *curr;
-
-        U64 res_size;
-        U32 cmt_size;
-        ArenaFlags flags;
-
-        U64 res;
-        U64 cmt;
-
-        U64 base_pos;
-        U64 pos;
+struct Arena
+{
+  Arena *prev;    // previous arena in chain
+  Arena *current; // current arena in chain
+  ArenaFlags flags;
+  U64 cmt_size;
+  U64 res_size;
+  U64 base_pos;
+  U64 pos;
+  U64 cmt;
+  U64 res;
+#if ARENA_FREE_LIST
+  U64 free_size;
+  Arena *free_last;
+#endif
 };
 StaticAssert(sizeof(Arena) <= ARENA_HEADER_SIZE, arena_header_size_check);
 
@@ -41,15 +54,21 @@ struct Temp
   U64 pos;
 };
 
-/////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////
+//~ rjf: Global Defaults
+
+global U64 arena_default_reserve_size = MB(64);
+global U64 arena_default_commit_size  = KB(64);
+global ArenaFlags arena_default_flags = 0;
+
+////////////////////////////////
 //~ rjf: Arena Functions
 
 //- rjf: arena creation/destruction
 internal Arena *arena_alloc_(ArenaParams *params);
-#define arena_alloc(...) arena_alloc_(&(ArenaParams){.reserve_size = MB(64), .commit_size = KB(64), __VA_ARGS__})
+#define arena_alloc(...) arena_alloc_(&(ArenaParams){.reserve_size = arena_default_reserve_size, .commit_size = arena_default_commit_size, .flags = arena_default_flags, __VA_ARGS__})
 internal void arena_release(Arena *arena);
 
-// TODO(@k): what's up with the static function here
 //- rjf: arena push/pop/pos core functions
 internal void *arena_push(Arena *arena, U64 size, U64 align);
 internal U64   arena_pos(Arena *arena);
@@ -69,4 +88,4 @@ internal void temp_end(Temp temp);
 #define push_array_no_zero(a, T, c) push_array_no_zero_aligned(a, T, c, Max(8, AlignOf(T)))
 #define push_array(a, T, c) push_array_aligned(a, T, c, Max(8, AlignOf(T)))
 
-#endif
+#endif // BASE_ARENA_H

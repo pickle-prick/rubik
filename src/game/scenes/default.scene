@@ -1,0 +1,115 @@
+name: "default_scene"
+viewport_shading: s0
+polygon_mode: s0
+nodes: 
+  - 
+    name: "root"
+    key: u746744014776526199
+    parent_key: u0
+    kind: u0
+    flags: u0
+    push_count: u0
+    pop_count: u0
+    children_count: u3
+    animation_dt: f0.000000
+    pos: 
+      x: f0.000000
+      y: f0.000000
+      z: f0.000000
+    rot: 
+      x: f0.000000
+      y: f0.000000
+      z: f0.000000
+      w: f1.000000
+    scale: 
+      x: f1.000000
+      y: f1.000000
+      z: f1.000000
+    update_functions: 
+  - 
+    name: "editor_camera"
+    key: u5312183396086466598
+    parent_key: u746744014776526199
+    kind: u8
+    flags: u0
+    push_count: u1
+    pop_count: u0
+    children_count: u0
+    animation_dt: f0.000000
+    pos: 
+      x: f0.000000
+      y: f-3.000000
+      z: f-3.000000
+    rot: 
+      x: f-0.046618
+      y: f0.487958
+      z: f0.025914
+      w: f0.871236
+    scale: 
+      x: f1.000000
+      y: f1.000000
+      z: f1.000000
+    update_functions: 
+      - "editor_camera_fn"
+    camera: 
+      fov: f0.250000
+      zn: f0.100000
+      zf: f200.000000
+      hide_cursor: false
+      lock_cursor: false
+      is_active: true
+  - 
+    name: "player"
+    key: u15108039293789629267
+    parent_key: u746744014776526199
+    kind: u4
+    flags: u8
+    push_count: u0
+    pop_count: u0
+    children_count: u0
+    animation_dt: f0.000000
+    pos: 
+      x: f6.000000
+      y: f-1.500000
+      z: f0.000000
+    rot: 
+      x: f-0.002844
+      y: f0.324147
+      z: f0.000975
+      w: f0.945997
+    scale: 
+      x: f1.000000
+      y: f1.000000
+      z: f1.000000
+    update_functions: 
+      - "player_fn"
+    mesh: 
+      kind: u3
+      path: ""
+  - 
+    name: "dummy1"
+    key: u2391432237293834208
+    parent_key: u746744014776526199
+    kind: u4
+    flags: u11
+    push_count: u0
+    pop_count: u0
+    children_count: u0
+    animation_dt: f2.303286
+    pos: 
+      x: f6.000000
+      y: f0.000000
+      z: f0.000000
+    rot: 
+      x: f1.000000
+      y: f0.000000
+      z: f0.000000
+      w: f-0.000000
+    scale: 
+      x: f1.000000
+      y: f1.000000
+      z: f1.000000
+    update_functions: 
+    mesh: 
+      kind: u4
+      path: "./models/dancing_stormtrooper/scene.gltf"

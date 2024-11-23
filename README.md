@@ -104,8 +104,8 @@ A list of the layers in the codebase and their associated namespaces is below:
 - [X] Scripting
 - [X] Skeletal animation in glTF (PARTIAL)
 - [X] 2D collision detection
-- [ ] 3D scene editor UI
-- [ ] Scene serialization and deserialization (may use gltf2.0)
+- [X] 3D scene editor UI (PARTIAL)
+- [X] Scene serialization and deserialization
 - [ ] Assets loading with multithreading
 - [ ] 3D collision detection
 - [ ] Custom vulkan memory allocator
@@ -113,6 +113,7 @@ A list of the layers in the codebase and their associated namespaces is below:
 - [ ] Support morph target in glTF2.0
 - [ ] PBR texture
 - [ ] 3D physics
+- [ ] Compute shader pass
 - [ ] Audio
 
 ## Reference

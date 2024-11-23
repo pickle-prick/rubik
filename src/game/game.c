@@ -6,6 +6,7 @@ internal void g_ui_inspector(G_Scene *scene)
     G_Node *camera = scene->active_camera->v;
     G_Node *active_node = g_node_from_key(g_state->active_key);
 
+    // TODO: move these state into some struct like G_UI_InspectorState
     local_persist B32 show_inspector  = 1;
     local_persist B32 show_scene_cfg  = 1;
     local_persist B32 show_camera_cfg = 1;
@@ -40,52 +41,99 @@ internal void g_ui_inspector(G_Scene *scene)
         UI_Parent(scene_tree_box)
         {
             // Header
-            ui_set_next_child_layout_axis(Axis2_X);
-            ui_set_next_flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow);
-            UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
-            UI_Parent(header_box)
             {
-                ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
-                if(ui_clicked(ui_expanderf(show_scene_cfg, "###scene_cfg")))
+                ui_set_next_child_layout_axis(Axis2_X);
+                ui_set_next_flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow);
+                UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
+                UI_Parent(header_box)
                 {
-                    show_scene_cfg = !show_scene_cfg;
+                    ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
+                    if(ui_clicked(ui_expanderf(show_scene_cfg, "###scene_cfg")))
+                    {
+                        show_scene_cfg = !show_scene_cfg;
+                    }
+                    ui_set_next_pref_size(Axis2_X, ui_text_dim(3, 0.0));
+                    ui_labelf("Scene");
                 }
-                ui_set_next_pref_size(Axis2_X, ui_text_dim(3, 0.0));
-                ui_labelf("Scene");
             }
 
-            // Content container
-            F32 size = 900;
-            ui_set_next_pref_size(Axis2_Y, ui_px(size, 0.0));
-            ui_set_next_child_layout_axis(Axis2_Y);
-            if(!show_scene_cfg)
+            // Scene cfg
             {
-                ui_set_next_flags(UI_BoxFlag_Disabled);
-            }
-            UI_Box *container_box = ui_build_box_from_stringf(0, "###container");
-            container_box->pref_size[Axis2_Y].value = mix_1f32(size, 0, container_box->disabled_t);
-            UI_Parent(container_box)
-            {
-                Vec2F32 dim = dim_2f32(container_box->rect);
-                // TODO: no usage for now
-                UI_ScrollPt pt = {0};
-                ui_scroll_list_begin(container_box->fixed_size, &pt);
-                G_Node *root = scene->root;
-                U64 row_count = 0;
-                while(root != 0)
+                // TODO(k): move these into some state struct
+                local_persist TxtPt cursor = {0};
+                local_persist TxtPt mark   = {0};
+                local_persist U8 edit_buffer[300] = {0};
+                local_persist String8 scene_path = {edit_buffer, 0};
+
+                if(scene_path.size == 0)
                 {
-                    G_NodeRec rec = g_node_df_post(root, 0);
-                    String8 string = push_str8f(ui_build_arena(), "%s###%d", root->name.str, row_count);
-                    row_count++;
-                    UI_Signal label = ui_button(string);
-
-                    // TODO: make it regoniziable
-                    if(g_key_match(g_state->active_key, root->key)) {}
-                    if(ui_clicked(label)) g_set_active_key(root->key);
-
-                    root = rec.next;
+                    U64 size = Min(scene->path.size, ArrayCount(edit_buffer));
+                    MemoryCopy(edit_buffer, scene->path.str, size);
+                    scene_path.size = size;
                 }
-                ui_scroll_list_end();
+
+                UI_Flags(UI_BoxFlag_ClickToFocus)
+                {
+                    ui_line_edit(&cursor, &mark, edit_buffer, ArrayCount(edit_buffer), &scene_path.size, scene_path, str8_lit("###scene_path"));
+                }
+
+                UI_Row
+                {
+                    if(ui_clicked(ui_buttonf("New")))
+                    {
+                        G_Scene *new_scene = g_default_scene();
+                        SLLStackPush(g_state->first_to_free_scene, scene);
+                        g_state->active_scene = new_scene;
+                        scene_path.size = 0;
+                    }
+                    if(ui_clicked(ui_buttonf("Save")))
+                    {
+                        g_scene_to_file(scene, scene_path);
+                    }
+                    if(ui_clicked(ui_buttonf("Reload")))
+                    {
+                        G_Scene *new_scene = g_scene_from_file(scene_path);
+                        SLLStackPush(g_state->first_to_free_scene, scene);
+                        g_state->active_scene = new_scene;
+                        scene_path.size = 0;
+                    }
+                }
+            }
+
+            // Scene tree
+            {
+                F32 size = 900;
+                ui_set_next_pref_size(Axis2_Y, ui_px(size, 0.0));
+                ui_set_next_child_layout_axis(Axis2_Y);
+                if(!show_scene_cfg)
+                {
+                    ui_set_next_flags(UI_BoxFlag_Disabled);
+                }
+                UI_Box *container_box = ui_build_box_from_stringf(0, "###container");
+                container_box->pref_size[Axis2_Y].value = mix_1f32(size, 0, container_box->disabled_t);
+                UI_Parent(container_box)
+                {
+                    Vec2F32 dim = dim_2f32(container_box->rect);
+                    // TODO: no usage for now
+                    UI_ScrollPt pt = {0};
+                    ui_scroll_list_begin(container_box->fixed_size, &pt);
+                    G_Node *root = scene->root;
+                    U64 row_count = 0;
+                    while(root != 0)
+                    {
+                        G_NodeRec rec = g_node_df_pre(root, 0);
+                        String8 string = push_str8f(ui_build_arena(), "%s###%d", root->name.str, row_count);
+                        row_count++;
+                        UI_Signal label = ui_button(string);
+
+                        // TODO: make it regoniziable
+                        if(g_key_match(g_state->active_key, root->key)) {}
+                        if(ui_clicked(label)) g_set_active_key(root->key);
+
+                        root = rec.next;
+                    }
+                    ui_scroll_list_end();
+                }
             }
         }
 
@@ -310,6 +358,8 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
         while(node != 0)
         {
             G_NodeRec rec = g_node_df_pre(node, 0);
+
+            base_fn(node, scene, os_events, g_state->dt_sec);
             for(G_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
             {
                 fn->f(node, scene, os_events, g_state->dt_sec);
@@ -320,17 +370,17 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                 switch(node->kind)
                 {
                     default: {}break;
-                    case G_NodeKind_Mesh:
+                    case G_NodeKind_MeshPrimitive:
                     {
                         Mat4x4F32 *joint_xforms = node->parent->v.mesh_grp.joint_xforms;
                         U64 joint_count = node->parent->v.mesh_grp.joint_count;
-                        R_Mesh3DInst *inst = d_mesh(node->v.mesh.vertices, node->v.mesh.indices,
+                        R_Mesh3DInst *inst = d_mesh(node->v.mesh_primitive.vertices, node->v.mesh_primitive.indices,
                                                     R_GeoTopologyKind_Triangles, polygon_mode,
-                                                    R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, node->v.mesh.albedo_tex,
+                                                    R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, node->v.mesh_primitive.albedo_tex,
                                                     joint_xforms, joint_count,
                                                     mat_4x4f32(1.f), node->key.u64[0]);
                         inst->xform = node->fixed_xform;
-                        if(r_handle_match(node->v.mesh.albedo_tex, r_handle_zero()) || scene->viewport_shading == G_ViewportShadingKind_Solid)
+                        if(r_handle_match(node->v.mesh_primitive.albedo_tex, r_handle_zero()) || scene->viewport_shading == G_ViewportShadingKind_Solid)
                         {
                             inst->white_texture_override = 1.0f;
                         }
@@ -455,84 +505,4 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     }
 
     g_end();
-}
-
-/////////////////////////////////
-//~ Scripting
-
-// Camera (editor camera)
-G_NODE_CUSTOM_UPDATE(editor_camera_fn)
-{
-    G_Camera3D *camera = &node->v.camera;
-
-    if(g_state->sig.f & UI_SignalFlag_LeftDragging)
-    {
-        Vec2F32 delta = ui_drag_delta();
-    }
-
-    Vec3F32 f = {0};
-    Vec3F32 s = {0};
-    Vec3F32 u = {0};
-    g_local_coord_from_node(node, &f, &s, &u);
-
-    // TODO: do we really need these?
-    Vec3F32 clean_f = f;
-    clean_f.y = 0;
-    Vec3F32 clean_s = s;
-    clean_s.y = 0;
-    Vec3F32 clean_u = u;
-    clean_u.x = 0;
-    clean_u.z = 0;
-
-    if(g_state->sig.f & UI_SignalFlag_MiddleDragging)
-    {
-        Vec2F32 delta = ui_drag_delta();
-        // Horizontal
-        F32 h_pct = delta.x / g_state->window_dim.x;
-        F32 h_dist = 2.0 * h_pct;
-        // Vertical
-        F32 v_pct = delta.y / g_state->window_dim.y;
-        F32 v_dist = -2.0 * v_pct;
-        node->pre_pos_delta = scale_3f32(s, -h_dist * 6);
-        node->pre_pos_delta = add_3f32(node->pre_pos_delta, scale_3f32(u, v_dist*6));
-    }
-    else if(g_state->sig.f & UI_SignalFlag_MiddleReleased)
-    {
-        // Commit pos delta
-        g_node_delta_commit(node);
-    }
-
-    if(g_state->sig.f & UI_SignalFlag_RightDragging)
-    {
-        Vec2F32 delta = ui_drag_delta();
-
-        // TODO: float percision issue when v_turn_speed is too high, fix it later
-        F32 v_turn_speed = 0.5f/(g_state->window_dim.y);
-        F32 h_turn_speed = 2.0f/(g_state->window_dim.x);
-
-        // TODO: we may need to clamp the turns to 0-1
-        F32 v_turn = -delta.y * v_turn_speed;
-        F32 h_turn = delta.x * h_turn_speed;
-
-        QuatF32 v_quat = make_rotate_quat_f32(s, v_turn);
-        QuatF32 h_quat = make_rotate_quat_f32(v3f32(0,1,0), h_turn);
-        node->pre_rot_delta = mul_quat_f32(v_quat,h_quat);
-    }
-    else if(g_state->sig.f & UI_SignalFlag_RightReleased)
-    {
-        // Commit camera rot_delta
-        g_node_delta_commit(node);
-    }
-
-    // Scroll
-    if(g_state->sig.scroll.x != 0 || g_state->sig.scroll.y != 0)
-    {
-        Vec3F32 dist = scale_3f32(f, g_state->sig.scroll.y/3.0f);
-        node->pos = add_3f32(dist, node->pos);
-    }
-
-    if(os_key_press(&os_events, g_state->os_wnd, 0, OS_Key_Left)) { }
-    if(os_key_press(&os_events, g_state->os_wnd, 0, OS_Key_Right)) { }
-    if(os_key_is_down(OS_Key_Left)) { }
-    if(os_key_is_down(OS_Key_Right)) { }
 }

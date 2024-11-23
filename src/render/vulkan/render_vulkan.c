@@ -486,7 +486,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     // That means that we're allowed to destroy the shader modules again as soon as pipeline creation is finished
     // The one catch here is that the size of the bytecode is specified in bytes, but the bytecode pointer is uint32_t pointer rather than a char pointer
     // You also need to ensure that the data satisfies the alignment requirements of uin32_t 
-    Temp temp = temp_begin(r_vulkan_state->arena);
+    Temp temp = scratch_begin(0,0);
     for(U64 kind = 0; kind < R_Vulkan_VShadKind_COUNT; kind++)
     {
         VkShaderModule *vshad_mo = &r_vulkan_state->vshad_modules[kind];
@@ -536,7 +536,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         };
         VK_Assert(vkCreateShaderModule(r_vulkan_state->device.h, &create_info, NULL, fshad_mo), "Failed to create shader module");
     }
-    temp_end(temp);
+    scratch_end(temp);
 
     // Create set layouts
     /////////////////////////////////////////////////////////////////////////////////
@@ -3504,7 +3504,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
     VkWriteDescriptorSet writes[writes_count];
     MemoryZeroArray(writes);
 
-    Temp temp = temp_begin(r_vulkan_state->arena);
+    Temp temp = scratch_begin(0,0);
     for(U64 i = 0; i < set_count; i++)
     {
         for(U64 j = 0; j < set_layout.binding_count; j++)
@@ -3596,7 +3596,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
     // It accepts two kinds of arrays as parameters: an array of VkWriteDescriptorSet and an array of VkCopyDescriptorSet
     // The latter can be used to copy descriptors to each other, as its name implies
     vkUpdateDescriptorSets(r_vulkan_state->device.h, writes_count, writes, 0, NULL);
-    temp_end(temp);
+    scratch_end(temp);
 }
 
 void r_vulkan_descriptor_set_destroy(R_Vulkan_DescriptorSet *set)

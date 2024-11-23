@@ -41,14 +41,14 @@ ui_hover_label(String8 string)
 internal UI_Signal
 ui_hover_labelf(char *fmt, ...)
 {
-  Temp scratch = scratch_begin(0, 0);
-  va_list args;
-  va_start(args, fmt);
-  String8 string = push_str8fv(scratch.arena, fmt, args);
-  va_end(args);
-  UI_Signal sig = ui_hover_label(string);
-  scratch_end(scratch);
-  return sig;
+    Temp scratch = scratch_begin(0, 0);
+    va_list args;
+    va_start(args, fmt);
+    String8 string = push_str8fv(scratch.arena, fmt, args);
+    va_end(args);
+    UI_Signal sig = ui_hover_label(string);
+    scratch_end(scratch);
+    return sig;
 }
 
 internal void
@@ -287,7 +287,6 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark,
         }
         else
         {
-            // TODO
             F32 total_text_width = f_dim_from_tag_size_string(box->font, box->font_size, 0, box->tab_size, edit_string).x;
             ui_set_next_pref_width(ui_px(total_text_width, 1.f));
             UI_Box *editstr_box = ui_build_box_from_stringf(UI_BoxFlag_DrawText|UI_BoxFlag_DisableTextTrunc, "###editstr");

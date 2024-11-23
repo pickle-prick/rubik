@@ -15,7 +15,7 @@ G_StackTable:
   { Flags                              flags                         G_NodeFlags         0                                }
   
   //- k: seed
-  { Seed                               seed                          G_Key               g_nil_seed                       }
+  // { Seed                               seed                          G_Key               g_nil_seed                       }
 
   //- k: path
   { Path                               path                          String8             `str8(0,0)`                      }

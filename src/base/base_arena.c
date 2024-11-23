@@ -1,154 +1,248 @@
+// Copyright (c) 2024 Epic Games Tools
+// Licensed under the MIT license (https://opensource.org/license/mit/)
+
+////////////////////////////////
+//~ rjf: Arena Functions
+
+//- rjf: arena creation/destruction
+
 internal Arena *
-arena_alloc_(ArenaParams *params) {
-    U64 aligned_res_size = params->reserve_size + ARENA_HEADER_SIZE;
-    U64 aligned_cmt_size = params->commit_size  + ARENA_HEADER_SIZE;
-
-    if (params->flags & ArenaFlag_LargePages) {
-        aligned_res_size = AlignPow2(params->reserve_size, os_get_system_info()->large_page_size);
-        aligned_cmt_size = AlignPow2(params->commit_size, os_get_system_info()->large_page_size);
-    } else {
-        aligned_res_size = AlignPow2(params->reserve_size, os_get_system_info()->page_size);
-        aligned_cmt_size = AlignPow2(params->commit_size, os_get_system_info()->page_size);
-    }
-
-    printf("Allocating arena with res %.2fMB and cmt %.2fMB\n", (F32)aligned_res_size/MB(1), (F32)aligned_cmt_size/MB(1));
-
-    // TODO(@k): make use of the optional_backing_buffer
-    void *base = 0;
+arena_alloc_(ArenaParams *params)
+{
+    // rjf: round up reserve/commit sizes
+    U64 reserve_size = params->reserve_size;
+    U64 commit_size = params->commit_size;
     if(params->flags & ArenaFlag_LargePages)
     {
-        // TODO(@k): We expect the aligned_res_size is equal to aligned_cmt_size if we're using large page
-        base = os_reserve_large(aligned_res_size);
-        os_commit_large(base, aligned_cmt_size);
-    } else {
-        base = os_reserve(aligned_res_size);
-        os_commit(base, aligned_cmt_size);
+        reserve_size = AlignPow2(reserve_size, os_get_system_info()->large_page_size);
+        commit_size  = AlignPow2(commit_size,  os_get_system_info()->large_page_size);
+    }
+    else
+    {
+        reserve_size = AlignPow2(reserve_size, os_get_system_info()->page_size);
+        commit_size  = AlignPow2(commit_size,  os_get_system_info()->page_size);
     }
 
-    AssertAlways(base != 0);
+    // rjf: reserve/commit initial block
+    void *base = params->optional_backing_buffer;
+    if(base == 0)
+    {
+        if(params->flags & ArenaFlag_LargePages)
+        {
+            base = os_reserve_large(reserve_size);
+            os_commit_large(base, commit_size);
+        }
+        else
+        {
+            base = os_reserve(reserve_size);
+            os_commit(base, commit_size);
+        }
+    }
 
+    // rjf: panic on arena creation failure
+#if OS_FEATURE_GRAPHICAL
+    if(Unlikely(base == 0))
+    {
+        os_graphical_message(1, str8_lit("Fatal Allocation Failure"), str8_lit("Unexpected memory allocation failure."));
+        os_abort(1);
+    }
+#endif
+
+    // rjf: extract arena header & fill
     Arena *arena = (Arena *)base;
-
-    arena->prev = NULL;
-    arena->curr = arena;
-
-    arena->res_size = params->reserve_size;
-    arena->cmt_size = (U32)params->commit_size;
+    arena->current = arena;
     arena->flags = params->flags;
-
-    arena->res = aligned_res_size;
-    arena->cmt = aligned_cmt_size;
-
+    arena->cmt_size = params->commit_size;
+    arena->res_size = params->reserve_size;
     arena->base_pos = 0;
     arena->pos = ARENA_HEADER_SIZE;
-
+    arena->cmt = commit_size;
+    arena->res = reserve_size;
+#if ARENA_FREE_LIST
+    arena->free_size = 0;
+    arena->free_last = 0;
+#endif
+    AsanPoisonMemoryRegion(base, commit_size);
+    AsanUnpoisonMemoryRegion(base, ARENA_HEADER_SIZE);
     return arena;
 }
 
 internal void
-arena_release(Arena *arena) {
-    for (Arena *n = arena->curr, *prev = 0; n != 0; n = prev) {
+arena_release(Arena *arena)
+{
+    for(Arena *n = arena->current, *prev = 0; n != 0; n = prev)
+    {
         prev = n->prev;
         os_release(n, n->res);
     }
 }
 
-internal void *
-arena_push(Arena *_arena, U64 size, U64 align) {
-    Arena *curr_arena = _arena->curr;
+//- rjf: arena push/pop core functions
 
-    U64 pos_pre = AlignPow2(curr_arena->pos, align);
+internal void *
+arena_push(Arena *arena, U64 size, U64 align)
+{
+    Arena *current = arena->current;
+    U64 pos_pre = AlignPow2(current->pos, align);
     U64 pos_pst = pos_pre + size;
 
-    // Chain if needed
-    if (pos_pst > curr_arena->res) {
-        AssertAlways(!(curr_arena->flags & ArenaFlag_NoChain) && "No more budge for this arena");
+    // rjf: chain, if needed
+    if(current->res < pos_pst && !(arena->flags & ArenaFlag_NoChain))
+    {
+        Arena *new_block = 0;
 
-        U64 res_size = Max(curr_arena->res_size, size);
-        U64 cmt_size = Max(curr_arena->cmt_size, size);
+#if ARENA_FREE_LIST
+        Arena *prev_block;
+        for(new_block = arena->free_last, prev_block = 0; new_block != 0; prev_block = new_block, new_block = new_block->prev)
+        {
+            if(new_block->res >= AlignPow2(size, align))
+            {
+                if(prev_block)
+                {
+                    prev_block->prev = new_block->prev;
+                }
+                else
+                {
+                    arena->free_last = new_block->prev;
+                }
+                arena->free_size -= new_block->res_size;
+                AsanUnpoisonMemoryRegion((U8*)new_block + ARENA_HEADER_SIZE, new_block->res_size - ARENA_HEADER_SIZE);
+                break;
+            }
+        }
+#endif
 
-        printf("Allocating new block: %fMB\n", (float)res_size/MB(1));
+        if(new_block == 0)
+        {
+            U64 res_size = current->res_size;
+            U64 cmt_size = current->cmt_size;
+            if(size + ARENA_HEADER_SIZE > res_size)
+            {
+                res_size = AlignPow2(size + ARENA_HEADER_SIZE, align);
+                cmt_size = AlignPow2(size + ARENA_HEADER_SIZE, align);
+            }
+            new_block = arena_alloc(.reserve_size = res_size,
+                    .commit_size  = cmt_size,
+                    .flags        = current->flags);
+        }
 
-        curr_arena = arena_alloc(.reserve_size = res_size,
-                .commit_size = cmt_size,
-                .flags = curr_arena->flags);
-        curr_arena->base_pos = _arena->base_pos + _arena->res;
-        curr_arena->curr = curr_arena;
-        curr_arena->prev = _arena;
+        new_block->base_pos = current->base_pos + current->res;
+        SLLStackPush_N(arena->current, new_block, prev);
 
-        // NOTE(@k): Since the size of header is 64, curr pos would be aligned to anything else with pow of 2
-        // Unless the caller have some weird alignment requirement
-        pos_pre = AlignPow2(curr_arena->pos, align);
+        current = new_block;
+        pos_pre = AlignPow2(current->pos, align);
         pos_pst = pos_pre + size;
     }
 
-    // At this point, we are sure that we have enough space to store this size with its alignment requirement
-
-    // Commit new page if we need to
-    // TODO(@k): not 100% sure why we don't gradually commit new page if ARENA_FLAG_LARGEPAGES is used
-    if (pos_pst > curr_arena->cmt) {
-        AssertAlways(!(curr_arena->flags & ArenaFlag_LargePages));
-
-        U64 cmt_pst = AlignPow2(pos_pst, curr_arena->cmt_size);
-        cmt_pst = AlignPow2(cmt_pst, os_get_system_info()->page_size);
-        // NOTE(@k): if cmt_pst exceed the res, we then could not met the alignment requirement which is fine but not ideal
-        cmt_pst = Min(cmt_pst, curr_arena->res);
-
-        printf("Commiting new block: %fMB\n", (float)(cmt_pst-curr_arena->cmt)/MB(1));
-
-        os_commit((U8 *)curr_arena + curr_arena->cmt, cmt_pst - curr_arena->cmt);
-        curr_arena->cmt = cmt_pst;
+    // rjf: commit new pages, if needed
+    if(current->cmt < pos_pst)
+    {
+        U64 cmt_pst_aligned = pos_pst + current->cmt_size-1;
+        cmt_pst_aligned -= cmt_pst_aligned%current->cmt_size;
+        U64 cmt_pst_clamped = ClampTop(cmt_pst_aligned, current->res);
+        U64 cmt_size = cmt_pst_clamped - current->cmt;
+        U8 *cmt_ptr = (U8 *)current + current->cmt;
+        if(current->flags & ArenaFlag_LargePages)
+        {
+            os_commit_large(cmt_ptr, cmt_size);
+        }
+        else
+        {
+            os_commit(cmt_ptr, cmt_size);
+        }
+        current->cmt = cmt_pst_clamped;
     }
 
-    void *ret = (U8 *)curr_arena + pos_pre;
-    curr_arena->pos = pos_pst;
-    return ret;
-}
-
-// TODO(@k): why are we not using macro for this
-internal inline U64
-arena_pos(Arena *arena) {
-    Arena *c = arena->curr;
-    return c->base_pos + c->pos;
-}
-
-internal void
-arena_pop_to(Arena *arena, U64 pos) {
-    AssertAlways(pos >= ARENA_HEADER_SIZE);
-    Arena *curr = arena->curr;
-    for (Arena *prev = 0; pos < curr->base_pos; curr = prev) {
-        prev = curr->prev;
-        os_release(curr, curr->res);
+    // rjf: push onto current block
+    void *result = 0;
+    if(current->cmt >= pos_pst)
+    {
+        result = (U8 *)current+pos_pre;
+        current->pos = pos_pst;
+        AsanUnpoisonMemoryRegion(result, size);
     }
-    U64 new_pos = pos - curr->base_pos;
-    AssertAlways(new_pos <= curr->pos);
-    AssertAlways(new_pos >= ARENA_HEADER_SIZE);
-    curr->curr = curr;
-    curr->pos = new_pos;
+
+    // rjf: panic on failure
+#if OS_FEATURE_GRAPHICAL
+    if(Unlikely(result == 0))
+    {
+        os_graphical_message(1, str8_lit("Fatal Allocation Failure"), str8_lit("Unexpected memory allocation failure."));
+        os_abort(1);
+    }
+#endif
+
+    return result;
+}
+
+internal U64
+arena_pos(Arena *arena)
+{
+    Arena *current = arena->current;
+    U64 pos = current->base_pos + current->pos;
+    return pos;
 }
 
 internal void
-arena_clear(Arena *arena) {
-    arena_pop_to(arena, ARENA_HEADER_SIZE);
+arena_pop_to(Arena *arena, U64 pos)
+{
+    U64 big_pos = ClampBot(ARENA_HEADER_SIZE, pos);
+    Arena *current = arena->current;
+
+#if ARENA_FREE_LIST
+    for(Arena *prev = 0; current->base_pos >= big_pos; current = prev)
+    {
+        prev = current->prev;
+        current->pos = ARENA_HEADER_SIZE;
+        arena->free_size += current->res_size;
+        SLLStackPush_N(arena->free_last, current, prev);
+        AsanPoisonMemoryRegion((U8*)current + ARENA_HEADER_SIZE, current->res_size - ARENA_HEADER_SIZE);
+    }
+#else
+    for(Arena *prev = 0; current->base_pos >= big_pos; current = prev)
+    {
+        prev = current->prev;
+        os_release(current, current->res);
+    }
+#endif
+    arena->current = current;
+    U64 new_pos = big_pos - current->base_pos;
+    AssertAlways(new_pos <= current->pos);
+    AsanPoisonMemoryRegion((U8*)current + new_pos, (current->pos - new_pos));
+    current->pos = new_pos;
+}
+
+//- rjf: arena push/pop helpers
+
+internal void
+arena_clear(Arena *arena)
+{
+    arena_pop_to(arena, 0);
 }
 
 internal void
-arena_pop(Arena *arena, U64 amt) {
-    U64 pos = arena->base_pos + arena->pos - amt;
-    AssertAlways(pos >= ARENA_HEADER_SIZE);
-    arena_pop_to(arena, pos);
+arena_pop(Arena *arena, U64 amt)
+{
+    U64 pos_old = arena_pos(arena);
+    U64 pos_new = pos_old;
+    if(amt < pos_old)
+    {
+        pos_new = pos_old - amt;
+    }
+    arena_pop_to(arena, pos_new);
 }
+
+//- rjf: temporary arena scopes
 
 internal Temp
-temp_begin(Arena *arena) {
-    Temp t = {
-        .arena = arena,
-        .pos = arena_pos(arena),
-    };
-    return t;
+temp_begin(Arena *arena)
+{
+    U64 pos = arena_pos(arena);
+    Temp temp = {arena, pos};
+    return temp;
 }
 
 internal void
-temp_end(Temp temp) {
+temp_end(Temp temp)
+{
     arena_pop_to(temp.arena, temp.pos);
 }

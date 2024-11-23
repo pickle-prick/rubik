@@ -15,9 +15,10 @@ typedef enum G_PhysicsKind
 typedef enum G_NodeKind
 {
     G_NodeKind_Null,
-    G_NodeKind_MeshGroup,
-    G_NodeKind_Mesh,
+    G_NodeKind_MeshPrimitive,
     G_NodeKind_MeshJoint,
+    G_NodeKind_MeshGroup,
+    G_NodeKind_MeshRoot,
     G_NodeKind_CollisionShape3D,
     G_NodeKind_CharacterBody3D,
     G_NodeKind_RigidBody3D,
@@ -50,11 +51,21 @@ typedef enum G_ViewportShadingKind
     G_ViewportShadingKind_COUNT,
 } G_ViewportShadingKind;
 
+typedef enum G_MeshRootKind
+{
+    G_MeshRootKind_Box,
+    G_MeshRootKind_Sphere,
+    G_MeshRootKind_Cylinder,
+    G_MeshRootKind_Capsule,
+    G_MeshRootKind_Model,
+} G_MeshRootKind;
+
 typedef U64 G_NodeFlags;
 # define G_NodeFlags_Animated         (G_NodeFlags)(1ull<<0)
 # define G_NodeFlags_AnimatedSkeleton (G_NodeFlags)(1ull<<1)
 # define G_NodeFlags_Float            (G_NodeFlags)(1ull<<2)
 # define G_NodeFlags_NavigationRoot   (G_NodeFlags)(1ull<<3)
+# define G_NodeFlags_Detachable       (G_NodeFlags)(1ull<<4)
 
 typedef U64 G_SpecialKeyKind;
 #define G_SpecialKeyKind_GizmosIhat (U64)(0xffffffffffffffffull-0)
@@ -188,6 +199,7 @@ struct G_ModelNode
     U64                     children_count;
 
     String8                 name;
+    String8                 path;
     G_Key                   key;
 
     // Xform
@@ -200,7 +212,7 @@ struct G_ModelNode
 
     // Mesh
     B32                     is_mesh_group;
-    B32                     is_mesh;
+    B32                     is_mesh_primitive;
     R_Handle                vertices;
     R_Handle                indices;
     R_Handle                albedo_tex;
@@ -226,6 +238,13 @@ struct G_ModelNode
 //~ Node Equipment
 
 #define G_Model G_ModelNode
+
+typedef struct G_MeshRoot G_MeshRoot;
+struct G_MeshRoot
+{
+    G_MeshRootKind kind;
+    String8        path;
+};
 
 typedef struct G_MeshGroup G_MeshGroup;
 struct G_MeshGroup
@@ -341,6 +360,7 @@ typedef G_NODE_CUSTOM_DRAW(G_NodeCustomDrawFunctionType);
 typedef struct G_UpdateFnNode G_UpdateFnNode;
 struct G_UpdateFnNode
 {
+    String8                    name; 
     G_UpdateFnNode             *next;
     G_UpdateFnNode             *prev;
     G_NodeCustomUpdateFunctionType *f;
@@ -392,10 +412,11 @@ struct G_Node
 
     union
     {
+        G_Mesh      mesh_primitive;
+        G_MeshJoint mesh_joint;
         G_MeshGroup mesh_grp;
-        G_Mesh      mesh;
-        G_MeshJoint joint;
-        G_Camera3D  camera;
+        G_MeshRoot  mesh_root; // Serializable
+        G_Camera3D  camera; // Serializable
     } v;
 };
 
@@ -421,8 +442,6 @@ struct G_Bucket
     G_BucketSlot *node_hash_table;
     U64          node_hash_table_size;
     U64          node_count;
-
-    G_Node       *first_free_node;
 };
 
 typedef struct G_CameraNode G_CameraNode;
@@ -436,12 +455,16 @@ struct G_CameraNode
 typedef struct G_Scene G_Scene;
 struct G_Scene 
 {
+    G_Scene               *next;
     Arena                 *arena;
     G_Bucket              *bucket;
     G_Node                *root;
     G_CameraNode          *active_camera;
     G_CameraNode          *first_camera;
     G_CameraNode          *last_camera;
+
+    String8               name;
+    String8               path;
 
     G_ViewportShadingKind viewport_shading;
     Vec3F32               global_light;
@@ -492,54 +515,81 @@ typedef enum G_PaletteCode
     G_PaletteCode_COUNT
 } G_PaletteCode;
 
+/////////////////////////////////
+// Function Types 
+
+typedef struct G_FunctionNode G_FunctionNode;
+struct G_FunctionNode
+{
+    G_FunctionNode *next;
+    G_FunctionNode *prev;
+    G_Key          key;
+    String8        alias;
+    void           *ptr;
+};
+
+typedef struct G_FunctionSlot G_FunctionSlot;
+struct G_FunctionSlot
+{
+    G_FunctionNode *first;
+    G_FunctionNode *last;
+};
+
 typedef struct G_State G_State;
 struct G_State
 {
-    Arena      *arena;
-    Arena      *frame_arena;
-    G_Scene    *default_scene;
+    Arena          *arena;
+    Arena          *frame_arena;
+    G_Scene        *active_scene;
 
     //~ Persistent
 
-    B32        is_dragging;
-    Vec3F32    drag_start_direction;
+    B32            is_dragging;
+    Vec3F32        drag_start_direction;
 
-    OS_Handle  os_wnd;
+    OS_Handle      os_wnd;
 
     //~ Per frame
 
-    UI_Signal  sig;
+    UI_Signal      sig;
 
     //- Delta
-    U64        dt;
-    F32        dt_sec;
-    F32        dt_ms;
+    U64            dt;
+    F32            dt_sec;
+    F32            dt_ms;
 
     //- Bucket
-    G_Bucket   *node_bucket;
-    D_Bucket   *bucket_rect;
-    D_Bucket   *bucket_geo3d;
+    G_Bucket       *node_bucket;
+    D_Bucket       *bucket_rect;
+    D_Bucket       *bucket_geo3d;
 
     //- Window rect
-    Rng2F32    window_rect;
-    Vec2F32    window_dim;
+    Rng2F32        window_rect;
+    Vec2F32        window_dim;
 
     //- key
-    G_Key      hot_key;
-    G_Key      active_key;
+    G_Key          hot_key;
+    G_Key          active_key;
 
     //- Cursor
-    Vec2F32    cursor;
-    Vec2F32    last_cursor;
-    B32        cursor_hidden;
+    Vec2F32        cursor;
+    Vec2F32        last_cursor;
+    B32            cursor_hidden;
+
+    //- Functions
+    G_FunctionSlot *function_hash_table;
+    U64            function_hash_table_size;
 
     //- Theme
-    G_Theme    cfg_theme_target;
-    G_Theme    cfg_theme;
-    F_Tag      cfg_font_tags[G_FontSlot_COUNT];
+    G_Theme        cfg_theme_target;
+    G_Theme        cfg_theme;
+    F_Tag          cfg_font_tags[G_FontSlot_COUNT];
 
     //- Palette
-    UI_Palette cfg_ui_debug_palettes[G_PaletteCode_COUNT]; // derivative from theme
+    UI_Palette     cfg_ui_debug_palettes[G_PaletteCode_COUNT]; // derivative from theme
+
+    G_Scene        *first_to_free_scene;
+    G_Scene        *first_free_scene;
 
     G_DeclStackNils;
     G_DeclStacks;
@@ -579,19 +629,16 @@ internal G_Bucket *g_bucket_make(Arena *arena, U64 hash_table_size);
 /////////////////////////////////
 // State accessor/mutator
 
-internal void   g_set_active_key(G_Key key);
-internal G_Node *g_node_from_string(String8 string);
-internal G_Node *g_node_from_key(G_Key key);
+internal void             g_set_active_key(G_Key key);
+internal G_Node*          g_node_from_key(G_Key key);
+internal G_FunctionNode * g_function_from_string(String8 string);
 
 /////////////////////////////////
 // Node build api
 
-internal G_Node *g_build_node_from_string(String8 name);
-internal G_Node *g_build_node_from_stringf(char *fmt, ...);
-internal G_Node *g_build_node_from_key(G_Key key);
-internal G_Node *g_node_camera3d_alloc(String8 string);
-internal G_Node *g_node_mesh_inst3d_alloc(String8 string);
-internal G_Mesh *g_mesh_alloc();
+internal G_Node *g_build_node_from_string(G_NodeFlags flags, String8 name);
+internal G_Node *g_build_node_from_stringf(G_NodeFlags flags, char *fmt, ...);
+internal G_Node *g_build_node_from_key(G_NodeFlags flags, G_Key key);
 
 /////////////////////////////////
 // Node Type Functions
@@ -604,13 +651,12 @@ internal void      g_local_coord_from_node(G_Node *node, Vec3F32 *f, Vec3F32 *s,
 internal Mat4x4F32 g_view_from_node(G_Node *node);
 internal Vec3F32   g_pos_from_node(G_Node *node);
 internal void      g_node_delta_commit(G_Node *node);
-internal void      g_node_push_fn(Arena *arena, G_Node *n, G_NodeCustomUpdateFunctionType *fn);
+internal void      g_node_push_fn(Arena *arena, G_Node *n, G_NodeCustomUpdateFunctionType *fn, String8 name);
 
 /////////////////////////////////
 // Node base scripting
 
 G_NODE_CUSTOM_UPDATE(base_fn);
-G_NODE_CUSTOM_UPDATE(mesh_grp_fn);
 
 /////////////////////////////////
 // Magic
@@ -630,7 +676,7 @@ internal UI_Palette *g_palette_from_code(G_PaletteCode code);
 internal Vec4F32    g_rgba_from_theme_color(RD_ThemeColor color);
 
 /////////////////////////////////
-// State
+// State begin/end
 
 internal void g_begin(G_Scene *scene, U64 dt, OS_EventList os_events, U64 hot_key);
 internal void g_end(void);
@@ -648,5 +694,10 @@ internal void g_end(void);
         os_file_read(f, rng_1u64(0,f_props.size), *return_data);                         \
     } while (0);
 internal void g_trs_from_matrix(Mat4x4F32 *m, Vec3F32 *trans, QuatF32 *rot, Vec3F32 *scale);
+
+/////////////////////////////////
+// Scene creation and destruction
+
+internal G_Scene * g_scene_alloc();
 
 #endif
