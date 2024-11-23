@@ -104,8 +104,15 @@ A list of the layers in the codebase and their associated namespaces is below:
 - [X] Scripting
 - [X] Skeletal animation in glTF (PARTIAL)
 - [X] 2D collision detection
+- [ ] 2D node
 - [X] 3D scene editor UI (PARTIAL)
+    - [ ] Create/delete node
+    - [ ] Reorder node
 - [X] Scene serialization and deserialization
+- [ ] Light
+    - [X] Direct light
+    - [ ] Point light, spot light, area light, emissive light
+    - [ ] Multiple light sources
 - [ ] Assets loading with multithreading
 - [ ] 3D collision detection
 - [ ] Custom vulkan memory allocator
