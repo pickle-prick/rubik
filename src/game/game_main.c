@@ -3,6 +3,11 @@
 #include <string.h>
 #include <stdlib.h>
 
+////////////////////////////////
+//~ k: Build Options
+
+#define BUILD_TITLE "Rubik"
+#define OS_FEATURE_GRAPHICAL 1
 
 // Third Party
 #define CGLTF_IMPLEMENTATION
