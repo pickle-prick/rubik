@@ -155,7 +155,7 @@ os_string_from_file_range(Arena *arena, OS_Handle file, Rng1U64 range)
 //~ rjf: GUID Helpers (Helpers, Implemented Once)
 
 internal String8
-os_string_from_guid(Arena *arena, OS_Guid guid)
+os_string_from_guid(Arena *arena, Guid guid)
 {
   String8 result = push_str8f(arena, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X",
                               guid.data1,

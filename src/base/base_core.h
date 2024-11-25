@@ -478,6 +478,23 @@ struct TxtRng
 };
 
 ////////////////////////////////
+//~ Globally Unique Ids
+
+typedef union Guid Guid;
+union Guid
+{
+  struct
+  {
+    U32 data1;
+    U16 data2;
+    U16 data3;
+    U8  data4[8];
+  };
+  U8 v[16];
+};
+StaticAssert(sizeof(Guid) == 16, g_guid_size_check);
+
+////////////////////////////////
 //~ NOTE(allen): Constants
 
 global U32 sign32     = 0x80000000;
