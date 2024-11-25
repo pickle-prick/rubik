@@ -7,6 +7,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     r_vulkan_state = push_array(arena, R_Vulkan_State, 1);
     r_vulkan_state->arena = arena;
     r_vulkan_state->enable_validation_layer = debug;
+    Temp temp = scratch_begin(0,0);
 
     // Now, to create an instance we'll first have to fill in a struct with 
     //      some information about our application.
@@ -41,9 +42,10 @@ r_init(const char* app_name, OS_Handle window, bool debug)
 
         // Required Extensions
         // Glfw required instance extensions
-        const char **required_inst_exts;
-        U64 required_inst_ext_count;
-        required_inst_exts = (const char**)r_vulkan_instance_extensions_from_window(arena, window, &required_inst_ext_count);
+        U64 required_inst_ext_count = 2;
+        const char *required_inst_exts[required_inst_ext_count];
+        required_inst_exts[0] = "VK_KHR_surface";
+        required_inst_exts[1] = os_vulkan_surface_ext();
 
         // Assert every required extension by glfw is in the supported extensions list
         U64 found = 0;
@@ -63,7 +65,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
 
         enabled_ext_count = required_inst_ext_count;
         // NOTE(@k): add one for optional debug extension
-        enabled_ext_names = push_array(r_vulkan_state->arena, char *, required_inst_ext_count + 1);
+        enabled_ext_names = push_array(temp.arena, char *, required_inst_ext_count + 1);
 
         for(U64 i = 0; i < required_inst_ext_count; i++)
         {
@@ -486,7 +488,6 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     // That means that we're allowed to destroy the shader modules again as soon as pipeline creation is finished
     // The one catch here is that the size of the bytecode is specified in bytes, but the bytecode pointer is uint32_t pointer rather than a char pointer
     // You also need to ensure that the data satisfies the alignment requirements of uin32_t 
-    Temp temp = scratch_begin(0,0);
     for(U64 kind = 0; kind < R_Vulkan_VShadKind_COUNT; kind++)
     {
         VkShaderModule *vshad_mo = &r_vulkan_state->vshad_modules[kind];
@@ -536,7 +537,6 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         };
         VK_Assert(vkCreateShaderModule(r_vulkan_state->device.h, &create_info, NULL, fshad_mo), "Failed to create shader module");
     }
-    scratch_end(temp);
 
     // Create set layouts
     /////////////////////////////////////////////////////////////////////////////////
@@ -634,6 +634,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         0xFF330033, 0xFFFF00FF,
     };
     r_vulkan_state->backup_texture = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Nearest, v2s32(2,2), R_Tex2DFormat_RGBA8, backup_texture_data);
+    scratch_end(temp);
 }
 
 internal R_Handle
@@ -763,7 +764,7 @@ internal R_Vulkan_Window *
 r_vulkan_window_from_handle(R_Handle handle)
 {
     R_Vulkan_Window *wnd = (R_Vulkan_Window *)handle.u64[0];
-    // TODO(@k): do we need this?
+    // TODO(k): do we need this?
     // if(wnd->generation != handle.u64[1]) {
     //         return NULL;
     // }
@@ -4151,25 +4152,6 @@ r_vulkan_rendpass_grp_destroy(R_Vulkan_RenderPassGroup *grp)
         vkDestroyPipeline(r_vulkan_state->device.h, rendpass->pipeline.first.h, NULL);
         vkDestroyRenderPass(r_vulkan_state->device.h, rendpass->h, NULL);
     }
-}
-
-internal char **
-r_vulkan_instance_extensions_from_window(Arena *arena, OS_Handle window, U64 *return_count)
-{
-    Window lnx_x11window = os_lnx_x11window_from_handle(window);
-
-    char *extensions[2] = {"VK_KHR_surface", "VK_KHR_xlib_surface"};
-    char **extensions_copy = push_array(arena, char *, ArrayCount(extensions));
-
-    for(U64 i = 0; i < ArrayCount(extensions); i++)
-    {
-        U64 str_len = strlen(extensions[i]);
-        char **dst = &extensions_copy[i];
-        *dst = push_array(arena, char, str_len+1);
-        MemoryCopy(*dst, extensions[i], str_len+1);
-    }
-    *return_count = ArrayCount(extensions);
-    return extensions_copy;
 }
 
 internal R_Vulkan_Buffer *

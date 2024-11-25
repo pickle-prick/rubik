@@ -328,7 +328,6 @@ os_w32_vkey_from_os_key(OS_Key key)
 internal LRESULT
 os_w32_wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-  ProfBeginFunction();
   LRESULT result = 0;
   B32 good = 1;
   if(os_w32_event_arena == 0)
@@ -792,7 +791,6 @@ os_w32_wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       }break;
     }
   }
-  ProfEnd();
   return result;
 }
 
@@ -1469,7 +1467,6 @@ os_key_is_down(OS_Key key)
 internal Vec2F32
 os_mouse_from_window(OS_Handle handle)
 {
-  ProfBeginFunction();
   Vec2F32 v = {0};
   POINT p;
   if(GetCursorPos(&p))
@@ -1479,7 +1476,6 @@ os_mouse_from_window(OS_Handle handle)
     v.x = (F32)p.x;
     v.y = (F32)p.y;
   }
-  ProfEnd();
   return v;
 }
 

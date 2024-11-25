@@ -43,6 +43,7 @@ enum
   OS_AccessFlag_Append     = (1<<3),
   OS_AccessFlag_ShareRead  = (1<<4),
   OS_AccessFlag_ShareWrite = (1<<5),
+  OS_AccessFlag_Inherited  = (1<<6),
 };
 
 ////////////////////////////////

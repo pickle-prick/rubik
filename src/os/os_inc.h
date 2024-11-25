@@ -13,7 +13,7 @@
 #if OS_FEATURE_GRAPHICAL
 #if OS_WINDOWS
 #  define VK_PROTOTYPES
-#  include <vulkan/vulkan_win32.h>
+#  include <vulkan/vulkan.h>
 #elif OS_LINUX
 #  define VK_USE_PLATFORM_XLIB_KHR
 #  define VK_PROTOTYPES

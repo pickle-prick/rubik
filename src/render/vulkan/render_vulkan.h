@@ -390,7 +390,6 @@ global R_Vulkan_State *r_vulkan_state = 0;
 //~ Helpers
 
 internal R_Vulkan_Window          *r_vulkan_window_from_handle(R_Handle handle);
-internal char                     **r_vulkan_instance_extensions_from_window(Arena *arena, OS_Handle window, U64 *return_count);
 internal void                     r_vulkan_window_resize(R_Vulkan_Window *window);
 internal R_Handle                 r_vulkan_handle_from_window(R_Vulkan_Window *window);
 internal R_Vulkan_Tex2D           *r_vulkan_tex2d_from_handle(R_Handle handle);
