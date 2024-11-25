@@ -612,7 +612,6 @@ internal void
 os_wrap_cursor(OS_Handle window, F32 dst_x, F32 dst_y)
 {
     Window wnd = os_lnx_x11window_from_handle(window);
-    printf("%f %f\n", dst_x, dst_y);
     XWarpPointer(os_lnx_gfx_state->display, 0, wnd, 0,0,0,0, (int)dst_x, (int)dst_y);
     XSync(os_lnx_gfx_state->display, 0);
 }

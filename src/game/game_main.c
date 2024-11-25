@@ -331,7 +331,7 @@ entry_point(CmdLine *cmd_line)
     OS_Handle window = os_window_open(default_resolution, 0, window_title);
     os_window_first_paint(window);
 
-    //- Render
+    //- Render initialization
     r_init((char *)window_title.str, window, true);
     R_Handle wnd = r_window_equip(window);
 

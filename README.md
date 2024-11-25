@@ -109,6 +109,7 @@ A list of the layers in the codebase and their associated namespaces is below:
     - [ ] Create/delete node
     - [ ] Reorder node
 - [X] Scene serialization and deserialization
+- [ ] Windows build
 - [ ] Light
     - [X] Direct light
     - [ ] Point light, spot light, area light, emissive light
