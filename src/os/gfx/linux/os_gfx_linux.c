@@ -617,6 +617,35 @@ os_wrap_cursor(OS_Handle window, F32 dst_x, F32 dst_y)
 }
 
 ////////////////////////////////
+//~ k: @os_hooks Vulkan (Implemented Per-OS)
+
+internal VkSurfaceKHR
+os_vulkan_surface_from_window(OS_Handle window, VkInstance instance)
+{
+    Window lnx_x11window = os_lnx_x11window_from_handle(window);
+
+    VkXlibSurfaceCreateInfoKHR sci = {0};
+    PFN_vkCreateXlibSurfaceKHR vkCreateXlibSurfaceKHR;
+    VkSurfaceKHR surface;
+
+    vkCreateXlibSurfaceKHR = (PFN_vkCreateXlibSurfaceKHR)vkGetInstanceProcAddr(instance, "vkCreateXlibSurfaceKHR");
+    AssertAlways(vkCreateXlibSurfaceKHR && "X11: Vulkan instance missing VK_KHR_xlib_surface extension");
+
+    sci.sType  = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
+    sci.dpy    = os_lnx_gfx_state->display;
+    sci.window = lnx_x11window;
+
+    AssertAlways(vkCreateXlibSurfaceKHR(instance, &sci, NULL, &surface) == VK_SUCCESS && "Failed to create xlib surface");
+    return surface;
+}
+
+internal char *
+os_vulkan_surface_ext()
+{
+    return "VK_KHR_xlib_surface";
+}
+
+////////////////////////////////
 //~ rjf: @os_hooks Native User-Facing Graphical Messages (Implemented Per-OS)
 
 internal void

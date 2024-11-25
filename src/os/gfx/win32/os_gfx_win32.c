@@ -1526,6 +1526,37 @@ hcursor = curs; }break;
 }
 
 ////////////////////////////////
+//~ k: @os_hooks Vulkan (Implemented Per-OS)
+
+internal VkSurfaceKHR
+os_vulkan_surface_from_window(OS_Handle window, VkInstance instance)
+{
+    OS_W32_Window win32_window = os_w32_window_from_handle(window);
+    HWND win32_hwnd = os_w32_hwnd_from_window(&win32_window);
+    HINSTANCE win32_hinstance = GetModuleHandle(NULL);
+
+    VkWin32SurfaceCreateInfoKHR sci = {0};
+    PFN_vkCreateWin32SurfaceKHR vkCreateWin32SurfaceKHR;
+    VkSurfaceKHR surface;
+
+    // Dynamically load vkCreateWin32SurfaceKHR function
+    vkCreateWin32SurfaceKHR = (PFN_vkCreateWin32SurfaceKHR)vkGetInstanceProcAddr(instance, "vkCreateWin32SurfaceKHR");
+    AssertAlways(vkCreateWin32SurfaceKHR && "Win32: Vulkan instance missing VK_KHR_win32_surface extension");
+
+    sci.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+    sci.hwnd = win32_hwnd;
+    sci.hinstance = win32_hinstance;
+    AssertAlways(vkCreateWin32SurfaceKHR(instance, &sci, NULL, &surface) == VK_SUCCESS && "Win32: Failed to create Vulkan Win32 surface");
+    return surface;
+}
+
+internal char *
+os_vulkan_surface_ext()
+{
+    return "VK_KHR_win32_surface";
+}
+
+////////////////////////////////
 //~ rjf: @os_hooks Native User-Facing Graphical Messages (Implemented Per-OS)
 
 internal void

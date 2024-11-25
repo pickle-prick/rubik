@@ -185,6 +185,12 @@ internal void           os_show_cursor(OS_Handle window);
 internal void           os_wrap_cursor(OS_Handle window, F32 dst_x, F32 dst_y);
 
 ////////////////////////////////
+//~ k: @os_hooks Vulkan (Implemented Per-OS)
+
+internal VkSurfaceKHR   os_vulkan_surface_from_window(OS_Handle window, VkInstance instance);
+internal char*          os_vulkan_surface_ext();
+
+////////////////////////////////
 //~ rjf: @os_hooks Native User-Facing Graphical Messages (Implemented Per-OS)
 
 internal void           os_graphical_message(B32 error, String8 title, String8 message);

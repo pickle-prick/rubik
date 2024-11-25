@@ -180,7 +180,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     // It should also be noted that window surfaces are entirely optional component in Vulkan, if you just need off-screen rendering.
     // Vulkan allows you to do that without hacks like creating an invisible window (necessary for OpenGL)
     R_Vulkan_Surface surface = {0};
-    surface.h = r_vulkan_surface_from_window(window, r_vulkan_state->instance);
+    surface.h = os_vulkan_surface_from_window(window, r_vulkan_state->instance);
 
     /////////////////////////////////////////////////////////////////////////////////
     // Pick the physical device
@@ -660,7 +660,7 @@ r_window_equip(OS_Handle wnd_handle)
     window->os_wnd = wnd_handle;
 
     R_Vulkan_Surface *surface = &window->surface;
-    surface->h = r_vulkan_surface_from_window(wnd_handle, r_vulkan_state->instance);
+    surface->h = os_vulkan_surface_from_window(wnd_handle, r_vulkan_state->instance);
     r_vulkan_surface_update(surface);
 
     // Create bag
@@ -4170,27 +4170,6 @@ r_vulkan_instance_extensions_from_window(Arena *arena, OS_Handle window, U64 *re
     }
     *return_count = ArrayCount(extensions);
     return extensions_copy;
-}
-
-// TODO: we should put this function into the os_gfx layer 
-internal VkSurfaceKHR 
-r_vulkan_surface_from_window(OS_Handle window, VkInstance instance)
-{
-    Window lnx_x11window = os_lnx_x11window_from_handle(window);
-
-    VkXlibSurfaceCreateInfoKHR sci = {0};
-    PFN_vkCreateXlibSurfaceKHR vkCreateXlibSurfaceKHR;
-    VkSurfaceKHR surface;
-
-    vkCreateXlibSurfaceKHR = (PFN_vkCreateXlibSurfaceKHR)vkGetInstanceProcAddr(instance, "vkCreateXlibSurfaceKHR");
-    AssertAlways(vkCreateXlibSurfaceKHR && "X11: Vulkan instance missing VK_KHR_xlib_surface extension");
-
-    sci.sType  = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
-    sci.dpy    = os_lnx_gfx_state->display;
-    sci.window = lnx_x11window;
-
-    VK_Assert(vkCreateXlibSurfaceKHR(instance, &sci, NULL, &surface), "X11: Failed to create Vulkan X11 surface: %s");
-    return  surface;
 }
 
 internal R_Vulkan_Buffer *
