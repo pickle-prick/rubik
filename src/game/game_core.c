@@ -999,17 +999,6 @@ g_begin(G_Scene *scene, U64 dt, OS_EventList os_events, U64 hot_key)
     // Remake bucket every frame
     g_state->bucket_rect = d_bucket_make();
     g_state->bucket_geo3d = d_bucket_make();
-
-    // Process events
-    // OS_Event *os_evt_first = os_events.first;
-    // OS_Event *os_evt_opl = os_events.last + 1;
-    // for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
-    // {
-    //     if(os_evt == 0) continue;
-    //     if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_A) {}
-    //     if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_D) {}
-    //     if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
-    // }
 }
 
 internal void g_end(void)

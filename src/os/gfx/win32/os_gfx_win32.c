@@ -1527,8 +1527,8 @@ hcursor = curs; }break;
 internal VkSurfaceKHR
 os_vulkan_surface_from_window(OS_Handle window, VkInstance instance)
 {
-    OS_W32_Window win32_window = os_w32_window_from_handle(window);
-    HWND win32_hwnd = os_w32_hwnd_from_window(&win32_window);
+    OS_W32_Window *win32_window = os_w32_window_from_handle(window);
+    HWND win32_hwnd = os_w32_hwnd_from_window(win32_window);
     HINSTANCE win32_hinstance = GetModuleHandle(NULL);
 
     VkWin32SurfaceCreateInfoKHR sci = {0};
@@ -1540,8 +1540,10 @@ os_vulkan_surface_from_window(OS_Handle window, VkInstance instance)
     AssertAlways(vkCreateWin32SurfaceKHR && "Win32: Vulkan instance missing VK_KHR_win32_surface extension");
 
     sci.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-    sci.hwnd = win32_hwnd;
+    sci.pNext = NULL;
+    sci.flags = 0;
     sci.hinstance = win32_hinstance;
+    sci.hwnd = win32_hwnd;
     AssertAlways(vkCreateWin32SurfaceKHR(instance, &sci, NULL, &surface) == VK_SUCCESS && "Win32: Failed to create Vulkan Win32 surface");
     return surface;
 }

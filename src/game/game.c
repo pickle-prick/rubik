@@ -165,7 +165,7 @@ internal void g_ui_inspector(G_Scene *scene)
             {
                 ui_labelf("active camera");
                 ui_spacer(ui_pct(1.0, 0.0));
-                g_ui_dropdown_begin(str8_lit("cameras"));
+                g_ui_dropdown_begin(scene->active_camera->v->name);
                 for(G_CameraNode *c = scene->first_camera; c!=0; c = c->next)
                 {
                     if(ui_clicked(ui_button(c->v->name)))
@@ -323,6 +323,28 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     D_BucketScope(g_state->bucket_rect)
     {
         g_ui_inspector(scene);
+    }
+
+    // Process events
+    OS_Event *os_evt_first = os_events.first;
+    OS_Event *os_evt_opl = os_events.last + 1;
+    for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
+    {
+        if(os_evt == 0) continue;
+        // if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
+        if(os_evt->kind == OS_EventKind_Press)
+        {
+            U64 camera_idx = os_evt->key - OS_Key_F1;
+            U64 i = 0;
+            for(G_CameraNode *cn = scene->first_camera; cn != 0; cn = cn->next, i++)
+            {
+                if(i == camera_idx)
+                {
+                    scene->active_camera = cn;
+                    break;
+                }
+            }
+        }
     }
 
     // Unpack camera
