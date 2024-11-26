@@ -96,10 +96,9 @@ for /f %%i in ('call git rev-parse HEAD')              do set compile=%compile% 
 
 :: --- Compile Shader ---------------------------------------------------------
 if "%no_shader%"=="1" echo [skipping shader compiling]
+set shader_in_dir=%~dp0\src\render\vulkan\shader
+set shader_out_dir=%~dp0\src\render\vulkan\shader
 if not "%no_shader%"=="1" (
-    set "shader_in_dir=.\src\render\vulkan\shader"
-    set "shader_out_dir=.\src\render\vulkan\shader"
-
     for %%G in ("%shader_in_dir%\*.vert" "%shader_in_dir%\*.frag") do (
         if exist "%%G" (
             set "shader=%%G"
