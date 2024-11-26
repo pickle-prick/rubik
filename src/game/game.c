@@ -281,7 +281,16 @@ internal void g_ui_inspector(G_Scene *scene)
                 {
                     ui_labelf("name");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%s", active_node->name.str);
+                    ui_labelf("%S", active_node->name);
+                }
+                if(active_node->parent != 0)
+                {
+                    UI_Row
+                    {
+                        ui_labelf("parent");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_labelf("%S", active_node->parent->name);
+                    }
                 }
                 UI_Row
                 {

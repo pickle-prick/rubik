@@ -41,14 +41,14 @@ nodes:
     children_count: u0
     animation_dt: f0.000000
     pos: 
-      x: f2.906523
-      y: f-3.340744
-      z: f-1.167499
+      x: f-0.559875
+      y: f-3.319056
+      z: f-2.829154
     rot: 
-      x: f-0.024267
-      y: f0.385571
-      z: f0.010145
-      w: f0.922303
+      x: f-0.210691
+      y: f0.523812
+      z: f0.134298
+      w: f0.814367
     scale: 
       x: f1.000000
       y: f1.000000
@@ -66,30 +66,85 @@ nodes:
     name: "player"
     key: u15108039293789629267
     parent_key: u746744014776526199
-    kind: u4
+    kind: u0
     flags: u8
     push_count: u0
     pop_count: u0
-    children_count: u0
+    children_count: u2
     animation_dt: f0.000000
     pos: 
-      x: f6.000000
+      x: f2.070718
       y: f-1.500000
-      z: f0.000000
+      z: f0.515272
     rot: 
-      x: f-0.096900
-      y: f0.412948
-      z: f0.044239
-      w: f0.904498
+      x: f-0.119569
+      y: f0.136009
+      z: f0.016538
+      w: f0.983315
     scale: 
       x: f1.000000
       y: f1.000000
       z: f1.000000
     update_functions: 
       - "player_fn"
+  - 
+    name: "body"
+    key: u9495038560095870331
+    parent_key: u15108039293789629267
+    kind: u4
+    flags: u0
+    push_count: u1
+    pop_count: u0
+    children_count: u0
+    animation_dt: f0.000000
+    pos: 
+      x: f0.000000
+      y: f0.000000
+      z: f0.000000
+    rot: 
+      x: f0.000000
+      y: f0.000000
+      z: f0.000000
+      w: f1.000000
+    scale: 
+      x: f1.000000
+      y: f1.000000
+      z: f1.000000
+    update_functions: 
     mesh: 
       kind: u3
       path: ""
+  - 
+    name: "player_camera"
+    key: u5371201136343931414
+    parent_key: u15108039293789629267
+    kind: u8
+    flags: u0
+    push_count: u0
+    pop_count: u0
+    children_count: u0
+    animation_dt: f0.000000
+    pos: 
+      x: f0.000000
+      y: f-3.000000
+      z: f0.000000
+    rot: 
+      x: f0.000000
+      y: f0.000000
+      z: f0.000000
+      w: f1.000000
+    scale: 
+      x: f1.000000
+      y: f1.000000
+      z: f1.000000
+    update_functions: 
+    camera: 
+      fov: f0.250000
+      zn: f0.100000
+      zf: f200.000000
+      hide_cursor: true
+      lock_cursor: true
+      is_active: false
   - 
     name: "dummy1"
     key: u2391432237293834208
@@ -97,9 +152,9 @@ nodes:
     kind: u4
     flags: u11
     push_count: u0
-    pop_count: u0
+    pop_count: u1
     children_count: u0
-    animation_dt: f3.348380
+    animation_dt: f3.496586
     pos: 
       x: f6.000000
       y: f0.000000

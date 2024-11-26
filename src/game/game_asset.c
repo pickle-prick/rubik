@@ -82,6 +82,15 @@ g_scene_from_se_node(SE_Node* root)
                     rot.w = se_f64_from_struct(rot_senode, str8_lit("w"));
                 }
 
+                U64 push_count = se_u64_from_struct(n, str8_lit("push_count"));
+                U64 pop_count = se_u64_from_struct(n, str8_lit("pop_count"));
+                U64 children_count = se_u64_from_struct(n, str8_lit("children_count"));
+                for(U64 i = 0; i < pop_count; i++)
+                {
+                    g_pop_parent();
+                    total_pop_count++;
+                }
+
                 // Allocate/fill info
                 G_Node *g_node = g_build_node_from_string(0, name);
                 g_node->name    = name;
@@ -91,15 +100,6 @@ g_scene_from_se_node(SE_Node* root)
                 g_node->scale   = scale;
                 g_node->rot     = rot;
                 g_node->anim_dt = animation_dt;
-
-                U64 push_count = se_u64_from_struct(n, str8_lit("push_count"));
-                U64 pop_count = se_u64_from_struct(n, str8_lit("pop_count"));
-                U64 children_count = se_u64_from_struct(n, str8_lit("children_count"));
-                for(U64 i = 0; i < pop_count; i++)
-                {
-                    g_pop_parent();
-                    total_pop_count++;
-                }
 
                 switch(kind)
                 {
@@ -391,15 +391,19 @@ g_default_scene()
                 {
                     player->flags |= G_NodeFlags_NavigationRoot;
                     player->pos = v3f32(6,-1.5,0);
-                    player->kind = G_NodeKind_MeshRoot;
-                    player->v.mesh_root.kind = G_MeshRootKind_Capsule;
                     G_FunctionNode *fn = g_function_from_string(str8_lit("player_fn"));
                     g_node_push_fn(arena, player, fn->ptr, fn->alias);
 
                     G_Parent_Scope(player)
                     {
                         //- k: mesh
-                        g_capsule_node(arena, str8_lit("body"));
+                        G_Node *body = g_build_node_from_stringf(0, "body");
+                        body->kind = G_NodeKind_MeshRoot;
+                        body->v.mesh_root.kind = G_MeshRootKind_Capsule;
+                        G_Parent_Scope(body)
+                        {
+                            g_capsule_node(arena, str8_lit("capsule"));
+                        }
                         //- k: camera
                         G_Node *camera = g_build_node_from_stringf(0, "player_camera");
                         camera->kind = G_NodeKind_Camera3D;
@@ -1555,19 +1559,19 @@ internal G_Node *
 g_capsule_node(Arena *arena, String8 string)
 {
     Temp temp = scratch_begin(&arena,1);
-
     R_Vertex *vertices_src = 0;
     U64 vertices_count     = 0;
     U32 *indices_src       = 0;
     U64 indices_count      = 0;
     g_mesh_primitive_capsule(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 0.5, 2.5, 30, 8);
 
-    G_Node *n = g_build_node_from_stringf(0, "primitive");
+    G_Node *n = g_build_node_from_stringf(0, "capsule_primitive");
     n->kind                      = G_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
     n->v.mesh_primitive.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
 
     scratch_end(temp);
+    return n;
 }
 
 // internal G_Node *
