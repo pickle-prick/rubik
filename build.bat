@@ -95,9 +95,9 @@ for /f %%i in ('call git describe --always --dirty')   do set compile=%compile% 
 for /f %%i in ('call git rev-parse HEAD')              do set compile=%compile% -DBUILD_GIT_HASH_FULL=\"%%i\"
 
 :: --- Compile Shader ---------------------------------------------------------
-if "%no_shader%"=="1" echo [skipping shader compiling]
 set shader_in_dir=%~dp0\src\render\vulkan\shader
 set shader_out_dir=%~dp0\src\render\vulkan\shader
+if "%no_shader%"=="1" echo [skipping shader compiling]
 if not "%no_shader%"=="1" (
     for %%G in ("%shader_in_dir%\*.vert" "%shader_in_dir%\*.frag") do (
         if exist "%%G" (

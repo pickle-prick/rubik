@@ -123,7 +123,7 @@ se_yml_push_node_to_strlist(Arena *arena, String8List *strs, SE_Node *node)
         }break;
         case SE_NodeKind_String:
         {
-            str8_list_pushf(arena, strs, "\"%s\"\n", node->v.se_string);
+            str8_list_pushf(arena, strs, "\"%S\"\n", node->v.se_string);
         }break;
         case SE_NodeKind_Boolean:
         {

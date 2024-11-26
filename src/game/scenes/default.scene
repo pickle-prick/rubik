@@ -1,10 +1,10 @@
 name: "default_scene"
-viewport_shading: s1
+viewport_shading: s0
 polygon_mode: s0
 global_light: 
-  x: f1.075000
-  y: f0.191000
-  z: f3.066000
+  x: f0.000000
+  y: f0.000000
+  z: f1.000000
 nodes: 
   - 
     name: "root"
@@ -41,14 +41,14 @@ nodes:
     children_count: u0
     animation_dt: f0.000000
     pos: 
-      x: f0.382937
-      y: f-5.402078
-      z: f-4.860932
+      x: f2.906523
+      y: f-3.340744
+      z: f-1.167499
     rot: 
-      x: f-0.434334
-      y: f0.021657
-      z: f0.010555
-      w: f0.900429
+      x: f-0.024267
+      y: f0.385571
+      z: f0.010145
+      w: f0.922303
     scale: 
       x: f1.000000
       y: f1.000000
@@ -73,14 +73,14 @@ nodes:
     children_count: u0
     animation_dt: f0.000000
     pos: 
-      x: f4.646472
+      x: f6.000000
       y: f-1.500000
-      z: f-0.623322
+      z: f0.000000
     rot: 
-      x: f0.767887
-      y: f-0.229098
-      z: f0.458971
-      w: f0.383295
+      x: f-0.096900
+      y: f0.412948
+      z: f0.044239
+      w: f0.904498
     scale: 
       x: f1.000000
       y: f1.000000
@@ -99,9 +99,9 @@ nodes:
     push_count: u0
     pop_count: u0
     children_count: u0
-    animation_dt: f1.622287
+    animation_dt: f3.348380
     pos: 
-      x: f-0.098973
+      x: f6.000000
       y: f0.000000
       z: f0.000000
     rot: 
