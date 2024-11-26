@@ -26,7 +26,7 @@ cd /D "%~dp0"
 
 :: --- Unpack Arguments -------------------------------------------------------
 for %%a in (%*) do set "%%a=1"
-if not "%msvc%"=="1" if not "%clang%"=="1" set msvc=1
+if not "%msvc%"=="1" if not "%clang%"=="1" set clang=1
 if not "%release%"=="1" set debug=1
 if "%debug%"=="1"   set release=0 && echo [debug mode]
 if "%release%"=="1" set debug=0 && echo [release mode]
@@ -48,7 +48,7 @@ set cl_release=    call cl /O2 /DBUILD_DEBUG=0 %cl_common% %auto_compile_flags%
 set clang_debug=   call clang -g -O0 -DBUILD_DEBUG=1 %clang_common% %auto_compile_flags%
 set clang_release= call clang -g -O2 -DBUILD_DEBUG=0 %clang_common% %auto_compile_flags%
 set cl_link=       /link /MANIFEST:EMBED /INCREMENTAL:NO /pdbaltpath:%%%%_PDB%%%% /NATVIS:"%~dp0\src\natvis\base.natvis"
-set clang_link=    -fuse-ld=lld -Xlinker /MANIFEST:EMBED -Xlinker /pdbaltpath:%%%%_PDB%%%% -Xlinker /NATVIS:"%~dp0\src\natvis\base.natvis" -L "%VULKAN_SDK%\Lib" -lvulkan
+set clang_link=    -fuse-ld=lld -Xlinker /MANIFEST:EMBED -Xlinker /pdbaltpath:%%%%_PDB%%%% -Xlinker /NATVIS:"%~dp0\src\natvis\base.natvis" -L "%VULKAN_SDK%\Lib" -lvulkan-1
 set cl_out=        /out:
 set clang_out=     -o
 set cl_natvis=     /NATVIS:
@@ -97,9 +97,25 @@ for /f %%i in ('call git rev-parse HEAD')              do set compile=%compile% 
 :: --- Compile Shader ---------------------------------------------------------
 if "%no_shader%"=="1" echo [skipping shader compiling]
 if not "%no_shader%"=="1" (
-  pushd build
-  :: TODO
-  popd
+    set "shader_in_dir=.\src\render\vulkan\shader"
+    set "shader_out_dir=.\src\render\vulkan\shader"
+
+    for %%G in ("%shader_in_dir%\*.vert" "%shader_in_dir%\*.frag") do (
+        if exist "%%G" (
+            set "shader=%%G"
+            for %%A in ("%%~nxG") do (
+                set "filename=%%~nA"
+                set "extension=%%~xA"
+                set "name=%%~nA"
+
+                :: Remove the leading dot from the extension
+                set "extension=!extension:~1!"
+
+                echo Compiling !shader! to !shader_out_dir!\!name!_!extension!.spv
+                glslc "!shader!" -o "!shader_out_dir!\!name!_!extension!.spv"
+            )
+        )
+    )
 )
 
 :: --- Build & Run Metaprogram ------------------------------------------------

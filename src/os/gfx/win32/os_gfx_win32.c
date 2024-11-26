@@ -1521,6 +1521,15 @@ hcursor = curs; }break;
   }
 }
 
+internal void
+os_hide_cursor(OS_Handle window) {}
+
+internal void
+os_show_cursor(OS_Handle window) {}
+
+internal void
+os_wrap_cursor(OS_Handle window, F32 dst_x, F32 dst_y) {}
+
 ////////////////////////////////
 //~ k: @os_hooks Vulkan (Implemented Per-OS)
 
