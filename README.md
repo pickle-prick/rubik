@@ -32,6 +32,8 @@ In order to work with the codebase, you'll need the [Microsoft C/C++ Build Tools
 v15 (2017) or later](https://aka.ms/vs/17/release/vs_BuildTools.exe), for both
 the Windows SDK and the MSVC/Clang compiler and linker. (**Note: Currently only clang can be used)
 
+Install [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/) for windows, then set the %VULKAN_SDK% environment variable to your sdk installation location and include %VULKAN_SDK%/bin to your system path
+
 #### 2. Build Environment Setup
 
 Building the codebase can be done in a terminal which is equipped with the
