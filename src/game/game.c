@@ -135,7 +135,7 @@ internal void g_ui_inspector(G_Scene *scene)
                 {
                     ui_set_next_flags(UI_BoxFlag_Disabled);
                 }
-                UI_Box *container_box = ui_build_box_from_stringf(0, "###container");
+                UI_Box *container_box = ui_build_box_from_stringf(UI_BoxFlag_DrawOverlay, "###container");
                 container_box->pref_size[Axis2_Y].value = mix_1f32(size, 0, container_box->disabled_t);
                 UI_Parent(container_box)
                 {

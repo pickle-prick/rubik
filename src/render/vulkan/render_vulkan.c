@@ -1019,8 +1019,8 @@ r_vulkan_format_for_swapchain(VkSurfaceFormatKHR *formats, U64 count, VkFormat *
     {
         // For the color space, we'll use SRGB if it's available, because it ressults in more accurate perceived colors.
         // It is also pretty much the standard color space for images, like the textures we'll use later on. Because of that we should also 
-        // use an SRGB color format, of which oen of the most common ones is VK_FORAMT_B8G8R8A8_SRGB 
-        if(formats[i].format == VK_FORMAT_R8G8B8A8_SRGB && formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+        // use an SRGB color format, of which one of the most common ones is VK_FORMAT_B8G8R8A8_SRGB
+        if(formats[i].format == VK_FORMAT_B8G8R8A8_SRGB && formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
         {
             *format      = formats[i].format;
             *color_space = formats[i].colorSpace;

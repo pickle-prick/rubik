@@ -56,8 +56,12 @@ g_init(OS_Handle os_wnd)
     g_state->cfg_font_tags[G_FontSlot_Icons] = f_tag_from_path(str8_lit("./fonts/icons.ttf"));
 
     // Theme 
-    MemoryCopy(g_state->cfg_theme_target.colors, rd_theme_preset_colors__default_dark, sizeof(rd_theme_preset_colors__default_dark));
-    MemoryCopy(g_state->cfg_theme.colors, rd_theme_preset_colors__default_dark, sizeof(rd_theme_preset_colors__default_dark));
+    // MemoryCopy(g_state->cfg_theme_target.colors, rd_theme_preset_colors__vs_dark, sizeof(rd_theme_preset_colors__vs_dark));
+    // MemoryCopy(g_state->cfg_theme.colors, rd_theme_preset_colors__vs_dark, sizeof(rd_theme_preset_colors__vs_dark));
+    MemoryCopy(g_state->cfg_theme_target.colors, rd_theme_preset_colors__handmade_hero, sizeof(rd_theme_preset_colors__handmade_hero));
+    MemoryCopy(g_state->cfg_theme.colors, rd_theme_preset_colors__handmade_hero, sizeof(rd_theme_preset_colors__handmade_hero));
+    // MemoryCopy(g_state->cfg_theme_target.colors, rd_theme_preset_colors__far_manager, sizeof(rd_theme_preset_colors__far_manager));
+    // MemoryCopy(g_state->cfg_theme.colors, rd_theme_preset_colors__far_manager, sizeof(rd_theme_preset_colors__far_manager));
 
     //////////////////////////////
     //- k: compute ui palettes from theme

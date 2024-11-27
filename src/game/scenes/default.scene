@@ -41,14 +41,14 @@ nodes:
     children_count: u0
     animation_dt: f0.000000
     pos: 
-      x: f1.392683
-      y: f-3.817623
-      z: f-3.840234
+      x: f0.000000
+      y: f-3.000000
+      z: f-3.000000
     rot: 
-      x: f-0.067919
-      y: f0.302014
-      z: f0.021823
-      w: f0.950630
+      x: f0.000000
+      y: f0.000000
+      z: f0.000000
+      w: f1.000000
     scale: 
       x: f1.000000
       y: f1.000000
@@ -77,10 +77,10 @@ nodes:
       y: f-1.500000
       z: f0.000000
     rot: 
-      x: f-0.097531
-      y: f0.427257
-      z: f0.046422
-      w: f0.897652
+      x: f-0.105787
+      y: f0.370024
+      z: f0.042456
+      w: f0.921986
     scale: 
       x: f1.000000
       y: f1.000000
@@ -154,7 +154,7 @@ nodes:
     push_count: u0
     pop_count: u1
     children_count: u0
-    animation_dt: f0.584065
+    animation_dt: f1.353022
     pos: 
       x: f6.000000
       y: f0.000000

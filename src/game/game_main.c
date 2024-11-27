@@ -106,10 +106,7 @@ ui_draw(OS_Handle os_wnd)
                 // rjf: slight emboss fadeoff
                 if(0)
                 {
-                    Rng2F32 rect = r2f32p(box->rect.x0,
-                            box->rect.y0,
-                            box->rect.x1,
-                            box->rect.y1);
+                    Rng2F32 rect = r2f32p(box->rect.x0, box->rect.y0, box->rect.x1, box->rect.y1);
                     R_Rect2DInst *inst = d_rect(rect, v4f32(0, 0, 0, 0), 0, 0, 1.f);
                     inst->colors[Corner_00] = v4f32(0.f, 0.f, 0.f, 0.0f*t);
                     inst->colors[Corner_01] = v4f32(0.f, 0.f, 0.f, 0.3f*t);
@@ -191,7 +188,42 @@ ui_draw(OS_Handle os_wnd)
             d_truncated_fancy_run_list(text_position, &box->display_string_runs, box->rect.max.x, ellipses_run);
         }
 
-        // TODO(k): draw focus viz
+        // NOTE(k): draw focus viz
+        if(1)
+        {
+            B32 focused = (box->flags & (UI_BoxFlag_FocusHot|UI_BoxFlag_FocusActive) &&
+                    box->flags & UI_BoxFlag_Clickable);
+            B32 disabled = 0;
+            for(UI_Box *p = box; !ui_box_is_nil(p); p = p->parent)
+            {
+                if(p->flags & (UI_BoxFlag_FocusHotDisabled|UI_BoxFlag_FocusActiveDisabled))
+                {
+                    disabled = 1;
+                    break;
+                }
+            }
+            if(focused)
+            {
+                Vec4F32 color = v4f32(0.3f, 0.8f, 0.3f, 1.f);
+                if(disabled)
+                {
+                    color = v4f32(0.8f, 0.3f, 0.3f, 1.f);
+                }
+                d_rect(r2f32p(box->rect.x0-6, box->rect.y0-6, box->rect.x0+6, box->rect.y0+6), color, 2, 0, 1);
+                d_rect(box->rect, color, 2, 2, 1);
+            }
+            if(box->flags & (UI_BoxFlag_FocusHot|UI_BoxFlag_FocusActive))
+            {
+                if(box->flags & (UI_BoxFlag_FocusHotDisabled|UI_BoxFlag_FocusActiveDisabled))
+                {
+                    d_rect(r2f32p(box->rect.x0-6, box->rect.y0-6, box->rect.x0+6, box->rect.y0+6), v4f32(1, 0, 0, 0.2f), 2, 0, 1);
+                }
+                else
+                {
+                    d_rect(r2f32p(box->rect.x0-6, box->rect.y0-6, box->rect.x0+6, box->rect.y0+6), v4f32(0, 1, 0, 0.2f), 2, 0, 1);
+                }
+            }
+        }
 
         if(box->flags & UI_BoxFlag_Clip)
         {
