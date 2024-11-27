@@ -41,14 +41,14 @@ nodes:
     children_count: u0
     animation_dt: f0.000000
     pos: 
-      x: f-0.559875
-      y: f-3.319056
-      z: f-2.829154
+      x: f1.392683
+      y: f-3.817623
+      z: f-3.840234
     rot: 
-      x: f-0.210691
-      y: f0.523812
-      z: f0.134298
-      w: f0.814367
+      x: f-0.067919
+      y: f0.302014
+      z: f0.021823
+      w: f0.950630
     scale: 
       x: f1.000000
       y: f1.000000
@@ -73,14 +73,14 @@ nodes:
     children_count: u2
     animation_dt: f0.000000
     pos: 
-      x: f2.070718
+      x: f6.000000
       y: f-1.500000
-      z: f0.515272
+      z: f0.000000
     rot: 
-      x: f-0.119569
-      y: f0.136009
-      z: f0.016538
-      w: f0.983315
+      x: f-0.097531
+      y: f0.427257
+      z: f0.046422
+      w: f0.897652
     scale: 
       x: f1.000000
       y: f1.000000
@@ -154,7 +154,7 @@ nodes:
     push_count: u0
     pop_count: u1
     children_count: u0
-    animation_dt: f3.496586
+    animation_dt: f0.584065
     pos: 
       x: f6.000000
       y: f0.000000

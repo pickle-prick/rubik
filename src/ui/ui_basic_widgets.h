@@ -94,8 +94,8 @@ internal UI_Signal ui_close(String8 string);
 internal UI_Signal ui_closef(char *fmt, ...);
 internal UI_Signal ui_expander(B32 is_expanded, String8 string);
 internal UI_Signal ui_expanderf(B32 is_expanded, char *fmt, ...);
-internal UI_Signal ui_sort_header(B32 sorting, B32 ascending, String8 string);
-internal UI_Signal ui_sort_headerf(B32 sorting, B32 ascending, char *fmt, ...);
+// internal UI_Signal ui_sort_header(B32 sorting, B32 ascending, String8 string);
+// internal UI_Signal ui_sort_headerf(B32 sorting, B32 ascending, char *fmt, ...);
 
 ////////////////////////////////
 //~ rjf: Color Pickers

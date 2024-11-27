@@ -97,16 +97,16 @@ se_yml_push_node_to_strlist(Arena *arena, String8List *strs, SE_Node *node)
     // List prefix
     if(parent != 0 && parent->kind == SE_NodeKind_Array)
     {
-        prefix = push_str8f(arena, "%s- ", prefix.str);
+        prefix = push_str8f(arena, "%S- ", prefix);
     }
 
     // Tag
     if(node->tag.size > 0)
     {
-        prefix = push_str8f(arena, "%s%s: ", prefix.str, node->tag.str);
+        prefix = push_str8f(arena, "%S%S: ", prefix, node->tag);
     }
 
-    str8_list_pushf(arena, strs, "%s", prefix.str);
+    str8_list_pushf(arena, strs, "%S", prefix);
     switch(node->kind)
     {
         case SE_NodeKind_Int:
@@ -128,7 +128,7 @@ se_yml_push_node_to_strlist(Arena *arena, String8List *strs, SE_Node *node)
         case SE_NodeKind_Boolean:
         {
             String8 v = node->v.se_boolean ? str8_lit("true") : str8_lit("false");
-            str8_list_pushf(arena, strs, "%s\n", v.str);
+            str8_list_pushf(arena, strs, "%S\n", v);
         }break;
         case SE_NodeKind_Array:
         case SE_NodeKind_Struct:

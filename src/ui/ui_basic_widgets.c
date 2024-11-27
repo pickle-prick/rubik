@@ -619,7 +619,7 @@ ui_f32_edit(F32 *n, F32 min, F32 max, TxtPt *cursor, TxtPt *mark, U8 *edit_buffe
     String8 display_string = push_str8_copy(ui_build_arena(), ui_display_part_from_key_string(string));
     String8 hash_part_string = push_str8_copy(ui_build_arena(), ui_hash_part_from_key_string(string));
     String8 number_string = push_str8f(ui_build_arena(), "%.3f", display_string.str, *n);
-    String8 pre_edit_value = push_str8f(ui_build_arena(), "%s:%s", display_string.str, number_string.str);
+    String8 pre_edit_value = push_str8f(ui_build_arena(), "%S:%S", display_string, number_string);
 
     UI_Key key = ui_key_from_string(ui_active_seed_key(), hash_part_string);
 

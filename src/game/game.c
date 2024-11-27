@@ -56,8 +56,14 @@ internal void g_ui_inspector(G_Scene *scene)
                     ui_labelf("Scene");
                 }
             }
+            ui_spacer(ui_px(3, 0));
 
             // Scene cfg
+            ui_set_next_child_layout_axis(Axis2_Y);
+            ui_set_next_pref_height(ui_children_sum(0));
+            ui_set_next_flags(UI_BoxFlag_DrawSideLeft|UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideTop|UI_BoxFlag_DrawSideRight);
+            UI_Box *scene_cfg = ui_build_box_from_stringf(0, "###scene_cfg");
+            UI_Parent(scene_cfg)
             {
                 // TODO(k): move these into some state struct
                 local_persist TxtPt cursor = {0};
@@ -79,7 +85,7 @@ internal void g_ui_inspector(G_Scene *scene)
 
                 UI_Row
                 {
-                    if(ui_clicked(ui_buttonf("New")))
+                    if(ui_clicked(ui_buttonf("Load Default")))
                     {
                         G_Scene *new_scene = g_default_scene();
                         SLLStackPush(g_state->first_to_free_scene, scene);
@@ -96,6 +102,26 @@ internal void g_ui_inspector(G_Scene *scene)
                         SLLStackPush(g_state->first_to_free_scene, scene);
                         g_state->active_scene = new_scene;
                         scene_path.size = 0;
+                    }
+                }
+
+                UI_Row
+                {
+                    g_ui_dropdown_begin(str8_lit("Create"));
+                    if(ui_clicked(ui_buttonf("box1"))) {}
+                    if(ui_clicked(ui_buttonf("box2"))) {}
+                    g_ui_dropdown_end();
+
+                    if(ui_clicked(ui_buttonf("Delete")))
+                    {
+                    }
+
+                    if(ui_clicked(ui_buttonf("Copy")))
+                    {
+                    }
+
+                    if(ui_clicked(ui_buttonf("Paste")))
+                    {
                     }
                 }
             }
@@ -119,17 +145,26 @@ internal void g_ui_inspector(G_Scene *scene)
                     ui_scroll_list_begin(container_box->fixed_size, &pt);
                     G_Node *root = scene->root;
                     U64 row_count = 0;
+                    U64 level = 0;
+                    U64 indent_size = 2;
                     while(root != 0)
                     {
+                        String8 indent = str8(0, level*indent_size);
+                        indent.str = push_array(ui_build_arena(), U8, indent.size);
+                        MemorySet(indent.str, ' ', indent.size);
+                        // indent.str[indent.size-1] = '|';
+
                         G_NodeRec rec = g_node_df_pre(root, 0);
-                        String8 string = push_str8f(ui_build_arena(), "%s###%d", root->name.str, row_count);
+                        String8 string = push_str8f(ui_build_arena(), "%S%S###%d", indent, root->name, row_count);
                         row_count++;
+                        ui_set_next_flags(UI_BoxFlag_ClickToFocus);
+                        if(g_key_match(g_state->active_key, root->key)) {}
                         UI_Signal label = ui_button(string);
 
                         // TODO: make it regoniziable
-                        if(g_key_match(g_state->active_key, root->key)) {}
                         if(ui_clicked(label)) g_set_active_key(root->key);
 
+                        level += (rec.push_count-rec.pop_count);
                         root = rec.next;
                     }
                     ui_scroll_list_end();

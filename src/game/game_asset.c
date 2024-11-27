@@ -209,7 +209,7 @@ g_scene_from_file(String8 path)
     return ret;
 }
 
-internal void *
+internal void
 g_scene_to_file(G_Scene *scene, String8 path)
 {
     String8List strs = {0};
@@ -602,7 +602,7 @@ g_mnode_from_gltf_node(Arena *arena, cgltf_node *cn, G_ModelNode *parent, G_Mode
         // Create node for every mesh primitive
         for(U64 i = 0; i < cn->mesh->primitives_count; i++)
         {
-            String8 name = push_str8f(arena, "%s#mesh#%d", mnode->name.str, i);
+            String8 name = push_str8f(arena, "%S#mesh#%d", mnode->name, i);
             G_Key key = g_key_from_string(mnode->key, name);
 
             G_ModelNode *mesh_node = push_array(arena, G_ModelNode, 1);

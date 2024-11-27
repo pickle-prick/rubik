@@ -114,8 +114,12 @@ g_ui_dropdown_begin(String8 string)
                                                        UI_BoxFlag_DrawBorder|
                                                        UI_BoxFlag_DrawHotEffects|
                                                        UI_BoxFlag_DrawActiveEffects|
+                                                       UI_BoxFlag_DrawSideLeft|
+                                                       UI_BoxFlag_DrawSideRight|
+                                                       UI_BoxFlag_DrawSideBottom|
+                                                       UI_BoxFlag_DrawSideTop|
                                                        UI_BoxFlag_Clip,
-                                                       "###%s-dropdown_container", (char *)string.str);
+                                                       "###%S-dropdown_container", string);
     ui_pop_focus_hot();
     ui_pop_focus_active();
     ui_push_parent(list_container);

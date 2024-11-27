@@ -9,7 +9,7 @@ internal G_Scene *g_default_scene();
 //- Scene serialization/deserialization
 
 internal G_Scene *g_scene_from_file(String8 path);
-internal void    *g_scene_to_file(G_Scene *scene, String8 path);
+internal void    g_scene_to_file(G_Scene *scene, String8 path);
 
 /////////////////////////////////
 // GLTF2.0
