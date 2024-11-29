@@ -2125,7 +2125,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
     VkPipelineVertexInputStateCreateInfo vtx_input_state_create_info = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 
     VkVertexInputBindingDescription vtx_binding_desc[2] = {};
-#define MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT 14
+#define MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT 15
     VkVertexInputAttributeDescription vtx_attr_descs[MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT];
 
     U64 vtx_binding_desc_count = 0;
@@ -2140,7 +2140,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
         case (R_Vulkan_PipelineKind_Mesh):
         {
             vtx_binding_desc_count = 2;
-            vtx_attr_desc_cnt = 14;
+            vtx_attr_desc_cnt = 15;
 
             // All of our per-vertex data is packed together in one array, so we'are only going to have one binding for now
             // This specifies the index of the binding in the array of bindings
@@ -2192,62 +2192,67 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
             vtx_attr_descs[3].binding  = 0;
             vtx_attr_descs[3].location = 3;
             vtx_attr_descs[3].format   = VK_FORMAT_R32G32B32_SFLOAT;
-            vtx_attr_descs[3].offset   = offsetof(R_Vertex, col);
+            vtx_attr_descs[3].offset   = offsetof(R_Vertex, tan);
 
             vtx_attr_descs[4].binding  = 0;
             vtx_attr_descs[4].location = 4;
-            vtx_attr_descs[4].format   = VK_FORMAT_R32G32B32A32_UINT;
-            vtx_attr_descs[4].offset   = offsetof(R_Vertex, joints);
+            vtx_attr_descs[4].format   = VK_FORMAT_R32G32B32_SFLOAT;
+            vtx_attr_descs[4].offset   = offsetof(R_Vertex, col);
 
             vtx_attr_descs[5].binding  = 0;
             vtx_attr_descs[5].location = 5;
-            vtx_attr_descs[5].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[5].offset   = offsetof(R_Vertex, weights);
+            vtx_attr_descs[5].format   = VK_FORMAT_R32G32B32A32_UINT;
+            vtx_attr_descs[5].offset   = offsetof(R_Vertex, joints);
+
+            vtx_attr_descs[6].binding  = 0;
+            vtx_attr_descs[6].location = 6;
+            vtx_attr_descs[6].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
+            vtx_attr_descs[6].offset   = offsetof(R_Vertex, weights);
 
             // Instance binding xform (vec4 x4)
             vtx_binding_desc[1].binding   = 1;
             vtx_binding_desc[1].stride    = sizeof(R_Mesh3DInst);
             vtx_binding_desc[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
 
-            vtx_attr_descs[6].binding  = 1;
-            vtx_attr_descs[6].location = 6;
-            vtx_attr_descs[6].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[6].offset   = offsetof(R_Mesh3DInst, white_texture_override);
-
             vtx_attr_descs[7].binding  = 1;
             vtx_attr_descs[7].location = 7;
             vtx_attr_descs[7].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[7].offset   = sizeof(Vec4F32) * 0;
+            vtx_attr_descs[7].offset   = offsetof(R_Mesh3DInst, white_texture_override);
 
             vtx_attr_descs[8].binding  = 1;
             vtx_attr_descs[8].location = 8;
             vtx_attr_descs[8].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[8].offset   = sizeof(Vec4F32) * 1;
+            vtx_attr_descs[8].offset   = sizeof(Vec4F32) * 0;
 
             vtx_attr_descs[9].binding  = 1;
             vtx_attr_descs[9].location = 9;
             vtx_attr_descs[9].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[9].offset   = sizeof(Vec4F32) * 2;
+            vtx_attr_descs[9].offset   = sizeof(Vec4F32) * 1;
 
             vtx_attr_descs[10].binding  = 1;
             vtx_attr_descs[10].location = 10;
             vtx_attr_descs[10].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[10].offset   = sizeof(Vec4F32) * 3;
+            vtx_attr_descs[10].offset   = sizeof(Vec4F32) * 2;
 
             vtx_attr_descs[11].binding  = 1;
             vtx_attr_descs[11].location = 11;
-            vtx_attr_descs[11].format   = VK_FORMAT_R32G32_UINT;
-            vtx_attr_descs[11].offset   = offsetof(R_Mesh3DInst, key);
+            vtx_attr_descs[11].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
+            vtx_attr_descs[11].offset   = sizeof(Vec4F32) * 3;
 
             vtx_attr_descs[12].binding  = 1;
             vtx_attr_descs[12].location = 12;
-            vtx_attr_descs[12].format   = VK_FORMAT_R32_UINT;
-            vtx_attr_descs[12].offset   = offsetof(R_Mesh3DInst, first_joint);
+            vtx_attr_descs[12].format   = VK_FORMAT_R32G32_UINT;
+            vtx_attr_descs[12].offset   = offsetof(R_Mesh3DInst, key);
 
             vtx_attr_descs[13].binding  = 1;
             vtx_attr_descs[13].location = 13;
             vtx_attr_descs[13].format   = VK_FORMAT_R32_UINT;
-            vtx_attr_descs[13].offset   = offsetof(R_Mesh3DInst, joint_count);
+            vtx_attr_descs[13].offset   = offsetof(R_Mesh3DInst, first_joint);
+
+            vtx_attr_descs[14].binding  = 1;
+            vtx_attr_descs[14].location = 14;
+            vtx_attr_descs[14].format   = VK_FORMAT_R32_UINT;
+            vtx_attr_descs[14].offset   = offsetof(R_Mesh3DInst, joint_count);
         }break;
         case (R_Vulkan_PipelineKind_Rect):
         {

@@ -43,7 +43,7 @@ g_scene_from_se_node(SE_Node* root)
 
     if(nodes != 0)
     {
-        G_Bucket_Scope(ret->bucket)
+        G_Bucket_Scope(ret->bucket) G_MeshCacheTable_Scope(&ret->mesh_cache_table)
         {
             U64 total_push_count = 0;
             U64 total_pop_count = 0;
@@ -133,30 +133,34 @@ g_scene_from_se_node(SE_Node* root)
                         g_push_parent(g_node);
                         switch(mesh_kind)
                         {
-                            case G_MeshRootKind_Box:
+                            case G_MeshKind_Box:
                             {
-                                g_box_node(arena, name);
+                                g_box_node_default(name);
                             }break;
-                            case G_MeshRootKind_Sphere:
+                            case G_MeshKind_Plane:
                             {
-                                g_sphere_node(arena, name);
+                                g_plane_node_default(name);
                             }break;
-                            case G_MeshRootKind_Capsule:
+                            case G_MeshKind_Sphere:
                             {
-                                g_capsule_node(arena, name);
+                                g_sphere_node_default(name);
                             }break;
-                            case G_MeshRootKind_Cylinder:
+                            case G_MeshKind_Capsule:
                             {
-                                g_cylinder_node(arena, name);
+                                g_capsule_node_default(name);
                             }break;
-                            case G_MeshRootKind_Model:
+                            case G_MeshKind_Cylinder:
+                            {
+                                g_cylinder_node_default(name);
+                            }break;
+                            case G_MeshKind_Model:
                             {
                                 // TODO(k): cache models
                                 String8 model_directory = str8_chop_last_slash(model_path);
                                 G_Model *model;
                                 G_Path_Scope(model_directory)
                                 {
-                                    model = g_model_from_gltf(arena, model_path);
+                                    model = g_model_from_gltf_cached(model_path);
                                 }
                                 g_node_from_model(model, g_active_seed_key());
                                 g_node->skeleton_anims = model->anims; 
@@ -346,12 +350,7 @@ g_scene_to_file(G_Scene *scene, String8 path)
 internal G_Scene *
 g_default_scene()
 {
-    Arena *arena = arena_alloc(.reserve_size = MB(64), .commit_size = MB(64));
-    G_Scene *scene = push_array(arena, G_Scene, 1);
-    {
-        scene->arena = arena;
-        scene->bucket = g_bucket_make(arena, 3000);
-    }
+    G_Scene *scene = g_scene_alloc();
 
     // Fill base info
     scene->name             = str8_lit("default_scene");
@@ -360,92 +359,88 @@ g_default_scene()
     scene->global_light     = v3f32(0,0,1);
     scene->polygon_mode     = R_GeoPolygonKind_Fill;
 
-    G_Scene_Scope(scene)
+    G_Scene_Scope(scene) G_Bucket_Scope(scene->bucket) G_MeshCacheTable_Scope(&scene->mesh_cache_table)
     {
-        G_Bucket_Scope(scene->bucket)
+        // Create the origin/world node
+        G_Node *root = g_build_node_from_string(0, str8_lit("root"));
+        root->pos = v3f32(0, 0, 0);
+        scene->root = root;
+
+        G_Parent_Scope(root)
         {
-            // Create the origin/world node
-            G_Node *root = g_build_node_from_string(0, str8_lit("root"));
-            root->pos = v3f32(0, 0, 0);
-            scene->root = root;
-
-            G_Parent_Scope(root)
+            G_Node *camera = g_build_node_from_string(0, str8_lit("editor_camera"));
             {
-                G_Node *camera = g_build_node_from_string(0, str8_lit("editor_camera"));
+                camera->kind         = G_NodeKind_Camera3D;
+                camera->pos          = v3f32(0,-3,-3);
+                camera->v.camera.fov = 0.25;
+                camera->v.camera.zn  = 0.1f;
+                camera->v.camera.zf  = 200.f;
+                G_FunctionNode *fn = g_function_from_string(str8_lit("editor_camera_fn"));
+                g_node_push_fn(scene->bucket->arena, camera, fn->ptr, fn->alias);
+            }
+            G_CameraNode *camera_node = push_array(scene->arena, G_CameraNode, 1);
+            camera_node->v = camera;
+            DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
+            scene->active_camera = camera_node;
+
+            // Player
+            G_Node *player = g_build_node_from_stringf(0, "player");
+            {
+                player->flags |= G_NodeFlags_NavigationRoot;
+                player->pos = v3f32(6,-1.5,0);
+                G_FunctionNode *fn = g_function_from_string(str8_lit("player_fn"));
+                g_node_push_fn(scene->arena, player, fn->ptr, fn->alias);
+
+                G_Parent_Scope(player)
                 {
-                    camera->kind         = G_NodeKind_Camera3D;
-                    camera->pos          = v3f32(0,-3,-3);
-                    camera->v.camera.fov = 0.25;
-                    camera->v.camera.zn  = 0.1f;
-                    camera->v.camera.zf  = 200.f;
-                    G_FunctionNode *fn = g_function_from_string(str8_lit("editor_camera_fn"));
-                    g_node_push_fn(scene->bucket->arena, camera, fn->ptr, fn->alias);
+                    //- k: mesh
+                    G_Node *body = g_build_node_from_stringf(0, "body");
+                    body->kind = G_NodeKind_MeshRoot;
+                    body->v.mesh_root.kind = G_MeshKind_Capsule;
+                    G_Parent_Scope(body)
+                    {
+                        g_capsule_node_default(str8_lit("capsule"));
+                    }
+                    //- k: camera
+                    G_Node *camera = g_build_node_from_stringf(0, "player_camera");
+                    camera->kind = G_NodeKind_Camera3D;
+                    {
+                        camera->pos                  = v3f32(0,-3,0);
+                        camera->v.camera.fov         = 0.25;
+                        camera->v.camera.zn          = 0.1f;
+                        camera->v.camera.zf          = 200.f;
+                        camera->v.camera.hide_cursor = 1;
+                        camera->v.camera.lock_cursor = 1;
+                    }
+                    G_CameraNode *camera_node = push_array(scene->arena, G_CameraNode, 1);
+                    camera_node->v = camera;
+                    DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
                 }
-                G_CameraNode *camera_node = push_array(arena, G_CameraNode, 1);
-                camera_node->v = camera;
-                DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
-                scene->active_camera = camera_node;
+            }
 
-                // Player
-                G_Node *player = g_build_node_from_stringf(0, "player");
+            // Dummy1
+            {
+                // TODO: cache models
+                G_Model *m;
+                String8 model_path = str8_lit("./models/dancing_stormtrooper/scene.gltf");
+                String8 model_directory = str8_chop_last_slash(model_path);
+                G_Path_Scope(model_directory)
                 {
-                    player->flags |= G_NodeFlags_NavigationRoot;
-                    player->pos = v3f32(6,-1.5,0);
-                    G_FunctionNode *fn = g_function_from_string(str8_lit("player_fn"));
-                    g_node_push_fn(arena, player, fn->ptr, fn->alias);
-
-                    G_Parent_Scope(player)
-                    {
-                        //- k: mesh
-                        G_Node *body = g_build_node_from_stringf(0, "body");
-                        body->kind = G_NodeKind_MeshRoot;
-                        body->v.mesh_root.kind = G_MeshRootKind_Capsule;
-                        G_Parent_Scope(body)
-                        {
-                            g_capsule_node(arena, str8_lit("capsule"));
-                        }
-                        //- k: camera
-                        G_Node *camera = g_build_node_from_stringf(0, "player_camera");
-                        camera->kind = G_NodeKind_Camera3D;
-                        {
-                            camera->pos                  = v3f32(0,-3,0);
-                            camera->v.camera.fov         = 0.25;
-                            camera->v.camera.zn          = 0.1f;
-                            camera->v.camera.zf          = 200.f;
-                            camera->v.camera.hide_cursor = 1;
-                            camera->v.camera.lock_cursor = 1;
-                        }
-                        G_CameraNode *camera_node = push_array(arena, G_CameraNode, 1);
-                        camera_node->v = camera;
-                        DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
-                    }
+                    m = g_model_from_gltf(scene->arena, model_path);
                 }
+                G_Node *dummy = g_build_node_from_stringf(0, "dummy1");
+                dummy->kind             = G_NodeKind_MeshRoot;
+                dummy->skeleton_anims   = m->anims;
+                dummy->flags            = G_NodeFlags_NavigationRoot|G_NodeFlags_Animated|G_NodeFlags_AnimatedSkeleton;
+                dummy->pos              = v3f32(6,0,0);
+                dummy->v.mesh_root.path = push_str8_copy(scene->arena, model_path);
+                dummy->v.mesh_root.kind = G_MeshKind_Model;
+                QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
+                dummy->rot = mul_quat_f32(flip_y, dummy->rot);
 
-                // Dummy1
+                G_Parent_Scope(dummy)
                 {
-                    // TODO: cache models
-                    G_Model *m;
-                    String8 model_path = str8_lit("./models/dancing_stormtrooper/scene.gltf");
-                    String8 model_directory = str8_chop_last_slash(model_path);
-                    G_Path_Scope(model_directory)
-                    {
-                        m = g_model_from_gltf(scene->arena, model_path);
-                    }
-                    G_Node *dummy = g_build_node_from_stringf(0, "dummy1");
-                    dummy->kind             = G_NodeKind_MeshRoot;
-                    dummy->skeleton_anims   = m->anims;
-                    dummy->flags            = G_NodeFlags_NavigationRoot|G_NodeFlags_Animated|G_NodeFlags_AnimatedSkeleton;
-                    dummy->pos              = v3f32(6,0,0);
-                    dummy->v.mesh_root.kind = G_MeshRootKind_Model;
-                    dummy->v.mesh_root.path = push_str8_copy(arena, model_path);
-                    dummy->v.mesh_root.kind = G_MeshRootKind_Model;
-                    QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
-                    dummy->rot = mul_quat_f32(flip_y, dummy->rot);
-
-                    G_Parent_Scope(dummy)
-                    {
-                        g_node_from_model(m, g_active_seed_key());
-                    }
+                    g_node_from_model(m, g_active_seed_key());
                 }
             }
         }
@@ -457,9 +452,47 @@ g_default_scene()
 // GLTF2.0
 
 internal G_Model *
+g_model_from_gltf_cached(String8 gltf_path)
+{
+    G_Model *ret = 0;
+
+    // Try fetch model from cache first
+    G_MeshCacheTable *cache_table = g_top_mesh_cache_table();
+    Assert(cache_table != 0);
+    G_Key cache_key = g_key_from_string(g_key_zero(), gltf_path);
+    U64 slot_idx = 0;
+
+    slot_idx = cache_key.u64[0] % cache_table->slot_count;
+    G_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
+    for(G_MeshCacheNode *n = slot->first; n != 0; n = n->next)
+    {
+        if(g_key_match(n->key, cache_key))
+        {
+            AssertAlways(n->kind == G_MeshKind_Model);
+            ret = n->v;
+            n->rc++;
+        }
+    }
+
+    if(ret == 0)
+    {
+        ret = g_model_from_gltf(cache_table->arena, gltf_path);
+
+        G_MeshCacheNode *cache_node = push_array(cache_table->arena, G_MeshCacheNode, 1);
+        cache_node->key = cache_key;
+        cache_node->v = ret;
+        cache_node->rc = 1;
+        cache_node->kind = G_MeshKind_Model;
+        DLLPushBack(slot->first, slot->last, cache_node);
+    }
+    return ret;
+}
+
+internal G_Model *
 g_model_from_gltf(Arena *arena, String8 gltf_path)
 {
     G_Model *model = 0;
+
     cgltf_options opts = {0};
     cgltf_data *data;
     cgltf_result ret = cgltf_parse_file(&opts, (char *)gltf_path.str, &data);
@@ -495,6 +528,7 @@ g_model_from_gltf(Arena *arena, String8 gltf_path)
     {
         InvalidPath;
     }
+
     return model;
 }
 
@@ -923,7 +957,6 @@ g_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide_
 
     Vec3F32 start_pos = scale_3f32(size, -0.5);
 
-    // TODO: fix it
     U64 vertex_count = (subdivide_h+2) * (subdivide_w+2)*2 + (subdivide_h+2) * (subdivide_d+2)*2 + (subdivide_d+2) * (subdivide_w+2)*2; 
     U64 indice_count = (subdivide_h+1) * (subdivide_w+1)*12 + (subdivide_h+1) * (subdivide_d+1)*12 + (subdivide_d+1) * (subdivide_w+1)*12;
 
@@ -1101,6 +1134,72 @@ g_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide_
         }
 
         z += size.z / (subdivide_d + 1.0);
+        prevrow = thisrow;
+        thisrow = vertex_idx;
+    }
+
+    Assert(vertex_count == vertex_idx);
+    Assert(indice_count == indice_idx);
+    *vertices_out = vertices;
+    *vertices_count_out = vertex_count;
+    *indices_out = indices;
+    *indices_count_out = indice_count;
+}
+
+internal void
+g_mesh_primitive_plane(Arena *arena, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
+{
+    U64 i,j,prevrow,thisrow,vertex_idx, indice_idx;
+    F32 x,z;
+
+    Vec2F32 start_pos = scale_2f32(size, -0.5);
+    // Face Y
+    Vec3F32 normal = {0.0f, -1.0f, 0.0f};
+
+    // TODO: fix it later
+    U64 vertex_count = (subdivide_d+2) * (subdivide_w+2);
+    U64 indice_count = (subdivide_d+1) * (subdivide_w+1) * 6;
+    R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
+    U32 *indices = push_array(arena, U32, indice_count);
+
+    vertex_idx = 0;
+    indice_idx = 0;
+
+    Vec3F32 pos, nor;
+    Vec2F32 uv;
+
+    /* top + bottom */
+    z = start_pos.y;
+    thisrow = vertex_idx;
+    prevrow = 0;
+    for(j = 0; j < (subdivide_d+2); j++)
+    {
+        x = start_pos.x;
+        for(i = 0; i < (subdivide_w+2); i++)
+        {
+            F32 u = i;
+            F32 v = j;
+            u /= (subdivide_w + 1.0);
+            v /= (subdivide_d + 1.0);
+            
+            pos = (Vec3F32){-x, 0.0, -z};
+            nor = normal;
+            uv = (Vec2F32){1.0-u, 1.0-v}; /* 1.0-uv to match orientation with Quad */
+            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor, .tex=uv};
+
+            if(i > 0 && j > 0)
+            {
+                indices[indice_idx++] = prevrow + i - 1;
+                indices[indice_idx++] = prevrow + i;
+                indices[indice_idx++] = thisrow + i - 1;
+                indices[indice_idx++] = prevrow + i;
+                indices[indice_idx++] = thisrow + i;
+                indices[indice_idx++] = thisrow + i - 1;
+            }
+            x += size.x / (subdivide_w+1.0);
+        }
+
+        z += size.y / (subdivide_d+1.0);
         prevrow = thisrow;
         thisrow = vertex_idx;
     }
@@ -1497,54 +1596,106 @@ g_mesh_primitive_capsule(Arena *arena, R_Vertex **vertices_out, U64 *vertices_co
 // Node building helpers
 
 internal G_Node *
-g_box_node(Arena *arena, String8 string)
+g_box_node(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d)
 {
-    Temp temp = scratch_begin(&arena,1);
+    Temp temp = scratch_begin(0,0);
 
     R_Vertex *vertices_src = 0;
-    U64 vertices_count     = 0;
+    U64 vertice_count     = 0;
     U32 *indices_src       = 0;
-    U64 indices_count      = 0;
-    g_mesh_primitive_box(temp.arena, v3f32(1,1,1), 2,2,2, &vertices_src, &vertices_count, &indices_src, &indices_count);
+    U64 indice_count      = 0;
+    g_mesh_primitive_box(temp.arena, size, subdivide_w, subdivide_h, subdivide_d, &vertices_src, &vertice_count, &indices_src, &indice_count);
 
     G_Node *n = g_build_node_from_stringf(0, "primitive");
-    n->kind                      = G_NodeKind_MeshPrimitive;
-    n->v.mesh_primitive.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
-    n->v.mesh_primitive.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
-    scratch_end(temp);
-    return n;
-}
-
-internal G_Node *
-g_sphere_node(Arena *arena, String8 string)
-{
-    Temp temp = scratch_begin(&arena,1);
-
-    R_Vertex *vertices_src = 0;
-    U64 vertices_count     = 0;
-    U32 *indices_src       = 0;
-    U64 indices_count      = 0;
-    g_mesh_primitive_sphere(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 0.5, 0.5, 30, 8, 0);
-
-    G_Node *n = g_build_node_from_stringf(0, "primitive");
-    n->kind                      = G_NodeKind_MeshPrimitive;
-    n->v.mesh_primitive.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
-    n->v.mesh_primitive.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
+    n->kind                           = G_NodeKind_MeshPrimitive;
+    n->v.mesh_primitive.vertices      = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertice_count, (void *)vertices_src);
+    n->v.mesh_primitive.indices       = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, (void *)indices_src);
+    n->v.mesh_primitive.vertice_count = vertice_count;
+    n->v.mesh_primitive.indice_count  = indice_count;
 
     scratch_end(temp);
     return n;
 }
 
 internal G_Node *
-g_cylinder_node(Arena *arena, String8 string)
+g_box_node_cached(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d)
 {
-    Temp temp = scratch_begin(&arena,1);
+    Temp temp = scratch_begin(0,0);
+    G_MeshPrimitive *primitive = 0;
+
+    G_MeshCacheTable *cache_table = g_top_mesh_cache_table();
+    Assert(cache_table != 0);
+    G_Key key = {0};
+    {
+        F64 size_x = size.x;
+        F64 size_y = size.y;
+        F64 size_z = size.z;
+        U64 hash_content[] = {
+            *(U64 *)(&size.x),
+            *(U64 *)(&size.y),
+            *(U64 *)(&size.z),
+            subdivide_w,
+            subdivide_h,
+            subdivide_d,
+        };
+        key = g_key_from_string(g_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
+    }
+
+    U64 slot_idx = key.u64[0] % cache_table->slot_count;
+    G_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
+    for(G_MeshCacheNode *n = slot->first; n != 0; n = n->next)
+    {
+        if(g_key_match(n->key, key))
+        {
+            AssertAlways(n->kind == G_MeshKind_Box);
+            primitive = n->v;
+            n->rc++;
+        }
+    }
+
+    if(primitive == 0)
+    {
+        R_Vertex *vertices_src = 0;
+        U64 vertice_count     = 0;
+        U32 *indices_src       = 0;
+        U64 indice_count      = 0;
+        g_mesh_primitive_box(temp.arena, size, subdivide_w, subdivide_h, subdivide_d, &vertices_src, &vertice_count, &indices_src, &indice_count);
+
+        G_MeshCacheNode *cache_node = push_array(cache_table->arena, G_MeshCacheNode, 1);
+        cache_node->v = push_array(cache_table->arena, G_MeshPrimitive, 1);
+        cache_node->key = key;
+        cache_node->rc  = 1;
+        cache_node->kind = G_MeshKind_Box;
+        primitive = cache_node->v;
+        DLLPushBack(slot->first, slot->last, cache_node);
+
+        primitive->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertice_count, (void *)vertices_src);
+        primitive->indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, (void *)indices_src);
+        primitive->vertice_count = vertice_count;
+        primitive->indice_count = indice_count;
+    }
+
+    G_Node *n = g_build_node_from_stringf(0, "primitive");
+    n->kind                           = G_NodeKind_MeshPrimitive;
+    n->v.mesh_primitive.vertices      = primitive->vertices;
+    n->v.mesh_primitive.indices       = primitive->indices;
+    n->v.mesh_primitive.vertice_count = primitive->vertice_count;
+    n->v.mesh_primitive.indice_count  = primitive->indice_count;
+
+    scratch_end(temp);
+    return n;
+}
+
+internal G_Node *
+g_plane_node(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
+{
+    Temp temp = scratch_begin(0,0);
 
     R_Vertex *vertices_src = 0;
     U64 vertices_count     = 0;
     U32 *indices_src       = 0;
     U64 indices_count      = 0;
-    g_mesh_primitive_cylinder(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 0.5, 1, 30, 8, 1, 1);
+    g_mesh_primitive_plane(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, size, subdivide_w, subdivide_d);
 
     G_Node *n = g_build_node_from_stringf(0, "primitive");
     n->kind                      = G_NodeKind_MeshPrimitive;
@@ -1556,19 +1707,326 @@ g_cylinder_node(Arena *arena, String8 string)
 }
 
 internal G_Node *
-g_capsule_node(Arena *arena, String8 string)
+g_plane_node_cached(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
 {
-    Temp temp = scratch_begin(&arena,1);
+    Temp temp = scratch_begin(0,0);
+    G_MeshPrimitive *primitive = 0;
+
+    G_MeshCacheTable *cache_table = g_top_mesh_cache_table();
+    Assert(cache_table != 0);
+    G_Key key = {0};
+    {
+        F64 size_x = size.x;
+        F64 size_y = size.y;
+        U64 hash_content[] = {
+            *(U64 *)(&size.x),
+            *(U64 *)(&size.y),
+            subdivide_w,
+            subdivide_d,
+        };
+        key = g_key_from_string(g_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
+    }
+
+    U64 slot_idx = key.u64[0] % cache_table->slot_count;
+    G_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
+    for(G_MeshCacheNode *n = slot->first; n != 0; n = n->next)
+    {
+        if(g_key_match(n->key, key))
+        {
+            AssertAlways(n->kind == G_MeshKind_Plane);
+            primitive = n->v;
+            n->rc++;
+        }
+    }
+
+    if(primitive == 0)
+    {
+        R_Vertex *vertices_src = 0;
+        U64 vertice_count     = 0;
+        U32 *indices_src       = 0;
+        U64 indice_count      = 0;
+        g_mesh_primitive_plane(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, size, subdivide_w, subdivide_d);
+
+        G_MeshCacheNode *cache_node = push_array(cache_table->arena, G_MeshCacheNode, 1);
+        cache_node->v = push_array(cache_table->arena, G_MeshPrimitive, 1);
+        cache_node->key = key;
+        cache_node->rc  = 1;
+        cache_node->kind = G_MeshKind_Plane;
+        primitive = cache_node->v;
+        DLLPushBack(slot->first, slot->last, cache_node);
+
+        primitive->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertice_count, (void *)vertices_src);
+        primitive->indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, (void *)indices_src);
+        primitive->vertice_count = vertice_count;
+        primitive->indice_count = indice_count;
+    }
+
+    G_Node *n = g_build_node_from_stringf(0, "primitive");
+    n->kind                           = G_NodeKind_MeshPrimitive;
+    n->v.mesh_primitive.vertices      = primitive->vertices;
+    n->v.mesh_primitive.indices       = primitive->indices;
+    n->v.mesh_primitive.vertice_count = primitive->vertice_count;
+    n->v.mesh_primitive.indice_count  = primitive->indice_count;
+
+    scratch_end(temp);
+    return n;
+}
+
+internal G_Node *
+g_sphere_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere)
+{
+    Temp temp = scratch_begin(0,0);
+
+    R_Vertex *vertices_src = 0;
+    U64 vertice_count     = 0;
+    U32 *indices_src       = 0;
+    U64 indice_count      = 0;
+    g_mesh_primitive_sphere(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, radius, height, radial_segments, rings, is_hemisphere);
+
+    G_Node *n = g_build_node_from_stringf(0, "primitive");
+    n->kind                      = G_NodeKind_MeshPrimitive;
+    n->v.mesh_primitive.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertice_count, (void *)vertices_src);
+    n->v.mesh_primitive.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, (void *)indices_src);
+
+    scratch_end(temp);
+    return n;
+}
+
+internal G_Node *
+g_sphere_node_cached(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere)
+{
+    Temp temp = scratch_begin(0,0);
+    G_MeshPrimitive *primitive = 0;
+
+    G_MeshCacheTable *cache_table = g_top_mesh_cache_table();
+    Assert(cache_table != 0);
+    G_Key key = {0};
+    {
+        F64 radius_f64 = radius;
+        F64 height_f64 = height;
+        U64 hash_content[] = {
+            *(U64 *)(&radius_f64),
+            *(U64 *)(&height_f64),
+            radial_segments,
+            rings,
+            is_hemisphere
+        };
+        key = g_key_from_string(g_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
+    }
+
+    U64 slot_idx = key.u64[0] % cache_table->slot_count;
+    G_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
+    for(G_MeshCacheNode *n = slot->first; n != 0; n = n->next)
+    {
+        if(g_key_match(n->key, key))
+        {
+            AssertAlways(n->kind == G_MeshKind_Sphere);
+            primitive = n->v;
+            n->rc++;
+        }
+    }
+
+    if(primitive == 0)
+    {
+        R_Vertex *vertices_src = 0;
+        U64 vertice_count     = 0;
+        U32 *indices_src       = 0;
+        U64 indice_count      = 0;
+        g_mesh_primitive_sphere(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, radius, height, radial_segments, rings, is_hemisphere);
+
+        G_MeshCacheNode *cache_node = push_array(cache_table->arena, G_MeshCacheNode, 1);
+        cache_node->v = push_array(cache_table->arena, G_MeshPrimitive, 1);
+        cache_node->key = key;
+        cache_node->rc  = 1;
+        cache_node->kind = G_MeshKind_Sphere;
+        primitive = cache_node->v;
+        DLLPushBack(slot->first, slot->last, cache_node);
+
+        primitive->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertice_count, (void *)vertices_src);
+        primitive->indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, (void *)indices_src);
+        primitive->vertice_count = vertice_count;
+        primitive->indice_count = indice_count;
+    }
+
+    G_Node *n = g_build_node_from_stringf(0, "primitive");
+    n->kind                           = G_NodeKind_MeshPrimitive;
+    n->v.mesh_primitive.vertices      = primitive->vertices;
+    n->v.mesh_primitive.indices       = primitive->indices;
+    n->v.mesh_primitive.vertice_count = primitive->vertice_count;
+    n->v.mesh_primitive.indice_count  = primitive->indice_count;
+
+    scratch_end(temp);
+    return n;
+}
+
+internal G_Node *
+g_cylinder_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom)
+{
+    Temp temp = scratch_begin(0,0);
+
     R_Vertex *vertices_src = 0;
     U64 vertices_count     = 0;
     U32 *indices_src       = 0;
     U64 indices_count      = 0;
-    g_mesh_primitive_capsule(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, 0.5, 2.5, 30, 8);
+    g_mesh_primitive_cylinder(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, radius, height, radial_segments, rings, cap_top, cap_bottom);
+
+    G_Node *n = g_build_node_from_stringf(0, "primitive");
+    n->kind                      = G_NodeKind_MeshPrimitive;
+    n->v.mesh_primitive.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
+    n->v.mesh_primitive.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
+
+    scratch_end(temp);
+    return n;
+}
+
+internal G_Node *
+g_cylinder_node_cached(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom)
+{
+    Temp temp = scratch_begin(0,0);
+    G_MeshPrimitive *primitive = 0;
+
+    G_MeshCacheTable *cache_table = g_top_mesh_cache_table();
+    Assert(cache_table != 0);
+    G_Key key = {0};
+    {
+        F64 radius_f64 = radius;
+        F64 height_f64 = height;
+        U64 hash_content[] = {
+            *(U64 *)(&radius_f64),
+            *(U64 *)(&height_f64),
+            radial_segments,
+            rings,
+            cap_top,
+            cap_bottom,
+        };
+        key = g_key_from_string(g_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
+    }
+
+    U64 slot_idx = key.u64[0] % cache_table->slot_count;
+    G_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
+    for(G_MeshCacheNode *n = slot->first; n != 0; n = n->next)
+    {
+        if(g_key_match(n->key, key))
+        {
+            AssertAlways(n->kind == G_MeshKind_Cylinder);
+            primitive = n->v;
+            n->rc++;
+        }
+    }
+
+    if(primitive == 0)
+    {
+        R_Vertex *vertices_src = 0;
+        U64 vertice_count     = 0;
+        U32 *indices_src       = 0;
+        U64 indice_count      = 0;
+        g_mesh_primitive_cylinder(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, radius, height, radial_segments, rings, cap_top, cap_bottom);
+
+        G_MeshCacheNode *cache_node = push_array(cache_table->arena, G_MeshCacheNode, 1);
+        cache_node->v    = push_array(cache_table->arena, G_MeshPrimitive, 1);
+        cache_node->key  = key;
+        cache_node->rc   = 1;
+        cache_node->kind = G_MeshKind_Cylinder;
+        primitive = cache_node->v;
+        DLLPushBack(slot->first, slot->last, cache_node);
+
+        primitive->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertice_count, (void *)vertices_src);
+        primitive->indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, (void *)indices_src);
+        primitive->vertice_count = vertice_count;
+        primitive->indice_count = indice_count;
+    }
+
+    G_Node *n = g_build_node_from_stringf(0, "primitive");
+    n->kind                           = G_NodeKind_MeshPrimitive;
+    n->v.mesh_primitive.vertices      = primitive->vertices;
+    n->v.mesh_primitive.indices       = primitive->indices;
+    n->v.mesh_primitive.vertice_count = primitive->vertice_count;
+    n->v.mesh_primitive.indice_count  = primitive->indice_count;
+
+    scratch_end(temp);
+    return n;
+}
+
+internal G_Node *
+g_capsule_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings)
+{
+    Temp temp = scratch_begin(0,0);
+    R_Vertex *vertices_src = 0;
+    U64 vertices_count     = 0;
+    U32 *indices_src       = 0;
+    U64 indices_count      = 0;
+    g_mesh_primitive_capsule(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, radius, height, radial_segments, rings);
 
     G_Node *n = g_build_node_from_stringf(0, "capsule_primitive");
     n->kind                      = G_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
     n->v.mesh_primitive.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
+
+    scratch_end(temp);
+    return n;
+}
+
+internal G_Node *
+g_capsule_node_cached(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings)
+{
+    Temp temp = scratch_begin(0,0);
+    G_MeshPrimitive *primitive = 0;
+
+    G_MeshCacheTable *cache_table = g_top_mesh_cache_table();
+    Assert(cache_table != 0);
+    G_Key key = {0};
+    {
+        F64 radius_f64 = radius;
+        F64 height_f64 = height;
+        U64 hash_content[] = {
+            *(U64 *)(&radius_f64),
+            *(U64 *)(&height_f64),
+            radial_segments,
+            rings,
+        };
+        key = g_key_from_string(g_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
+    }
+
+    U64 slot_idx = key.u64[0] % cache_table->slot_count;
+    G_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
+    for(G_MeshCacheNode *n = slot->first; n != 0; n = n->next)
+    {
+        if(g_key_match(n->key, key))
+        {
+            AssertAlways(n->kind == G_MeshKind_Capsule);
+            primitive = n->v;
+            n->rc++;
+        }
+    }
+
+    if(primitive == 0)
+    {
+        R_Vertex *vertices_src = 0;
+        U64 vertice_count     = 0;
+        U32 *indices_src       = 0;
+        U64 indice_count      = 0;
+        g_mesh_primitive_capsule(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, radius, height, radial_segments, rings);
+
+        G_MeshCacheNode *cache_node = push_array(cache_table->arena, G_MeshCacheNode, 1);
+        cache_node->v = push_array(cache_table->arena, G_MeshPrimitive, 1);
+        cache_node->key = key;
+        cache_node->rc  = 1;
+        cache_node->kind = G_MeshKind_Capsule;
+        primitive = cache_node->v;
+        DLLPushBack(slot->first, slot->last, cache_node);
+
+        primitive->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertice_count, (void *)vertices_src);
+        primitive->indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, (void *)indices_src);
+        primitive->vertice_count = vertice_count;
+        primitive->indice_count = indice_count;
+    }
+
+    G_Node *n = g_build_node_from_stringf(0, "primitive");
+    n->kind                           = G_NodeKind_MeshPrimitive;
+    n->v.mesh_primitive.vertices      = primitive->vertices;
+    n->v.mesh_primitive.indices       = primitive->indices;
+    n->v.mesh_primitive.vertice_count = primitive->vertice_count;
+    n->v.mesh_primitive.indice_count  = primitive->indice_count;
 
     scratch_end(temp);
     return n;

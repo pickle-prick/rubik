@@ -85,6 +85,7 @@ struct R_Vertex
     Vec3F32 pos;  
     Vec3F32 nor;
     Vec2F32 tex;
+    Vec3F32 tan;
     Vec3F32 col;
     Vec4U32 joints;
     Vec4F32 weights;

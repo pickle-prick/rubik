@@ -51,14 +51,15 @@ typedef enum G_ViewportShadingKind
     G_ViewportShadingKind_COUNT,
 } G_ViewportShadingKind;
 
-typedef enum G_MeshRootKind
+typedef enum G_MeshKind
 {
-    G_MeshRootKind_Box,
-    G_MeshRootKind_Sphere,
-    G_MeshRootKind_Cylinder,
-    G_MeshRootKind_Capsule,
-    G_MeshRootKind_Model,
-} G_MeshRootKind;
+    G_MeshKind_Box,
+    G_MeshKind_Plane,
+    G_MeshKind_Sphere,
+    G_MeshKind_Cylinder,
+    G_MeshKind_Capsule,
+    G_MeshKind_Model,
+} G_MeshKind;
 
 typedef U64 G_NodeFlags;
 # define G_NodeFlags_Animated         (G_NodeFlags)(1ull<<0)
@@ -242,8 +243,8 @@ struct G_ModelNode
 typedef struct G_MeshRoot G_MeshRoot;
 struct G_MeshRoot
 {
-    G_MeshRootKind kind;
-    String8        path;
+    G_MeshKind kind;
+    String8    path;
 };
 
 typedef struct G_MeshGroup G_MeshGroup;
@@ -259,12 +260,40 @@ struct G_MeshGroup
     Mat4x4F32     *joint_xforms;
 };
 
-typedef struct G_Mesh G_Mesh;
-struct G_Mesh
+typedef struct G_MeshPrimitive G_MeshPrimitive;
+struct G_MeshPrimitive
 {
-    R_Handle      vertices;
-    R_Handle      indices;
-    R_Handle      albedo_tex;
+    R_Handle vertices;
+    R_Handle indices;
+    R_Handle albedo_tex;
+    U64      vertice_count;
+    U64      indice_count;
+};
+
+typedef struct G_MeshCacheNode G_MeshCacheNode;
+struct G_MeshCacheNode
+{
+    G_MeshCacheNode *next;
+    G_MeshCacheNode *prev;
+    G_Key           key;
+    U64             rc;
+    G_MeshKind      kind;
+    void            *v;
+};
+
+typedef struct G_MeshCacheSlot G_MeshCacheSlot;
+struct G_MeshCacheSlot
+{
+    G_MeshCacheNode *first;
+    G_MeshCacheNode *last;
+};
+
+typedef struct G_MeshCacheTable G_MeshCacheTable;
+struct G_MeshCacheTable
+{
+    Arena           *arena;
+    U64             slot_count;
+    G_MeshCacheSlot *slots;
 };
 
 // typedef struct G_Sprite2D G_Sprite2D;
@@ -412,11 +441,11 @@ struct G_Node
 
     union
     {
-        G_Mesh      mesh_primitive;
-        G_MeshJoint mesh_joint;
-        G_MeshGroup mesh_grp;
-        G_MeshRoot  mesh_root; // Serializable
-        G_Camera3D  camera; // Serializable
+        G_MeshPrimitive mesh_primitive;
+        G_MeshJoint     mesh_joint;
+        G_MeshGroup     mesh_grp;
+        G_MeshRoot      mesh_root; // Serializable
+        G_Camera3D      camera; // Serializable
     } v;
 };
 
@@ -465,6 +494,7 @@ struct G_Scene
 
     String8               name;
     String8               path;
+    G_MeshCacheTable      mesh_cache_table;
 
     G_ViewportShadingKind viewport_shading;
     Vec3F32               global_light;
@@ -538,58 +568,58 @@ struct G_FunctionSlot
 typedef struct G_State G_State;
 struct G_State
 {
-    Arena          *arena;
-    Arena          *frame_arena;
-    G_Scene        *active_scene;
+    Arena            *arena;
+    Arena            *frame_arena;
+    G_Scene          *active_scene;
 
     //~ Persistent
 
-    B32            is_dragging;
-    Vec3F32        drag_start_direction;
-
-    OS_Handle      os_wnd;
+    B32              is_dragging;
+    Vec3F32          drag_start_direction;
+    OS_Handle        os_wnd;
+    G_MeshCacheTable mesh_cache_table;
 
     //~ Per frame
 
-    UI_Signal      sig;
+    UI_Signal        sig;
 
     //- Delta
-    U64            dt;
-    F32            dt_sec;
-    F32            dt_ms;
+    U64              dt;
+    F32              dt_sec;
+    F32              dt_ms;
 
     //- Bucket
-    G_Bucket       *node_bucket;
-    D_Bucket       *bucket_rect;
-    D_Bucket       *bucket_geo3d;
+    G_Bucket         *node_bucket;
+    D_Bucket         *bucket_rect;
+    D_Bucket         *bucket_geo3d;
 
     //- Window rect
-    Rng2F32        window_rect;
-    Vec2F32        window_dim;
+    Rng2F32          window_rect;
+    Vec2F32          window_dim;
 
     //- key
-    G_Key          hot_key;
-    G_Key          active_key;
+    G_Key            hot_key;
+    G_Key            active_key;
 
     //- Cursor
-    Vec2F32        cursor;
-    Vec2F32        last_cursor;
-    B32            cursor_hidden;
+    Vec2F32          cursor;
+    Vec2F32          last_cursor;
+    B32              cursor_hidden;
 
     //- Functions
-    G_FunctionSlot *function_hash_table;
-    U64            function_hash_table_size;
+    G_FunctionSlot   *function_hash_table;
+    U64              function_hash_table_size;
 
     //- Theme
-    G_Theme        cfg_theme_target;
-    G_Theme        cfg_theme;
-    F_Tag          cfg_font_tags[G_FontSlot_COUNT];
+    G_Theme          cfg_theme_target;
+    G_Theme          cfg_theme;
+    F_Tag            cfg_font_tags[G_FontSlot_COUNT];
 
     //- Palette
-    UI_Palette     cfg_ui_debug_palettes[G_PaletteCode_COUNT]; // derivative from theme
+    UI_Palette       cfg_ui_debug_palettes[G_PaletteCode_COUNT]; // derivative from theme
 
-    G_Scene        *first_to_free_scene;
-    G_Scene        *first_free_scene;
+    G_Scene          *first_to_free_scene;
+    G_Scene          *first_free_scene;
 
     G_DeclStackNils;
     G_DeclStacks;

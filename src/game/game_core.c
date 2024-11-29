@@ -49,6 +49,9 @@ g_init(OS_Handle os_wnd)
     g_state->frame_arena = arena_alloc();
     g_state->node_bucket = g_bucket_make(arena, 3000);
     g_state->os_wnd = os_wnd;
+    g_state->mesh_cache_table.slot_count = 1000;
+    g_state->mesh_cache_table.arena = arena;
+    g_state->mesh_cache_table.slots = push_array(arena, G_MeshCacheSlot, g_state->mesh_cache_table.slot_count);
 
     // Fonts
     g_state->cfg_font_tags[G_FontSlot_Main]  = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
@@ -198,15 +201,16 @@ g_bucket_make(Arena *arena, U64 hash_table_size)
 internal void
 g_set_active_key(G_Key key)
 {
-    G_Node *node = g_node_from_key(key);
-    g_state->active_key = g_key_zero();
-    for(G_Node *n = node; n != 0; n = n->parent)
-    {
-        if(n->flags & G_NodeFlags_NavigationRoot)
-        {
-            g_state->active_key = n->key;
-        }
-    }
+    g_state->active_key = key;
+    // G_Node *node = g_node_from_key(key);
+    // g_state->active_key = g_key_zero();
+    // for(G_Node *n = node; n != 0; n = n->parent)
+    // {
+    //     if(n->flags & G_NodeFlags_NavigationRoot)
+    //     {
+    //         g_state->active_key = n->key;
+    //     }
+    // }
 }
 
 internal G_Node *
@@ -1063,7 +1067,7 @@ g_scene_alloc()
     G_Scene *scene = 0;
     if(g_state->first_free_scene == 0)
     {
-        arena = arena_alloc();
+        arena = arena_alloc(.reserve_size = MB(64), .commit_size = MB(64));
     }
     else
     {
@@ -1073,5 +1077,8 @@ g_scene_alloc()
     scene = push_array(arena, G_Scene, 1);
     scene->arena = arena;
     scene->bucket = g_bucket_make(arena, 1000);
+    scene->mesh_cache_table.slot_count = 1000;
+    scene->mesh_cache_table.arena      = arena;
+    scene->mesh_cache_table.slots = push_array(arena, G_MeshCacheSlot, scene->mesh_cache_table.slot_count);
     return scene;
 }

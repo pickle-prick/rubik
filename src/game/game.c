@@ -105,15 +105,89 @@ internal void g_ui_inspector(G_Scene *scene)
                     }
                 }
 
-                UI_Row
+                UI_Row G_MeshCacheTable_Scope(&scene->mesh_cache_table)
                 {
+                    G_Node *parent = active_node;
+                    if(parent == 0) parent = scene->root;
+
+                    g_push_bucket(scene->bucket);
+                    g_push_parent(parent);
                     g_ui_dropdown_begin(str8_lit("Create"));
-                    if(ui_clicked(ui_buttonf("box1"))) {}
-                    if(ui_clicked(ui_buttonf("box2"))) {}
+                    {
+                        if(ui_clicked(ui_buttonf("box")))
+                        {
+                            // TODO: check name collision
+                            G_Node *n = g_build_node_from_stringf(0, "box");
+                            n->kind = G_NodeKind_MeshRoot;
+                            n->v.mesh_root.kind = G_MeshKind_Box;
+                            G_Parent_Scope(n)
+                            {
+                                g_box_node_default(str8_lit("box"));
+                            }
+                            g_ui_dropdown_hide();
+                        }
+                        if(ui_clicked(ui_buttonf("plane")))
+                        {
+                            // TODO: check name collision
+                            G_Node *n = g_build_node_from_stringf(0, "plane");
+                            n->kind = G_NodeKind_MeshRoot;
+                            n->v.mesh_root.kind = G_MeshKind_Plane;
+                            G_Parent_Scope(n)
+                            {
+                                g_plane_node_default(str8_lit("plane"));
+                            }
+                            g_ui_dropdown_hide();
+
+                        }
+                        if(ui_clicked(ui_buttonf("sphere")))
+                        {
+                            // TODO: check name collision
+                            G_Node *n = g_build_node_from_stringf(0, "sphere");
+                            n->kind = G_NodeKind_MeshRoot;
+                            n->v.mesh_root.kind = G_MeshKind_Sphere;
+                            G_Parent_Scope(n)
+                            {
+                                g_sphere_node_default(str8_lit("sphere"));
+                            }
+                            g_ui_dropdown_hide();
+                        }
+                        if(ui_clicked(ui_buttonf("cylinder")))
+                        {
+                            // TODO: check name collision
+                            G_Node *n = g_build_node_from_stringf(0, "cylinder");
+                            n->kind = G_NodeKind_MeshRoot;
+                            n->v.mesh_root.kind = G_MeshKind_Cylinder;
+                            G_Parent_Scope(n)
+                            {
+                                g_cylinder_node_default(str8_lit("cylinder"));
+                            }
+                            g_ui_dropdown_hide();
+                        }
+                        if(ui_clicked(ui_buttonf("capsule")))
+                        {
+                            // TODO: check name collision
+                            G_Node *n = g_build_node_from_stringf(0, "capsule");
+                            n->kind = G_NodeKind_MeshRoot;
+                            n->v.mesh_root.kind = G_MeshKind_Capsule;
+                            G_Parent_Scope(n)
+                            {
+                                g_capsule_node_default(str8_lit("capsule"));
+                            }
+                            g_ui_dropdown_hide();
+                        }
+                        if(ui_clicked(ui_buttonf("mesh"))) {}
+                    }
                     g_ui_dropdown_end();
+                    g_pop_parent();
+                    g_pop_bucket();
 
                     if(ui_clicked(ui_buttonf("Delete")))
                     {
+                        if(active_node != 0)
+                        {
+                            DLLRemove(active_node->first, active_node->last, active_node);
+                            // TODO: free node
+                        }
                     }
 
                     if(ui_clicked(ui_buttonf("Copy")))
@@ -158,8 +232,13 @@ internal void g_ui_inspector(G_Scene *scene)
                         String8 string = push_str8f(ui_build_arena(), "%S%S###%d", indent, root->name, row_count);
                         row_count++;
                         ui_set_next_flags(UI_BoxFlag_ClickToFocus);
-                        if(g_key_match(g_state->active_key, root->key)) {}
                         UI_Signal label = ui_button(string);
+
+                        // if(g_key_match(g_state->active_key, root->key))
+                        // {
+                        //     ui_set_auto_focus_hot_key(label.box->key);
+                        //     ui_set_auto_focus_active_key(label.box->key);
+                        // }
 
                         // TODO: make it regoniziable
                         if(ui_clicked(label)) g_set_active_key(root->key);
@@ -400,7 +479,7 @@ g_update_and_render(G_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     // UI Box for game viewport (Handle user interaction)
     ui_set_next_rect(g_state->window_rect);
     ui_set_next_child_layout_axis(Axis2_X);
-    UI_Box *overlay = ui_build_box_from_string(UI_BoxFlag_MouseClickable|UI_BoxFlag_ClickToFocus|UI_BoxFlag_Scroll, str8_lit("###game_overlay"));
+    UI_Box *overlay = ui_build_box_from_string(UI_BoxFlag_MouseClickable|UI_BoxFlag_ClickToFocus|UI_BoxFlag_Scroll|UI_BoxFlag_DisableFocusOverlay, str8_lit("###game_overlay"));
     g_state->sig = ui_signal_from_box(overlay);
 
     B32 show_grid   = 1;

@@ -7,18 +7,18 @@
 G_StackTable:
 {
   //- k: parents
-  { Parent                             parent                       `G_Node *`           0                                }
-  { Bucket                             bucket                       `G_Bucket *`         0                                }
-  { Scene                              scene                        `G_Scene *`          0                                }
+  { Parent                             parent                       `G_Node *`            0                                }
+  { Bucket                             bucket                       `G_Bucket *`          0                                }
+  { Scene                              scene                        `G_Scene *`           0                                }
   
   //- k: flags
-  { Flags                              flags                         G_NodeFlags         0                                }
-  
-  //- k: seed
-  // { Seed                               seed                          G_Key               g_nil_seed                       }
+  { Flags                              flags                         G_NodeFlags          0                                }
 
   //- k: path
-  { Path                               path                          String8             `str8(0,0)`                      }
+  { Path                               path                          String8              `str8(0,0)`                      }
+
+  //- k: mesh cache table
+  { MeshCacheTable                     mesh_cache_table              `G_MeshCacheTable *` 0                                }
 }
 
 //- rjf: declaring stack node types

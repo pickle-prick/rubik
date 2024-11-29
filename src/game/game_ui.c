@@ -75,13 +75,13 @@ g_ui_dropdown_begin(String8 string)
     // ui_set_next_hover_cursor(is_focus_active ? OS_Cursor_IBar : OS_Cursor_HandPoint);
     ui_set_next_hover_cursor(OS_Cursor_HandPoint);
     UI_Box *box = ui_build_box_from_key(UI_BoxFlag_Clickable|
-                                           UI_BoxFlag_DrawBackground|
-                                           UI_BoxFlag_DrawBorder|
-                                           UI_BoxFlag_ClickToFocus|
-                                           UI_BoxFlag_DrawText|
-                                           UI_BoxFlag_DrawHotEffects|
-                                           UI_BoxFlag_DrawActiveEffects,
-                                           key);
+                                        UI_BoxFlag_DrawBackground|
+                                        UI_BoxFlag_DrawBorder|
+                                        UI_BoxFlag_ClickToFocus|
+                                        UI_BoxFlag_DrawText|
+                                        UI_BoxFlag_DrawHotEffects|
+                                        UI_BoxFlag_DrawActiveEffects,
+                                        key);
     ui_box_equip_display_string(box, string);
     UI_Signal sig = ui_signal_from_box(box);
 
@@ -112,8 +112,6 @@ g_ui_dropdown_begin(String8 string)
     UI_Box *list_container = ui_build_box_from_stringf(UI_BoxFlag_Floating|
                                                        UI_BoxFlag_DrawBackground|
                                                        UI_BoxFlag_DrawBorder|
-                                                       UI_BoxFlag_DrawHotEffects|
-                                                       UI_BoxFlag_DrawActiveEffects|
                                                        UI_BoxFlag_DrawSideLeft|
                                                        UI_BoxFlag_DrawSideRight|
                                                        UI_BoxFlag_DrawSideBottom|
@@ -142,4 +140,5 @@ internal void
 g_ui_dropdown_hide(void)
 {
     ui_set_auto_focus_hot_key(ui_key_zero());
+    ui_set_auto_focus_active_key(ui_key_zero());
 }

@@ -4,16 +4,17 @@
 layout(location = 0)  in vec3   pos;
 layout(location = 1)  in vec3   nor;
 layout(location = 2)  in vec2   tex;
-layout(location = 3)  in vec3   col;
-layout(location = 4)  in uvec4  joints;
-layout(location = 5)  in vec4   weights;
+layout(location = 3)  in vec3   tan;
+layout(location = 4)  in vec3   col;
+layout(location = 5)  in uvec4  joints;
+layout(location = 6)  in vec4   weights;
 
 // Instance buffer
-layout(location = 6)  in float  omit_texture;
-layout(location = 7)  in mat4   model;
-layout(location = 11) in uvec2  id;
-layout(location = 12) in uint   first_joint;
-layout(location = 13) in uint   joint_count;
+layout(location = 7)  in float  omit_texture;
+layout(location = 8)  in mat4   model;
+layout(location = 12) in uvec2  id;
+layout(location = 13) in uint   first_joint;
+layout(location = 14) in uint   joint_count;
 
 // It is important to know that some types, like dvec3 64 bit vectors, use multiple slots
 // That means that the index after it must be at least 2 higher
