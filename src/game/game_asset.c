@@ -420,13 +420,12 @@ g_default_scene()
 
             // Dummy1
             {
-                // TODO: cache models
                 G_Model *m;
                 String8 model_path = str8_lit("./models/dancing_stormtrooper/scene.gltf");
                 String8 model_directory = str8_chop_last_slash(model_path);
                 G_Path_Scope(model_directory)
                 {
-                    m = g_model_from_gltf(scene->arena, model_path);
+                    m = g_model_from_gltf_cached(model_path);
                 }
                 G_Node *dummy = g_build_node_from_stringf(0, "dummy1");
                 dummy->kind             = G_NodeKind_MeshRoot;
@@ -439,6 +438,30 @@ g_default_scene()
                 dummy->rot = mul_quat_f32(flip_y, dummy->rot);
 
                 G_Parent_Scope(dummy)
+                {
+                    g_node_from_model(m, g_active_seed_key());
+                }
+            }
+
+            {
+                G_Model *m;
+                String8 model_path = str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf");
+                String8 model_directory = str8_chop_last_slash(model_path);
+                G_Path_Scope(model_directory)
+                {
+                    m = g_model_from_gltf_cached(model_path);
+                }
+                G_Node *n = g_build_node_from_stringf(0, "dummy2");
+                n->kind             = G_NodeKind_MeshRoot;
+                n->skeleton_anims   = m->anims;
+                n->flags            = G_NodeFlags_NavigationRoot|G_NodeFlags_Animated|G_NodeFlags_AnimatedSkeleton;
+                n->pos              = v3f32(0,0,0);
+                n->v.mesh_root.path = push_str8_copy(scene->arena, model_path);
+                n->v.mesh_root.kind = G_MeshKind_Model;
+                QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
+                n->rot = mul_quat_f32(flip_y, n->rot);
+
+                G_Parent_Scope(n)
                 {
                     g_node_from_model(m, g_active_seed_key());
                 }

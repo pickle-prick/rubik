@@ -550,9 +550,6 @@ g_node_push_fn(Arena *arena, G_Node *n, G_NodeCustomUpdateFunctionType *fn, Stri
 }
 
 /////////////////////////////////
-// Mesh Type Functions
-
-/////////////////////////////////
 // Node base scripting
 
 G_NODE_CUSTOM_UPDATE(base_fn)

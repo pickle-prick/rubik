@@ -14,15 +14,6 @@ G_NODE_CUSTOM_UPDATE(player_fn)
 
     if(1)
     {
-
-        Vec3F32 clean_f = f;
-        clean_f.y = 0;
-        Vec3F32 clean_s = s;
-        clean_s.y = 0;
-        Vec3F32 clean_u = u;
-        clean_u.x = 0;
-        clean_u.z = 0;
-
         // TODO: float percision issue when v_turn_speed is too high, fix it later
         F32 h_turn_speed = 1.5f/(g_state->window_dim.x);
         F32 v_turn_speed = 0.5f/(g_state->window_dim.y);
@@ -33,9 +24,7 @@ G_NODE_CUSTOM_UPDATE(player_fn)
 
         QuatF32 h_quat = make_rotate_quat_f32(v3f32(0, -1, 0), h_turn);
         Vec3F32 s_after_h = mul_quat_f32_v3f32(h_quat, s);
-        // QuatF32 h_quat = make_indentity_quat_f32();
         QuatF32 v_quat = make_rotate_quat_f32(s_after_h, v_turn);
-        // QuatF32 v_quat = make_indentity_quat_f32();
         QuatF32 rot_quat = mul_quat_f32(v_quat,h_quat);
         node->rot = mul_quat_f32(rot_quat, node->rot);
     }
@@ -106,15 +95,6 @@ G_NODE_CUSTOM_UPDATE(editor_camera_fn)
     Vec3F32 u = {0};
     g_local_coord_from_node(node, &f, &s, &u);
 
-    // TODO: do we really need these?
-    Vec3F32 clean_f = f;
-    clean_f.y = 0;
-    Vec3F32 clean_s = s;
-    clean_s.y = 0;
-    Vec3F32 clean_u = u;
-    clean_u.x = 0;
-    clean_u.z = 0;
-
     if(g_state->sig.f & UI_SignalFlag_MiddleDragging)
     {
         Vec2F32 delta = ui_drag_delta();
@@ -138,20 +118,22 @@ G_NODE_CUSTOM_UPDATE(editor_camera_fn)
         Vec2F32 delta = ui_drag_delta();
 
         // TODO: float percision issue when v_turn_speed is too high, fix it later
-        F32 v_turn_speed = 0.5f/(g_state->window_dim.y);
         F32 h_turn_speed = 2.0f/(g_state->window_dim.x);
+        F32 v_turn_speed = 0.5f/(g_state->window_dim.y);
 
         // TODO: we may need to clamp the turns to 0-1
         F32 v_turn = -delta.y * v_turn_speed;
-        F32 h_turn = delta.x * h_turn_speed;
+        F32 h_turn = -delta.x * h_turn_speed;
 
-        QuatF32 v_quat = make_rotate_quat_f32(s, v_turn);
-        QuatF32 h_quat = make_rotate_quat_f32(v3f32(0,1,0), h_turn);
+        QuatF32 h_quat = make_rotate_quat_f32(v3f32(0,-1,0), h_turn);
+        Vec3F32 side = mul_quat_f32_v3f32(node->rot, v3f32(1,0,0));
+        // NOTE: we should use s after h, but it doesn't seem to work as expected
+        Vec3F32 s_after_h = mul_quat_f32_v3f32(h_quat, side);
+        QuatF32 v_quat = make_rotate_quat_f32(s_after_h, v_turn);
         node->pre_rot_delta = mul_quat_f32(v_quat,h_quat);
     }
     else if(g_state->sig.f & UI_SignalFlag_RightReleased)
     {
-        // Commit camera rot_delta
         g_node_delta_commit(node);
     }
 
@@ -161,9 +143,4 @@ G_NODE_CUSTOM_UPDATE(editor_camera_fn)
         Vec3F32 dist = scale_3f32(f, g_state->sig.scroll.y/3.0f);
         node->pos = add_3f32(dist, node->pos);
     }
-
-    if(os_key_press(&os_events, g_state->os_wnd, 0, OS_Key_Left)) { }
-    if(os_key_press(&os_events, g_state->os_wnd, 0, OS_Key_Right)) { }
-    if(os_key_is_down(OS_Key_Left)) { }
-    if(os_key_is_down(OS_Key_Right)) { }
 }
