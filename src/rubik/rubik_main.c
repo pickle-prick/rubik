@@ -531,9 +531,7 @@ entry_point(CmdLine *cmd_line)
         {
             // Gather font info
             F_Tag main_font = rk_font_from_slot(RK_FontSlot_Main);
-            // TODO: set font size based on the dpi of screen
-            // F32 main_font_size = rk_font_size_from_slot(RK_FontSlot_Main);
-            F32 main_font_size = 29;
+            F32 main_font_size = rk_font_size_from_slot(RK_FontSlot_Main);
             F_Tag icon_font = rk_font_from_slot(RK_FontSlot_Icons);
 
             // Build icon info

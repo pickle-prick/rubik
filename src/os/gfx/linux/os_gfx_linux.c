@@ -272,7 +272,69 @@ os_client_rect_from_window(OS_Handle handle)
 internal F32
 os_dpi_from_window(OS_Handle handle)
 {
-    return 0;
+    F32 dpi = 0.0;
+
+    // Trey "Xft.dpi" from the XResourceDatabase...
+    if(dpi <= 0.0)
+    {
+        char *resource_manager; 
+        XrmDatabase db;
+        XrmValue value;
+        char *type;
+
+        XrmInitialize();
+
+        resource_manager = XResourceManagerString(os_lnx_gfx_state->display);
+        if(resource_manager)
+        {
+            db = XrmGetStringDatabase(resource_manager);
+
+            // Get the vlue of Xft.dpi from the Database
+            if(XrmGetResource(db, "Xft.dpi", "String", &type, &value))
+            {
+                if(value.addr && type && strcmp(type, "String") == 0)
+                {
+                    dpi = atof(value.addr);
+                }
+            }
+            XrmDestroyDatabase(db);
+        }
+    }
+
+    // If that failed, try the XSETTINGS keys
+    // TODO
+
+    // If that failed, try the GDK_SCALE envvar...
+    // TODO
+
+    // If that failed, calculate dpi using DisplayWidth/DisplayWidthMM/25.4f
+    if(dpi <= 0.0)
+    {
+        // TODO(k): handle multiple monitors
+        int screen = DefaultScreen(os_lnx_gfx_state->display);
+
+        // screen dimensions in pixels
+        int width_px = DisplayWidth(os_lnx_gfx_state->display, screen);
+        int height_px = DisplayHeight(os_lnx_gfx_state->display, screen);
+
+        // screen dimensions in millimeters
+        int width_mm = DisplayWidthMM(os_lnx_gfx_state->display, screen);
+        int height_mm = DisplayHeightMM(os_lnx_gfx_state->display, screen);
+
+        // calculate DPI
+        F32 dpi_x = ((F32)width_px / (width_mm / 25.4));
+        F32 dpi_y = ((F32)height_px / (height_mm / 25.4));
+
+        dpi = (dpi_x+dpi_y) / 2.f;
+    }
+
+    // Nothing or a bad value, just fall back to 1.0
+    if(dpi <= 0.0)
+    {
+        dpi = 96.f;
+    }
+
+    return dpi;
 }
 
 ////////////////////////////////

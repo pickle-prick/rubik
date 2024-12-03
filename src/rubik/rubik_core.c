@@ -52,6 +52,17 @@ rk_init(OS_Handle os_wnd)
     rk_state->mesh_cache_table.slot_count = 1000;
     rk_state->mesh_cache_table.arena = arena;
     rk_state->mesh_cache_table.slots = push_array(arena, RK_MeshCacheSlot, rk_state->mesh_cache_table.slot_count);
+    rk_state->last_dpi = os_dpi_from_window(os_wnd);
+
+    // Settings
+    for EachEnumVal(RK_SettingCode, code)
+    {
+        rk_state->setting_vals[code] = rk_setting_code_default_val_table[code];
+    }
+    rk_state->setting_vals[RK_SettingCode_MainFontSize].s32 = rk_state->setting_vals[RK_SettingCode_MainFontSize].s32 * (rk_state->last_dpi/96.f);
+    rk_state->setting_vals[RK_SettingCode_CodeFontSize].s32 = rk_state->setting_vals[RK_SettingCode_CodeFontSize].s32 * (rk_state->last_dpi/96.f);
+    rk_state->setting_vals[RK_SettingCode_MainFontSize].s32 = ClampBot(rk_state->setting_vals[RK_SettingCode_MainFontSize].s32, rk_setting_code_default_val_table[RK_SettingCode_MainFontSize].s32);
+    rk_state->setting_vals[RK_SettingCode_CodeFontSize].s32 = ClampBot(rk_state->setting_vals[RK_SettingCode_CodeFontSize].s32, rk_setting_code_default_val_table[RK_SettingCode_CodeFontSize].s32);
 
     // Fonts
     rk_state->cfg_font_tags[RK_FontSlot_Main]  = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
@@ -1010,8 +1021,40 @@ rk_font_from_slot(RK_FontSlot slot)
 internal F32
 rk_font_size_from_slot(RK_FontSlot slot)
 {
-    // TODO
-    NotImplemented;
+    F32 result = 0;
+    F32 dpi = os_dpi_from_window(rk_state->os_wnd);
+    if(dpi != rk_state->last_dpi)
+    {
+        F32 old_dpi = rk_state->last_dpi;
+        F32 new_dpi = dpi;
+        rk_state->last_dpi = dpi;
+        S32 *pt_sizes[] =
+        {
+            &rk_state->setting_vals[RK_SettingCode_MainFontSize].s32,
+            &rk_state->setting_vals[RK_SettingCode_CodeFontSize].s32,
+        };
+        for(U64 idx = 0; idx < ArrayCount(pt_sizes); idx++)
+        {
+            F32 ratio = pt_sizes[idx][0] / old_dpi;
+            F32 new_pt_size = ratio*new_dpi;
+            pt_sizes[idx][0] = (S32)new_pt_size;
+        }
+    }
+
+    switch(slot)
+    {
+        case RK_FontSlot_Code:
+        {
+            result = (F32)rk_state->setting_vals[RK_SettingCode_CodeFontSize].s32;
+        }break;
+        default:
+        case RK_FontSlot_Main:
+        case RK_FontSlot_Icons:
+        {
+            result = (F32)rk_state->setting_vals[RK_SettingCode_MainFontSize].s32;
+        }break;
+    }
+    return result;
 }
 
 /////////////////////////////////

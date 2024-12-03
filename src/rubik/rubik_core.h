@@ -646,7 +646,7 @@ struct RK_State
     UI_Palette        cfg_ui_debug_palettes[RK_PaletteCode_COUNT]; // derivative from theme
 
     //- Global Settings
-    RK_SettingVal     cfg_settings_vals[RK_SettingCode_COUNT];
+    RK_SettingVal     setting_vals[RK_SettingCode_COUNT];
 
     // Views (UI)
     RK_View           views[RK_ViewKind_COUNT];
