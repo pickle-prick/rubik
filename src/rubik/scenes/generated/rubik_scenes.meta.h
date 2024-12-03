@@ -3,13 +3,13 @@
 
 //- GENERATED CODE
 
-#ifndef GAME_SCENES_META_H
-#define GAME_SCENES_META_H
+#ifndef RUBIK_SCENES_META_H
+#define RUBIK_SCENES_META_H
 
 #include "../000/000.h"
-typedef struct G_FnTalbeEntry G_FnTableEntry;
-struct G_FnTalbeEntry {
+typedef struct RK_FnTalbeEntry RK_FnTableEntry;
+struct RK_FnTalbeEntry {
 String8 name;
 void * ptr;
 };
-#endif // GAME_SCENES_META_H
+#endif // RUBIK_SCENES_META_H

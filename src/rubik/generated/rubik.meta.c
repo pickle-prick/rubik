@@ -4,45 +4,45 @@
 //- GENERATED CODE
 
 #if 1
-#define G_Parent_Scope(v) DeferLoop(g_push_parent(v), g_pop_parent())
-#define G_Bucket_Scope(v) DeferLoop(g_push_bucket(v), g_pop_bucket())
-#define G_Scene_Scope(v) DeferLoop(g_push_scene(v), g_pop_scene())
-#define G_Flags_Scope(v) DeferLoop(g_push_flags(v), g_pop_flags())
-#define G_Path_Scope(v) DeferLoop(g_push_path(v), g_pop_path())
-#define G_MeshCacheTable_Scope(v) DeferLoop(g_push_mesh_cache_table(v), g_pop_mesh_cache_table())
+#define RK_Parent_Scope(v) DeferLoop(rk_push_parent(v), rk_pop_parent())
+#define RK_Bucket_Scope(v) DeferLoop(rk_push_bucket(v), rk_pop_bucket())
+#define RK_Scene_Scope(v) DeferLoop(rk_push_scene(v), rk_pop_scene())
+#define RK_Flags_Scope(v) DeferLoop(rk_push_flags(v), rk_pop_flags())
+#define RK_Path_Scope(v) DeferLoop(rk_push_path(v), rk_pop_path())
+#define RK_MeshCacheTable_Scope(v) DeferLoop(rk_push_mesh_cache_table(v), rk_pop_mesh_cache_table())
 #endif
-internal G_Node * g_top_parent(void) { G_StackTopImpl(g_state, Parent, parent) }
-internal G_Bucket * g_top_bucket(void) { G_StackTopImpl(g_state, Bucket, bucket) }
-internal G_Scene * g_top_scene(void) { G_StackTopImpl(g_state, Scene, scene) }
-internal G_NodeFlags g_top_flags(void) { G_StackTopImpl(g_state, Flags, flags) }
-internal String8 g_top_path(void) { G_StackTopImpl(g_state, Path, path) }
-internal G_MeshCacheTable * g_top_mesh_cache_table(void) { G_StackTopImpl(g_state, MeshCacheTable, mesh_cache_table) }
-internal G_Node * g_bottom_parent(void) { G_StackBottomImpl(g_state, Parent, parent) }
-internal G_Bucket * g_bottom_bucket(void) { G_StackBottomImpl(g_state, Bucket, bucket) }
-internal G_Scene * g_bottom_scene(void) { G_StackBottomImpl(g_state, Scene, scene) }
-internal G_NodeFlags g_bottom_flags(void) { G_StackBottomImpl(g_state, Flags, flags) }
-internal String8 g_bottom_path(void) { G_StackBottomImpl(g_state, Path, path) }
-internal G_MeshCacheTable * g_bottom_mesh_cache_table(void) { G_StackBottomImpl(g_state, MeshCacheTable, mesh_cache_table) }
-internal G_Node * g_push_parent(G_Node * v) { G_StackPushImpl(g_state, Parent, parent, G_Node *, v) }
-internal G_Bucket * g_push_bucket(G_Bucket * v) { G_StackPushImpl(g_state, Bucket, bucket, G_Bucket *, v) }
-internal G_Scene * g_push_scene(G_Scene * v) { G_StackPushImpl(g_state, Scene, scene, G_Scene *, v) }
-internal G_NodeFlags g_push_flags(G_NodeFlags v) { G_StackPushImpl(g_state, Flags, flags, G_NodeFlags, v) }
-internal String8 g_push_path(String8 v) { G_StackPushImpl(g_state, Path, path, String8, v) }
-internal G_MeshCacheTable * g_push_mesh_cache_table(G_MeshCacheTable * v) { G_StackPushImpl(g_state, MeshCacheTable, mesh_cache_table, G_MeshCacheTable *, v) }
-internal G_Node * g_pop_parent(void) { G_StackPopImpl(g_state, Parent, parent) }
-internal G_Bucket * g_pop_bucket(void) { G_StackPopImpl(g_state, Bucket, bucket) }
-internal G_Scene * g_pop_scene(void) { G_StackPopImpl(g_state, Scene, scene) }
-internal G_NodeFlags g_pop_flags(void) { G_StackPopImpl(g_state, Flags, flags) }
-internal String8 g_pop_path(void) { G_StackPopImpl(g_state, Path, path) }
-internal G_MeshCacheTable * g_pop_mesh_cache_table(void) { G_StackPopImpl(g_state, MeshCacheTable, mesh_cache_table) }
-internal G_Node * g_set_next_parent(G_Node * v) { G_StackSetNextImpl(g_state, Parent, parent, G_Node *, v) }
-internal G_Bucket * g_set_next_bucket(G_Bucket * v) { G_StackSetNextImpl(g_state, Bucket, bucket, G_Bucket *, v) }
-internal G_Scene * g_set_next_scene(G_Scene * v) { G_StackSetNextImpl(g_state, Scene, scene, G_Scene *, v) }
-internal G_NodeFlags g_set_next_flags(G_NodeFlags v) { G_StackSetNextImpl(g_state, Flags, flags, G_NodeFlags, v) }
-internal String8 g_set_next_path(String8 v) { G_StackSetNextImpl(g_state, Path, path, String8, v) }
-internal G_MeshCacheTable * g_set_next_mesh_cache_table(G_MeshCacheTable * v) { G_StackSetNextImpl(g_state, MeshCacheTable, mesh_cache_table, G_MeshCacheTable *, v) }
+internal RK_Node * rk_top_parent(void) { RK_StackTopImpl(rk_state, Parent, parent) }
+internal RK_Bucket * rk_top_bucket(void) { RK_StackTopImpl(rk_state, Bucket, bucket) }
+internal RK_Scene * rk_top_scene(void) { RK_StackTopImpl(rk_state, Scene, scene) }
+internal RK_NodeFlags rk_top_flags(void) { RK_StackTopImpl(rk_state, Flags, flags) }
+internal String8 rk_top_path(void) { RK_StackTopImpl(rk_state, Path, path) }
+internal RK_MeshCacheTable * rk_top_mesh_cache_table(void) { RK_StackTopImpl(rk_state, MeshCacheTable, mesh_cache_table) }
+internal RK_Node * rk_bottom_parent(void) { RK_StackBottomImpl(rk_state, Parent, parent) }
+internal RK_Bucket * rk_bottom_bucket(void) { RK_StackBottomImpl(rk_state, Bucket, bucket) }
+internal RK_Scene * rk_bottom_scene(void) { RK_StackBottomImpl(rk_state, Scene, scene) }
+internal RK_NodeFlags rk_bottom_flags(void) { RK_StackBottomImpl(rk_state, Flags, flags) }
+internal String8 rk_bottom_path(void) { RK_StackBottomImpl(rk_state, Path, path) }
+internal RK_MeshCacheTable * rk_bottom_mesh_cache_table(void) { RK_StackBottomImpl(rk_state, MeshCacheTable, mesh_cache_table) }
+internal RK_Node * rk_push_parent(RK_Node * v) { RK_StackPushImpl(rk_state, Parent, parent, RK_Node *, v) }
+internal RK_Bucket * rk_push_bucket(RK_Bucket * v) { RK_StackPushImpl(rk_state, Bucket, bucket, RK_Bucket *, v) }
+internal RK_Scene * rk_push_scene(RK_Scene * v) { RK_StackPushImpl(rk_state, Scene, scene, RK_Scene *, v) }
+internal RK_NodeFlags rk_push_flags(RK_NodeFlags v) { RK_StackPushImpl(rk_state, Flags, flags, RK_NodeFlags, v) }
+internal String8 rk_push_path(String8 v) { RK_StackPushImpl(rk_state, Path, path, String8, v) }
+internal RK_MeshCacheTable * rk_push_mesh_cache_table(RK_MeshCacheTable * v) { RK_StackPushImpl(rk_state, MeshCacheTable, mesh_cache_table, RK_MeshCacheTable *, v) }
+internal RK_Node * rk_pop_parent(void) { RK_StackPopImpl(rk_state, Parent, parent) }
+internal RK_Bucket * rk_pop_bucket(void) { RK_StackPopImpl(rk_state, Bucket, bucket) }
+internal RK_Scene * rk_pop_scene(void) { RK_StackPopImpl(rk_state, Scene, scene) }
+internal RK_NodeFlags rk_pop_flags(void) { RK_StackPopImpl(rk_state, Flags, flags) }
+internal String8 rk_pop_path(void) { RK_StackPopImpl(rk_state, Path, path) }
+internal RK_MeshCacheTable * rk_pop_mesh_cache_table(void) { RK_StackPopImpl(rk_state, MeshCacheTable, mesh_cache_table) }
+internal RK_Node * rk_set_next_parent(RK_Node * v) { RK_StackSetNextImpl(rk_state, Parent, parent, RK_Node *, v) }
+internal RK_Bucket * rk_set_next_bucket(RK_Bucket * v) { RK_StackSetNextImpl(rk_state, Bucket, bucket, RK_Bucket *, v) }
+internal RK_Scene * rk_set_next_scene(RK_Scene * v) { RK_StackSetNextImpl(rk_state, Scene, scene, RK_Scene *, v) }
+internal RK_NodeFlags rk_set_next_flags(RK_NodeFlags v) { RK_StackSetNextImpl(rk_state, Flags, flags, RK_NodeFlags, v) }
+internal String8 rk_set_next_path(String8 v) { RK_StackSetNextImpl(rk_state, Path, path, String8, v) }
+internal RK_MeshCacheTable * rk_set_next_mesh_cache_table(RK_MeshCacheTable * v) { RK_StackSetNextImpl(rk_state, MeshCacheTable, mesh_cache_table, RK_MeshCacheTable *, v) }
 C_LINKAGE_BEGIN
-String8 g_icon_kind_text_table[69] =
+String8 rk_icon_kind_text_table[69] =
 {
 str8_lit_comp(""),
 str8_lit_comp("b"),
@@ -115,7 +115,7 @@ str8_lit_comp("5"),
 str8_lit_comp("c"),
 };
 
-String8 rd_theme_preset_display_string_table[9] =
+String8 rk_theme_preset_display_string_table[9] =
 {
 str8_lit_comp("Default (Dark)"),
 str8_lit_comp("Default (Light)"),
@@ -128,7 +128,7 @@ str8_lit_comp("4coder"),
 str8_lit_comp("Far Manager"),
 };
 
-String8 rd_theme_preset_code_string_table[9] =
+String8 rk_theme_preset_code_string_table[9] =
 {
 str8_lit_comp("default_dark"),
 str8_lit_comp("default_light"),
@@ -141,7 +141,7 @@ str8_lit_comp("four_coder"),
 str8_lit_comp("far_manager"),
 };
 
-String8 rd_theme_color_version_remap_old_name_table[22] =
+String8 rk_theme_color_version_remap_old_name_table[22] =
 {
 str8_lit_comp("plain_text"),
 str8_lit_comp("plain_background"),
@@ -167,7 +167,7 @@ str8_lit_comp("failure_background"),
 str8_lit_comp("action_background"),
 };
 
-String8 rd_theme_color_version_remap_new_name_table[22] =
+String8 rk_theme_color_version_remap_new_name_table[22] =
 {
 str8_lit_comp("text"),
 str8_lit_comp("base_background"),
@@ -193,7 +193,7 @@ str8_lit_comp("negative_pop_button_background"),
 str8_lit_comp("neutral_pop_button_background"),
 };
 
-Vec4F32 rd_theme_preset_colors__default_dark[76] =
+Vec4F32 rk_theme_preset_colors__default_dark[76] =
 {
 rgba_from_u32_lit_comp(0xff00ffff),
 rgba_from_u32_lit_comp(0xe5e5e5ff),
@@ -273,7 +273,7 @@ rgba_from_u32_lit_comp(0xa72911ff),
 rgba_from_u32_lit_comp(0x355b6eff),
 };
 
-Vec4F32 rd_theme_preset_colors__default_light[76] =
+Vec4F32 rk_theme_preset_colors__default_light[76] =
 {
 rgba_from_u32_lit_comp(0xff00ffff),
 rgba_from_u32_lit_comp(0x4c4c4cff),
@@ -353,7 +353,7 @@ rgba_from_u32_lit_comp(0xff2800ff),
 rgba_from_u32_lit_comp(0xa6becaff),
 };
 
-Vec4F32 rd_theme_preset_colors__vs_dark[76] =
+Vec4F32 rk_theme_preset_colors__vs_dark[76] =
 {
 rgba_from_u32_lit_comp(0xff00ffff),
 rgba_from_u32_lit_comp(0xe5e5e5ff),
@@ -433,7 +433,7 @@ rgba_from_u32_lit_comp(0xa72911ff),
 rgba_from_u32_lit_comp(0x355b6eff),
 };
 
-Vec4F32 rd_theme_preset_colors__vs_light[76] =
+Vec4F32 rk_theme_preset_colors__vs_light[76] =
 {
 rgba_from_u32_lit_comp(0xff00ffff),
 rgba_from_u32_lit_comp(0x000000ff),
@@ -513,7 +513,7 @@ rgba_from_u32_lit_comp(0xa72911ff),
 rgba_from_u32_lit_comp(0x6e9db5ff),
 };
 
-Vec4F32 rd_theme_preset_colors__solarized_dark[76] =
+Vec4F32 rk_theme_preset_colors__solarized_dark[76] =
 {
 rgba_from_u32_lit_comp(0xff00ffff),
 rgba_from_u32_lit_comp(0x999999ff),
@@ -593,7 +593,7 @@ rgba_from_u32_lit_comp(0xa72911ff),
 rgba_from_u32_lit_comp(0x355b6eff),
 };
 
-Vec4F32 rd_theme_preset_colors__solarized_light[76] =
+Vec4F32 rk_theme_preset_colors__solarized_light[76] =
 {
 rgba_from_u32_lit_comp(0xff00ffff),
 rgba_from_u32_lit_comp(0x333333ff),
@@ -673,7 +673,7 @@ rgba_from_u32_lit_comp(0xff684bff),
 rgba_from_u32_lit_comp(0xb2d3e3ff),
 };
 
-Vec4F32 rd_theme_preset_colors__handmade_hero[76] =
+Vec4F32 rk_theme_preset_colors__handmade_hero[76] =
 {
 rgba_from_u32_lit_comp(0xff00ffff),
 rgba_from_u32_lit_comp(0xa08462ff),
@@ -753,7 +753,7 @@ rgba_from_u32_lit_comp(0xa72911ff),
 rgba_from_u32_lit_comp(0x15445cff),
 };
 
-Vec4F32 rd_theme_preset_colors__four_coder[76] =
+Vec4F32 rk_theme_preset_colors__four_coder[76] =
 {
 rgba_from_u32_lit_comp(0xff00ffff),
 rgba_from_u32_lit_comp(0x90b080ff),
@@ -833,7 +833,7 @@ rgba_from_u32_lit_comp(0xa72911ff),
 rgba_from_u32_lit_comp(0x1b323eff),
 };
 
-Vec4F32 rd_theme_preset_colors__far_manager[76] =
+Vec4F32 rk_theme_preset_colors__far_manager[76] =
 {
 rgba_from_u32_lit_comp(0xff00ffff),
 rgba_from_u32_lit_comp(0x00fefeff),
@@ -913,20 +913,20 @@ rgba_from_u32_lit_comp(0xff2800ff),
 rgba_from_u32_lit_comp(0x933100ff),
 };
 
-Vec4F32* rd_theme_preset_colors_table[9] =
+Vec4F32* rk_theme_preset_colors_table[9] =
 {
-rd_theme_preset_colors__default_dark,
-rd_theme_preset_colors__default_light,
-rd_theme_preset_colors__vs_dark,
-rd_theme_preset_colors__vs_light,
-rd_theme_preset_colors__solarized_dark,
-rd_theme_preset_colors__solarized_light,
-rd_theme_preset_colors__handmade_hero,
-rd_theme_preset_colors__four_coder,
-rd_theme_preset_colors__far_manager,
+rk_theme_preset_colors__default_dark,
+rk_theme_preset_colors__default_light,
+rk_theme_preset_colors__vs_dark,
+rk_theme_preset_colors__vs_light,
+rk_theme_preset_colors__solarized_dark,
+rk_theme_preset_colors__solarized_light,
+rk_theme_preset_colors__handmade_hero,
+rk_theme_preset_colors__four_coder,
+rk_theme_preset_colors__far_manager,
 };
 
-String8 rd_theme_color_display_string_table[76] =
+String8 rk_theme_color_display_string_table[76] =
 {
 str8_lit_comp("Null"),
 str8_lit_comp("Text"),
@@ -1006,7 +1006,7 @@ str8_lit_comp("Breakpoint"),
 str8_lit_comp("Cache Line Boundary"),
 };
 
-String8 rd_theme_color_cfg_string_table[76] =
+String8 rk_theme_color_cfg_string_table[76] =
 {
 str8_lit_comp("null"),
 str8_lit_comp("text"),
@@ -1084,6 +1084,58 @@ str8_lit_comp("thread_unwound"),
 str8_lit_comp("thread_error"),
 str8_lit_comp("breakpoint"),
 str8_lit_comp("cache_line_boundary"),
+};
+
+String8 rk_setting_code_display_string_table[9] =
+{
+str8_lit_comp("Hover Animations"),
+str8_lit_comp("Press Animations"),
+str8_lit_comp("Focus Animations"),
+str8_lit_comp("Tooltip Animations"),
+str8_lit_comp("Menu Animations"),
+str8_lit_comp("Scrolling Animations"),
+str8_lit_comp("Tab Width"),
+str8_lit_comp("Main Font Size"),
+str8_lit_comp("Code Font Size"),
+};
+
+String8 rk_setting_code_lower_string_table[9] =
+{
+str8_lit_comp("hover_animations"),
+str8_lit_comp("press_animations"),
+str8_lit_comp("focus_animations"),
+str8_lit_comp("tooltip_animations"),
+str8_lit_comp("menu_animations"),
+str8_lit_comp("scrolling_animations"),
+str8_lit_comp("tab_width"),
+str8_lit_comp("main_font_size"),
+str8_lit_comp("code_font_size"),
+};
+
+RK_SettingVal rk_setting_code_default_val_table[9] =
+{
+{1, 1},
+{1, 1},
+{1, 0},
+{1, 1},
+{1, 1},
+{1, 1},
+{1, 4},
+{1, 11},
+{1, 11},
+};
+
+Rng1S32 rk_setting_code_s32_range_table[9] =
+{
+{0, 1},
+{0, 1},
+{0, 1},
+{0, 1},
+{0, 1},
+{0, 1},
+{1, 32},
+{6, 72},
+{6, 72},
 };
 
 C_LINKAGE_END

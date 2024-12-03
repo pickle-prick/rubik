@@ -82,7 +82,7 @@ internal void ui_eat_event(UI_EventList *list, UI_EventNode *node)
 internal B32
 ui_box_is_nil(UI_Box *box)
 {
-    return box == 0 || box == &ui_g_nil_box;
+    return box == 0 || box == &ui_nil_box;
 }
 
 internal UI_BoxRec
@@ -90,7 +90,7 @@ ui_box_rec_df(UI_Box *box, UI_Box *root, U64 sib_member_off, U64 child_member_of
 {
     // Depth first search starting from the current box 
     UI_BoxRec result = {0};
-    result.next = &ui_g_nil_box;
+    result.next = &ui_nil_box;
     if(!ui_box_is_nil(*MemberFromOffset(UI_Box **, box, child_member_off)))
     {
         result.next = *MemberFromOffset(UI_Box **, box, child_member_off);
@@ -156,6 +156,7 @@ ui_build_arena(void)
 internal OS_Handle ui_window(void) { return ui_state->os_wnd; }
 internal UI_EventList *ui_events(void) { return ui_state->events; }
 internal F_Tag ui_icon_font(void) { return ui_state->icon_info.icon_font; }
+internal String8 ui_icon_string_from_kind(UI_IconKind icon_kind) { return ui_state->icon_info.icon_kind_text_map[icon_kind]; }
 internal Vec2F32 ui_mouse(void) { return ui_state->mouse; }
 internal F32 ui_dt(void) { return ui_state->animation_dt; }
 
@@ -197,7 +198,7 @@ ui_get_drag_data(U64 min_required_size)
 internal UI_Box *
 ui_box_from_key(UI_Key key)
 {
-    UI_Box *result = &ui_g_nil_box;
+    UI_Box *result = &ui_nil_box;
 
     if(!ui_key_match(key, ui_key_zero()))
     {
@@ -215,10 +216,30 @@ ui_box_from_key(UI_Key key)
     return result;
 }
 
+//- rjf: interaction keys
+
+internal UI_Key
+ui_hot_key(void)
+{
+    return ui_state->hot_box_key;
+}
+
+internal UI_Key
+ui_active_key(UI_MouseButtonKind button_kind)
+{
+    return ui_state->active_box_key[button_kind];
+}
+
+internal UI_Key
+ui_drop_hot_key(void)
+{
+    return ui_state->drop_hot_box_key;
+}
+
 //- rjf: controls over interaction
 internal void ui_kill_action(void)
 {
-    for(EachEnumVal(UI_MouseButtonKind, k))
+    for EachEnumVal(UI_MouseButtonKind, k)
     {
         ui_state->active_box_key[k] = ui_key_zero();
     }
@@ -233,7 +254,7 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
     //- k: reset per-build ui state
     {
         UI_InitStacks(ui_state);
-        ui_state->root = &ui_g_nil_box;
+        ui_state->root = &ui_nil_box;
         ui_state->default_animation_rate = 1 - pow_f32(2, (-50.f * ui_state->animation_dt));
         ui_state->last_build_box_count = ui_state->build_box_count;
         ui_state->build_box_count = 0;
@@ -305,7 +326,7 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
     //- rjf: reset hot if we don't have an active widget
     {
         B32 has_active = 0;
-        for(EachEnumVal(UI_MouseButtonKind, k))
+        for EachEnumVal(UI_MouseButtonKind, k)
         {
             if(!ui_key_match(ui_state->active_box_key[k], ui_key_zero()))
             {
@@ -319,7 +340,7 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
     }
 
     // Reset active keys if they have been pruned
-    for(EachEnumVal(UI_MouseButtonKind, k))
+    for EachEnumVal(UI_MouseButtonKind, k)
     {
         UI_Box *box = ui_box_from_key(ui_state->active_box_key[k]);
         if(ui_box_is_nil(box))
@@ -340,7 +361,7 @@ ui_end_build(void)
             AssertAlways(!ui_key_match(box->key, ui_key_zero()));
             if(box->last_touched_build_index < ui_state->build_index)
             {
-                DLLRemove_NPZ(&ui_g_nil_box,
+                DLLRemove_NPZ(&ui_nil_box,
                               ui_state->box_table[slot_idx].hash_first,
                               ui_state->box_table[slot_idx].hash_last,
                               box,
@@ -514,7 +535,7 @@ ui_calc_sizes_upwards_dependent__in_place_rec(UI_Box *root, Axis2 axis)
         default:{}break;
         case UI_SizeKind_ParentPct: 
         {
-            UI_Box *fixed_parent = &ui_g_nil_box;
+            UI_Box *fixed_parent = &ui_nil_box;
             // Find a parent that has a fixed size
             for(UI_Box *p = root->parent; !ui_box_is_nil(p); p = p->parent)
             {
@@ -772,7 +793,7 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
     // Zero key on duplicate
     if(!(box_first_frame) && box->last_touched_build_index == ui_state->build_index)
     {
-        box = &ui_g_nil_box;
+        box = &ui_nil_box;
         key = ui_key_zero();
         box_first_frame = 1;
     }
@@ -798,7 +819,7 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
 
     // Zero out per-frame state
     {
-        box->first = box->last = box->next = box->prev = box->parent = &ui_g_nil_box;
+        box->first = box->last = box->next = box->prev = box->parent = &ui_nil_box;
         box->flags = 0;
         box->child_count = 0;
         MemoryZeroArray(box->pref_size);
@@ -810,7 +831,7 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
     if(box_first_frame && !box_is_transient)
     {
         U64 slot = key.u64[0] % ui_state->box_table_size;
-        DLLInsert_NPZ(&ui_g_nil_box, ui_state->box_table[slot].hash_first,
+        DLLInsert_NPZ(&ui_nil_box, ui_state->box_table[slot].hash_first,
                       ui_state->box_table[slot].hash_last,
                       ui_state->box_table[slot].hash_last,
                       box, hash_next, hash_prev);
@@ -819,7 +840,7 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
     // Hook into per-frame tree structure
     if(!ui_box_is_nil(parent))
     {
-        DLLPushBack_NPZ(&ui_g_nil_box, parent->first, parent->last, box, next, prev);
+        DLLPushBack_NPZ(&ui_nil_box, parent->first, parent->last, box, next, prev);
         parent->child_count+=1;
         AssertAlways(parent->child_count < 10000);
         box->parent = parent;
@@ -902,7 +923,7 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
 internal UI_Key
 ui_active_seed_key(void)
 {
-    UI_Box *keyed_ancestor = &ui_g_nil_box;
+    UI_Box *keyed_ancestor = &ui_nil_box;
     for(UI_Box *p = ui_top_parent(); !ui_box_is_nil(p); p = p->parent)
     {
         if(!ui_key_match(ui_key_zero(), p->key))
@@ -1113,6 +1134,29 @@ ui_set_auto_focus_active_key(UI_Key key)
             break;
         }
     }
+}
+
+//- rjf: palette forming
+
+internal UI_Palette *
+ui_build_palette_(UI_Palette *base, UI_Palette *overrides)
+{
+    UI_Palette *palette = push_array(ui_build_arena(), UI_Palette, 1);
+    if(base != 0)
+    {
+        MemoryCopyStruct(palette, base);
+    }
+    for EachEnumVal(UI_ColorCode, code)
+    {
+        if(overrides->colors[code].x != 0 ||
+                overrides->colors[code].y != 0 ||
+                overrides->colors[code].z != 0 ||
+                overrides->colors[code].w != 0)
+        {
+            palette->colors[code] = overrides->colors[code];
+        }
+    }
+    return palette;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -1327,7 +1371,7 @@ ui_signal_from_box(UI_Box *box)
     //- rjf: active -> dragging
     if(box->flags & UI_BoxFlag_MouseClickable)
     {
-        for(EachEnumVal(UI_MouseButtonKind, k))
+        for EachEnumVal(UI_MouseButtonKind, k)
         {
             if(ui_key_match(ui_state->active_box_key[k], box->key) || sig.f & (UI_SignalFlag_LeftPressed<<k))
             {
@@ -1345,7 +1389,7 @@ ui_signal_from_box(UI_Box *box)
 
     //////////////////////////////
     //- rjf: get default nav ancestor
-    UI_Box *default_nav_parent = &ui_g_nil_box;
+    UI_Box *default_nav_parent = &ui_nil_box;
     for(UI_Box *p = ui_top_parent(); !ui_box_is_nil(p); p = p->parent)
     {
         if(p->flags & UI_BoxFlag_DefaultFocusNav)
@@ -1377,6 +1421,33 @@ ui_size(UI_SizeKind kind, F32 value, F32 strictness)
 {
     UI_Size size = {kind, value, strictness};
     return size;
+}
+
+////////////////////////////////
+//~ rjf: Scroll Point Type Functions
+
+internal UI_ScrollPt
+ui_scroll_pt(S64 idx, F32 off)
+{
+    UI_ScrollPt pt = {idx, off};
+    return pt;
+}
+
+internal void
+ui_scroll_pt_target_idx(UI_ScrollPt *v, S64 idx)
+{
+    v->off = mod_f32(v->off, 1.f) + (F32)(v->idx+(S64)v->off - idx);
+    v->idx = idx;
+}
+
+internal void
+ui_scroll_pt_clamp_idx(UI_ScrollPt *v, Rng1S64 range)
+{
+    if(v->idx < range.min || range.max < v->idx)
+    {
+        S64 clamped = range.min;
+        ui_scroll_pt_target_idx(v, clamped);
+    }
 }
 
 ////////////////////////////////

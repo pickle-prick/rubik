@@ -4,38 +4,38 @@
 //- rjf: stack table
 
 @table(name, name_lower, type, default)
-G_StackTable:
+RK_StackTable:
 {
   //- k: parents
-  { Parent                             parent                       `G_Node *`            0                                }
-  { Bucket                             bucket                       `G_Bucket *`          0                                }
-  { Scene                              scene                        `G_Scene *`           0                                }
+  { Parent                             parent                       `RK_Node *`            0                                }
+  { Bucket                             bucket                       `RK_Bucket *`          0                                }
+  { Scene                              scene                        `RK_Scene *`           0                                }
   
   //- k: flags
-  { Flags                              flags                         G_NodeFlags          0                                }
+  { Flags                              flags                         RK_NodeFlags          0                                }
 
   //- k: path
   { Path                               path                          String8              `str8(0,0)`                      }
 
   //- k: mesh cache table
-  { MeshCacheTable                     mesh_cache_table              `G_MeshCacheTable *` 0                                }
+  { MeshCacheTable                     mesh_cache_table              `RK_MeshCacheTable *` 0                                }
 }
 
 //- rjf: declaring stack node types
 
 @gen
 {
-  @expand(G_StackTable a) `typedef struct G_$(a.name)Node G_$(a.name)Node; struct G_$(a.name)Node{G_$(a.name)Node *next; $(a.type) v;};`
+  @expand(RK_StackTable a) `typedef struct RK_$(a.name)Node RK_$(a.name)Node; struct RK_$(a.name)Node{RK_$(a.name)Node *next; $(a.type) v;};`
 }
 
 //- rjf: declaring all default stack tops
 
 @gen
 {
-  `#define G_DeclStackNils \\`;
+  `#define RK_DeclStackNils \\`;
   `struct\\`;
   `{\\`;
-    @expand(G_StackTable a) `G_$(a.name)Node $(a.name_lower)_nil_stack_top;\\`;
+    @expand(RK_StackTable a) `RK_$(a.name)Node $(a.name_lower)_nil_stack_top;\\`;
     `}`;
 }
 
@@ -43,8 +43,8 @@ G_StackTable:
 
 @gen
 {
-  `#define G_InitStackNils(state) \\`;
-  @expand(G_StackTable a) `state->$(a.name_lower)_nil_stack_top.v = $(a.default);\\`;
+  `#define RK_InitStackNils(state) \\`;
+  @expand(RK_StackTable a) `state->$(a.name_lower)_nil_stack_top.v = $(a.default);\\`;
   ``;
 }
 
@@ -52,10 +52,10 @@ G_StackTable:
 
 @gen
 {
-  `#define G_DeclStacks \\`;
+  `#define RK_DeclStacks \\`;
   `struct\\`;
   `{\\`;
-    @expand(G_StackTable a) `struct { G_$(a.name)Node *top; $(a.type) bottom_val; G_$(a.name)Node *free; B32 auto_pop; } $(a.name_lower)_stack;\\`;
+    @expand(RK_StackTable a) `struct { RK_$(a.name)Node *top; $(a.type) bottom_val; RK_$(a.name)Node *free; B32 auto_pop; } $(a.name_lower)_stack;\\`;
     `}`;
 }
 
@@ -63,8 +63,8 @@ G_StackTable:
 
 @gen
 {
-  `#define G_InitStacks(state) \\`;
-  @expand(G_StackTable a) `state->$(a.name_lower)_stack.top = &state->$(a.name_lower)_nil_stack_top; state->$(a.name_lower)_stack.bottom_val = $(a.default); state->$(a.name_lower)_stack.free = 0; state->$(a.name_lower)_stack.auto_pop = 0;\\`;
+  `#define RK_InitStacks(state) \\`;
+  @expand(RK_StackTable a) `state->$(a.name_lower)_stack.top = &state->$(a.name_lower)_nil_stack_top; state->$(a.name_lower)_stack.bottom_val = $(a.default); state->$(a.name_lower)_stack.free = 0; state->$(a.name_lower)_stack.auto_pop = 0;\\`;
   ``;
 }
 
@@ -72,9 +72,9 @@ G_StackTable:
 
 @gen
 {
-  `#define G_AutoPopStacks(state) \\`
-  @expand(G_StackTable a)
-    `if(state->$(a.name_lower)_stack.auto_pop) { g_pop_$(a.name_lower)(); state->$(a.name_lower)_stack.auto_pop = 0; }\\`;
+  `#define RK_AutoPopStacks(state) \\`
+  @expand(RK_StackTable a)
+    `if(state->$(a.name_lower)_stack.auto_pop) { rk_pop_$(a.name_lower)(); state->$(a.name_lower)_stack.auto_pop = 0; }\\`;
   ``;
 }
 
@@ -82,16 +82,16 @@ G_StackTable:
 
 @gen
 {
-  @expand(G_StackTable a)
-    `internal $(a.type) $(=>35) g_top_$(a.name_lower)(void);`
-    @expand(G_StackTable a)
-    `internal $(a.type) $(=>35) g_bottom_$(a.name_lower)(void);`
-    @expand(G_StackTable a)
-    `internal $(a.type) $(=>35) g_push_$(a.name_lower)($(a.type) v);`
-    @expand(G_StackTable a)
-    `internal $(a.type) $(=>35) g_pop_$(a.name_lower)(void);`
-    @expand(G_StackTable a)
-    `internal $(a.type) $(=>35) g_set_next_$(a.name_lower)($(a.type) v);`
+  @expand(RK_StackTable a)
+    `internal $(a.type) $(=>35) rk_top_$(a.name_lower)(void);`
+    @expand(RK_StackTable a)
+    `internal $(a.type) $(=>35) rk_bottom_$(a.name_lower)(void);`
+    @expand(RK_StackTable a)
+    `internal $(a.type) $(=>35) rk_push_$(a.name_lower)($(a.type) v);`
+    @expand(RK_StackTable a)
+    `internal $(a.type) $(=>35) rk_pop_$(a.name_lower)(void);`
+    @expand(RK_StackTable a)
+    `internal $(a.type) $(=>35) rk_set_next_$(a.name_lower)($(a.type) v);`
 }
 
 //- rjf: defer-loop helpers
@@ -99,8 +99,8 @@ G_StackTable:
 @gen @c_file
 {
   `#if 1`;
-  @expand(G_StackTable a)
-    `#define G_$(a.name)_Scope(v) DeferLoop(g_push_$(a.name_lower)(v), g_pop_$(a.name_lower)())`
+  @expand(RK_StackTable a)
+    `#define RK_$(a.name)_Scope(v) DeferLoop(rk_push_$(a.name_lower)(v), rk_pop_$(a.name_lower)())`
   `#endif`;
 }
 
@@ -108,23 +108,23 @@ G_StackTable:
 
 @gen @c_file
 {
-  @expand(G_StackTable a)
-    `internal $(a.type) g_top_$(a.name_lower)(void) { G_StackTopImpl(g_state, $(a.name), $(a.name_lower)) }`;
-  @expand(G_StackTable a)
-    `internal $(a.type) g_bottom_$(a.name_lower)(void) { G_StackBottomImpl(g_state, $(a.name), $(a.name_lower)) }`;
-  @expand(G_StackTable a)
-    `internal $(a.type) g_push_$(a.name_lower)($(a.type) v) { G_StackPushImpl(g_state, $(a.name), $(a.name_lower), $(a.type), v) }`;
-  @expand(G_StackTable a)
-    `internal $(a.type) g_pop_$(a.name_lower)(void) { G_StackPopImpl(g_state, $(a.name), $(a.name_lower)) }`;
-  @expand(G_StackTable a)
-    `internal $(a.type) g_set_next_$(a.name_lower)($(a.type) v) { G_StackSetNextImpl(g_state, $(a.name), $(a.name_lower), $(a.type), v) }`;
+  @expand(RK_StackTable a)
+    `internal $(a.type) rk_top_$(a.name_lower)(void) { RK_StackTopImpl(rk_state, $(a.name), $(a.name_lower)) }`;
+  @expand(RK_StackTable a)
+    `internal $(a.type) rk_bottom_$(a.name_lower)(void) { RK_StackBottomImpl(rk_state, $(a.name), $(a.name_lower)) }`;
+  @expand(RK_StackTable a)
+    `internal $(a.type) rk_push_$(a.name_lower)($(a.type) v) { RK_StackPushImpl(rk_state, $(a.name), $(a.name_lower), $(a.type), v) }`;
+  @expand(RK_StackTable a)
+    `internal $(a.type) rk_pop_$(a.name_lower)(void) { RK_StackPopImpl(rk_state, $(a.name), $(a.name_lower)) }`;
+  @expand(RK_StackTable a)
+    `internal $(a.type) rk_set_next_$(a.name_lower)($(a.type) v) { RK_StackSetNextImpl(rk_state, $(a.name), $(a.name_lower), $(a.type), v) }`;
 }
 
 ////////////////////////////////
 //~ rjf: Icons
 
 @table(name, text)
-G_IconTable:
+RK_IconTable:
 {
   (Null                     "")
   (FolderOpenOutline        "b")
@@ -197,22 +197,22 @@ G_IconTable:
   (Dot                      "c")
 }
 
-@enum G_IconKind:
+@enum RK_IconKind:
 {
-  @expand(G_IconTable a) `$(a.name)`,
+  @expand(RK_IconTable a) `$(a.name)`,
   COUNT,
 }
 
-@data(String8) g_icon_kind_text_table:
+@data(String8) rk_icon_kind_text_table:
 {
-  @expand(G_IconTable a) `str8_lit_comp("$(a.text)")`;
+  @expand(RK_IconTable a) `str8_lit_comp("$(a.text)")`;
 }
 
 ////////////////////////////////
 //~ rjf: Theme Tables
 
 @table(name_upper  name_lower  display_string)
-RD_ThemePresetTable:
+RK_ThemePresetTable:
 {
   { DefaultDark      default_dark     "Default (Dark)"    }
   { DefaultLight     default_light    "Default (Light)"   }
@@ -226,7 +226,7 @@ RD_ThemePresetTable:
 }
 
 @table(name                      display_name                        name_lower                             default_dark        default_light        vs_dark            vs_light            solarized_dark      solarized_light     handmade_hero       four_coder          far_manager         desc)
-RD_ThemeColorTable:
+RK_ThemeColorTable:
 {
   {Null                           "Null"                              null                                   0xff00ffff          0xff00ffff          0xff00ffff          0xff00ffff          0xff00ffff          0xff00ffff          0xff00ffff          0xff00ffff          0xff00ffff          ""}
   
@@ -321,7 +321,7 @@ RD_ThemeColorTable:
 }
 
 @table(old_name new_name)
-RD_ThemeColorVersionRemapTable:
+RK_ThemeColorVersionRemapTable:
 {
   {plain_text                          text}
   {plain_background                    base_background}
@@ -347,58 +347,102 @@ RD_ThemeColorVersionRemapTable:
   {action_background                   neutral_pop_button_background}
 }
 
-@enum RD_ThemeColor:
+@enum RK_ThemeColor:
 {
-  @expand(RD_ThemeColorTable a) `$(a.name)`,
+  @expand(RK_ThemeColorTable a) `$(a.name)`,
   COUNT,
 }
 
-@enum RD_ThemePreset:
+@enum RK_ThemePreset:
 {
-  @expand(RD_ThemePresetTable a) `$(a.name)`,
+  @expand(RK_ThemePresetTable a) `$(a.name)`,
   COUNT,
 }
 
-@data(String8) rd_theme_preset_display_string_table:
+@data(String8) rk_theme_preset_display_string_table:
 {
-  @expand(RD_ThemePresetTable a) `str8_lit_comp("$(a.display_string)")`,
+  @expand(RK_ThemePresetTable a) `str8_lit_comp("$(a.display_string)")`,
 }
 
-@data(String8) rd_theme_preset_code_string_table:
+@data(String8) rk_theme_preset_code_string_table:
 {
-  @expand(RD_ThemePresetTable a) `str8_lit_comp("$(a.name_lower)")`,
+  @expand(RK_ThemePresetTable a) `str8_lit_comp("$(a.name_lower)")`,
 }
 
-@data(String8) rd_theme_color_version_remap_old_name_table:
+@data(String8) rk_theme_color_version_remap_old_name_table:
 {
-  @expand(RD_ThemeColorVersionRemapTable a) `str8_lit_comp("$(a.old_name)")`
+  @expand(RK_ThemeColorVersionRemapTable a) `str8_lit_comp("$(a.old_name)")`
 }
 
-@data(String8) rd_theme_color_version_remap_new_name_table:
+@data(String8) rk_theme_color_version_remap_new_name_table:
 {
-  @expand(RD_ThemeColorVersionRemapTable a) `str8_lit_comp("$(a.new_name)")`
+  @expand(RK_ThemeColorVersionRemapTable a) `str8_lit_comp("$(a.new_name)")`
 }
 
-@data(Vec4F32) rd_theme_preset_colors__default_dark:   {@expand(RD_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.default_dark))`}
-@data(Vec4F32) rd_theme_preset_colors__default_light:  {@expand(RD_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.default_light))`}
-@data(Vec4F32) rd_theme_preset_colors__vs_dark:        {@expand(RD_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.vs_dark))`}
-@data(Vec4F32) rd_theme_preset_colors__vs_light:       {@expand(RD_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.vs_light))`}
-@data(Vec4F32) rd_theme_preset_colors__solarized_dark: {@expand(RD_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.solarized_dark))`,}
-@data(Vec4F32) rd_theme_preset_colors__solarized_light:{@expand(RD_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.solarized_light))`,}
-@data(Vec4F32) rd_theme_preset_colors__handmade_hero:  {@expand(RD_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.handmade_hero))`,}
-@data(Vec4F32) rd_theme_preset_colors__four_coder:     {@expand(RD_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.four_coder))`,}
-@data(Vec4F32) rd_theme_preset_colors__far_manager:    {@expand(RD_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.far_manager))`;}
-@data(`Vec4F32*`) rd_theme_preset_colors_table:
+@data(Vec4F32) rk_theme_preset_colors__default_dark:   {@expand(RK_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.default_dark))`}
+@data(Vec4F32) rk_theme_preset_colors__default_light:  {@expand(RK_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.default_light))`}
+@data(Vec4F32) rk_theme_preset_colors__vs_dark:        {@expand(RK_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.vs_dark))`}
+@data(Vec4F32) rk_theme_preset_colors__vs_light:       {@expand(RK_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.vs_light))`}
+@data(Vec4F32) rk_theme_preset_colors__solarized_dark: {@expand(RK_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.solarized_dark))`,}
+@data(Vec4F32) rk_theme_preset_colors__solarized_light:{@expand(RK_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.solarized_light))`,}
+@data(Vec4F32) rk_theme_preset_colors__handmade_hero:  {@expand(RK_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.handmade_hero))`,}
+@data(Vec4F32) rk_theme_preset_colors__four_coder:     {@expand(RK_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.four_coder))`,}
+@data(Vec4F32) rk_theme_preset_colors__far_manager:    {@expand(RK_ThemeColorTable a) `rgba_from_u32_lit_comp($(a.far_manager))`;}
+@data(`Vec4F32*`) rk_theme_preset_colors_table:
 {
-  @expand(RD_ThemePresetTable a) `rd_theme_preset_colors__$(a.name_lower)`,
+  @expand(RK_ThemePresetTable a) `rk_theme_preset_colors__$(a.name_lower)`,
 }
 
-@data(String8) rd_theme_color_display_string_table:
+@data(String8) rk_theme_color_display_string_table:
 {
-  @expand(RD_ThemeColorTable a) `str8_lit_comp("$(a.display_name)")`
+  @expand(RK_ThemeColorTable a) `str8_lit_comp("$(a.display_name)")`
 }
 
-@data(String8) rd_theme_color_cfg_string_table:
+@data(String8) rk_theme_color_cfg_string_table:
 {
-  @expand(RD_ThemeColorTable a) `str8_lit_comp("$(a.name_lower)")`
+  @expand(RK_ThemeColorTable a) `str8_lit_comp("$(a.name_lower)")`
 }
+
+////////////////////////////////
+//~ rjf: Settings
+
+@table(name  name_lower  display_string  default_s32  s32_min  s32_max)
+RK_SettingTable:
+{
+  {HoverAnimations       hover_animations        "Hover Animations"        1    0  1  }
+  {PressAnimations       press_animations        "Press Animations"        1    0  1  }
+  {FocusAnimations       focus_animations        "Focus Animations"        0    0  1  }
+  {TooltipAnimations     tooltip_animations      "Tooltip Animations"      1    0  1  }
+  {MenuAnimations        menu_animations         "Menu Animations"         1    0  1  }
+  {ScrollingAnimations   scrolling_animations    "Scrolling Animations"    1    0  1  }
+  {TabWidth              tab_width               "Tab Width"               4    1  32 }
+  {MainFontSize          main_font_size          "Main Font Size"          11   6  72 }
+  {CodeFontSize          code_font_size          "Code Font Size"          11   6  72 }
+}
+
+@enum RK_SettingCode:
+{
+  @expand(RK_SettingTable a) `$(a.name)`,
+  COUNT
+}
+
+@data(String8) rk_setting_code_display_string_table:
+{
+  @expand(RK_SettingTable a) `str8_lit_comp("$(a.display_string)")`
+}
+
+@data(String8) rk_setting_code_lower_string_table:
+{
+  @expand(RK_SettingTable a) `str8_lit_comp("$(a.name_lower)")`
+}
+
+@data(RK_SettingVal) rk_setting_code_default_val_table:
+{
+  @expand(RK_SettingTable a) `{1, $(a.default_s32)}`
+}
+
+@data(Rng1S32) rk_setting_code_s32_range_table:
+{
+  @expand(RK_SettingTable a) `{$(a.s32_min), $(a.s32_max)}`
+}
+

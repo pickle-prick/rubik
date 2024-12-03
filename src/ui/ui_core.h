@@ -246,7 +246,7 @@ struct UI_AnimationInfo
 typedef struct UI_ScrollPt UI_ScrollPt;
 struct UI_ScrollPt
 {
-    // S64 idx;
+    S64 idx;
     F32 off;
 };
 
@@ -622,6 +622,7 @@ struct UI_State
     // User interaction state
     UI_Key               hot_box_key;
     UI_Key               active_box_key[UI_MouseButtonKind_COUNT];
+    UI_Key               drop_hot_box_key;
     // Drag
     Vec2F32              drag_start_mouse;
     Arena                *drag_state_arena;
@@ -676,17 +677,24 @@ internal UI_Size ui_size(UI_SizeKind kind, F32 value, F32 strictness);
 
 read_only global UI_Palette ui_g_nil_palette = {0};
 
+////////////////////////////////
+//~ rjf: Scroll Point Type Functions
+
+internal UI_ScrollPt ui_scroll_pt(S64 idx, F32 off);
+internal void ui_scroll_pt_target_idx(UI_ScrollPt *v, S64 idx);
+internal void ui_scroll_pt_clamp_idx(UI_ScrollPt *v, Rng1S64 range);
+
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: Box Type Functions
 
-read_only global UI_Box ui_g_nil_box = {
-    &ui_g_nil_box,
-    &ui_g_nil_box,
-    &ui_g_nil_box,
-    &ui_g_nil_box,
-    &ui_g_nil_box,
-    &ui_g_nil_box,
-    &ui_g_nil_box,
+read_only global UI_Box ui_nil_box = {
+    &ui_nil_box,
+    &ui_nil_box,
+    &ui_nil_box,
+    &ui_nil_box,
+    &ui_nil_box,
+    &ui_nil_box,
+    &ui_nil_box,
 };
 internal B32 ui_box_is_nil(UI_Box *box);
 internal UI_BoxRec ui_box_rec_df(UI_Box *box, UI_Box *root, U64 sib_member_off, U64 child_member_off);
@@ -710,6 +718,7 @@ internal Arena             *ui_build_arena(void);
 internal OS_Handle         ui_window(void);
 internal UI_EventList      *ui_events(void);
 internal F_Tag             ui_icon_font(void);
+internal String8           ui_icon_string_from_kind(UI_IconKind icon_kind);
 internal Vec2F32           ui_mouse(void);
 internal F32               ui_dt(void);
 
@@ -773,6 +782,10 @@ internal B32               ui_is_key_auto_focus_active(UI_Key key);
 internal B32               ui_is_key_auto_focus_hot(UI_Key key);
 internal void              ui_set_auto_focus_active_key(UI_Key key);
 internal void              ui_set_auto_focus_hot_key(UI_Key key);
+
+//- rjf: palette forming
+internal UI_Palette *      ui_build_palette_(UI_Palette *base, UI_Palette *overrides);
+#define ui_build_palette(base, ...) ui_build_palette_((base), &(UI_Palette){.text = v4f32(0, 0, 0, 0), __VA_ARGS__})
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: User Interaction

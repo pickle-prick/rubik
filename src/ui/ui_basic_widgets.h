@@ -7,63 +7,63 @@
 ////////////////////////////////
 //~ rjf: Scroll List Types
 
-// typedef U32 UI_ScrollListFlags;
-// enum
-// {
-//         UI_ScrollListFlag_Nav  = (1<<0),
-//         UI_ScrollListFlag_Snap = (1<<1),
-//         UI_ScrollListFlag_All  = 0xffffffff,
-// };
-// 
-// typedef struct UI_ScrollListRowBlock UI_ScrollListRowBlock;
-// struct UI_ScrollListRowBlock
-// {
-//         U64 row_count;
-//         U64 item_count;
-// };
-// 
-// typedef struct UI_ScrollListRowBlockChunkNode UI_ScrollListRowBlockChunkNode;
-// struct UI_ScrollListRowBlockChunkNode
-// {
-//         UI_ScrollListRowBlockChunkNode *next;
-//         UI_ScrollListRowBlock *v;
-//         U64 count;
-//         U64 cap;
-// };
-// 
-// typedef struct UI_ScrollListRowBlockChunkList UI_ScrollListRowBlockChunkList;
-// struct UI_ScrollListRowBlockChunkList
-// {
-//         UI_ScrollListRowBlockChunkNode *first;
-//         UI_ScrollListRowBlockChunkNode *last;
-//         U64 chunk_count;
-//         U64 total_count;
-// };
-// 
-// typedef struct UI_ScrollListRowBlockArray UI_ScrollListRowBlockArray;
-// struct UI_ScrollListRowBlockArray
-// {
-//         UI_ScrollListRowBlock *v;
-//         U64 count;
-// };
-// 
-// typedef struct UI_ScrollListParams UI_ScrollListParams;
-// struct UI_ScrollListParams
-// {
-//         UI_ScrollListFlags flags;
-//         Vec2F32 dim_px;
-//         F32 row_height_px;
-//         UI_ScrollListRowBlockArray row_blocks;
-//         Rng2S64 cursor_range;
-//         Rng1S64 item_range;
-//         B32 cursor_min_is_empty_selection[Axis2_COUNT];
-// };
-// 
-// typedef struct UI_ScrollListSignal UI_ScrollListSignal;
-// struct UI_ScrollListSignal
-// {
-//         B32 cursor_moved;
-// };
+typedef U32 UI_ScrollListFlags;
+enum
+{
+    UI_ScrollListFlag_Nav  = (1<<0),
+    UI_ScrollListFlag_Snap = (1<<1),
+    UI_ScrollListFlag_All  = 0xffffffff,
+};
+
+typedef struct UI_ScrollListRowBlock UI_ScrollListRowBlock;
+struct UI_ScrollListRowBlock
+{
+    U64 row_count;
+    U64 item_count;
+};
+
+typedef struct UI_ScrollListRowBlockChunkNode UI_ScrollListRowBlockChunkNode;
+struct UI_ScrollListRowBlockChunkNode
+{
+    UI_ScrollListRowBlockChunkNode *next;
+    UI_ScrollListRowBlock *v;
+    U64 count;
+    U64 cap;
+};
+
+typedef struct UI_ScrollListRowBlockChunkList UI_ScrollListRowBlockChunkList;
+struct UI_ScrollListRowBlockChunkList
+{
+    UI_ScrollListRowBlockChunkNode *first;
+    UI_ScrollListRowBlockChunkNode *last;
+    U64 chunk_count;
+    U64 total_count;
+};
+
+typedef struct UI_ScrollListRowBlockArray UI_ScrollListRowBlockArray;
+struct UI_ScrollListRowBlockArray
+{
+    UI_ScrollListRowBlock *v;
+    U64 count;
+};
+
+typedef struct UI_ScrollListParams UI_ScrollListParams;
+struct UI_ScrollListParams
+{
+    UI_ScrollListFlags flags;
+    Vec2F32 dim_px;
+    F32 row_height_px;
+    UI_ScrollListRowBlockArray row_blocks;
+    Rng2S64 cursor_range;
+    Rng1S64 item_range;
+    B32 cursor_min_is_empty_selection[Axis2_COUNT];
+};
+
+typedef struct UI_ScrollListSignal UI_ScrollListSignal;
+struct UI_ScrollListSignal
+{
+    B32 cursor_moved;
+};
 
 ////////////////////////////////
 //~ rjf: Basic Widgets
@@ -156,11 +156,9 @@ internal UI_Signal ui_pane_end(void);
 // internal UI_ScrollListRowBlockArray ui_scroll_list_row_block_array_from_chunk_list(Arena *arena, UI_ScrollListRowBlockChunkList *list);
 // internal U64 ui_scroll_list_row_from_item(UI_ScrollListRowBlockArray *blocks, U64 item);
 // internal U64 ui_scroll_list_item_from_row(UI_ScrollListRowBlockArray *blocks, U64 row);
-// 
-internal UI_ScrollPt ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, F32 viewport_pct);
-// internal UI_ScrollPt ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, Rng1S64 idx_range, S64 view_num_indices);
-internal void ui_scroll_list_begin(Vec2F32 dim_px, UI_ScrollPt *scroll_pt);
-// internal void ui_scroll_list_begin(UI_ScrollListParams *params, UI_ScrollPt *scroll_pt_out, Vec2S64 *cursor_out, Vec2S64 *mark_out, Rng1S64 *visible_row_range_out, UI_ScrollListSignal *signal_out);
+
+internal UI_ScrollPt ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, Rng1S64 idx_range, S64 view_num_indices);
+internal void ui_scroll_list_begin(UI_ScrollListParams *params, UI_ScrollPt *scroll_pt_out, Vec2S64 *cursor_out, Vec2S64 *mark_out, Rng1S64 *visible_row_range_out, UI_ScrollListSignal *signal_out);
 internal void ui_scroll_list_end(void);
 
 ////////////////////////////////
@@ -183,6 +181,6 @@ internal void ui_scroll_list_end(void);
 // #define UI_TableCell DeferLoop(ui_table_cell_begin(), ui_table_cell_end())
 // #define UI_TableCellSized(size) DeferLoop(ui_table_cell_sized_begin(size), ui_table_cell_end())
 
-// #define UI_ScrollList(params, scroll_pt_out, cursor_out, mark_out, visible_row_range_out, signal_out) DeferLoop(ui_scroll_list_begin((params), (scroll_pt_out), (cursor_out), (mark_out), (visible_row_range_out), (signal_out)), ui_scroll_list_end())
+#define UI_ScrollList(params, scroll_pt_out, cursor_out, mark_out, visible_row_range_out, signal_out) DeferLoop(ui_scroll_list_begin((params), (scroll_pt_out), (cursor_out), (mark_out), (visible_row_range_out), (signal_out)), ui_scroll_list_end())
 
 #endif // UI_BASIC_WIDGETS_H

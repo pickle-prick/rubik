@@ -457,159 +457,314 @@ ui_expanderf(B32 is_expanded, char *fmt, ...)
 ////////////////////////////////
 //~ k: Scroll Regions
 
-thread_static UI_ScrollPt *ui_scroll_list_scroll_pt_ptr = 0;
-
 internal UI_ScrollPt
-ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, F32 viewport_pct)
+ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, Rng1S64 idx_range, S64 view_num_indices)
 {
-    ui_push_palette(ui_state->widget_palette_info.scrollbar_palette);
-
-    //- k: build main container
-    ui_set_next_pref_size(axis2_flip(axis), off_axis_size);
+  ui_push_palette(ui_state->widget_palette_info.scrollbar_palette);
+  
+  //- rjf: unpack
+  S64 idx_range_dim = Max(dim_1s64(idx_range), 1);
+  
+  //- rjf: produce extra flags for cases in which scrolling is disabled
+  UI_BoxFlags disabled_flags = 0;
+  if(idx_range.min == idx_range.max)
+  {
+    disabled_flags |= UI_BoxFlag_Disabled;
+  }
+  
+  //- rjf: build main container
+  ui_set_next_pref_size(axis2_flip(axis), off_axis_size);
+  ui_set_next_child_layout_axis(axis);
+  UI_Box *container_box = ui_build_box_from_key(UI_BoxFlag_DrawBorder, ui_key_zero());
+  
+  //- rjf: build scroll-min button
+  UI_Signal min_scroll_sig = {0};
+  UI_Parent(container_box)
+    UI_PrefSize(axis, off_axis_size)
+    UI_Flags(UI_BoxFlag_DrawBorder|disabled_flags)
+    UI_TextAlignment(UI_TextAlign_Center)
+    UI_Font(ui_icon_font())
+  {
+    String8 arrow_string = ui_icon_string_from_kind(axis == Axis2_X ? UI_IconKind_LeftArrow : UI_IconKind_UpArrow);
+    min_scroll_sig = ui_buttonf("%S##_min_scroll_%i", arrow_string, axis);
+  }
+  
+  //- rjf: main scroller area
+  UI_Signal space_before_sig = {0};
+  UI_Signal space_after_sig = {0};
+  UI_Signal scroller_sig = {0};
+  UI_Box *scroll_area_box = &ui_nil_box;
+  UI_Box *scroller_box = &ui_nil_box;
+  UI_Parent(container_box)
+  {
+    ui_set_next_pref_size(axis, ui_pct(1, 0));
     ui_set_next_child_layout_axis(axis);
-    UI_Box *container_box = ui_build_box_from_key(UI_BoxFlag_DrawBorder, ui_key_zero());
-
-    //- k: main scroller area
-    UI_Signal space_before_sig = {0};
-    UI_Signal space_after_sig = {0};
-    UI_Signal scroller_sig = {0};
-    UI_Box *scroll_area_box = &ui_g_nil_box;
-    UI_Box *scroller_box = &ui_g_nil_box;
-    UI_Parent(container_box)
+    scroll_area_box = ui_build_box_from_stringf(0, "##_scroll_area_%i", axis);
+    UI_Parent(scroll_area_box)
     {
-        ui_set_next_pref_size(axis, ui_pct(1.0,0));
-        ui_set_next_child_layout_axis(axis);
-        scroll_area_box = ui_build_box_from_stringf(0, "###_scroll_area_%i", axis);
-        UI_Parent(scroll_area_box)
-        {
-            // k: space before
-            if(pt.off > 0)
-            {
-                ui_set_next_pref_size(axis, ui_pct(pt.off, 1.0));
-                ui_set_next_hover_cursor(OS_Cursor_HandPoint);
-                UI_Box *space_before_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "###scroll_area_before");
-                space_before_sig = ui_signal_from_box(space_before_box);
-            }
-
-            // k: scroller
-            UI_Flags(UI_BoxFlag_AnimatePosY|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBackground) UI_PrefSize(axis, ui_pct(viewport_pct, 1.0)) UI_CornerRadius(3)
-            {
-                scroller_sig = ui_buttonf("###_scoller_%i", axis);
-                scroller_box = scroller_sig.box;
-            }
-
-            // k: space after
-            {
-                ui_set_next_pref_size(axis, ui_pct(1, 0.0));
-                ui_set_next_hover_cursor(OS_Cursor_HandPoint);
-                UI_Box *space_after_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "###scroll_area_after");
-                space_after_sig = ui_signal_from_box(space_after_box);
-            }
-        }
+      // rjf: space before
+      if(idx_range.max != idx_range.min)
+      {
+        ui_set_next_pref_size(axis, ui_pct((F32)((F64)(pt.idx-idx_range.min)/(F64)idx_range_dim), 0));
+        ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+        UI_Box *space_before_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "##scroll_area_before");
+        space_before_sig = ui_signal_from_box(space_before_box);
+      }
+      
+      // rjf: scroller
+      UI_Flags(disabled_flags) UI_PrefSize(axis, ui_pct(Clamp(0.01f, (F32)((F64)Max(view_num_indices, 1)/(F64)idx_range_dim), 1.f), 0.f))
+      {
+        scroller_sig = ui_buttonf("##_scroller_%i", axis);
+        scroller_box = scroller_sig.box;
+      }
+      
+      // rjf: space after
+      if(idx_range.max != idx_range.min)
+      {
+        ui_set_next_pref_size(axis, ui_pct(1.f - (F32)((F64)(pt.idx-idx_range.min)/(F64)idx_range_dim), 0));
+        ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+        UI_Box *space_after_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "##scroll_area_after");
+        space_after_sig = ui_signal_from_box(space_after_box);
+      }
     }
-    
-    // k: handle events
-    UI_ScrollPt new_pt = pt;
+  }
+  
+  //- rjf: build scroll-max button
+  UI_Signal max_scroll_sig = {0};
+  UI_Parent(container_box)
+    UI_PrefSize(axis, off_axis_size)
+    UI_Flags(UI_BoxFlag_DrawBorder|disabled_flags)
+    UI_TextAlignment(UI_TextAlign_Center)
+    UI_Font(ui_icon_font())
+  {
+    String8 arrow_string = ui_icon_string_from_kind(axis == Axis2_X ? UI_IconKind_RightArrow : UI_IconKind_DownArrow);
+    max_scroll_sig = ui_buttonf("%S##_max_scroll_%i", arrow_string, axis);
+  }
+  
+  //- rjf: pt * signals -> new pt
+  UI_ScrollPt new_pt = pt;
+  {
+    typedef struct UI_ScrollBarDragData UI_ScrollBarDragData;
+    struct UI_ScrollBarDragData
     {
-        typedef struct UI_ScrollBarDragData UI_ScrollBarDragData;
-        struct UI_ScrollBarDragData
-        {
-            UI_ScrollPt start_pt;
-        };
-
-        F32 scroll_space_px = dim_2f32(scroll_area_box->rect).v[axis];
-        if(ui_dragging(scroller_sig))
-        {
-            if(ui_pressed(scroller_sig))
-            {
-                UI_ScrollBarDragData drag_data = {pt};
-                ui_store_drag_struct(&drag_data);
-            }
-
-            UI_ScrollBarDragData *drag_data = ui_get_drag_struct(UI_ScrollBarDragData);
-
-            F32 drag_delta = ui_drag_delta().v[axis];
-            F32 drag_pct = drag_delta / scroll_space_px;
-            new_pt.off = drag_data->start_pt.off + drag_pct;
-        }
-        if(ui_dragging(space_before_sig))
-        {
-            F32 delta = ui_state->drag_start_mouse.v[axis] - scroll_area_box->rect.p0.v[axis];
-            new_pt.off = delta/scroll_space_px;
-        }
-        if(ui_dragging(space_after_sig))
-        {
-            F32 delta = ui_state->drag_start_mouse.v[axis] - scroll_area_box->rect.p0.v[axis] - scroller_box->fixed_size.v[axis];
-            new_pt.off = delta/scroll_space_px;
-        }
+      UI_ScrollPt start_pt;
+      F32 scroll_space_px;
+    };
+    if(ui_dragging(scroller_sig))
+    {
+      if(ui_pressed(scroller_sig))
+      {
+        UI_ScrollBarDragData drag_data = {pt, (floor_f32(dim_2f32(scroll_area_box->rect).v[axis])-floor_f32(dim_2f32(scroller_box->rect).v[axis]))};
+        ui_store_drag_struct(&drag_data);
+      }
+      UI_ScrollBarDragData *drag_data = ui_get_drag_struct(UI_ScrollBarDragData);
+      UI_ScrollPt original_pt = drag_data->start_pt;
+      F32 drag_delta = ui_drag_delta().v[axis];
+      F32 drag_pct = drag_delta / drag_data->scroll_space_px;
+      S64 new_idx = original_pt.idx + drag_pct*idx_range_dim;
+      new_idx = Clamp(idx_range.min, new_idx, idx_range.max);
+      ui_scroll_pt_target_idx(&new_pt, new_idx);
+      new_pt.off = 0;
     }
-    ui_pop_palette();
-    return new_pt;
+    if(ui_dragging(min_scroll_sig) || ui_dragging(space_before_sig))
+    {
+      S64 new_idx = new_pt.idx-1;
+      new_idx = Clamp(idx_range.min, new_idx, idx_range.max);
+      ui_scroll_pt_target_idx(&new_pt, new_idx);
+    }
+    if(ui_dragging(max_scroll_sig) || ui_dragging(space_after_sig))
+    {
+      S64 new_idx = new_pt.idx+1;
+      new_idx = Clamp(idx_range.min, new_idx, idx_range.max);
+      ui_scroll_pt_target_idx(&new_pt, new_idx);
+    }
+  }
+  
+  ui_pop_palette();
+  return new_pt;
 }
 
+thread_static UI_ScrollPt *ui_scroll_list_scroll_pt_ptr = 0;
+thread_static F32 ui_scroll_list_scroll_bar_dim_px = 0;
+thread_static Vec2F32 ui_scroll_list_dim_px = {0};
+thread_static Rng1S64 ui_scroll_list_scroll_idx_rng = {0};
+
 internal void
-ui_scroll_list_begin(Vec2F32 dim_px, UI_ScrollPt *scroll_pt)
+ui_scroll_list_begin(UI_ScrollListParams *params, UI_ScrollPt *scroll_pt, Vec2S64 *cursor_out, Vec2S64 *mark_out, Rng1S64 *visible_row_range_out, UI_ScrollListSignal *signal_out)
 {
-    //- k: build top-level container (contains the scrollable container and scroll bar)
-    UI_Box *container_box = &ui_g_nil_box;
-    UI_FixedWidth(dim_px.x) UI_FixedHeight(dim_px.y) UI_ChildLayoutAxis(Axis2_X)
+    //- rjf: unpack arguments
+    Rng1S64 scroll_row_idx_range = r1s64(params->item_range.min, ClampBot(params->item_range.min, params->item_range.max-1));
+    S64 num_possible_visible_rows = (S64)(params->dim_px.y/params->row_height_px);
+
+    //- rjf: do keyboard navigation
+    B32 moved = 0;
+    if(params->flags & UI_ScrollListFlag_Nav && cursor_out != 0 && ui_is_focus_active())
+    {
+        // Vec2S64 cursor = *cursor_out;
+        // Vec2S64 mark = mark_out ? *mark_out : cursor;
+        // for(UI_Event *evt = 0; ui_next_event(&evt);)
+        // {
+        //   if((evt->delta_2s32.x == 0 && evt->delta_2s32.y == 0) ||
+        //      evt->flags & UI_EventFlag_Delete)
+        //   {
+        //     continue;
+        //   }
+        //   ui_eat_event(evt);
+        //   moved = 1;
+        //   switch(evt->delta_unit)
+        //   {
+        //     default:{moved = 0;}break;
+        //     case UI_EventDeltaUnit_Char:
+        //     {
+        //       for(Axis2 axis = (Axis2)0; axis < Axis2_COUNT; axis = (Axis2)(axis+1))
+        //       {
+        //         cursor.v[axis] += evt->delta_2s32.v[axis];
+        //         if(cursor.v[axis] < params->cursor_range.min.v[axis])
+        //         {
+        //           cursor.v[axis] = params->cursor_range.max.v[axis];
+        //         }
+        //         if(cursor.v[axis] > params->cursor_range.max.v[axis])
+        //         {
+        //           cursor.v[axis] = params->cursor_range.min.v[axis];
+        //         }
+        //         cursor.v[axis] = clamp_1s64(r1s64(params->cursor_range.min.v[axis], params->cursor_range.max.v[axis]), cursor.v[axis]);
+        //       }
+        //     }break;
+        //     case UI_EventDeltaUnit_Word:
+        //     case UI_EventDeltaUnit_Line:
+        //     case UI_EventDeltaUnit_Page:
+        //     {
+        //       cursor.x  = (evt->delta_2s32.x>0 ? params->cursor_range.max.x : evt->delta_2s32.x<0 ? params->cursor_range.min.x + !!params->cursor_min_is_empty_selection[Axis2_X] : cursor.x);
+        //       cursor.y += ((evt->delta_2s32.y>0 ? +(num_possible_visible_rows-3) : evt->delta_2s32.y<0 ? -(num_possible_visible_rows-3) : 0));
+        //       cursor.y = clamp_1s64(r1s64(params->cursor_range.min.y + !!params->cursor_min_is_empty_selection[Axis2_Y], params->cursor_range.max.y), cursor.y);
+        //     }break;
+        //     case UI_EventDeltaUnit_Whole:
+        //     {
+        //       for(Axis2 axis = (Axis2)0; axis < Axis2_COUNT; axis = (Axis2)(axis+1))
+        //       {
+        //         cursor.v[axis] = (evt->delta_2s32.v[axis]>0 ? params->cursor_range.max.v[axis] : evt->delta_2s32.v[axis]<0 ? params->cursor_range.min.v[axis] + !!params->cursor_min_is_empty_selection[axis] : cursor.v[axis]);
+        //       }
+        //     }break;
+        //   }
+        //   if(!(evt->flags & UI_EventFlag_KeepMark))
+        //   {
+        //     mark = cursor;
+        //   }
+        // }
+        // if(moved)
+        // {
+        //   *cursor_out = cursor;
+        //   if(mark_out)
+        //   {
+        //     *mark_out = mark;
+        //   }
+        // }
+    }
+
+    //- rjf: moved -> snap
+    if(params->flags & UI_ScrollListFlag_Snap && moved)
+    {
+        // S64 cursor_item_idx = cursor_out->y-1;
+        // if(params->item_range.min <= cursor_item_idx && cursor_item_idx <= params->item_range.max)
+        // {
+        //   //- rjf: compute visible row range
+        //   Rng1S64 visible_row_range = r1s64(scroll_pt->idx + 0 - !!(scroll_pt->off < 0),
+        //                                     scroll_pt->idx + 0 + num_possible_visible_rows + 1);
+
+        //   //- rjf: compute cursor row range from cursor item
+        //   Rng1S64 cursor_visibility_row_range = {0};
+        //   if(params->row_blocks.count == 0)
+        //   {
+        //     cursor_visibility_row_range = r1s64(cursor_item_idx-1, cursor_item_idx+3);
+        //   }
+        //   else
+        //   {
+        //     cursor_visibility_row_range.min = (S64)ui_scroll_list_row_from_item(&params->row_blocks, (U64)cursor_item_idx);
+        //     cursor_visibility_row_range.max = cursor_visibility_row_range.min + 4;
+        //   }
+
+        //   //- rjf: compute deltas & apply
+        //   S64 min_delta = Min(0, cursor_visibility_row_range.min-visible_row_range.min);
+        //   S64 max_delta = Max(0, cursor_visibility_row_range.max-visible_row_range.max);
+        //   S64 new_idx = scroll_pt->idx+min_delta+max_delta;
+        //   new_idx = clamp_1s64(scroll_row_idx_range, new_idx);
+        //   ui_scroll_pt_target_idx(scroll_pt, new_idx);
+        // }
+    }
+
+    //- rjf: output signal
+    if(signal_out != 0)
+    {
+        signal_out->cursor_moved = moved;
+    }
+
+    //- rjf: determine ranges & limits
+    Rng1S64 visible_row_range = r1s64(scroll_pt->idx + (S64)(scroll_pt->off) + 0 - !!(scroll_pt->off < 0),
+                                      scroll_pt->idx + (S64)(scroll_pt->off) + 0 + num_possible_visible_rows + 1);
+    visible_row_range.min = clamp_1s64(params->item_range, visible_row_range.min);
+    visible_row_range.max = clamp_1s64(params->item_range, visible_row_range.max);
+    *visible_row_range_out = visible_row_range;
+
+    //- rjf: store thread-locals
+    ui_scroll_list_scroll_bar_dim_px = ui_top_font_size()*0.9f;
+    ui_scroll_list_scroll_pt_ptr = scroll_pt;
+    ui_scroll_list_dim_px = params->dim_px;
+    ui_scroll_list_scroll_idx_rng = scroll_row_idx_range;
+
+    //- rjf: build top-level container
+    UI_Box *container_box = &ui_nil_box;
+    UI_FixedWidth(params->dim_px.x) UI_FixedHeight(params->dim_px.y) UI_ChildLayoutAxis(Axis2_X)
     {
         container_box = ui_build_box_from_key(0, ui_key_zero());
     }
 
-    F32 ui_scroll_list_scroll_bar_dim_px = ui_top_font_size()*0.3f;
-    ui_scroll_list_scroll_pt_ptr = scroll_pt;
-    Vec2F32 ui_scroll_list_dim_px = dim_px;
-
-    //- k: build scrollable container
-    UI_Box *scrollable_container_box = &ui_g_nil_box;
-    UI_Parent(container_box) UI_ChildLayoutAxis(Axis2_Y) UI_FixedWidth(dim_px.x-ui_scroll_list_scroll_bar_dim_px) UI_FixedHeight(dim_px.y)
+    //- rjf: build scrollable container
+    UI_Box *scrollable_container_box = &ui_nil_box;
+    UI_Parent(container_box) UI_ChildLayoutAxis(Axis2_Y) UI_FixedWidth(params->dim_px.x-ui_scroll_list_scroll_bar_dim_px) UI_FixedHeight(params->dim_px.y)
     {
-        scrollable_container_box = ui_build_box_from_stringf(UI_BoxFlag_Clip|UI_BoxFlag_AllowOverflowY|UI_BoxFlag_Scroll|UI_BoxFlag_ViewClamp, "###scrollable_container");
-        // NOTE: this will disable smoothing
-        // scrollable_container_box->view_off.y = scrollable_container_box->view_off_target.y;
+        scrollable_container_box = ui_build_box_from_stringf(UI_BoxFlag_Clip|UI_BoxFlag_AllowOverflowY|UI_BoxFlag_Scroll, "###sp");
+        scrollable_container_box->view_off.y = scrollable_container_box->view_off_target.y =
+            params->row_height_px*mod_f32(scroll_pt->off, 1.f) +
+            params->row_height_px*(scroll_pt->off < 0) -
+            params->row_height_px*(scroll_pt->off == -1.f && scroll_pt->idx == 1);
     }
 
-    F32 y = scrollable_container_box->view_bounds.y;
-    if(y > 0)
-    {
-        scroll_pt->off = scrollable_container_box->view_off_target.y / y;
-    }
-    F32 viewport_pct = scrollable_container_box->fixed_size.y / Max(scrollable_container_box->view_bounds.y, scrollable_container_box->fixed_size.y);
-
-    //- k: build vertical scroll bar
+    //- rjf: build vertical scroll bar
     UI_Parent(container_box) UI_Focus(UI_FocusKind_Null)
     {
         ui_set_next_fixed_width(ui_scroll_list_scroll_bar_dim_px);
         ui_set_next_fixed_height(ui_scroll_list_dim_px.y);
-        *scroll_pt = ui_scroll_bar(Axis2_Y, ui_px(ui_scroll_list_scroll_bar_dim_px, 1.f), *scroll_pt, viewport_pct);
+        *ui_scroll_list_scroll_pt_ptr = ui_scroll_bar(Axis2_Y,
+                                                      ui_px(ui_scroll_list_scroll_bar_dim_px, 1.f),
+                                                      *ui_scroll_list_scroll_pt_ptr,
+                                                      scroll_row_idx_range,
+                                                      num_possible_visible_rows);
     }
 
-    //- k: begin scrollable region
+    //- rjf: begin scrollable region
     ui_push_parent(container_box);
     ui_push_parent(scrollable_container_box);
+    ui_push_pref_height(ui_px(params->row_height_px, 1.f));
 }
 
 internal void
 ui_scroll_list_end(void)
 {
+    ui_pop_pref_height();
     UI_Box *scrollable_container_box = ui_pop_parent();
     UI_Box *container_box = ui_pop_parent();
 
-    //- k: scroll
-    UI_Signal sig = ui_signal_from_box(scrollable_container_box);
-    if(sig.scroll.y != 0)
+    //- rjf: scroll
     {
-        ui_scroll_list_scroll_pt_ptr->off += (F32)sig.scroll.y / -100.0f;
+        UI_Signal sig = ui_signal_from_box(scrollable_container_box);
+        if(sig.scroll.y != 0)
+        {
+            S64 new_idx = ui_scroll_list_scroll_pt_ptr->idx - sig.scroll.y;
+            new_idx = clamp_1s64(ui_scroll_list_scroll_idx_rng, new_idx);
+            ui_scroll_pt_target_idx(ui_scroll_list_scroll_pt_ptr, new_idx);
+        }
+        ui_scroll_pt_clamp_idx(ui_scroll_list_scroll_pt_ptr, ui_scroll_list_scroll_idx_rng);
     }
-
-    //- k: clamping
-    // NOTE(k): UI_BoxFlag_ViewClamp will do the same
-    // F32 viewport_pct = scrollable_container_box->fixed_size.y / Max(scrollable_container_box->view_bounds.y, scrollable_container_box->fixed_size.y);
-    // ui_scroll_list_scroll_pt_ptr->off = Clamp(0, ui_scroll_list_scroll_pt_ptr->off, 1-viewport_pct);
-
-    F32 y = scrollable_container_box->view_bounds.y;
-    scrollable_container_box->view_off_target.y = y * ui_scroll_list_scroll_pt_ptr->off;
 }
 
 internal UI_Signal

@@ -76,18 +76,12 @@ fi
 
 # --- Build Everything (@build_targets) ---------------------------------------
 cd build
-if [ -v game ];                 then didbuild=1 && $compile ../src/game/game_main.c                                     $compile_link $link_os_gfx $out game; fi
-# if [ -v raddbg ];                then didbuild=1 && $compile ../src/raddbg/raddbg_main.c                                    $compile_link $link_os_gfx $out raddbg; fi
-# if [ -v rdi_from_pdb ];          then didbuild=1 && $compile ../src/rdi_from_pdb/rdi_from_pdb_main.c                        $compile_link $out rdi_from_pdb; fi
-# if [ -v rdi_from_dwarf ];        then didbuild=1 && $compile ../src/rdi_from_dwarf/rdi_from_dwarf.c                         $compile_link $out rdi_from_dwarf; fi
-# if [ -v rdi_dump ];              then didbuild=1 && $compile ../src/rdi_dump/rdi_dump_main.c                                $compile_link $out rdi_dump; fi
-# if [ -v rdi_breakpad_from_pdb ]; then didbuild=1 && $compile ../src/rdi_breakpad_from_pdb/rdi_breakpad_from_pdb_main.c      $compile_link $out rdi_breakpad_from_pdb; fi
-# if [ -v ryan_scratch ];          then didbuild=1 && $compile ../src/scratch/ryan_scratch.c                                  $compile_link $link_os_gfx $out ryan_scratch; fi
+if [ -v rubik ];                 then didbuild=1 && $compile ../src/rubik/rubik_main.c                                     $compile_link $link_os_gfx $out rubik; fi
 cd ..
 
 # --- Warn On No Builds -------------------------------------------------------
 if [ ! -v didbuild ]
 then
-  echo "[WARNING] no valid build target specified; must use build target names as arguments to this script, like \`./build.sh game\` or \`./build.sh game_mini\`."
+  echo "[WARNING] no valid build target specified; must use build target names as arguments to this script, like \`./build.sh rubik\`."
   exit 1
 fi

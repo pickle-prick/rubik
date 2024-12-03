@@ -1,25 +1,25 @@
 //~ k: Scenes table
 @table(directory)
-G_ScenesTable:
+RK_ScenesTable:
 {
     {000}
 }
 
 @gen
 {
-    @expand(G_ScenesTable a)
+    @expand(RK_ScenesTable a)
         `#include "../$(a.directory)/$(a.directory).h"`
 }
 
 @gen @c_file
 {
-    @expand(G_ScenesTable a)
+    @expand(RK_ScenesTable a)
         `#include "../$(a.directory)/$(a.directory).c"`
 }
 
 //~ k: Game global void functions
 @table(alias name)
-G_FnTable:
+RK_FnTable:
 {
     {mesh_grp_fn,      mesh_grp_fn     }
     {editor_camera_fn, editor_camera_fn}
@@ -28,16 +28,16 @@ G_FnTable:
 
 @gen
 {
-    `typedef struct G_FnTalbeEntry G_FnTableEntry;`;
-    `struct G_FnTalbeEntry {`;
+    `typedef struct RK_FnTalbeEntry RK_FnTableEntry;`;
+    `struct RK_FnTalbeEntry {`;
         `String8 name;`;
         `void * ptr;`;
     `};`;
 }
 
-@data(G_FnTableEntry) @c_file g_scenes_fn_table:
+@data(RK_FnTableEntry) @c_file rk_scenes_fn_table:
 {
-    @expand(G_FnTable a)
+    @expand(RK_FnTable a)
       ```{str8_lit_comp("$(a.alias)"), $(a.name), }```;
 }
 

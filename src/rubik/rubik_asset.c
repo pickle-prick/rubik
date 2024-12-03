@@ -1,10 +1,10 @@
 /////////////////////////////////
 // Scene serialization/deserialization
 
-internal G_Scene *
-g_scene_from_se_node(SE_Node* root)
+internal RK_Scene *
+rk_scene_from_se_node(SE_Node* root)
 {
-    G_Scene *ret = g_scene_alloc();
+    RK_Scene *ret = rk_scene_alloc();
     Arena *arena = ret->arena;
 
     SE_Node *nodes = 0;
@@ -43,16 +43,16 @@ g_scene_from_se_node(SE_Node* root)
 
     if(nodes != 0)
     {
-        G_Bucket_Scope(ret->bucket) G_MeshCacheTable_Scope(&ret->mesh_cache_table)
+        RK_Bucket_Scope(ret->bucket) RK_MeshCacheTable_Scope(&ret->mesh_cache_table)
         {
             U64 total_push_count = 0;
             U64 total_pop_count = 0;
             for(SE_Node *n = nodes->first; n != 0; n = n->next)
             {
-                String8 name      = se_string_from_struct(n, str8_lit("name"));
-                G_NodeKind kind   = se_u64_from_struct(n, str8_lit("kind"));
-                G_NodeFlags flags = se_u64_from_struct(n, str8_lit("flags"));
-                F64 animation_dt  = se_f64_from_struct(n, str8_lit("animation_dt"));
+                String8 name       = se_string_from_struct(n, str8_lit("name"));
+                RK_NodeKind kind   = se_u64_from_struct(n, str8_lit("kind"));
+                RK_NodeFlags flags = se_u64_from_struct(n, str8_lit("flags"));
+                F64 animation_dt   = se_f64_from_struct(n, str8_lit("animation_dt"));
 
                 // Position
                 SE_Node *pos_senode = se_node_from_tag(n->first, str8_lit("pos"));
@@ -87,92 +87,92 @@ g_scene_from_se_node(SE_Node* root)
                 U64 children_count = se_u64_from_struct(n, str8_lit("children_count"));
                 for(U64 i = 0; i < pop_count; i++)
                 {
-                    g_pop_parent();
+                    rk_pop_parent();
                     total_pop_count++;
                 }
 
                 // Allocate/fill info
-                G_Node *g_node = g_build_node_from_string(0, name);
-                g_node->name    = name;
-                g_node->kind    = kind;
-                g_node->flags   = flags;
-                g_node->pos     = pos;
-                g_node->scale   = scale;
-                g_node->rot     = rot;
-                g_node->anim_dt = animation_dt;
+                RK_Node *rk_node = rk_build_node_from_string(0, name);
+                rk_node->name    = name;
+                rk_node->kind    = kind;
+                rk_node->flags   = flags;
+                rk_node->pos     = pos;
+                rk_node->scale   = scale;
+                rk_node->rot     = rot;
+                rk_node->anim_dt = animation_dt;
 
                 switch(kind)
                 {
-                    case G_NodeKind_Camera3D:
+                    case RK_NodeKind_Camera3D:
                     {
                         SE_Node *senode = se_node_from_tag(n->first, str8_lit("camera"));
-                        g_node->v.camera.fov = se_f64_from_struct(senode, str8_lit("fov"));
-                        g_node->v.camera.zn = se_f64_from_struct(senode, str8_lit("zn"));
-                        g_node->v.camera.zf = se_f64_from_struct(senode, str8_lit("zf"));
-                        g_node->v.camera.hide_cursor = se_b32_from_struct(senode, str8_lit("hide_cursor"));
-                        g_node->v.camera.lock_cursor = se_b32_from_struct(senode, str8_lit("lock_cursor"));
+                        rk_node->v.camera.fov = se_f64_from_struct(senode, str8_lit("fov"));
+                        rk_node->v.camera.zn = se_f64_from_struct(senode, str8_lit("zn"));
+                        rk_node->v.camera.zf = se_f64_from_struct(senode, str8_lit("zf"));
+                        rk_node->v.camera.hide_cursor = se_b32_from_struct(senode, str8_lit("hide_cursor"));
+                        rk_node->v.camera.lock_cursor = se_b32_from_struct(senode, str8_lit("lock_cursor"));
 
                         B32 is_active = se_b32_from_struct(senode, str8_lit("is_active"));
 
-                        G_CameraNode *camera_node = push_array(arena, G_CameraNode, 1);
-                        camera_node->v = g_node;
+                        RK_CameraNode *camera_node = push_array(arena, RK_CameraNode, 1);
+                        camera_node->v = rk_node;
                         SLLQueuePush(ret->first_camera, ret->last_camera, camera_node);
                         if(is_active)
                         {
                             ret->active_camera = camera_node;
                         }
                     }break;
-                    case G_NodeKind_MeshRoot:
+                    case RK_NodeKind_MeshRoot:
                     {
                         SE_Node *mesh_node = se_node_from_tag(n->first, str8_lit("mesh"));
                         U64 mesh_kind = se_u64_from_struct(mesh_node, str8_lit("kind"));
                         String8 model_path = se_string_from_struct(mesh_node, str8_lit("path"));
-                        g_node->v.mesh_root.kind = mesh_kind;
-                        g_node->v.mesh_root.path = push_str8_copy(arena, model_path);
+                        rk_node->v.mesh_root.kind = mesh_kind;
+                        rk_node->v.mesh_root.path = push_str8_copy(arena, model_path);
 
-                        g_push_parent(g_node);
+                        rk_push_parent(rk_node);
                         switch(mesh_kind)
                         {
-                            case G_MeshKind_Box:
+                            case RK_MeshKind_Box:
                             {
-                                g_box_node_default(name);
+                                rk_box_node_default(name);
                             }break;
-                            case G_MeshKind_Plane:
+                            case RK_MeshKind_Plane:
                             {
-                                g_plane_node_default(name);
+                                rk_plane_node_default(name);
                             }break;
-                            case G_MeshKind_Sphere:
+                            case RK_MeshKind_Sphere:
                             {
-                                g_sphere_node_default(name);
+                                rk_sphere_node_default(name);
                             }break;
-                            case G_MeshKind_Capsule:
+                            case RK_MeshKind_Capsule:
                             {
-                                g_capsule_node_default(name);
+                                rk_capsule_node_default(name);
                             }break;
-                            case G_MeshKind_Cylinder:
+                            case RK_MeshKind_Cylinder:
                             {
-                                g_cylinder_node_default(name);
+                                rk_cylinder_node_default(name);
                             }break;
-                            case G_MeshKind_Model:
+                            case RK_MeshKind_Model:
                             {
                                 // TODO(k): cache models
                                 String8 model_directory = str8_chop_last_slash(model_path);
-                                G_Model *model;
-                                G_Path_Scope(model_directory)
+                                RK_Model *model;
+                                RK_Path_Scope(model_directory)
                                 {
-                                    model = g_model_from_gltf_cached(model_path);
+                                    model = rk_model_from_gltf_cached(model_path);
                                 }
-                                g_node_from_model(model, g_active_seed_key());
-                                g_node->skeleton_anims = model->anims; 
+                                rk_node_from_model(model, rk_active_seed_key());
+                                rk_node->skeleton_anims = model->anims; 
                             }break;
                             default:{InvalidPath;}break;
                         }
-                        g_pop_parent();
+                        rk_pop_parent();
                     }break;
                     default: {}break;
                 }
 
-                if(ret->root == 0) ret->root = g_node;
+                if(ret->root == 0) ret->root = rk_node;
 
                 // Load functions
                 SE_Node *functions_node = se_node_from_tag(n->first, str8_lit("update_functions"));
@@ -180,13 +180,13 @@ g_scene_from_se_node(SE_Node* root)
                 {
                     AssertAlways(sn->kind == SE_NodeKind_String);
                     String8 fn_name = sn->v.se_string;
-                    G_FunctionNode *fn = g_function_from_string(fn_name);
-                    g_node_push_fn(arena, g_node, fn->ptr, fn->alias);
+                    RK_FunctionNode *fn = rk_function_from_string(fn_name);
+                    rk_node_push_fn(arena, rk_node, fn->ptr, fn->alias);
                 }
 
                 if(children_count > 0)
                 {
-                    g_push_parent(g_node);
+                    rk_push_parent(rk_node);
                     total_push_count++;
                 }
             }
@@ -195,26 +195,26 @@ g_scene_from_se_node(SE_Node* root)
             U64 rest_pop_count = total_push_count-total_pop_count;
             for(U64 i = 0; i < rest_pop_count; i++)
             {
-                g_pop_parent();
+                rk_pop_parent();
             }
         }
     }
     return ret;
 }
 
-internal G_Scene *
-g_scene_from_file(String8 path)
+internal RK_Scene *
+rk_scene_from_file(String8 path)
 {
     Temp temp = scratch_begin(0,0);
     SE_Node *se_node = se_yml_node_from_file(temp.arena, path);
-    G_Scene *ret = g_scene_from_se_node(se_node);
+    RK_Scene *ret = rk_scene_from_se_node(se_node);
     ret->path = push_str8_copy(ret->arena, path);
     temp_end(temp);
     return ret;
 }
 
 internal void
-g_scene_to_file(G_Scene *scene, String8 path)
+rk_scene_to_file(RK_Scene *scene, String8 path)
 {
     String8List strs = {0};
     Temp temp = scratch_begin(0,0);
@@ -241,8 +241,8 @@ g_scene_to_file(G_Scene *scene, String8 path)
         SE_Node *nodes = se_array(str8_lit("nodes"));
         SE_Parent(nodes)
         {
-            G_Key parent_key = {0};
-            G_Node *node = scene->root;
+            RK_Key parent_key = {0};
+            RK_Node *node = scene->root;
 
             U64 level = 0;
             S64 pass_level = -1;
@@ -250,7 +250,7 @@ g_scene_to_file(G_Scene *scene, String8 path)
             U64 pop_count = 0;
             while(node != 0)
             {
-                G_NodeRec rec = g_node_df_pre(node, 0);
+                RK_NodeRec rec = rk_node_df_pre(node, 0);
 
                 // TODO(k): this is not the prettiest thing in the word
                 if(pass_level != -1 && level <= pass_level)
@@ -276,7 +276,7 @@ g_scene_to_file(G_Scene *scene, String8 path)
                         se_uint(str8_lit("push_count"), push_count);
                         se_uint(str8_lit("pop_count"), pop_count);
                         U64 children_count = node->children_count;
-                        if(node->kind == G_NodeKind_MeshRoot) children_count = 0;
+                        if(node->kind == RK_NodeKind_MeshRoot) children_count = 0;
                         se_uint(str8_lit("children_count"), children_count);
                         se_float(str8_lit("animation_dt"), node->anim_dt);
 
@@ -302,13 +302,13 @@ g_scene_to_file(G_Scene *scene, String8 path)
 
                         SE_Array(str8_lit("update_functions"))
                         {
-                            for(G_UpdateFnNode *n = node->first_update_fn; n != 0; n = n->next)
+                            for(RK_UpdateFnNode *n = node->first_update_fn; n != 0; n = n->next)
                             {
                                 se_string(str8_zero(), n->name);
                             }
                         }
 
-                        if(node->kind == G_NodeKind_MeshRoot)
+                        if(node->kind == RK_NodeKind_MeshRoot)
                         {
                             SE_Struct(str8_lit("mesh"))
                             {
@@ -319,7 +319,7 @@ g_scene_to_file(G_Scene *scene, String8 path)
                             pass_level = level;
                         }
 
-                        if(node->kind == G_NodeKind_Camera3D)
+                        if(node->kind == RK_NodeKind_Camera3D)
                         {
                             SE_Struct(str8_lit("camera"))
                             {
@@ -347,63 +347,63 @@ g_scene_to_file(G_Scene *scene, String8 path)
     scratch_end(temp);
 }
 
-internal G_Scene *
-g_default_scene()
+internal RK_Scene *
+rk_default_scene()
 {
-    G_Scene *scene = g_scene_alloc();
+    RK_Scene *scene = rk_scene_alloc();
 
     // Fill base info
     scene->name             = str8_lit("default_scene");
     scene->path             = str8_lit("./src/game/scenes/default.scene");
-    scene->viewport_shading = G_ViewportShadingKind_Wireframe;
+    scene->viewport_shading = RK_ViewportShadingKind_Wireframe;
     scene->global_light     = v3f32(0,0,1);
     scene->polygon_mode     = R_GeoPolygonKind_Fill;
 
-    G_Scene_Scope(scene) G_Bucket_Scope(scene->bucket) G_MeshCacheTable_Scope(&scene->mesh_cache_table)
+    RK_Scene_Scope(scene) RK_Bucket_Scope(scene->bucket) RK_MeshCacheTable_Scope(&scene->mesh_cache_table)
     {
         // Create the origin/world node
-        G_Node *root = g_build_node_from_string(0, str8_lit("root"));
+        RK_Node *root = rk_build_node_from_string(0, str8_lit("root"));
         root->pos = v3f32(0, 0, 0);
         scene->root = root;
 
-        G_Parent_Scope(root)
+        RK_Parent_Scope(root)
         {
-            G_Node *camera = g_build_node_from_string(0, str8_lit("editor_camera"));
+            RK_Node *camera = rk_build_node_from_string(0, str8_lit("editor_camera"));
             {
-                camera->kind         = G_NodeKind_Camera3D;
+                camera->kind         = RK_NodeKind_Camera3D;
                 camera->pos          = v3f32(0,-3,-3);
                 camera->v.camera.fov = 0.25;
                 camera->v.camera.zn  = 0.1f;
                 camera->v.camera.zf  = 200.f;
-                G_FunctionNode *fn = g_function_from_string(str8_lit("editor_camera_fn"));
-                g_node_push_fn(scene->bucket->arena, camera, fn->ptr, fn->alias);
+                RK_FunctionNode *fn = rk_function_from_string(str8_lit("editor_camera_fn"));
+                rk_node_push_fn(scene->bucket->arena, camera, fn->ptr, fn->alias);
             }
-            G_CameraNode *camera_node = push_array(scene->arena, G_CameraNode, 1);
+            RK_CameraNode *camera_node = push_array(scene->arena, RK_CameraNode, 1);
             camera_node->v = camera;
             DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
             scene->active_camera = camera_node;
 
             // Player
-            G_Node *player = g_build_node_from_stringf(0, "player");
+            RK_Node *player = rk_build_node_from_stringf(0, "player");
             {
-                player->flags |= G_NodeFlags_NavigationRoot;
+                player->flags |= RK_NodeFlags_NavigationRoot;
                 player->pos = v3f32(6,-1.5,0);
-                G_FunctionNode *fn = g_function_from_string(str8_lit("player_fn"));
-                g_node_push_fn(scene->arena, player, fn->ptr, fn->alias);
+                RK_FunctionNode *fn = rk_function_from_string(str8_lit("player_fn"));
+                rk_node_push_fn(scene->arena, player, fn->ptr, fn->alias);
 
-                G_Parent_Scope(player)
+                RK_Parent_Scope(player)
                 {
                     //- k: mesh
-                    G_Node *body = g_build_node_from_stringf(0, "body");
-                    body->kind = G_NodeKind_MeshRoot;
-                    body->v.mesh_root.kind = G_MeshKind_Capsule;
-                    G_Parent_Scope(body)
+                    RK_Node *body = rk_build_node_from_stringf(0, "body");
+                    body->kind = RK_NodeKind_MeshRoot;
+                    body->v.mesh_root.kind = RK_MeshKind_Capsule;
+                    RK_Parent_Scope(body)
                     {
-                        g_capsule_node_default(str8_lit("capsule"));
+                        rk_capsule_node_default(str8_lit("capsule"));
                     }
                     //- k: camera
-                    G_Node *camera = g_build_node_from_stringf(0, "player_camera");
-                    camera->kind = G_NodeKind_Camera3D;
+                    RK_Node *camera = rk_build_node_from_stringf(0, "player_camera");
+                    camera->kind = RK_NodeKind_Camera3D;
                     {
                         camera->pos                  = v3f32(0,-3,0);
                         camera->v.camera.fov         = 0.25;
@@ -412,7 +412,7 @@ g_default_scene()
                         camera->v.camera.hide_cursor = 1;
                         camera->v.camera.lock_cursor = 1;
                     }
-                    G_CameraNode *camera_node = push_array(scene->arena, G_CameraNode, 1);
+                    RK_CameraNode *camera_node = push_array(scene->arena, RK_CameraNode, 1);
                     camera_node->v = camera;
                     DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
                 }
@@ -420,50 +420,50 @@ g_default_scene()
 
             // Dummy1
             {
-                G_Model *m;
+                RK_Model *m;
                 String8 model_path = str8_lit("./models/dancing_stormtrooper/scene.gltf");
                 String8 model_directory = str8_chop_last_slash(model_path);
-                G_Path_Scope(model_directory)
+                RK_Path_Scope(model_directory)
                 {
-                    m = g_model_from_gltf_cached(model_path);
+                    m = rk_model_from_gltf_cached(model_path);
                 }
-                G_Node *dummy = g_build_node_from_stringf(0, "dummy1");
-                dummy->kind             = G_NodeKind_MeshRoot;
+                RK_Node *dummy = rk_build_node_from_stringf(0, "dummy1");
+                dummy->kind             = RK_NodeKind_MeshRoot;
                 dummy->skeleton_anims   = m->anims;
-                dummy->flags            = G_NodeFlags_NavigationRoot|G_NodeFlags_Animated|G_NodeFlags_AnimatedSkeleton;
+                dummy->flags            = RK_NodeFlags_NavigationRoot|RK_NodeFlags_Animated|RK_NodeFlags_AnimatedSkeleton;
                 dummy->pos              = v3f32(6,0,0);
                 dummy->v.mesh_root.path = push_str8_copy(scene->arena, model_path);
-                dummy->v.mesh_root.kind = G_MeshKind_Model;
+                dummy->v.mesh_root.kind = RK_MeshKind_Model;
                 QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
                 dummy->rot = mul_quat_f32(flip_y, dummy->rot);
 
-                G_Parent_Scope(dummy)
+                RK_Parent_Scope(dummy)
                 {
-                    g_node_from_model(m, g_active_seed_key());
+                    rk_node_from_model(m, rk_active_seed_key());
                 }
             }
 
             {
-                G_Model *m;
+                RK_Model *m;
                 String8 model_path = str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf");
                 String8 model_directory = str8_chop_last_slash(model_path);
-                G_Path_Scope(model_directory)
+                RK_Path_Scope(model_directory)
                 {
-                    m = g_model_from_gltf_cached(model_path);
+                    m = rk_model_from_gltf_cached(model_path);
                 }
-                G_Node *n = g_build_node_from_stringf(0, "dummy2");
-                n->kind             = G_NodeKind_MeshRoot;
+                RK_Node *n = rk_build_node_from_stringf(0, "dummy2");
+                n->kind             = RK_NodeKind_MeshRoot;
                 n->skeleton_anims   = m->anims;
-                n->flags            = G_NodeFlags_NavigationRoot|G_NodeFlags_Animated|G_NodeFlags_AnimatedSkeleton;
+                n->flags            = RK_NodeFlags_NavigationRoot|RK_NodeFlags_Animated|RK_NodeFlags_AnimatedSkeleton;
                 n->pos              = v3f32(0,0,0);
                 n->v.mesh_root.path = push_str8_copy(scene->arena, model_path);
-                n->v.mesh_root.kind = G_MeshKind_Model;
+                n->v.mesh_root.kind = RK_MeshKind_Model;
                 QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
                 n->rot = mul_quat_f32(flip_y, n->rot);
 
-                G_Parent_Scope(n)
+                RK_Parent_Scope(n)
                 {
-                    g_node_from_model(m, g_active_seed_key());
+                    rk_node_from_model(m, rk_active_seed_key());
                 }
             }
         }
@@ -474,24 +474,24 @@ g_default_scene()
 /////////////////////////////////
 // GLTF2.0
 
-internal G_Model *
-g_model_from_gltf_cached(String8 gltf_path)
+internal RK_Model *
+rk_model_from_gltf_cached(String8 gltf_path)
 {
-    G_Model *ret = 0;
+    RK_Model *ret = 0;
 
     // Try fetch model from cache first
-    G_MeshCacheTable *cache_table = g_top_mesh_cache_table();
+    RK_MeshCacheTable *cache_table = rk_top_mesh_cache_table();
     Assert(cache_table != 0);
-    G_Key cache_key = g_key_from_string(g_key_zero(), gltf_path);
+    RK_Key cache_key = rk_key_from_string(rk_key_zero(), gltf_path);
     U64 slot_idx = 0;
 
     slot_idx = cache_key.u64[0] % cache_table->slot_count;
-    G_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
-    for(G_MeshCacheNode *n = slot->first; n != 0; n = n->next)
+    RK_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
+    for(RK_MeshCacheNode *n = slot->first; n != 0; n = n->next)
     {
-        if(g_key_match(n->key, cache_key))
+        if(rk_key_match(n->key, cache_key))
         {
-            AssertAlways(n->kind == G_MeshKind_Model);
+            AssertAlways(n->kind == RK_MeshKind_Model);
             ret = n->v;
             n->rc++;
         }
@@ -499,22 +499,22 @@ g_model_from_gltf_cached(String8 gltf_path)
 
     if(ret == 0)
     {
-        ret = g_model_from_gltf(cache_table->arena, gltf_path);
+        ret = rk_model_from_gltf(cache_table->arena, gltf_path);
 
-        G_MeshCacheNode *cache_node = push_array(cache_table->arena, G_MeshCacheNode, 1);
+        RK_MeshCacheNode *cache_node = push_array(cache_table->arena, RK_MeshCacheNode, 1);
         cache_node->key = cache_key;
         cache_node->v = ret;
         cache_node->rc = 1;
-        cache_node->kind = G_MeshKind_Model;
+        cache_node->kind = RK_MeshKind_Model;
         DLLPushBack(slot->first, slot->last, cache_node);
     }
     return ret;
 }
 
-internal G_Model *
-g_model_from_gltf(Arena *arena, String8 gltf_path)
+internal RK_Model *
+rk_model_from_gltf(Arena *arena, String8 gltf_path)
 {
-    G_Model *model = 0;
+    RK_Model *model = 0;
 
     cgltf_options opts = {0};
     cgltf_data *data;
@@ -532,14 +532,14 @@ g_model_from_gltf(Arena *arena, String8 gltf_path)
         cgltf_scene *root_scene = &data->scenes[0];
         AssertAlways(root_scene->nodes_count == 1);
         cgltf_node *root= root_scene->nodes[0];
-        model = g_mnode_from_gltf_node(arena, root, 0, 0, 1024);
+        model = rk_mnode_from_gltf_node(arena, root, 0, 0, 1024);
 
         //- Load skeleton animations after model is loaded
         U64 anim_count = data->animations_count;
-        G_MeshSkeletonAnimation **anims = push_array(arena, G_MeshSkeletonAnimation*, anim_count);
+        RK_MeshSkeletonAnimation **anims = push_array(arena, RK_MeshSkeletonAnimation*, anim_count);
         for(U64 i = 0; i < anim_count; i++)
         {
-            anims[i] = g_skeleton_anim_from_gltf_animation(&data->animations[i]);
+            anims[i] = rk_skeleton_anim_from_gltf_animation(&data->animations[i]);
         }
         model->anim_count = anim_count;
         model->anims = anims;
@@ -555,20 +555,20 @@ g_model_from_gltf(Arena *arena, String8 gltf_path)
     return model;
 }
 
-internal G_Key
-g_key_from_gltf_node(cgltf_node *cn)
+internal RK_Key
+rk_key_from_gltf_node(cgltf_node *cn)
 {
-    return g_key_from_string(g_key_zero(), str8((U8*)(&cn), 8));
+    return rk_key_from_string(rk_key_zero(), str8((U8*)(&cn), 8));
 }
 
-internal G_ModelNode *
-g_mnode_from_hash_table(G_Key key, G_ModelNode_HashSlot *hash_table, U64 hash_table_size)
+internal RK_ModelNode *
+rk_mnode_from_hash_table(RK_Key key, RK_ModelNode_HashSlot *hash_table, U64 hash_table_size)
 {
-    G_ModelNode *ret = 0;
+    RK_ModelNode *ret = 0;
     U64 slot_idx = key.u64[0] % hash_table_size;
-    for(G_ModelNode *n = hash_table[slot_idx].first; n != 0; n = n->hash_next)
+    for(RK_ModelNode *n = hash_table[slot_idx].first; n != 0; n = n->hash_next)
     {
-        if(g_key_match(n->key, key))
+        if(rk_key_match(n->key, key))
         {
             ret = n;
             break;
@@ -577,32 +577,32 @@ g_mnode_from_hash_table(G_Key key, G_ModelNode_HashSlot *hash_table, U64 hash_ta
     return ret;
 }
 
-internal G_ModelNode *
-g_mnode_from_gltf_node(Arena *arena, cgltf_node *cn, G_ModelNode *parent, G_ModelNode_HashSlot *hash_table, U64 hash_table_size)
+internal RK_ModelNode *
+rk_mnode_from_gltf_node(Arena *arena, cgltf_node *cn, RK_ModelNode *parent, RK_ModelNode_HashSlot *hash_table, U64 hash_table_size)
 {
-    G_ModelNode *mnode = 0;
+    RK_ModelNode *mnode = 0;
     B32 is_mesh = cn->mesh != 0;
     B32 is_skinned = is_mesh ? (cn->skin != 0) : 0;
-    G_Key key = g_key_from_gltf_node(cn);
+    RK_Key key = rk_key_from_gltf_node(cn);
 
     // If it's the root node, create hash table
     if(hash_table == 0)
     {
-        hash_table = push_array(arena, G_ModelNode_HashSlot, hash_table_size);
+        hash_table = push_array(arena, RK_ModelNode_HashSlot, hash_table_size);
     }
 
-    mnode = g_mnode_from_hash_table(key, hash_table, hash_table_size);
+    mnode = rk_mnode_from_hash_table(key, hash_table, hash_table_size);
 
     // NOTE(k): If mnode is already created, it should be a joint node within the scene tree
     if(mnode != 0) { return mnode; }
 
-    if(mnode == 0) { mnode = push_array(arena, G_ModelNode, 1); }
+    if(mnode == 0) { mnode = push_array(arena, RK_ModelNode, 1); }
 
     mnode->name            = push_str8_copy(arena, str8_cstring(cn->name));
     mnode->key             = key;
     mnode->is_mesh_group   = is_mesh;
     mnode->is_skinned      = is_skinned;
-    // TODO: we don't actually need to store the hash_table in the G_ModelNode
+    // TODO: we don't actually need to store the hash_table in the RK_ModelNode
     mnode->hash_table      = hash_table;
     mnode->hash_table_size = hash_table_size;
 
@@ -631,7 +631,7 @@ g_mnode_from_gltf_node(Arena *arena, cgltf_node *cn, G_ModelNode *parent, G_Mode
         if(is_skinned)
         {
             mnode->joint_count = cn->skin->joints_count;
-            mnode->joints      = push_array(arena, G_ModelNode*, cn->skin->joints_count);
+            mnode->joints      = push_array(arena, RK_ModelNode*, cn->skin->joints_count);
 
             Mat4x4F32 *inverse_bind_matrices;
             {
@@ -646,7 +646,7 @@ g_mnode_from_gltf_node(Arena *arena, cgltf_node *cn, G_ModelNode *parent, G_Mode
             for(U64 i = 0; i < cn->skin->joints_count; i++)
             {
                 // TODO: don't think it's right, what if joint have parent
-                G_ModelNode *joint = g_mnode_from_gltf_node(arena, cn->skin->joints[i], 0, hash_table, hash_table_size);
+                RK_ModelNode *joint = rk_mnode_from_gltf_node(arena, cn->skin->joints[i], 0, hash_table, hash_table_size);
                 AssertAlways(joint != 0);
 
                 joint->is_joint = 1;
@@ -660,9 +660,9 @@ g_mnode_from_gltf_node(Arena *arena, cgltf_node *cn, G_ModelNode *parent, G_Mode
         for(U64 i = 0; i < cn->mesh->primitives_count; i++)
         {
             String8 name = push_str8f(arena, "%S#mesh#%d", mnode->name, i);
-            G_Key key = g_key_from_string(mnode->key, name);
+            RK_Key key = rk_key_from_string(mnode->key, name);
 
-            G_ModelNode *mesh_node = push_array(arena, G_ModelNode, 1);
+            RK_ModelNode *mesh_node = push_array(arena, RK_ModelNode, 1);
             mesh_node->key               = key;
             mesh_node->name              = name;
             mesh_node->xform             = mat_4x4f32(1.0f);
@@ -682,7 +682,7 @@ g_mnode_from_gltf_node(Arena *arena, cgltf_node *cn, G_ModelNode *parent, G_Mode
                 cgltf_texture *tex = primitive->material->pbr_metallic_roughness.base_color_texture.texture;
 
                 String8List path_parts = {0};
-                str8_list_push(temp.arena, &path_parts, g_top_path());
+                str8_list_push(temp.arena, &path_parts, rk_top_path());
                 str8_list_push(temp.arena, &path_parts, str8_cstring(tex->image->uri));
                 String8 path = str8_path_list_join_by_style(temp.arena, &path_parts, PathStyle_Relative);
 
@@ -771,24 +771,24 @@ g_mnode_from_gltf_node(Arena *arena, cgltf_node *cn, G_ModelNode *parent, G_Mode
 
     for(U64 i = 0; i < cn->children_count; i++)
     {
-        g_mnode_from_gltf_node(arena, cn->children[i], mnode, mnode->hash_table, mnode->hash_table_size);
+        rk_mnode_from_gltf_node(arena, cn->children[i], mnode, mnode->hash_table, mnode->hash_table_size);
     }
     return mnode;
 }
 
-internal G_Node *
-g_node_from_model(G_Model *model, G_Key seed_key)
+internal RK_Node *
+rk_node_from_model(RK_Model *model, RK_Key seed_key)
 {
-    G_Bucket *bucket = g_top_bucket();
+    RK_Bucket *bucket = rk_top_bucket();
     Arena *arena = bucket->arena;
 
-    G_Key key = g_key_merge(seed_key, model->key);
-    G_Node *n = 0;
+    RK_Key key = rk_key_merge(seed_key, model->key);
+    RK_Node *n = 0;
 
     U64 slot_idx = key.u64[0] % bucket->node_hash_table_size;
-    for(G_Node *i = bucket->node_hash_table[slot_idx].first; i != 0; i = i->hash_next)
+    for(RK_Node *i = bucket->node_hash_table[slot_idx].first; i != 0; i = i->hash_next)
     {
-        if(g_key_match(key, i->key))
+        if(rk_key_match(key, i->key))
         {
             n = i;
             break;
@@ -796,13 +796,13 @@ g_node_from_model(G_Model *model, G_Key seed_key)
     }
     if(n != 0) { return n; }
 
-    n = g_build_node_from_key(0, key);
+    n = rk_build_node_from_key(0, key);
 
     n->name = push_str8_copy(arena, model->name);
     model->rc++; // TODO: make use of rc
 
     // translation, rotation, scale
-    g_trs_from_matrix(&model->xform, &n->pos, &n->rot, &n->scale);
+    rk_trs_from_matrix(&model->xform, &n->pos, &n->rot, &n->scale);
 
     B32 is_mesh_group     = model->is_mesh_group;
     B32 is_mesh_primitive = model->is_mesh_primitive;
@@ -811,24 +811,24 @@ g_node_from_model(G_Model *model, G_Key seed_key)
 
     if(is_mesh_group)
     {
-        n->kind                    = G_NodeKind_MeshGroup;
+        n->kind                    = RK_NodeKind_MeshGroup;
         n->v.mesh_grp.is_skinned   = model->is_skinned;
         n->v.mesh_grp.joint_count  = model->joint_count;
-        n->v.mesh_grp.joints       = push_array(arena, G_Node*, model->joint_count);
+        n->v.mesh_grp.joints       = push_array(arena, RK_Node*, model->joint_count);
         n->v.mesh_grp.joint_xforms = push_array(arena, Mat4x4F32, model->joint_count);
-        G_FunctionNode *fn = g_function_from_string(str8_lit("mesh_grp_fn"));
-        g_node_push_fn(arena, n, fn->ptr, fn->alias);
+        RK_FunctionNode *fn = rk_function_from_string(str8_lit("mesh_grp_fn"));
+        rk_node_push_fn(arena, n, fn->ptr, fn->alias);
 
         for(U64 i = 0; i < model->joint_count; i++)
         {
-            n->v.mesh_grp.joints[i] = g_node_from_model(model->joints[i], seed_key);
+            n->v.mesh_grp.joints[i] = rk_node_from_model(model->joints[i], seed_key);
         }
         n->v.mesh_grp.root_joint = n->v.mesh_grp.joints[0];
     }
 
     if(is_mesh_primitive)
     {
-        n->kind                        = G_NodeKind_MeshPrimitive;
+        n->kind                        = RK_NodeKind_MeshPrimitive;
         n->v.mesh_primitive.vertices   = model->vertices;
         n->v.mesh_primitive.indices    = model->indices;
         n->v.mesh_primitive.albedo_tex = model->albedo_tex;
@@ -836,66 +836,66 @@ g_node_from_model(G_Model *model, G_Key seed_key)
 
     if(is_joint)
     {
-        n->kind = G_NodeKind_MeshJoint;
+        n->kind = RK_NodeKind_MeshJoint;
         n->v.mesh_joint.inverse_bind_matrix = model->inverse_bind_matrix;
     }
 
     if(is_skin)
     { 
-        n->flags |= G_NodeFlags_Float;
+        n->flags |= RK_NodeFlags_Float;
     }
 
-    G_Parent_Scope(n)
+    RK_Parent_Scope(n)
     {
-        for(G_ModelNode *c = model->first; c != 0; c = c->next)
+        for(RK_ModelNode *c = model->first; c != 0; c = c->next)
         {
-            g_node_from_model(c, seed_key);
+            rk_node_from_model(c, seed_key);
         }
     }
     return n;
 }
 
-internal G_MeshSkeletonAnimation *
-g_skeleton_anim_from_gltf_animation(cgltf_animation *cgltf_anim)
+internal RK_MeshSkeletonAnimation *
+rk_skeleton_anim_from_gltf_animation(cgltf_animation *cgltf_anim)
 {
-    G_Bucket *bucket = g_top_bucket();
+    RK_Bucket *bucket = rk_top_bucket();
     Arena *arena = bucket->arena;
 
-    G_MeshSkeletonAnimation *anim = push_array(arena, G_MeshSkeletonAnimation, 1);
+    RK_MeshSkeletonAnimation *anim = push_array(arena, RK_MeshSkeletonAnimation, 1);
     anim->name = push_str8_copy(arena, str8_cstring(cgltf_anim->name));
 
     AssertAlways(cgltf_anim->channels_count == cgltf_anim->samplers_count);
     U64 spline_count = cgltf_anim->channels_count;
-    G_MeshSkeletonAnimSpline *splines = push_array(arena, G_MeshSkeletonAnimSpline, spline_count);
+    RK_MeshSkeletonAnimSpline *splines = push_array(arena, RK_MeshSkeletonAnimSpline, spline_count);
 
     F32 duration = 0;
     for(U64 i = 0; i < spline_count; i++)
     {
-        G_MeshSkeletonAnimSpline *spline = &splines[i];
+        RK_MeshSkeletonAnimSpline *spline = &splines[i];
         cgltf_animation_channel *channel = &cgltf_anim->channels[i] ;
         cgltf_animation_sampler *sampler = channel->sampler;
 
-        G_TransformKind t_kind;
+        RK_TransformKind t_kind;
         U64 value_size;
         switch(channel->target_path)
         {
-            case cgltf_animation_path_type_translation: { t_kind = G_TransformKind_Translation; value_size = sizeof(Vec3F32); }break;
-            case cgltf_animation_path_type_rotation:    { t_kind = G_TransformKind_Rotation; value_size = sizeof(Vec4F32); }break;
-            case cgltf_animation_path_type_scale:       { t_kind = G_TransformKind_Scale; value_size = sizeof(Vec3F32); }break;
-            case cgltf_animation_path_type_weights:     { t_kind = G_TransformKind_Invalid; value_size = sizeof(Vec2F32); }break; // TODO: ignored for now
+            case cgltf_animation_path_type_translation: { t_kind = RK_TransformKind_Translation; value_size = sizeof(Vec3F32); }break;
+            case cgltf_animation_path_type_rotation:    { t_kind = RK_TransformKind_Rotation; value_size = sizeof(Vec4F32); }break;
+            case cgltf_animation_path_type_scale:       { t_kind = RK_TransformKind_Scale; value_size = sizeof(Vec3F32); }break;
+            case cgltf_animation_path_type_weights:     { t_kind = RK_TransformKind_Invalid; value_size = sizeof(Vec2F32); }break; // TODO: ignored for now
             default:                                    { InvalidPath; }break;
         }
 
-        G_InterpolationMethod method;
+        RK_InterpolationMethod method;
         switch(sampler->interpolation)
         {
-            case cgltf_interpolation_type_linear:       { method = G_InterpolationMethod_Linear; }break;
-            case cgltf_interpolation_type_step:         { method = G_InterpolationMethod_Step; }break;
-            case cgltf_interpolation_type_cubic_spline: { method = G_InterpolationMethod_Cubicspline; }break;
+            case cgltf_interpolation_type_linear:       { method = RK_InterpolationMethod_Linear; }break;
+            case cgltf_interpolation_type_step:         { method = RK_InterpolationMethod_Step; }break;
+            case cgltf_interpolation_type_cubic_spline: { method = RK_InterpolationMethod_Cubicspline; }break;
             default:                                    { InvalidPath; }break;
         }
 
-        G_Key target_key = g_key_from_gltf_node(channel->target_node);
+        RK_Key target_key = rk_key_from_gltf_node(channel->target_node);
 
         // Timestamps
         cgltf_accessor *input_accessor = sampler->input;
@@ -932,7 +932,7 @@ g_skeleton_anim_from_gltf_animation(cgltf_animation *cgltf_anim)
 // Mesh primitives
 
 internal void
-g_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
+rk_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
 {
     // R_Vertex vertices_src[8] = {
     //     // Front face
@@ -1170,7 +1170,7 @@ g_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide_
 }
 
 internal void
-g_mesh_primitive_plane(Arena *arena, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
+rk_mesh_primitive_plane(Arena *arena, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
 {
     U64 i,j,prevrow,thisrow,vertex_idx, indice_idx;
     F32 x,z;
@@ -1236,7 +1236,7 @@ g_mesh_primitive_plane(Arena *arena, R_Vertex **vertices_out, U64 *vertices_coun
 }
 
 internal void
-g_mesh_primitive_sphere(Arena *arena,
+rk_mesh_primitive_sphere(Arena *arena,
                         R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out,
                         F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere)
 {
@@ -1324,7 +1324,7 @@ g_mesh_primitive_sphere(Arena *arena,
 }
 
 internal void
-g_mesh_primitive_cylinder(Arena *arena,
+rk_mesh_primitive_cylinder(Arena *arena,
                           R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out,
                           F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom)
 {
@@ -1465,7 +1465,7 @@ g_mesh_primitive_cylinder(Arena *arena,
 }
 
 internal void
-g_mesh_primitive_capsule(Arena *arena, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out, F32 radius, F32 height, U64 radial_segments, U64 rings)
+rk_mesh_primitive_capsule(Arena *arena, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out, F32 radius, F32 height, U64 radial_segments, U64 rings)
 {
     U64 i,j,prevrow,thisrow,vertex_idx,indice_idx;
     F32 x,y,z,u,v,w,vertex_count,indice_count;
@@ -1618,8 +1618,8 @@ g_mesh_primitive_capsule(Arena *arena, R_Vertex **vertices_out, U64 *vertices_co
 /////////////////////////////////
 // Node building helpers
 
-internal G_Node *
-g_box_node(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d)
+internal RK_Node *
+rk_box_node(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d)
 {
     Temp temp = scratch_begin(0,0);
 
@@ -1627,10 +1627,10 @@ g_box_node(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 s
     U64 vertice_count     = 0;
     U32 *indices_src       = 0;
     U64 indice_count      = 0;
-    g_mesh_primitive_box(temp.arena, size, subdivide_w, subdivide_h, subdivide_d, &vertices_src, &vertice_count, &indices_src, &indice_count);
+    rk_mesh_primitive_box(temp.arena, size, subdivide_w, subdivide_h, subdivide_d, &vertices_src, &vertice_count, &indices_src, &indice_count);
 
-    G_Node *n = g_build_node_from_stringf(0, "primitive");
-    n->kind                           = G_NodeKind_MeshPrimitive;
+    RK_Node *n = rk_build_node_from_stringf(0, "primitive");
+    n->kind                           = RK_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices      = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertice_count, (void *)vertices_src);
     n->v.mesh_primitive.indices       = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, (void *)indices_src);
     n->v.mesh_primitive.vertice_count = vertice_count;
@@ -1640,15 +1640,15 @@ g_box_node(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 s
     return n;
 }
 
-internal G_Node *
-g_box_node_cached(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d)
+internal RK_Node *
+rk_box_node_cached(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d)
 {
     Temp temp = scratch_begin(0,0);
-    G_MeshPrimitive *primitive = 0;
+    RK_MeshPrimitive *primitive = 0;
 
-    G_MeshCacheTable *cache_table = g_top_mesh_cache_table();
+    RK_MeshCacheTable *cache_table = rk_top_mesh_cache_table();
     Assert(cache_table != 0);
-    G_Key key = {0};
+    RK_Key key = {0};
     {
         F64 size_x = size.x;
         F64 size_y = size.y;
@@ -1661,16 +1661,16 @@ g_box_node_cached(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h
             subdivide_h,
             subdivide_d,
         };
-        key = g_key_from_string(g_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
+        key = rk_key_from_string(rk_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
     }
 
     U64 slot_idx = key.u64[0] % cache_table->slot_count;
-    G_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
-    for(G_MeshCacheNode *n = slot->first; n != 0; n = n->next)
+    RK_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
+    for(RK_MeshCacheNode *n = slot->first; n != 0; n = n->next)
     {
-        if(g_key_match(n->key, key))
+        if(rk_key_match(n->key, key))
         {
-            AssertAlways(n->kind == G_MeshKind_Box);
+            AssertAlways(n->kind == RK_MeshKind_Box);
             primitive = n->v;
             n->rc++;
         }
@@ -1682,13 +1682,13 @@ g_box_node_cached(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h
         U64 vertice_count     = 0;
         U32 *indices_src       = 0;
         U64 indice_count      = 0;
-        g_mesh_primitive_box(temp.arena, size, subdivide_w, subdivide_h, subdivide_d, &vertices_src, &vertice_count, &indices_src, &indice_count);
+        rk_mesh_primitive_box(temp.arena, size, subdivide_w, subdivide_h, subdivide_d, &vertices_src, &vertice_count, &indices_src, &indice_count);
 
-        G_MeshCacheNode *cache_node = push_array(cache_table->arena, G_MeshCacheNode, 1);
-        cache_node->v = push_array(cache_table->arena, G_MeshPrimitive, 1);
+        RK_MeshCacheNode *cache_node = push_array(cache_table->arena, RK_MeshCacheNode, 1);
+        cache_node->v = push_array(cache_table->arena, RK_MeshPrimitive, 1);
         cache_node->key = key;
         cache_node->rc  = 1;
-        cache_node->kind = G_MeshKind_Box;
+        cache_node->kind = RK_MeshKind_Box;
         primitive = cache_node->v;
         DLLPushBack(slot->first, slot->last, cache_node);
 
@@ -1698,8 +1698,8 @@ g_box_node_cached(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h
         primitive->indice_count = indice_count;
     }
 
-    G_Node *n = g_build_node_from_stringf(0, "primitive");
-    n->kind                           = G_NodeKind_MeshPrimitive;
+    RK_Node *n = rk_build_node_from_stringf(0, "primitive");
+    n->kind                           = RK_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices      = primitive->vertices;
     n->v.mesh_primitive.indices       = primitive->indices;
     n->v.mesh_primitive.vertice_count = primitive->vertice_count;
@@ -1709,8 +1709,8 @@ g_box_node_cached(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h
     return n;
 }
 
-internal G_Node *
-g_plane_node(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
+internal RK_Node *
+rk_plane_node(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
 {
     Temp temp = scratch_begin(0,0);
 
@@ -1718,10 +1718,10 @@ g_plane_node(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
     U64 vertices_count     = 0;
     U32 *indices_src       = 0;
     U64 indices_count      = 0;
-    g_mesh_primitive_plane(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, size, subdivide_w, subdivide_d);
+    rk_mesh_primitive_plane(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, size, subdivide_w, subdivide_d);
 
-    G_Node *n = g_build_node_from_stringf(0, "primitive");
-    n->kind                      = G_NodeKind_MeshPrimitive;
+    RK_Node *n = rk_build_node_from_stringf(0, "primitive");
+    n->kind                      = RK_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
     n->v.mesh_primitive.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
 
@@ -1729,15 +1729,15 @@ g_plane_node(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
     return n;
 }
 
-internal G_Node *
-g_plane_node_cached(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
+internal RK_Node *
+rk_plane_node_cached(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
 {
     Temp temp = scratch_begin(0,0);
-    G_MeshPrimitive *primitive = 0;
+    RK_MeshPrimitive *primitive = 0;
 
-    G_MeshCacheTable *cache_table = g_top_mesh_cache_table();
+    RK_MeshCacheTable *cache_table = rk_top_mesh_cache_table();
     Assert(cache_table != 0);
-    G_Key key = {0};
+    RK_Key key = {0};
     {
         F64 size_x = size.x;
         F64 size_y = size.y;
@@ -1747,16 +1747,16 @@ g_plane_node_cached(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide
             subdivide_w,
             subdivide_d,
         };
-        key = g_key_from_string(g_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
+        key = rk_key_from_string(rk_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
     }
 
     U64 slot_idx = key.u64[0] % cache_table->slot_count;
-    G_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
-    for(G_MeshCacheNode *n = slot->first; n != 0; n = n->next)
+    RK_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
+    for(RK_MeshCacheNode *n = slot->first; n != 0; n = n->next)
     {
-        if(g_key_match(n->key, key))
+        if(rk_key_match(n->key, key))
         {
-            AssertAlways(n->kind == G_MeshKind_Plane);
+            AssertAlways(n->kind == RK_MeshKind_Plane);
             primitive = n->v;
             n->rc++;
         }
@@ -1768,13 +1768,13 @@ g_plane_node_cached(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide
         U64 vertice_count     = 0;
         U32 *indices_src       = 0;
         U64 indice_count      = 0;
-        g_mesh_primitive_plane(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, size, subdivide_w, subdivide_d);
+        rk_mesh_primitive_plane(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, size, subdivide_w, subdivide_d);
 
-        G_MeshCacheNode *cache_node = push_array(cache_table->arena, G_MeshCacheNode, 1);
-        cache_node->v = push_array(cache_table->arena, G_MeshPrimitive, 1);
+        RK_MeshCacheNode *cache_node = push_array(cache_table->arena, RK_MeshCacheNode, 1);
+        cache_node->v = push_array(cache_table->arena, RK_MeshPrimitive, 1);
         cache_node->key = key;
         cache_node->rc  = 1;
-        cache_node->kind = G_MeshKind_Plane;
+        cache_node->kind = RK_MeshKind_Plane;
         primitive = cache_node->v;
         DLLPushBack(slot->first, slot->last, cache_node);
 
@@ -1784,8 +1784,8 @@ g_plane_node_cached(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide
         primitive->indice_count = indice_count;
     }
 
-    G_Node *n = g_build_node_from_stringf(0, "primitive");
-    n->kind                           = G_NodeKind_MeshPrimitive;
+    RK_Node *n = rk_build_node_from_stringf(0, "primitive");
+    n->kind                           = RK_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices      = primitive->vertices;
     n->v.mesh_primitive.indices       = primitive->indices;
     n->v.mesh_primitive.vertice_count = primitive->vertice_count;
@@ -1795,8 +1795,8 @@ g_plane_node_cached(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide
     return n;
 }
 
-internal G_Node *
-g_sphere_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere)
+internal RK_Node *
+rk_sphere_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere)
 {
     Temp temp = scratch_begin(0,0);
 
@@ -1804,10 +1804,10 @@ g_sphere_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 r
     U64 vertice_count     = 0;
     U32 *indices_src       = 0;
     U64 indice_count      = 0;
-    g_mesh_primitive_sphere(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, radius, height, radial_segments, rings, is_hemisphere);
+    rk_mesh_primitive_sphere(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, radius, height, radial_segments, rings, is_hemisphere);
 
-    G_Node *n = g_build_node_from_stringf(0, "primitive");
-    n->kind                      = G_NodeKind_MeshPrimitive;
+    RK_Node *n = rk_build_node_from_stringf(0, "primitive");
+    n->kind                      = RK_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertice_count, (void *)vertices_src);
     n->v.mesh_primitive.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, (void *)indices_src);
 
@@ -1815,15 +1815,15 @@ g_sphere_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 r
     return n;
 }
 
-internal G_Node *
-g_sphere_node_cached(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere)
+internal RK_Node *
+rk_sphere_node_cached(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere)
 {
     Temp temp = scratch_begin(0,0);
-    G_MeshPrimitive *primitive = 0;
+    RK_MeshPrimitive *primitive = 0;
 
-    G_MeshCacheTable *cache_table = g_top_mesh_cache_table();
+    RK_MeshCacheTable *cache_table = rk_top_mesh_cache_table();
     Assert(cache_table != 0);
-    G_Key key = {0};
+    RK_Key key = {0};
     {
         F64 radius_f64 = radius;
         F64 height_f64 = height;
@@ -1834,16 +1834,16 @@ g_sphere_node_cached(String8 string, F32 radius, F32 height, U64 radial_segments
             rings,
             is_hemisphere
         };
-        key = g_key_from_string(g_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
+        key = rk_key_from_string(rk_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
     }
 
     U64 slot_idx = key.u64[0] % cache_table->slot_count;
-    G_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
-    for(G_MeshCacheNode *n = slot->first; n != 0; n = n->next)
+    RK_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
+    for(RK_MeshCacheNode *n = slot->first; n != 0; n = n->next)
     {
-        if(g_key_match(n->key, key))
+        if(rk_key_match(n->key, key))
         {
-            AssertAlways(n->kind == G_MeshKind_Sphere);
+            AssertAlways(n->kind == RK_MeshKind_Sphere);
             primitive = n->v;
             n->rc++;
         }
@@ -1855,13 +1855,13 @@ g_sphere_node_cached(String8 string, F32 radius, F32 height, U64 radial_segments
         U64 vertice_count     = 0;
         U32 *indices_src       = 0;
         U64 indice_count      = 0;
-        g_mesh_primitive_sphere(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, radius, height, radial_segments, rings, is_hemisphere);
+        rk_mesh_primitive_sphere(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, radius, height, radial_segments, rings, is_hemisphere);
 
-        G_MeshCacheNode *cache_node = push_array(cache_table->arena, G_MeshCacheNode, 1);
-        cache_node->v = push_array(cache_table->arena, G_MeshPrimitive, 1);
+        RK_MeshCacheNode *cache_node = push_array(cache_table->arena, RK_MeshCacheNode, 1);
+        cache_node->v = push_array(cache_table->arena, RK_MeshPrimitive, 1);
         cache_node->key = key;
         cache_node->rc  = 1;
-        cache_node->kind = G_MeshKind_Sphere;
+        cache_node->kind = RK_MeshKind_Sphere;
         primitive = cache_node->v;
         DLLPushBack(slot->first, slot->last, cache_node);
 
@@ -1871,8 +1871,8 @@ g_sphere_node_cached(String8 string, F32 radius, F32 height, U64 radial_segments
         primitive->indice_count = indice_count;
     }
 
-    G_Node *n = g_build_node_from_stringf(0, "primitive");
-    n->kind                           = G_NodeKind_MeshPrimitive;
+    RK_Node *n = rk_build_node_from_stringf(0, "primitive");
+    n->kind                           = RK_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices      = primitive->vertices;
     n->v.mesh_primitive.indices       = primitive->indices;
     n->v.mesh_primitive.vertice_count = primitive->vertice_count;
@@ -1882,8 +1882,8 @@ g_sphere_node_cached(String8 string, F32 radius, F32 height, U64 radial_segments
     return n;
 }
 
-internal G_Node *
-g_cylinder_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom)
+internal RK_Node *
+rk_cylinder_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom)
 {
     Temp temp = scratch_begin(0,0);
 
@@ -1891,10 +1891,10 @@ g_cylinder_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64
     U64 vertices_count     = 0;
     U32 *indices_src       = 0;
     U64 indices_count      = 0;
-    g_mesh_primitive_cylinder(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, radius, height, radial_segments, rings, cap_top, cap_bottom);
+    rk_mesh_primitive_cylinder(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, radius, height, radial_segments, rings, cap_top, cap_bottom);
 
-    G_Node *n = g_build_node_from_stringf(0, "primitive");
-    n->kind                      = G_NodeKind_MeshPrimitive;
+    RK_Node *n = rk_build_node_from_stringf(0, "primitive");
+    n->kind                      = RK_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
     n->v.mesh_primitive.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
 
@@ -1902,15 +1902,15 @@ g_cylinder_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64
     return n;
 }
 
-internal G_Node *
-g_cylinder_node_cached(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom)
+internal RK_Node *
+rk_cylinder_node_cached(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom)
 {
     Temp temp = scratch_begin(0,0);
-    G_MeshPrimitive *primitive = 0;
+    RK_MeshPrimitive *primitive = 0;
 
-    G_MeshCacheTable *cache_table = g_top_mesh_cache_table();
+    RK_MeshCacheTable *cache_table = rk_top_mesh_cache_table();
     Assert(cache_table != 0);
-    G_Key key = {0};
+    RK_Key key = {0};
     {
         F64 radius_f64 = radius;
         F64 height_f64 = height;
@@ -1922,16 +1922,16 @@ g_cylinder_node_cached(String8 string, F32 radius, F32 height, U64 radial_segmen
             cap_top,
             cap_bottom,
         };
-        key = g_key_from_string(g_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
+        key = rk_key_from_string(rk_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
     }
 
     U64 slot_idx = key.u64[0] % cache_table->slot_count;
-    G_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
-    for(G_MeshCacheNode *n = slot->first; n != 0; n = n->next)
+    RK_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
+    for(RK_MeshCacheNode *n = slot->first; n != 0; n = n->next)
     {
-        if(g_key_match(n->key, key))
+        if(rk_key_match(n->key, key))
         {
-            AssertAlways(n->kind == G_MeshKind_Cylinder);
+            AssertAlways(n->kind == RK_MeshKind_Cylinder);
             primitive = n->v;
             n->rc++;
         }
@@ -1943,13 +1943,13 @@ g_cylinder_node_cached(String8 string, F32 radius, F32 height, U64 radial_segmen
         U64 vertice_count     = 0;
         U32 *indices_src       = 0;
         U64 indice_count      = 0;
-        g_mesh_primitive_cylinder(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, radius, height, radial_segments, rings, cap_top, cap_bottom);
+        rk_mesh_primitive_cylinder(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, radius, height, radial_segments, rings, cap_top, cap_bottom);
 
-        G_MeshCacheNode *cache_node = push_array(cache_table->arena, G_MeshCacheNode, 1);
-        cache_node->v    = push_array(cache_table->arena, G_MeshPrimitive, 1);
+        RK_MeshCacheNode *cache_node = push_array(cache_table->arena, RK_MeshCacheNode, 1);
+        cache_node->v    = push_array(cache_table->arena, RK_MeshPrimitive, 1);
         cache_node->key  = key;
         cache_node->rc   = 1;
-        cache_node->kind = G_MeshKind_Cylinder;
+        cache_node->kind = RK_MeshKind_Cylinder;
         primitive = cache_node->v;
         DLLPushBack(slot->first, slot->last, cache_node);
 
@@ -1959,8 +1959,8 @@ g_cylinder_node_cached(String8 string, F32 radius, F32 height, U64 radial_segmen
         primitive->indice_count = indice_count;
     }
 
-    G_Node *n = g_build_node_from_stringf(0, "primitive");
-    n->kind                           = G_NodeKind_MeshPrimitive;
+    RK_Node *n = rk_build_node_from_stringf(0, "primitive");
+    n->kind                           = RK_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices      = primitive->vertices;
     n->v.mesh_primitive.indices       = primitive->indices;
     n->v.mesh_primitive.vertice_count = primitive->vertice_count;
@@ -1970,18 +1970,18 @@ g_cylinder_node_cached(String8 string, F32 radius, F32 height, U64 radial_segmen
     return n;
 }
 
-internal G_Node *
-g_capsule_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings)
+internal RK_Node *
+rk_capsule_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings)
 {
     Temp temp = scratch_begin(0,0);
     R_Vertex *vertices_src = 0;
     U64 vertices_count     = 0;
     U32 *indices_src       = 0;
     U64 indices_count      = 0;
-    g_mesh_primitive_capsule(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, radius, height, radial_segments, rings);
+    rk_mesh_primitive_capsule(temp.arena, &vertices_src, &vertices_count, &indices_src, &indices_count, radius, height, radial_segments, rings);
 
-    G_Node *n = g_build_node_from_stringf(0, "capsule_primitive");
-    n->kind                      = G_NodeKind_MeshPrimitive;
+    RK_Node *n = rk_build_node_from_stringf(0, "capsule_primitive");
+    n->kind                      = RK_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertices_count, (void *)vertices_src);
     n->v.mesh_primitive.indices  = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indices_count, (void *)indices_src);
 
@@ -1989,15 +1989,15 @@ g_capsule_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 
     return n;
 }
 
-internal G_Node *
-g_capsule_node_cached(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings)
+internal RK_Node *
+rk_capsule_node_cached(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings)
 {
     Temp temp = scratch_begin(0,0);
-    G_MeshPrimitive *primitive = 0;
+    RK_MeshPrimitive *primitive = 0;
 
-    G_MeshCacheTable *cache_table = g_top_mesh_cache_table();
+    RK_MeshCacheTable *cache_table = rk_top_mesh_cache_table();
     Assert(cache_table != 0);
-    G_Key key = {0};
+    RK_Key key = {0};
     {
         F64 radius_f64 = radius;
         F64 height_f64 = height;
@@ -2007,16 +2007,16 @@ g_capsule_node_cached(String8 string, F32 radius, F32 height, U64 radial_segment
             radial_segments,
             rings,
         };
-        key = g_key_from_string(g_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
+        key = rk_key_from_string(rk_key_zero(), str8((U8 *)hash_content, sizeof(hash_content)));
     }
 
     U64 slot_idx = key.u64[0] % cache_table->slot_count;
-    G_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
-    for(G_MeshCacheNode *n = slot->first; n != 0; n = n->next)
+    RK_MeshCacheSlot *slot = &cache_table->slots[slot_idx];
+    for(RK_MeshCacheNode *n = slot->first; n != 0; n = n->next)
     {
-        if(g_key_match(n->key, key))
+        if(rk_key_match(n->key, key))
         {
-            AssertAlways(n->kind == G_MeshKind_Capsule);
+            AssertAlways(n->kind == RK_MeshKind_Capsule);
             primitive = n->v;
             n->rc++;
         }
@@ -2028,13 +2028,13 @@ g_capsule_node_cached(String8 string, F32 radius, F32 height, U64 radial_segment
         U64 vertice_count     = 0;
         U32 *indices_src       = 0;
         U64 indice_count      = 0;
-        g_mesh_primitive_capsule(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, radius, height, radial_segments, rings);
+        rk_mesh_primitive_capsule(temp.arena, &vertices_src, &vertice_count, &indices_src, &indice_count, radius, height, radial_segments, rings);
 
-        G_MeshCacheNode *cache_node = push_array(cache_table->arena, G_MeshCacheNode, 1);
-        cache_node->v = push_array(cache_table->arena, G_MeshPrimitive, 1);
+        RK_MeshCacheNode *cache_node = push_array(cache_table->arena, RK_MeshCacheNode, 1);
+        cache_node->v = push_array(cache_table->arena, RK_MeshPrimitive, 1);
         cache_node->key = key;
         cache_node->rc  = 1;
-        cache_node->kind = G_MeshKind_Capsule;
+        cache_node->kind = RK_MeshKind_Capsule;
         primitive = cache_node->v;
         DLLPushBack(slot->first, slot->last, cache_node);
 
@@ -2044,8 +2044,8 @@ g_capsule_node_cached(String8 string, F32 radius, F32 height, U64 radial_segment
         primitive->indice_count = indice_count;
     }
 
-    G_Node *n = g_build_node_from_stringf(0, "primitive");
-    n->kind                           = G_NodeKind_MeshPrimitive;
+    RK_Node *n = rk_build_node_from_stringf(0, "primitive");
+    n->kind                           = RK_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices      = primitive->vertices;
     n->v.mesh_primitive.indices       = primitive->indices;
     n->v.mesh_primitive.vertice_count = primitive->vertice_count;
@@ -2055,24 +2055,24 @@ g_capsule_node_cached(String8 string, F32 radius, F32 height, U64 radial_segment
     return n;
 }
 
-// internal G_Node *
-// g_n2d_anim_sprite2d_from_spritesheet(Arena *arena, String8 string, G_SpriteSheet2D *spritesheet2d) {
-//     G_Node *result = g_build_node2d_from_string(arena, string);
-//     result->kind = G_NodeKind_AnimatedSprite2D;
+// internal RK_Node *
+// rk_n2d_anim_sprite2d_from_spritesheet(Arena *arena, String8 string, RK_SpriteSheet2D *spritesheet2d) {
+//     RK_Node *result = rk_build_node2d_from_string(arena, string);
+//     result->kind = RK_NodeKind_AnimatedSprite2D;
 // 
 //     U64 anim2d_hash_table_size = 3000;
-//     G_Animation2DHashSlot *anim2d_hash_table = push_array(arena, G_Animation2DHashSlot, anim2d_hash_table_size);
+//     RK_Animation2DHashSlot *anim2d_hash_table = push_array(arena, RK_Animation2DHashSlot, anim2d_hash_table_size);
 // 
 //     for(U64 i = 0; i < spritesheet2d->tag_count; i++) {
-//         G_Sprite2D_FrameTag *tag = &spritesheet2d->tags[i];
-//         U64 animation_key = g_hash_from_string(5381, tag->name);
+//         RK_Sprite2D_FrameTag *tag = &spritesheet2d->tags[i];
+//         U64 animation_key = rk_hash_from_string(5381, tag->name);
 //         U64 slot_idx = animation_key % anim2d_hash_table_size;
 // 
-//         G_Animation2D *anim2d = push_array(arena, G_Animation2D, 1);
+//         RK_Animation2D *anim2d = push_array(arena, RK_Animation2D, 1);
 // 
 //         F32 total_duration = 0;
 //         U64 frame_count = tag->to - tag->from + 1;
-//         G_Sprite2D_Frame *first_frame = spritesheet2d->frames + tag->from;
+//         RK_Sprite2D_Frame *first_frame = spritesheet2d->frames + tag->from;
 //         for(U64 frame_idx = 0; frame_idx < frame_count; frame_idx++) {
 //             total_duration += (first_frame+frame_idx)->duration;
 //         }

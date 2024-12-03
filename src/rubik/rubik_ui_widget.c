@@ -2,7 +2,7 @@
 //~ k: Floating/Fixed Panes
 
 internal UI_Box *
-g_ui_pane_begin(Rng2F32 rect, B32 *open, String8 string)
+rk_ui_pane_begin(Rng2F32 rect, B32 *open, String8 string)
 {
     // TODO: top-box is not resizing where collapsing
     Vec2F32 rect_dim = dim_2f32(rect);
@@ -47,7 +47,7 @@ g_ui_pane_begin(Rng2F32 rect, B32 *open, String8 string)
 }
 
 internal UI_Signal
-g_ui_pane_end(void)
+rk_ui_pane_end(void)
 {
     ui_pop_pref_width();
     UI_Box *box = ui_pop_parent();
@@ -55,8 +55,11 @@ g_ui_pane_end(void)
     return sig;
 }
 
+////////////////////////////////
+//~ k: Dropdown
+
 internal UI_Box *
-g_ui_dropdown_begin(String8 string)
+rk_ui_dropdown_begin(String8 string)
 {
     // Make key
     UI_Key key = ui_key_from_string(ui_active_seed_key(), string);
@@ -127,7 +130,7 @@ g_ui_dropdown_begin(String8 string)
 }
 
 internal UI_Signal
-g_ui_dropdown_end(void)
+rk_ui_dropdown_end(void)
 {
     ui_pop_pref_width();
     ui_pop_text_alignment();
@@ -137,7 +140,7 @@ g_ui_dropdown_end(void)
 }
 
 internal void
-g_ui_dropdown_hide(void)
+rk_ui_dropdown_hide(void)
 {
     ui_set_auto_focus_hot_key(ui_key_zero());
     ui_set_auto_focus_active_key(ui_key_zero());

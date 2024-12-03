@@ -27,11 +27,10 @@
 #include "draw/draw.h"
 #include "ui/ui_inc.h"
 #include "serialize/serialize_inc.h"
-#include "./game_core.h"
-#include "./game_ui.h"
-#include "./game_asset.h"
-#include "./game.h"
-#include "./scenes/scenes_inc.h"
+#include "./rubik_ui_widget.h"
+#include "./rubik_core.h"
+#include "./rubik_asset.h"
+#include "./scenes/rubik_scenes_inc.h"
 
 // [c]
 #include "base/base_inc.c"
@@ -42,11 +41,10 @@
 #include "draw/draw.c"
 #include "ui/ui_inc.c"
 #include "serialize/serialize_inc.c"
-#include "./game_core.c"
-#include "./game_ui.c"
-#include "./game_asset.c"
-#include "./game.c"
-#include "./scenes/scenes_inc.c"
+#include "./rubik_ui_widget.c"
+#include "./rubik_core.c"
+#include "./rubik_asset.c"
+#include "./scenes/rubik_scenes_inc.c"
 
 internal void
 ui_draw(OS_Handle os_wnd)
@@ -58,7 +56,7 @@ ui_draw(OS_Handle os_wnd)
     UI_Box *box = ui_root_from_state(ui_state);
     while(!ui_box_is_nil(box))
     {
-        UI_BoxRec rec = ui_box_rec_df_post(box, &ui_g_nil_box);
+        UI_BoxRec rec = ui_box_rec_df_post(box, &ui_nil_box);
 
         if(box->transparency != 0)
         {
@@ -69,7 +67,7 @@ ui_draw(OS_Handle os_wnd)
         if(box->flags & UI_BoxFlag_DrawDropShadow)
         {
             Rng2F32 drop_shadow_rect = shift_2f32(pad_2f32(box->rect, 8), v2f32(4, 4));
-            Vec4F32 drop_shadow_color = g_rgba_from_theme_color(RD_ThemeColor_DropShadow);
+            Vec4F32 drop_shadow_color = rk_rgba_from_theme_color(RK_ThemeColor_DropShadow);
             d_rect(drop_shadow_rect, drop_shadow_color, 0.8f, 0, 8.f);
         }
 
@@ -92,7 +90,7 @@ ui_draw(OS_Handle os_wnd)
                 // Brighten
                 {
                     R_Rect2DInst *inst = d_rect(box->rect, v4f32(0, 0, 0, 0), 0, 0, 1.f);
-                    Vec4F32 color = g_rgba_from_theme_color(RD_ThemeColor_Hover);
+                    Vec4F32 color = rk_rgba_from_theme_color(RK_ThemeColor_Hover);
                     color.w *= t*0.2f;
                     inst->colors[Corner_00] = color;
                     inst->colors[Corner_01] = color;
@@ -118,7 +116,7 @@ ui_draw(OS_Handle os_wnd)
                 // Active effect extension
                 if(box->flags & UI_BoxFlag_DrawActiveEffects)
                 {
-                    Vec4F32 shadow_color = g_rgba_from_theme_color(RD_ThemeColor_Hover);
+                    Vec4F32 shadow_color = rk_rgba_from_theme_color(RK_ThemeColor_Hover);
                     shadow_color.x *= 0.3f;
                     shadow_color.y *= 0.3f;
                     shadow_color.z *= 0.3f;
@@ -282,7 +280,7 @@ ui_draw(OS_Handle os_wnd)
                     // rjf: hover effect
                     if(b->flags & UI_BoxFlag_DrawHotEffects)
                     {
-                        Vec4F32 color = g_rgba_from_theme_color(RD_ThemeColor_Hover);
+                        Vec4F32 color = rk_rgba_from_theme_color(RK_ThemeColor_Hover);
                         color.w *= b->hot_t;
                         R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), color, 0, 1.f, 1.f);
                         MemoryCopyArray(inst->corner_radii, b->corner_radii);
@@ -322,7 +320,7 @@ ui_draw(OS_Handle os_wnd)
                 // rjf: draw focus overlay
                 if(b->flags & UI_BoxFlag_Clickable && !(b->flags & UI_BoxFlag_DisableFocusOverlay) && b->focus_hot_t > 0.01f)
                 {
-                    Vec4F32 color = g_rgba_from_theme_color(RD_ThemeColor_Focus);
+                    Vec4F32 color = rk_rgba_from_theme_color(RK_ThemeColor_Focus);
                     color.w *= 0.2f*b->focus_hot_t;
                     R_Rect2DInst *inst = d_rect(b->rect, color, 0, 0, 0.f);
                     MemoryCopyArray(inst->corner_radii, b->corner_radii);
@@ -331,7 +329,7 @@ ui_draw(OS_Handle os_wnd)
                 // rjf: draw focus border
                 if(b->flags & UI_BoxFlag_Clickable && !(b->flags & UI_BoxFlag_DisableFocusBorder) && b->focus_active_t > 0.01f)
                 {
-                    Vec4F32 color = g_rgba_from_theme_color(RD_ThemeColor_Focus);
+                    Vec4F32 color = rk_rgba_from_theme_color(RK_ThemeColor_Focus);
                     color.w *= b->focus_active_t;
                     R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 0.f), color, 0, 1.f, 1.f);
                     MemoryCopyArray(inst->corner_radii, b->corner_radii);
@@ -340,7 +338,7 @@ ui_draw(OS_Handle os_wnd)
                 // rjf: disabled overlay
                 if(b->disabled_t >= 0.005f)
                 {
-                    Vec4F32 color = g_rgba_from_theme_color(RD_ThemeColor_DisabledOverlay);
+                    Vec4F32 color = rk_rgba_from_theme_color(RK_ThemeColor_DisabledOverlay);
                     color.w *= b->disabled_t;
                     R_Rect2DInst *inst = d_rect(b->rect, color, 0, 0, 1);
                     MemoryCopyArray(inst->corner_radii, b->corner_radii);
@@ -379,6 +377,7 @@ entry_point(CmdLine *cmd_line)
 
     //- Time delta
     // TODO: using moving average to smooth out the value
+    U64 frame_dt_us  = 0;
     U64 frame_us     = os_now_microseconds();
     U64 cpu_start_us = 0;
     U64 cpu_end_us   = 0;
@@ -398,21 +397,25 @@ entry_point(CmdLine *cmd_line)
     UI_State *ui = ui_state_alloc();
     ui_select_state(ui);
 
-    // Init game state
-    g_init(window);
-    // Load functions
-    for(U64 i = 0; i < ArrayCount(g_scenes_fn_table); i++)
+    //~ Init game state
+    rk_init(window);
+    //- Load functions
+    for(U64 i = 0; i < ArrayCount(rk_scenes_fn_table); i++)
     {
-        g_register_function(g_scenes_fn_table[i].name, g_scenes_fn_table[i].ptr);
+        rk_register_function(rk_scenes_fn_table[i].name, rk_scenes_fn_table[i].ptr);
     }
     // G_Scene *default_scene = g_scene_from_file(str8_lit("./src/game/scenes/default.scene"));
-    G_Scene *default_scene = g_default_scene();
-    g_state->active_scene = default_scene;
+    RK_Scene *default_scene = rk_default_scene();
+    rk_state->active_scene = default_scene;
 
     B32 window_should_close = 0;
     while(!window_should_close)
     {
-        U64 dt = os_now_microseconds()-frame_us;
+        rk_state->debug.frame_dt_us = frame_dt_us;
+        rk_state->debug.cpu_dt_us = cpu_dt_us;
+        rk_state->debug.gpu_dt_us = gpu_dt_us;
+
+        frame_dt_us = os_now_microseconds()-frame_us;
         frame_us = os_now_microseconds();
 
         //- k: begin of frame
@@ -527,33 +530,33 @@ entry_point(CmdLine *cmd_line)
         // Begin build ui
         {
             // Gather font info
-            F_Tag main_font = g_font_from_slot(G_FontSlot_Main);
+            F_Tag main_font = rk_font_from_slot(RK_FontSlot_Main);
             // TODO: set font size based on the dpi of screen
-            // F32 main_font_size = g_font_size_from_slot(G_FontSlot_Main);
+            // F32 main_font_size = rk_font_size_from_slot(RK_FontSlot_Main);
             F32 main_font_size = 29;
-            F_Tag icon_font = g_font_from_slot(G_FontSlot_Icons);
+            F_Tag icon_font = rk_font_from_slot(RK_FontSlot_Icons);
 
             // Build icon info
             UI_IconInfo icon_info = {0};
             {
                 icon_info.icon_font = icon_font;
-                icon_info.icon_kind_text_map[UI_IconKind_RightArrow]     = g_icon_kind_text_table[G_IconKind_RightScroll];
-                icon_info.icon_kind_text_map[UI_IconKind_DownArrow]      = g_icon_kind_text_table[G_IconKind_DownScroll];
-                icon_info.icon_kind_text_map[UI_IconKind_LeftArrow]      = g_icon_kind_text_table[G_IconKind_LeftScroll];
-                icon_info.icon_kind_text_map[UI_IconKind_UpArrow]        = g_icon_kind_text_table[G_IconKind_UpScroll];
-                icon_info.icon_kind_text_map[UI_IconKind_RightCaret]     = g_icon_kind_text_table[G_IconKind_RightCaret];
-                icon_info.icon_kind_text_map[UI_IconKind_DownCaret]      = g_icon_kind_text_table[G_IconKind_DownCaret];
-                icon_info.icon_kind_text_map[UI_IconKind_LeftCaret]      = g_icon_kind_text_table[G_IconKind_LeftCaret];
-                icon_info.icon_kind_text_map[UI_IconKind_UpCaret]        = g_icon_kind_text_table[G_IconKind_UpCaret];
-                icon_info.icon_kind_text_map[UI_IconKind_CheckHollow]    = g_icon_kind_text_table[G_IconKind_CheckHollow];
-                icon_info.icon_kind_text_map[UI_IconKind_CheckFilled]    = g_icon_kind_text_table[G_IconKind_CheckFilled];
+                icon_info.icon_kind_text_map[UI_IconKind_RightArrow]     = rk_icon_kind_text_table[RK_IconKind_RightScroll];
+                icon_info.icon_kind_text_map[UI_IconKind_DownArrow]      = rk_icon_kind_text_table[RK_IconKind_DownScroll];
+                icon_info.icon_kind_text_map[UI_IconKind_LeftArrow]      = rk_icon_kind_text_table[RK_IconKind_LeftScroll];
+                icon_info.icon_kind_text_map[UI_IconKind_UpArrow]        = rk_icon_kind_text_table[RK_IconKind_UpScroll];
+                icon_info.icon_kind_text_map[UI_IconKind_RightCaret]     = rk_icon_kind_text_table[RK_IconKind_RightCaret];
+                icon_info.icon_kind_text_map[UI_IconKind_DownCaret]      = rk_icon_kind_text_table[RK_IconKind_DownCaret];
+                icon_info.icon_kind_text_map[UI_IconKind_LeftCaret]      = rk_icon_kind_text_table[RK_IconKind_LeftCaret];
+                icon_info.icon_kind_text_map[UI_IconKind_UpCaret]        = rk_icon_kind_text_table[RK_IconKind_UpCaret];
+                icon_info.icon_kind_text_map[UI_IconKind_CheckHollow]    = rk_icon_kind_text_table[RK_IconKind_CheckHollow];
+                icon_info.icon_kind_text_map[UI_IconKind_CheckFilled]    = rk_icon_kind_text_table[RK_IconKind_CheckFilled];
             }
 
             UI_WidgetPaletteInfo widget_palette_info = {0};
             {
-                widget_palette_info.tooltip_palette   = g_palette_from_code(G_PaletteCode_Floating);
-                widget_palette_info.ctx_menu_palette  = g_palette_from_code(G_PaletteCode_Floating);
-                widget_palette_info.scrollbar_palette = g_palette_from_code(G_PaletteCode_ScrollBarButton);
+                widget_palette_info.tooltip_palette   = rk_palette_from_code(RK_PaletteCode_Floating);
+                widget_palette_info.ctx_menu_palette  = rk_palette_from_code(RK_PaletteCode_Floating);
+                widget_palette_info.scrollbar_palette = rk_palette_from_code(RK_PaletteCode_ScrollBarButton);
             }
 
             // Build animation info
@@ -568,7 +571,7 @@ entry_point(CmdLine *cmd_line)
             }
 
             // Begin & push initial stack values
-            ui_begin_build(window, &ui_events, &icon_info, &widget_palette_info, &animation_info, dt / 1000000.0f);
+            ui_begin_build(window, &ui_events, &icon_info, &widget_palette_info, &animation_info, frame_dt_us / 1000000.0f);
 
             ui_push_font(main_font);
             ui_push_font_size(main_font_size);
@@ -576,106 +579,28 @@ entry_point(CmdLine *cmd_line)
             ui_push_text_padding(main_font_size*0.2f);
             ui_push_pref_width(ui_em(20.f, 1.f));
             ui_push_pref_height(ui_em(1.15f, 1.f));
-            ui_push_palette(g_palette_from_code(G_PaletteCode_Base));
+            ui_push_palette(rk_palette_from_code(RK_PaletteCode_Base));
             // ui_push_pref_width(ui_em(20.f, 1));
             // ui_push_pref_height(ui_em(2.75f, 1.f));
-        }
-
-        local_persist B32 show_stats = 1;
-        ui_set_next_focus_hot(UI_FocusKind_Root);
-        ui_set_next_focus_active(UI_FocusKind_Root);
-        G_UI_Pane(r2f32p(window_rect.p1.x-710, window_rect.p0.y+10, window_rect.p1.x-10, window_rect.p0.y+590), &show_stats, str8_lit("STATS###stats"))
-            UI_TextAlignment(UI_TextAlign_Left)
-            UI_TextPadding(9)
-        {
-            ui_set_next_pref_height(ui_pct(1.0,0.0));
-            UI_Box *container_box = ui_build_box_from_stringf(0, "###container");
-            ui_push_parent(container_box);
-            ui_set_next_pref_height(ui_pct(1.0,0.0));
-            // TODO: no usage for now
-            UI_ScrollPt pt = {0};
-            ui_scroll_list_begin(container_box->fixed_size, &pt);
-            UI_Row
-            {
-                ui_labelf("frame time ms");
-                ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%.3f", (dt/1000.0));
-            }
-            UI_Row
-            {
-                ui_labelf("cpu time ms");
-                ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%.3f", (cpu_dt_us/1000.0));
-            }
-            UI_Row
-            {
-                ui_labelf("gpu time ms");
-                ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%.3f", (gpu_dt_us/1000.0));
-            }
-            UI_Row
-            {
-                ui_labelf("fps");
-                ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%.2f", 1 / (dt / 1000000.0));
-            }
-            UI_Row
-            {
-                ui_labelf("ui_hot_key");
-                ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%lu", ui_state->hot_box_key.u64[0]);
-            }
-            UI_Row
-            {
-                ui_labelf("ui_last_build_box_count");
-                ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%lu", ui_state->last_build_box_count);
-            }
-            UI_Row
-            {
-                ui_labelf("ui_build_box_count");
-                ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%lu", ui_state->build_box_count);
-            }
-            UI_Row
-            {
-                ui_labelf("mouse");
-                ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%.2f, %.2f", ui_state->mouse.x, ui_state->mouse.y);
-            }
-            UI_Row
-            {
-                ui_labelf("drag start mouse");
-                ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%.2f, %.2f", ui_state->drag_start_mouse.x, ui_state->drag_start_mouse.y);
-            }
-            UI_Row
-            {
-                ui_labelf("geo3d hot id");
-                ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%lu", id);
-            }
-            ui_scroll_list_end();
-            ui_pop_parent();
         }
 
         /////////////////////////////////
         //~ Draw game
 
-        g_update_and_render(g_state->active_scene, events, dt, id);
+        rk_frame(rk_state->active_scene, events, frame_dt_us, id);
         ui_end_build();
 
         /////////////////////////////////
         //~ Draw ui
 
-        D_BucketScope(g_state->bucket_rect)
+        D_BucketScope(rk_state->bucket_rect)
         {
             ui_draw(window);
             R_Rect2DInst *cursor = d_rect(r2f32p(mouse.x-15,mouse.y-15, mouse.x+15,mouse.y+15), v4f32(0,0.3,1,0.3), 15, 0.0, 0.7);
         }
         // geo3d => rect in this order
-        d_push_bucket(g_state->bucket_geo3d);
-        d_sub_bucket(g_state->bucket_rect);
+        d_push_bucket(rk_state->bucket_geo3d);
+        d_sub_bucket(rk_state->bucket_rect);
 
         /////////////////////////////////
         //~ End of frame
