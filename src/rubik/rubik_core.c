@@ -148,7 +148,7 @@ rk_init(OS_Handle os_wnd)
 }
 
 /////////////////////////////////
-// Key
+//~ Key
 
 internal RK_Key
 rk_key_from_string(RK_Key seed_key, String8 string)
@@ -495,6 +495,7 @@ rk_node_df(RK_Node *n, RK_Node* root, U64 sib_member_off, U64 child_member_off)
 internal void
 rk_local_coord_from_node(RK_Node *n, Vec3F32 *f, Vec3F32 *s, Vec3F32 *u)
 {
+    ProfBeginFunction();
     Mat4x4F32 xform = n->fixed_xform;
     // NOTE: remove translate, only rotation matters
     xform.v[3][0] = xform.v[3][1] = xform.v[3][2] = 0;
@@ -528,6 +529,7 @@ rk_local_coord_from_node(RK_Node *n, Vec3F32 *f, Vec3F32 *s, Vec3F32 *u)
     // MemoryCopy(f, &forward, sizeof(Vec3F32));
     // MemoryCopy(s, &side, sizeof(Vec3F32));
     // MemoryCopy(u, &up, sizeof(Vec3F32));
+    ProfEnd();
 }
 
 internal Mat4x4F32
@@ -581,6 +583,7 @@ rk_node_push_fn(Arena *arena, RK_Node *n, RK_NodeCustomUpdateFunctionType *fn, S
 
 RK_NODE_CUSTOM_UPDATE(base_fn)
 {
+    ProfBegin("base_fn");
     // Update fixed_xform 
     {
         Mat4x4F32 xform = mat_4x4f32(1.0f);
@@ -696,6 +699,7 @@ RK_NODE_CUSTOM_UPDATE(base_fn)
             }
         }
     }
+    ProfEnd();
 }
 
 /////////////////////////////////
@@ -1062,6 +1066,7 @@ rk_font_size_from_slot(RK_FontSlot slot)
 
 internal void rk_ui_stats(void)
 {
+    RK_Scene *scene = rk_top_scene();
     typedef struct RK_Stats_State RK_Stats_State;
     struct RK_Stats_State
     {
@@ -1146,11 +1151,18 @@ internal void rk_ui_stats(void)
                 ui_spacer(ui_pct(1.0, 0.0));
                 ui_labelf("%lu", rk_state->active_key.u64[0]);
             }
+            UI_Row
+            {
+                ui_labelf("scene node count");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%lu", scene->bucket->node_count);
+            }
         }
 }
 
 internal void rk_ui_inspector(void)
 {
+    ProfBeginFunction();
     RK_Scene *scene = rk_top_scene();
 
     typedef struct RK_Inspector_State RK_Inspector_State;
@@ -1229,7 +1241,6 @@ internal void rk_ui_inspector(void)
                     ui_labelf("Scene");
                 }
             }
-            ui_spacer(ui_px(3, 0));
 
             // Scene cfg
             ui_set_next_child_layout_axis(Axis2_Y);
@@ -1368,7 +1379,7 @@ internal void rk_ui_inspector(void)
 
             // Scene tree
             {
-                F32 size = 900;
+                F32 size = ui_top_font_size()*30.f;
                 ui_set_next_pref_size(Axis2_Y, ui_px(size, 0.0));
                 ui_set_next_child_layout_axis(Axis2_Y);
                 if(!inspector->show_scene_cfg)
@@ -1383,9 +1394,9 @@ internal void rk_ui_inspector(void)
                 {
                     Vec2F32 rect_dim = dim_2f32(container_box->rect);
                     scroll_list_params.flags = UI_ScrollListFlag_All;
-                    scroll_list_params.row_height_px = ui_top_font_size() * 1.1;
+                    scroll_list_params.row_height_px = ui_top_font_size()*1.3;
                     scroll_list_params.dim_px = rect_dim;
-                    scroll_list_params.item_range = r1s64(0, scene->bucket->node_count); // TODO: fix it
+                    scroll_list_params.item_range = r1s64(0, scene->bucket->node_count);
                     scroll_list_params.cursor_min_is_empty_selection[Axis2_Y] = 0;
                 }
                 UI_ScrollListSignal scroll_list_sig = {0};
@@ -1395,7 +1406,6 @@ internal void rk_ui_inspector(void)
                 if(abs_f32(scroller.off) < 0.01) scroller.off = 0;
                 Rng1S64 visible_row_rng = {0};
 
-                UI_Parent(container_box)
                 UI_Parent(container_box) UI_ScrollList(&scroll_list_params, &scroller, 0, 0, &visible_row_rng, &scroll_list_sig)
                 {
                     RK_Node *root = scene->root;
@@ -1434,8 +1444,6 @@ internal void rk_ui_inspector(void)
                 }
             }
         }
-
-        ui_spacer(ui_px(30, 1.0));
 
         // Camera
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
@@ -1531,7 +1539,7 @@ internal void rk_ui_inspector(void)
             UI_Parent(header_box)
             {
                 ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
-                if(ui_clicked(ui_expanderf(inspector->show_camera_cfg, "###light_cfg")))
+                if(ui_clicked(ui_expanderf(inspector->show_light_cfg, "###light_cfg")))
                 {
                     inspector->show_light_cfg = !inspector->show_light_cfg;
                 }
@@ -1550,8 +1558,6 @@ internal void rk_ui_inspector(void)
                 }
             }
         }
-
-        ui_spacer(ui_px(30, 1.0));
 
         // Node Properties
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
@@ -1619,6 +1625,121 @@ internal void rk_ui_inspector(void)
         }
     }
     rk_ui_pane_end();
+    ProfEnd();
+}
+
+internal void rk_ui_profiler(void)
+{
+    ProfBeginFunction();
+    typedef struct RK_Profiler_State RK_Profiler_State;
+    struct RK_Profiler_State
+    {
+        B32 show;
+        UI_ScrollPt table_scroller;
+    };
+
+    RK_View *view = rk_view_from_kind(RK_ViewKind_Profiler);
+    RK_Profiler_State *profiler = view->custom_data;
+    if(profiler == 0)
+    {
+        profiler = push_array(view->arena, RK_Profiler_State, 1);
+        view->custom_data = profiler;
+
+        profiler->show = 1;
+    }
+
+    // Top-level pane 
+    UI_Box *container_box;
+    UI_FocusActive(UI_FocusKind_Root) UI_FocusHot(UI_FocusKind_Root) UI_Transparency(0.1)
+    {
+        Rng2F32 panel_rect = rk_state->window_rect;
+        panel_rect.p0.x = panel_rect.p1.x - 1100;
+        panel_rect.p0.y = panel_rect.p1.y - 1300;
+        panel_rect = pad_2f32(panel_rect,-30);
+        container_box = rk_ui_pane_begin(panel_rect, &profiler->show, str8_lit("PROFILER"));
+    }
+
+    F32 row_height = ui_top_font_size()*1.3f;
+    ui_push_pref_height(ui_px(row_height, 0));
+
+    // tag + total_cycles + call_count + cycles_per_call + total_us + us_per_call
+    U64 col_count = 6;
+
+    // Table header
+    ui_set_next_child_layout_axis(Axis2_X);
+    // NOTE(k): width - scrollbar width
+    ui_set_next_pref_width(ui_px(container_box->fixed_size.x-ui_top_font_size()*0.9f, 0.f));
+    UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
+    UI_Parent(header_box) UI_PrefWidth(ui_pct(1.f,0.f)) UI_Flags(UI_BoxFlag_DrawBorder) UI_TextAlignment(UI_TextAlign_Center)
+    {
+        ui_labelf("Tag");
+        ui_labelf("Cycles");
+        ui_labelf("Calls");
+        ui_labelf("Cycles per call");
+        ui_labelf("US");
+        ui_labelf("US per call");
+    }
+
+    Rng2F32 content_rect = container_box->rect;
+    content_rect.y0 = header_box->rect.y1;
+
+    // Content
+    ProfNodeSlot *prof_table = ProfTablePst();
+    U64 prof_node_count = 0;
+    if(prof_table != 0)
+    {
+        for(U64 slot_idx = 0; slot_idx < prof_hash_table_size; slot_idx++)
+        {
+            prof_node_count += prof_table[slot_idx].count;
+        }
+    }
+
+    UI_ScrollListParams scroll_list_params = {0};
+    {
+        Vec2F32 rect_dim = dim_2f32(content_rect);
+        scroll_list_params.flags = UI_ScrollListFlag_All;
+        scroll_list_params.row_height_px = row_height;
+        scroll_list_params.dim_px = rect_dim;
+        scroll_list_params.item_range = r1s64(0, prof_node_count);
+        scroll_list_params.cursor_min_is_empty_selection[Axis2_Y] = 0;
+    }
+
+    // Animation rate
+    F32 fast_rate = 1 - pow_f32(2, (-40.f * rk_state->dt_sec));
+
+    // Animating scroller pt
+    // TODO(k): we should move this part into RK_View
+    profiler->table_scroller.off -= profiler->table_scroller.off * fast_rate;
+    if(abs_f32(profiler->table_scroller.off) < 0.01) profiler->table_scroller.off = 0;
+
+    UI_ScrollListSignal scroll_list_sig = {0};
+    Rng1S64 visible_row_rng = {0};
+
+    UI_ScrollList(&scroll_list_params, &profiler->table_scroller, 0, 0, &visible_row_rng, &scroll_list_sig)
+    {
+        if(prof_table != 0)
+        {
+            for(U64 slot_idx = 0; slot_idx < prof_hash_table_size; slot_idx++)
+            {
+                for(ProfNode *n = prof_table[slot_idx].first; n != 0; n = n->hash_next)
+                {
+                    UI_Row UI_PrefWidth(ui_pct(1.f, 0.f)) UI_Flags(UI_BoxFlag_DrawBorder)
+                    {
+                        ui_label(n->tag);
+                        ui_labelf("%lu", n->total_cycles);
+                        ui_labelf("%lu", n->call_count);
+                        ui_labelf("%lu", n->cycles_per_call);
+                        ui_labelf("%lu", n->total_us);
+                        ui_labelf("%lu", n->us_per_call);
+                    }
+                }
+            }
+        }
+    }
+
+    ui_pop_pref_height();
+    rk_ui_pane_end();
+    ProfEnd();
 }
 
 /////////////////////////////////
@@ -1627,6 +1748,7 @@ internal void rk_ui_inspector(void)
 internal void
 rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
 {
+    ProfBeginFunction();
     // Begin of the frame
     {
         arena_clear(rk_state->frame_arena);
@@ -1651,6 +1773,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     {
         rk_ui_inspector();
         rk_ui_stats();
+        rk_ui_profiler();
     }
 
     // Process events
@@ -1862,10 +1985,10 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
         RK_Scene *s = rk_state->first_to_free_scene;
         for(RK_Scene *s = rk_state->first_to_free_scene; s != 0; s = rk_state->first_to_free_scene)
         {
-            SLLStackPop(rk_state->first_to_free_scene);
-            SLLStackPush(rk_state->first_free_scene, s);
+            rk_scene_release(s);
         }
     }
+    ProfEnd();
 }
 
 /////////////////////////////////
@@ -1927,4 +2050,12 @@ rk_scene_alloc()
     scene->mesh_cache_table.arena      = arena;
     scene->mesh_cache_table.slots = push_array(arena, RK_MeshCacheSlot, scene->mesh_cache_table.slot_count);
     return scene;
+}
+
+internal void
+rk_scene_release(RK_Scene *s)
+{
+    SLLStackPop(rk_state->first_to_free_scene);
+    SLLStackPush(rk_state->first_free_scene, s);
+    // TODO: there should something else to do here
 }

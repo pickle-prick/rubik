@@ -13,6 +13,7 @@ if [ -v gcc ];         then compiler="${CC:-gcc}"; echo "[gcc compile]"; fi
 
 # --- Unpack Command Line Build Arguments -------------------------------------
 auto_compile_flags=''
+if [ -v telemetry ];   then auto_compile_flags="-DPROFILE_TELEMETRY=1"; echo "[telemetry profiling enabled]"; fi
 
 # --- Compile/Link Line Definitions -------------------------------------------
 clang_common='-I../src/ -I../local/ -g -Wno-unknown-warning-option -fdiagnostics-absolute-paths -Wall -Wno-missing-braces -Wno-unused-function -Wno-writable-strings -Wno-unused-value -Wno-unused-variable -Wno-unused-local-typedef -Wno-deprecated-register -Wno-deprecated-declarations -Wno-unused-but-set-variable -Wno-single-bit-bitfield-constant-conversion -Wno-compare-distinct-pointer-types -Wno-initializer-overrides -Wno-incompatible-pointer-types-discards-qualifiers -Wno-for-loop-analysis -Xclang -flto-visibility-public-std -D_USE_MATH_DEFINES -Dstrdup=_strdup -Dgnu_printf=printf'

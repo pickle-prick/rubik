@@ -411,6 +411,8 @@ entry_point(CmdLine *cmd_line)
     B32 window_should_close = 0;
     while(!window_should_close)
     {
+        ProfTick();
+        ProfBegin("frame");
         rk_state->debug.frame_dt_us = frame_dt_us;
         rk_state->debug.cpu_dt_us = cpu_dt_us;
         rk_state->debug.gpu_dt_us = gpu_dt_us;
@@ -576,10 +578,8 @@ entry_point(CmdLine *cmd_line)
             // ui_push_text_raster_flags(...);
             ui_push_text_padding(main_font_size*0.2f);
             ui_push_pref_width(ui_em(20.f, 1.f));
-            ui_push_pref_height(ui_em(1.15f, 1.f));
+            ui_push_pref_height(ui_em(1.35f, 1.f));
             ui_push_palette(rk_palette_from_code(RK_PaletteCode_Base));
-            // ui_push_pref_width(ui_em(20.f, 1));
-            // ui_push_pref_height(ui_em(2.75f, 1.f));
         }
 
         /////////////////////////////////
@@ -611,6 +611,7 @@ entry_point(CmdLine *cmd_line)
 
         cpu_end_us = os_now_microseconds();
         cpu_dt_us = cpu_end_us - cpu_start_us;
+        ProfEnd();
     }
 
     /////////////////////////////////

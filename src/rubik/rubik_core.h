@@ -65,6 +65,7 @@ typedef enum RK_ViewKind
 {
     RK_ViewKind_Stats,
     RK_ViewKind_SceneInspector,
+    RK_ViewKind_Profiler,
     RK_ViewKind_COUNT,
 } RK_ViewKind;
 
@@ -676,8 +677,8 @@ internal void rk_init(OS_Handle os_wnd);
 
 internal RK_Key rk_key_from_string(RK_Key seed, String8 string);
 internal RK_Key rk_key_merge(RK_Key a, RK_Key b);
-internal U64   rk_hash_from_string(U64 seed, String8 string);
-internal B32   rk_key_match(RK_Key a, RK_Key b);
+internal U64    rk_hash_from_string(U64 seed, String8 string);
+internal B32    rk_key_match(RK_Key a, RK_Key b);
 internal RK_Key rk_key_zero();
 
 /////////////////////////////////
@@ -696,9 +697,9 @@ internal RK_View*         rk_view_from_kind(RK_ViewKind kind);
 /////////////////////////////////
 //~ Node build api
 
-internal RK_Node *rk_build_node_from_string(RK_NodeFlags flags, String8 name);
-internal RK_Node *rk_build_node_from_stringf(RK_NodeFlags flags, char *fmt, ...);
-internal RK_Node *rk_build_node_from_key(RK_NodeFlags flags, RK_Key key);
+internal RK_Node* rk_build_node_from_string(RK_NodeFlags flags, String8 name);
+internal RK_Node* rk_build_node_from_stringf(RK_NodeFlags flags, char *fmt, ...);
+internal RK_Node* rk_build_node_from_key(RK_NodeFlags flags, RK_Key key);
 internal void     rk_node_release();
 
 /////////////////////////////////
@@ -731,7 +732,7 @@ RK_SHAPE_SUPPORT_FN(RK_SHAPE_RECT_SUPPORT_FN);
 
 //- GJK
 // internal B32         gjk(Vec3F32 s1_center, Vec3F32 s2_center, void *s1_data, void *s2_data, RK_SHAPE_CUSTOM_SUPPORT_FN s1_support_fn, RK_SHAPE_CUSTOM_SUPPORT_FN s2_support_fn, Vec3F32 simplex[4]);
-internal Vec2F32     triple_product_2f32(Vec2F32 A, Vec2F32 B, Vec2F32 C);
+internal Vec2F32 triple_product_2f32(Vec2F32 A, Vec2F32 B, Vec2F32 C);
 
 /////////////////////////////////
 //~ Colors, Fonts, Config
@@ -749,8 +750,9 @@ internal F32   rk_font_size_from_slot(RK_FontSlot slot);
 /////////////////////////////////
 //~ UI widget functions
 
-internal void     rk_ui_stats(void);
-internal void     rk_ui_inspector(void);
+internal void rk_ui_stats(void);
+internal void rk_ui_inspector(void);
+internal void rk_ui_profiler(void);
 
 /////////////////////////////////
 // Frame
@@ -774,6 +776,7 @@ internal void rk_trs_from_matrix(Mat4x4F32 *m, Vec3F32 *trans, QuatF32 *rot, Vec
 /////////////////////////////////
 // Scene creation and destruction
 
-internal RK_Scene * rk_scene_alloc();
+internal RK_Scene* rk_scene_alloc();
+internal void      rk_scene_release(RK_Scene *s);
 
 #endif
