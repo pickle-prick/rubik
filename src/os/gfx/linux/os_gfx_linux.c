@@ -644,8 +644,10 @@ os_set_cursor(OS_Cursor cursor)
         case OS_Cursor_LeftRight:       {cursor_name = str8_lit("sb_h_double_arrow");}break;
         case OS_Cursor_UpDown:          {cursor_name = str8_lit("sb_v_double_arrow");}break;
         case OS_Cursor_DownRight:       {cursor_name = str8_lit("bottom_right_corner");}break;
+        case OS_Cursor_DownLeft:       {cursor_name = str8_lit("bottom_left_corner");}break;
         case OS_Cursor_UpRight:         {cursor_name = str8_lit("top_right_corner");}break;
-        case OS_Cursor_UpDownLeftRight: {cursor_name = str8_lit("plus");}break;
+        case OS_Cursor_UpLeft:         {cursor_name = str8_lit("top_left_corner");}break;
+        case OS_Cursor_UpDownLeftRight: {cursor_name = str8_lit("move");}break;
         case OS_Cursor_HandPoint:       {cursor_name = str8_lit("hand2");}break;
         default:                        {cursor_name = str8_lit("arrow");}break;
     }

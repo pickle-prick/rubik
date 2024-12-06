@@ -2,14 +2,234 @@
 //~ k: Floating/Fixed Panes
 
 internal UI_Box *
-rk_ui_pane_begin(Rng2F32 rect, B32 *open, String8 string)
+rk_ui_pane_begin(Rng2F32 *rect, B32 *open, String8 string)
 {
+    //- k: build bouding box for resizing
+    {
+        F32 boundary_thickness = ui_top_font_size()*0.3;
+        F32 half_boundary_thickness = boundary_thickness/2.f;
+
+        //~ corner squares [4]
+
+        //- top left boundary square
+        Rng2F32 topleft_boundary_rect = {0};
+        topleft_boundary_rect.x0 = rect->x0 - half_boundary_thickness;
+        topleft_boundary_rect.y0 = rect->y0 - half_boundary_thickness;
+        topleft_boundary_rect.x1 = rect->x0 + half_boundary_thickness;
+        topleft_boundary_rect.y1 = rect->y0 + half_boundary_thickness;
+
+        UI_Rect(topleft_boundary_rect)
+        {
+            ui_set_next_hover_cursor(OS_Cursor_UpLeft);
+            UI_Box *box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "###%p_topleft", rect);
+            UI_Signal sig = ui_signal_from_box(box);
+
+            if(ui_dragging(sig))
+            {
+                if(ui_pressed(sig)) 
+                {
+                    Vec2F32 p0 = rect->p0;
+                    ui_store_drag_struct(&p0);
+                }
+                Vec2F32 p0 = *ui_get_drag_struct(Vec2F32);
+                Vec2F32 drag_delta = ui_drag_delta();
+                rect->p0 = add_2f32(p0, drag_delta);
+            }
+        }
+
+        //- bottom right boundary square
+        Rng2F32 bottomright_boundary_rect = {0};
+        bottomright_boundary_rect.x0 = rect->x1 - half_boundary_thickness;
+        bottomright_boundary_rect.y0 = rect->y1 - half_boundary_thickness;
+        bottomright_boundary_rect.x1 = rect->x1 + half_boundary_thickness;
+        bottomright_boundary_rect.y1 = rect->y1 + half_boundary_thickness;
+
+        UI_Rect(bottomright_boundary_rect)
+        {
+            ui_set_next_hover_cursor(OS_Cursor_DownRight);
+            UI_Box *box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "###%p_bottomright", rect);
+            UI_Signal sig = ui_signal_from_box(box);
+
+            if(ui_dragging(sig))
+            {
+                if(ui_pressed(sig)) 
+                {
+                    Vec2F32 p1 = rect->p1;
+                    ui_store_drag_struct(&p1);
+                }
+                Vec2F32 p1 = *ui_get_drag_struct(Vec2F32);
+                Vec2F32 drag_delta = ui_drag_delta();
+                rect->p1 = add_2f32(p1, drag_delta);
+            }
+        }
+
+        //- top right boundary square
+        Rng2F32 topright_boundary_rect = {0};
+        topright_boundary_rect.x0 = rect->x1 - half_boundary_thickness;
+        topright_boundary_rect.y0 = rect->y0 - half_boundary_thickness;
+        topright_boundary_rect.x1 = rect->x1 + half_boundary_thickness;
+        topright_boundary_rect.y1 = rect->y0 + half_boundary_thickness;
+
+        UI_Rect(topright_boundary_rect)
+        {
+            ui_set_next_hover_cursor(OS_Cursor_UpRight);
+            UI_Box *box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "###%p_topright", rect);
+            UI_Signal sig = ui_signal_from_box(box);
+
+            if(ui_dragging(sig))
+            {
+                if(ui_pressed(sig)) 
+                {
+                    Vec2F32 p = {rect->x1, rect->y0};
+                    ui_store_drag_struct(&p);
+                }
+                Vec2F32 p = *ui_get_drag_struct(Vec2F32);
+                Vec2F32 drag_delta = ui_drag_delta();
+                rect->x1 = p.x + drag_delta.x;
+                rect->y0 = p.y + drag_delta.y;
+            }
+        }
+
+        //- bottom left boundary square
+        Rng2F32 bottomleft_boundary_rect = {0};
+        bottomleft_boundary_rect.x0 = rect->x0 - half_boundary_thickness;
+        bottomleft_boundary_rect.y0 = rect->y1 - half_boundary_thickness;
+        bottomleft_boundary_rect.x1 = rect->x0 + half_boundary_thickness;
+        bottomleft_boundary_rect.y1 = rect->y1 + half_boundary_thickness;
+
+        UI_Rect(bottomleft_boundary_rect)
+        {
+            ui_set_next_hover_cursor(OS_Cursor_DownLeft);
+            UI_Box *box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "###%p_bottomleft", rect);
+            UI_Signal sig = ui_signal_from_box(box);
+
+            if(ui_dragging(sig))
+            {
+                if(ui_pressed(sig)) 
+                {
+                    Vec2F32 p = {rect->x0, rect->y1};
+                    ui_store_drag_struct(&p);
+                }
+                Vec2F32 p = *ui_get_drag_struct(Vec2F32);
+                Vec2F32 drag_delta = ui_drag_delta();
+                rect->x0 = p.x + drag_delta.x;
+                rect->y1 = p.y + drag_delta.y;
+            }
+        }
+
+        //~ boudary rect
+
+        //- top boundary rect
+        Rng2F32 top_boundary_rect = {0};
+        top_boundary_rect.x0 = rect->x0 + half_boundary_thickness;
+        top_boundary_rect.y0 = rect->y0 - half_boundary_thickness;
+        top_boundary_rect.x1 = rect->x1 - half_boundary_thickness;
+        top_boundary_rect.y1 = rect->y0 + half_boundary_thickness;
+
+        UI_Rect(top_boundary_rect)
+        {
+            ui_set_next_hover_cursor(OS_Cursor_UpDown);
+            UI_Box *box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "###%p_top_boundary", rect);
+            UI_Signal sig = ui_signal_from_box(box);
+
+            if(ui_dragging(sig))
+            {
+                if(ui_pressed(sig)) 
+                {
+                    F32 y0 = rect->y0;
+                    ui_store_drag_struct(&y0);
+                }
+                F32 y0 = *ui_get_drag_struct(F32);
+                Vec2F32 drag_delta = ui_drag_delta();
+                rect->y0 = y0 + drag_delta.y;
+            }
+        }
+
+        //- bottom boundary rect
+        Rng2F32 bottom_boundary_rect = {0};
+        bottom_boundary_rect.x0 = rect->x0 + half_boundary_thickness;
+        bottom_boundary_rect.y0 = rect->y1 - half_boundary_thickness;
+        bottom_boundary_rect.x1 = rect->x1 - half_boundary_thickness;
+        bottom_boundary_rect.y1 = rect->y1 + half_boundary_thickness;
+
+        UI_Rect(bottom_boundary_rect)
+        {
+            ui_set_next_hover_cursor(OS_Cursor_UpDown);
+            UI_Box *box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "###%p_bottom_boundary", rect);
+            UI_Signal sig = ui_signal_from_box(box);
+
+            if(ui_dragging(sig))
+            {
+                if(ui_pressed(sig)) 
+                {
+                    F32 y1 = rect->y1;
+                    ui_store_drag_struct(&y1);
+                }
+                F32 y1 = *ui_get_drag_struct(F32);
+                Vec2F32 drag_delta = ui_drag_delta();
+                rect->p1.y = y1 + drag_delta.y;
+            }
+        }
+
+        //- left boundary rect
+        Rng2F32 left_boundary_rect = {0};
+        left_boundary_rect.x0 = rect->x0 - half_boundary_thickness;
+        left_boundary_rect.y0 = rect->y0 + half_boundary_thickness;
+        left_boundary_rect.x1 = rect->x0 + half_boundary_thickness;
+        left_boundary_rect.y1 = rect->y1 - half_boundary_thickness;
+
+        UI_Rect(left_boundary_rect)
+        {
+            ui_set_next_hover_cursor(OS_Cursor_LeftRight);
+            UI_Box *box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "###%p_left_boundary", rect);
+            UI_Signal sig = ui_signal_from_box(box);
+
+            if(ui_dragging(sig))
+            {
+                if(ui_pressed(sig)) 
+                {
+                    F32 x0 = rect->x0;
+                    ui_store_drag_struct(&x0);
+                }
+                F32 x0 = *ui_get_drag_struct(F32);
+                Vec2F32 drag_delta = ui_drag_delta();
+                rect->x0 = x0 + drag_delta.x;
+            }
+        }
+
+        //- right boundary rect
+        Rng2F32 right_boundary_rect = {0};
+        right_boundary_rect.x0 = rect->x1 - half_boundary_thickness;
+        right_boundary_rect.y0 = rect->y0 + half_boundary_thickness;
+        right_boundary_rect.x1 = rect->x1 + half_boundary_thickness;
+        right_boundary_rect.y1 = rect->y1 - half_boundary_thickness;
+
+        UI_Rect(right_boundary_rect)
+        {
+            ui_set_next_hover_cursor(OS_Cursor_LeftRight);
+            UI_Box *box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "###%p_right_boundary", rect);
+            UI_Signal sig = ui_signal_from_box(box);
+
+            if(ui_dragging(sig))
+            {
+                if(ui_pressed(sig)) 
+                {
+                    F32 x1 = rect->x1;
+                    ui_store_drag_struct(&x1);
+                }
+                F32 x1 = *ui_get_drag_struct(F32);
+                Vec2F32 drag_delta = ui_drag_delta();
+                rect->x1 = x1 + drag_delta.x;
+            }
+        }
+    }
+
     // TODO: top-box is not resizing where collapsing
-    Vec2F32 rect_dim = dim_2f32(rect);
+    Vec2F32 rect_dim = dim_2f32(*rect);
 
     //- k: build the top container
-    ui_set_next_fixed_x(rect.p0.x);
-    ui_set_next_fixed_y(rect.p0.y);
+    ui_set_next_fixed_x(rect->p0.x);
+    ui_set_next_fixed_y(rect->p0.y);
     ui_set_next_fixed_width(rect_dim.x);
     ui_set_next_pref_height(ui_children_sum(1.0));
     ui_set_next_child_layout_axis(Axis2_Y);
@@ -20,7 +240,8 @@ rk_ui_pane_begin(Rng2F32 rect, B32 *open, String8 string)
 
     //- k: build the header
     ui_set_next_child_layout_axis(Axis2_X);
-    UI_Box *header_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow, "###header");
+    ui_set_next_hover_cursor(OS_Cursor_UpDownLeftRight);
+    UI_Box *header_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_MouseClickable, "###header");
     UI_Parent(header_box)
     {
         ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
@@ -30,6 +251,24 @@ rk_ui_pane_begin(Rng2F32 rect, B32 *open, String8 string)
         ui_spacer(ui_pct(1.0, 0.0));
         ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
         if(ui_clicked(ui_closef("###close"))) { /* TODO */ }
+    }
+    UI_Signal header_signal = ui_signal_from_box(header_box);
+    if(ui_dragging(header_signal))
+    {
+        typedef struct RK_UI_PaneDragData RK_UI_PaneDragData;
+        struct RK_UI_PaneDragData
+        {
+            Rng2F32 start_rect;
+        };
+
+        if(ui_pressed(header_signal))
+        {
+            RK_UI_PaneDragData drag_data = { *rect };
+            ui_store_drag_struct(&drag_data);
+        }
+        RK_UI_PaneDragData *drag_data = ui_get_drag_struct(RK_UI_PaneDragData);
+        Vec2F32 drag_delta = ui_drag_delta();
+        *rect = shift_2f32(drag_data->start_rect, drag_delta);
     }
 
     //- k: build the content container

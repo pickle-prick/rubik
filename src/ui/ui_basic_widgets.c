@@ -460,130 +460,131 @@ ui_expanderf(B32 is_expanded, char *fmt, ...)
 internal UI_ScrollPt
 ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, Rng1S64 idx_range, S64 view_num_indices)
 {
-  ui_push_palette(ui_state->widget_palette_info.scrollbar_palette);
-  
-  //- rjf: unpack
-  S64 idx_range_dim = Max(dim_1s64(idx_range), 1);
-  
-  //- rjf: produce extra flags for cases in which scrolling is disabled
-  UI_BoxFlags disabled_flags = 0;
-  if(idx_range.min == idx_range.max)
-  {
-    disabled_flags |= UI_BoxFlag_Disabled;
-  }
-  
-  //- rjf: build main container
-  ui_set_next_pref_size(axis2_flip(axis), off_axis_size);
-  ui_set_next_child_layout_axis(axis);
-  UI_Box *container_box = ui_build_box_from_key(UI_BoxFlag_DrawBorder, ui_key_zero());
-  
-  //- rjf: build scroll-min button
-  UI_Signal min_scroll_sig = {0};
-  UI_Parent(container_box)
-    UI_PrefSize(axis, off_axis_size)
-    UI_Flags(UI_BoxFlag_DrawBorder|disabled_flags)
-    UI_TextAlignment(UI_TextAlign_Center)
-    UI_Font(ui_icon_font())
-  {
-    String8 arrow_string = ui_icon_string_from_kind(axis == Axis2_X ? UI_IconKind_LeftArrow : UI_IconKind_UpArrow);
-    min_scroll_sig = ui_buttonf("%S##_min_scroll_%i", arrow_string, axis);
-  }
-  
-  //- rjf: main scroller area
-  UI_Signal space_before_sig = {0};
-  UI_Signal space_after_sig = {0};
-  UI_Signal scroller_sig = {0};
-  UI_Box *scroll_area_box = &ui_nil_box;
-  UI_Box *scroller_box = &ui_nil_box;
-  UI_Parent(container_box)
-  {
-    ui_set_next_pref_size(axis, ui_pct(1, 0));
+    ui_push_palette(ui_state->widget_palette_info.scrollbar_palette);
+
+    //- rjf: unpack
+    S64 idx_range_dim = Max(dim_1s64(idx_range), 1);
+
+    //- rjf: produce extra flags for cases in which scrolling is disabled
+    UI_BoxFlags disabled_flags = 0;
+    if(idx_range.min == idx_range.max)
+    {
+        disabled_flags |= UI_BoxFlag_Disabled;
+    }
+
+    //- rjf: build main container
+    ui_set_next_pref_size(axis2_flip(axis), off_axis_size);
     ui_set_next_child_layout_axis(axis);
-    scroll_area_box = ui_build_box_from_stringf(0, "##_scroll_area_%i", axis);
-    UI_Parent(scroll_area_box)
+    UI_Box *container_box = ui_build_box_from_key(UI_BoxFlag_DrawBorder, ui_key_zero());
+
+    //- rjf: build scroll-min button
+    UI_Signal min_scroll_sig = {0};
+    UI_Parent(container_box)
+        UI_PrefSize(axis, off_axis_size)
+        UI_Flags(UI_BoxFlag_DrawBorder|disabled_flags)
+        UI_TextAlignment(UI_TextAlign_Center)
+        UI_Font(ui_icon_font())
+        {
+            String8 arrow_string = ui_icon_string_from_kind(axis == Axis2_X ? UI_IconKind_LeftArrow : UI_IconKind_UpArrow);
+            min_scroll_sig = ui_buttonf("%S##_min_scroll_%i", arrow_string, axis);
+        }
+
+    //- rjf: main scroller area
+    UI_Signal space_before_sig = {0};
+    UI_Signal space_after_sig = {0};
+    UI_Signal scroller_sig = {0};
+    UI_Box *scroll_area_box = &ui_nil_box;
+    UI_Box *scroller_box = &ui_nil_box;
+    UI_Parent(container_box)
     {
-      // rjf: space before
-      if(idx_range.max != idx_range.min)
-      {
+        ui_set_next_pref_size(axis, ui_pct(1, 0));
+        ui_set_next_child_layout_axis(axis);
+        scroll_area_box = ui_build_box_from_stringf(0, "##_scroll_area_%i", axis);
+        UI_Parent(scroll_area_box)
+        {
+            // rjf: space before
+            if(idx_range.max != idx_range.min)
+            {
         ui_set_next_pref_size(axis, ui_pct((F32)((F64)(pt.idx-idx_range.min)/(F64)idx_range_dim), 0));
-        ui_set_next_hover_cursor(OS_Cursor_HandPoint);
-        UI_Box *space_before_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "##scroll_area_before");
-        space_before_sig = ui_signal_from_box(space_before_box);
-      }
-      
-      // rjf: scroller
+                ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+                UI_Box *space_before_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "##scroll_area_before");
+                space_before_sig = ui_signal_from_box(space_before_box);
+            }
+
+            // rjf: scroller
       UI_Flags(disabled_flags) UI_PrefSize(axis, ui_pct(Clamp(0.01f, (F32)((F64)Max(view_num_indices, 1)/(F64)idx_range_dim), 1.f), 0.f))
-      {
-        scroller_sig = ui_buttonf("##_scroller_%i", axis);
-        scroller_box = scroller_sig.box;
-      }
-      
-      // rjf: space after
-      if(idx_range.max != idx_range.min)
-      {
+            {
+                scroller_sig = ui_buttonf("##_scroller_%i", axis);
+                scroller_box = scroller_sig.box;
+            }
+
+            // rjf: space after
+            if(idx_range.max != idx_range.min)
+            {
         ui_set_next_pref_size(axis, ui_pct(1.f - (F32)((F64)(pt.idx-idx_range.min)/(F64)idx_range_dim), 0));
-        ui_set_next_hover_cursor(OS_Cursor_HandPoint);
-        UI_Box *space_after_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "##scroll_area_after");
-        space_after_sig = ui_signal_from_box(space_after_box);
-      }
+                ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+                UI_Box *space_after_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "##scroll_area_after");
+                space_after_sig = ui_signal_from_box(space_after_box);
+            }
+        }
     }
-  }
-  
-  //- rjf: build scroll-max button
-  UI_Signal max_scroll_sig = {0};
-  UI_Parent(container_box)
-    UI_PrefSize(axis, off_axis_size)
-    UI_Flags(UI_BoxFlag_DrawBorder|disabled_flags)
-    UI_TextAlignment(UI_TextAlign_Center)
-    UI_Font(ui_icon_font())
-  {
-    String8 arrow_string = ui_icon_string_from_kind(axis == Axis2_X ? UI_IconKind_RightArrow : UI_IconKind_DownArrow);
-    max_scroll_sig = ui_buttonf("%S##_max_scroll_%i", arrow_string, axis);
-  }
-  
-  //- rjf: pt * signals -> new pt
-  UI_ScrollPt new_pt = pt;
-  {
-    typedef struct UI_ScrollBarDragData UI_ScrollBarDragData;
-    struct UI_ScrollBarDragData
+
+    //- rjf: build scroll-max button
+    UI_Signal max_scroll_sig = {0};
+    UI_Parent(container_box)
+        UI_PrefSize(axis, off_axis_size)
+        UI_Flags(UI_BoxFlag_DrawBorder|disabled_flags)
+        UI_TextAlignment(UI_TextAlign_Center)
+        UI_Font(ui_icon_font())
+        {
+            String8 arrow_string = ui_icon_string_from_kind(axis == Axis2_X ? UI_IconKind_RightArrow : UI_IconKind_DownArrow);
+            max_scroll_sig = ui_buttonf("%S##_max_scroll_%i", arrow_string, axis);
+        }
+
+    //- rjf: pt * signals -> new pt
+    UI_ScrollPt new_pt = pt;
     {
-      UI_ScrollPt start_pt;
-      F32 scroll_space_px;
-    };
-    if(ui_dragging(scroller_sig))
-    {
-      if(ui_pressed(scroller_sig))
-      {
-        UI_ScrollBarDragData drag_data = {pt, (floor_f32(dim_2f32(scroll_area_box->rect).v[axis])-floor_f32(dim_2f32(scroller_box->rect).v[axis]))};
-        ui_store_drag_struct(&drag_data);
-      }
-      UI_ScrollBarDragData *drag_data = ui_get_drag_struct(UI_ScrollBarDragData);
-      UI_ScrollPt original_pt = drag_data->start_pt;
-      F32 drag_delta = ui_drag_delta().v[axis];
-      F32 drag_pct = drag_delta / drag_data->scroll_space_px;
-      S64 new_idx = original_pt.idx + drag_pct*idx_range_dim;
-      new_idx = Clamp(idx_range.min, new_idx, idx_range.max);
-      ui_scroll_pt_target_idx(&new_pt, new_idx);
-      new_pt.off = 0;
+        typedef struct UI_ScrollBarDragData UI_ScrollBarDragData;
+        struct UI_ScrollBarDragData
+        {
+            UI_ScrollPt start_pt;
+            F32 scroll_space_px;
+        };
+        if(ui_dragging(scroller_sig))
+        {
+            if(ui_pressed(scroller_sig))
+            {
+                UI_ScrollBarDragData drag_data = {pt, (floor_f32(dim_2f32(scroll_area_box->rect).v[axis])-floor_f32(dim_2f32(scroller_box->rect).v[axis]))};
+                ui_store_drag_struct(&drag_data);
+            }
+            UI_ScrollBarDragData *drag_data = ui_get_drag_struct(UI_ScrollBarDragData);
+            UI_ScrollPt original_pt = drag_data->start_pt;
+            F32 drag_delta = ui_drag_delta().v[axis];
+            F32 drag_pct = drag_delta / drag_data->scroll_space_px;
+            S64 new_idx = original_pt.idx + drag_pct*idx_range_dim;
+            new_idx = Clamp(idx_range.min, new_idx, idx_range.max);
+            ui_scroll_pt_target_idx(&new_pt, new_idx);
+            new_pt.off = 0;
+        }
+        if(ui_dragging(min_scroll_sig) || ui_dragging(space_before_sig))
+        {
+            S64 new_idx = new_pt.idx-1;
+            new_idx = Clamp(idx_range.min, new_idx, idx_range.max);
+            ui_scroll_pt_target_idx(&new_pt, new_idx);
+        }
+        if(ui_dragging(max_scroll_sig) || ui_dragging(space_after_sig))
+        {
+            S64 new_idx = new_pt.idx+1;
+            new_idx = Clamp(idx_range.min, new_idx, idx_range.max);
+            ui_scroll_pt_target_idx(&new_pt, new_idx);
+        }
     }
-    if(ui_dragging(min_scroll_sig) || ui_dragging(space_before_sig))
-    {
-      S64 new_idx = new_pt.idx-1;
-      new_idx = Clamp(idx_range.min, new_idx, idx_range.max);
-      ui_scroll_pt_target_idx(&new_pt, new_idx);
-    }
-    if(ui_dragging(max_scroll_sig) || ui_dragging(space_after_sig))
-    {
-      S64 new_idx = new_pt.idx+1;
-      new_idx = Clamp(idx_range.min, new_idx, idx_range.max);
-      ui_scroll_pt_target_idx(&new_pt, new_idx);
-    }
-  }
-  
-  ui_pop_palette();
-  return new_pt;
+
+    ui_pop_palette();
+    return new_pt;
 }
 
+// TODO(k): this setup won't support nested scroll list
 thread_static UI_ScrollPt *ui_scroll_list_scroll_pt_ptr = 0;
 thread_static F32 ui_scroll_list_scroll_bar_dim_px = 0;
 thread_static Vec2F32 ui_scroll_list_dim_px = {0};

@@ -1,0 +1,201 @@
+name: "default_scene"
+viewport_shading: s0
+polygon_mode: s0
+global_light: 
+  x: f0.000000
+  y: f0.000000
+  z: f1.000000
+nodes: 
+  - 
+    name: "root"
+    key: u746744014776526199
+    parent_key: u0
+    kind: u0
+    flags: u0
+    push_count: u0
+    pop_count: u0
+    children_count: u4
+    animation_dt: f0.000000
+    pos: 
+      x: f0.000000
+      y: f0.000000
+      z: f0.000000
+    rot: 
+      x: f0.000000
+      y: f0.000000
+      z: f0.000000
+      w: f1.000000
+    scale: 
+      x: f1.000000
+      y: f1.000000
+      z: f1.000000
+    update_functions: 
+  - 
+    name: "editor_camera"
+    key: u5312183396086466598
+    parent_key: u746744014776526199
+    kind: u8
+    flags: u0
+    push_count: u1
+    pop_count: u0
+    children_count: u0
+    animation_dt: f0.000000
+    pos: 
+      x: f0.000000
+      y: f-3.000000
+      z: f-3.000000
+    rot: 
+      x: f-0.080582
+      y: f0.444870
+      z: f0.040232
+      w: f0.891055
+    scale: 
+      x: f1.000000
+      y: f1.000000
+      z: f1.000000
+    update_functions: 
+      - "editor_camera_fn"
+    camera: 
+      fov: f0.250000
+      zn: f0.100000
+      zf: f200.000000
+      hide_cursor: false
+      lock_cursor: false
+      is_active: true
+  - 
+    name: "player"
+    key: u15108039293789629267
+    parent_key: u746744014776526199
+    kind: u0
+    flags: u8
+    push_count: u0
+    pop_count: u0
+    children_count: u2
+    animation_dt: f0.000000
+    pos: 
+      x: f6.000000
+      y: f-1.500000
+      z: f0.000000
+    rot: 
+      x: f-0.102162
+      y: f0.415996
+      z: f0.047098
+      w: f0.902364
+    scale: 
+      x: f1.000000
+      y: f1.000000
+      z: f1.000000
+    update_functions: 
+      - "player_fn"
+  - 
+    name: "body"
+    key: u9495038560095870331
+    parent_key: u15108039293789629267
+    kind: u4
+    flags: u0
+    push_count: u1
+    pop_count: u0
+    children_count: u0
+    animation_dt: f0.000000
+    pos: 
+      x: f0.000000
+      y: f0.000000
+      z: f0.000000
+    rot: 
+      x: f0.000000
+      y: f0.000000
+      z: f0.000000
+      w: f1.000000
+    scale: 
+      x: f1.000000
+      y: f1.000000
+      z: f1.000000
+    update_functions: 
+    mesh: 
+      kind: u4
+      path: ""
+  - 
+    name: "player_camera"
+    key: u5371201136343931414
+    parent_key: u15108039293789629267
+    kind: u8
+    flags: u0
+    push_count: u0
+    pop_count: u0
+    children_count: u0
+    animation_dt: f0.000000
+    pos: 
+      x: f0.000000
+      y: f-3.000000
+      z: f0.000000
+    rot: 
+      x: f0.000000
+      y: f0.000000
+      z: f0.000000
+      w: f1.000000
+    scale: 
+      x: f1.000000
+      y: f1.000000
+      z: f1.000000
+    update_functions: 
+    camera: 
+      fov: f0.250000
+      zn: f0.100000
+      zf: f200.000000
+      hide_cursor: true
+      lock_cursor: true
+      is_active: false
+  - 
+    name: "dummy1"
+    key: u2391432237293834208
+    parent_key: u746744014776526199
+    kind: u4
+    flags: u11
+    push_count: u0
+    pop_count: u1
+    children_count: u0
+    animation_dt: f1.243837
+    pos: 
+      x: f6.000000
+      y: f0.000000
+      z: f0.000000
+    rot: 
+      x: f1.000000
+      y: f0.000000
+      z: f0.000000
+      w: f-0.000000
+    scale: 
+      x: f1.000000
+      y: f1.000000
+      z: f1.000000
+    update_functions: 
+    mesh: 
+      kind: u5
+      path: "./models/dancing_stormtrooper/scene.gltf"
+  - 
+    name: "dummy2"
+    key: u7224473299626801102
+    parent_key: u746744014776526199
+    kind: u4
+    flags: u11
+    push_count: u0
+    pop_count: u0
+    children_count: u0
+    animation_dt: f4.277154
+    pos: 
+      x: f0.000000
+      y: f0.000000
+      z: f0.000000
+    rot: 
+      x: f1.000000
+      y: f0.000000
+      z: f0.000000
+      w: f-0.000000
+    scale: 
+      x: f1.000000
+      y: f1.000000
+      z: f1.000000
+    update_functions: 
+    mesh: 
+      kind: u5
+      path: "./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"

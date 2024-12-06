@@ -354,7 +354,7 @@ rk_default_scene()
 
     // Fill base info
     scene->name             = str8_lit("default_scene");
-    scene->path             = str8_lit("./src/game/scenes/default.scene");
+    scene->path             = str8_lit("./src/rubik/scenes/default.scene");
     scene->viewport_shading = RK_ViewportShadingKind_Wireframe;
     scene->global_light     = v3f32(0,0,1);
     scene->polygon_mode     = R_GeoPolygonKind_Fill;

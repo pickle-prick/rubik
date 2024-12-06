@@ -1071,6 +1071,7 @@ internal void rk_ui_stats(void)
     struct RK_Stats_State
     {
         B32 show;
+        Rng2F32 rect;
     };
 
     RK_View *view = rk_view_from_kind(RK_ViewKind_Stats);
@@ -1080,14 +1081,22 @@ internal void rk_ui_stats(void)
     {
         stats = push_array(view->arena, RK_Stats_State, 1);
         view->custom_data = stats;
-        
+
         stats->show = 1;
+        stats->rect = rk_state->window_rect;
+        {
+            F32 default_width = 600;
+            F32 default_height = 800;
+            F32 default_margin = 30;
+            stats->rect.x0 = stats->rect.x1 - default_width;
+            stats->rect.y1 = stats->rect.y0 + default_height;
+            stats->rect = pad_2f32(stats->rect, -default_margin);
+        }
     }
 
-    local_persist B32 show_stats = 1;
     ui_set_next_focus_hot(UI_FocusKind_Root);
     ui_set_next_focus_active(UI_FocusKind_Root);
-    RK_UI_Pane(r2f32p(rk_state->window_rect.p1.x-710, rk_state->window_rect.p0.y+10, rk_state->window_rect.p1.x-10, rk_state->window_rect.p0.y+590), &show_stats, str8_lit("STATS###stats"))
+    RK_UI_Pane(&stats->rect, &stats->show, str8_lit("STATS###stats"))
         UI_TextAlignment(UI_TextAlign_Left)
         UI_TextPadding(9)
         {
@@ -1168,12 +1177,18 @@ internal void rk_ui_inspector(void)
     typedef struct RK_Inspector_State RK_Inspector_State;
     struct RK_Inspector_State
     {
-        B32 show_inspector;
+        B32 show;
         B32 show_scene_cfg;
         B32 show_camera_cfg;
         B32 show_light_cfg;
         B32 show_node_cfg;
 
+        Rng2F32 rect;
+
+        String8 scene_path_to_save;
+        U64 scene_path_to_save_buffer_size;
+
+        // txt input buffer
         TxtPt txt_cursor;
         TxtPt txt_mark;
         U8 *txt_edit_buffer;
@@ -1188,17 +1203,30 @@ internal void rk_ui_inspector(void)
         inspector = push_array(inspector_view->arena, RK_Inspector_State, 1);
         inspector_view->custom_data = inspector;
 
-        inspector->show_inspector  = 1;
+        inspector->show  = 1;
         inspector->show_scene_cfg  = 1;
         inspector->show_camera_cfg = 1;
         inspector->show_light_cfg  = 1;
         inspector->show_node_cfg   = 1;
+
+        inspector->scene_path_to_save_buffer_size = Max(scene->path.size*2, 1000);
+        inspector->scene_path_to_save.str = push_array(inspector_view->arena, U8, inspector->scene_path_to_save_buffer_size);
+        inspector->scene_path_to_save.size = scene->path.size;
+        MemoryCopy(inspector->scene_path_to_save.str, scene->path.str, scene->path.size);
 
         inspector->txt_cursor           = (TxtPt){0};
         inspector->txt_mark             = (TxtPt){0};
         inspector->txt_edit_buffer_size = 100;
         inspector->txt_edit_buffer      = push_array(inspector_view->arena, U8, inspector->txt_edit_buffer_size);
         inspector->txt_edit_string_size = 0;
+
+        inspector->rect = rk_state->window_rect;
+        {
+            F32 default_width = 800;
+            F32 default_margin = 30;
+            inspector->rect.x1 = 800;
+            inspector->rect = pad_2f32(inspector->rect, -default_margin);
+        }
     }
 
     RK_Node *camera = scene->active_camera->v;
@@ -1211,10 +1239,7 @@ internal void rk_ui_inspector(void)
     UI_Box *pane;
     UI_FocusActive(UI_FocusKind_Root) UI_FocusHot(UI_FocusKind_Root) UI_Transparency(0.1)
     {
-        Rng2F32 panel_rect = rk_state->window_rect;
-        panel_rect.p1.x = 800;
-        panel_rect = pad_2f32(panel_rect,-30);
-        pane = rk_ui_pane_begin(panel_rect, &inspector->show_inspector, str8_lit("INSPECTOR"));
+        pane = rk_ui_pane_begin(&inspector->rect, &inspector->show, str8_lit("INSPECTOR"));
     }
 
     {
@@ -1249,22 +1274,12 @@ internal void rk_ui_inspector(void)
             UI_Box *scene_cfg = ui_build_box_from_stringf(0, "###scene_cfg");
             UI_Parent(scene_cfg)
             {
-                // TODO(k): move these into some state struct
-                local_persist TxtPt cursor = {0};
-                local_persist TxtPt mark   = {0};
-                local_persist U8 edit_buffer[300] = {0};
-                local_persist String8 scene_path = {edit_buffer, 0};
-
-                if(scene_path.size == 0)
-                {
-                    U64 size = Min(scene->path.size, ArrayCount(edit_buffer));
-                    MemoryCopy(edit_buffer, scene->path.str, size);
-                    scene_path.size = size;
-                }
-
                 UI_Flags(UI_BoxFlag_ClickToFocus)
                 {
-                    ui_line_edit(&cursor, &mark, edit_buffer, ArrayCount(edit_buffer), &scene_path.size, scene_path, str8_lit("###scene_path"));
+                    if(ui_committed(ui_line_edit(&inspector->txt_cursor, &inspector->txt_mark, inspector->scene_path_to_save.str, inspector->scene_path_to_save_buffer_size, &inspector->txt_edit_string_size, inspector->scene_path_to_save, str8_lit("###scene_path"))))
+                    {
+                        inspector->scene_path_to_save.size = inspector->txt_edit_string_size;                        
+                    }
                 }
 
                 UI_Row
@@ -1274,18 +1289,20 @@ internal void rk_ui_inspector(void)
                         RK_Scene *new_scene = rk_default_scene();
                         SLLStackPush(rk_state->first_to_free_scene, scene);
                         rk_state->active_scene = new_scene;
-                        scene_path.size = 0;
+
+                        U64 name_size = ClampBot(inspector->scene_path_to_save_buffer_size, new_scene->name.size);
+                        inspector->scene_path_to_save.size = name_size;
+                        MemoryCopy(inspector->scene_path_to_save.str, new_scene->name.str, name_size);
                     }
                     if(ui_clicked(ui_buttonf("Save")))
                     {
-                        rk_scene_to_file(scene, scene_path);
+                        rk_scene_to_file(scene, inspector->scene_path_to_save);
                     }
                     if(ui_clicked(ui_buttonf("Reload")))
                     {
-                        RK_Scene *new_scene = rk_scene_from_file(scene_path);
+                        RK_Scene *new_scene = rk_scene_from_file(inspector->scene_path_to_save);
                         SLLStackPush(rk_state->first_to_free_scene, scene);
                         rk_state->active_scene = new_scene;
-                        scene_path.size = 0;
                     }
                 }
 
@@ -1425,8 +1442,8 @@ internal void rk_ui_inspector(void)
                             String8 string = push_str8f(ui_build_arena(), "%S%S###%d", indent, root->name, row_idx);
                             if(active_node == root)
                             {
-                                  ui_set_next_palette(ui_build_palette(ui_top_palette(), .overlay = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
-                                  ui_set_next_flags(UI_BoxFlag_DrawOverlay);
+                                ui_set_next_palette(ui_build_palette(ui_top_palette(), .overlay = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
+                                ui_set_next_flags(UI_BoxFlag_DrawOverlay);
                             }
                             UI_Signal label = ui_button(string);
                             if(ui_clicked(label)) rk_set_active_key(root->key);
@@ -1635,6 +1652,7 @@ internal void rk_ui_profiler(void)
     struct RK_Profiler_State
     {
         B32 show;
+        Rng2F32 rect;
         UI_ScrollPt table_scroller;
     };
 
@@ -1646,17 +1664,22 @@ internal void rk_ui_profiler(void)
         view->custom_data = profiler;
 
         profiler->show = 1;
+        profiler->rect = rk_state->window_rect;
+        {
+            F32 default_width = 900;
+            F32 default_height = 1200;
+            F32 default_margin = 30;
+            profiler->rect.x0 = profiler->rect.x1 - default_width;
+            profiler->rect.y0 = profiler->rect.y1 - default_height;
+            profiler->rect = pad_2f32(profiler->rect, -default_margin);
+        }
     }
 
     // Top-level pane 
     UI_Box *container_box;
     UI_FocusActive(UI_FocusKind_Root) UI_FocusHot(UI_FocusKind_Root) UI_Transparency(0.1)
     {
-        Rng2F32 panel_rect = rk_state->window_rect;
-        panel_rect.p0.x = panel_rect.p1.x - 1100;
-        panel_rect.p0.y = panel_rect.p1.y - 1300;
-        panel_rect = pad_2f32(panel_rect,-30);
-        container_box = rk_ui_pane_begin(panel_rect, &profiler->show, str8_lit("PROFILER"));
+        container_box = rk_ui_pane_begin(&profiler->rect, &profiler->show, str8_lit("PROFILER"));
     }
 
     F32 row_height = ui_top_font_size()*1.3f;
@@ -1719,19 +1742,24 @@ internal void rk_ui_profiler(void)
     {
         if(prof_table != 0)
         {
+            U64 row_idx = 0;
             for(U64 slot_idx = 0; slot_idx < prof_hash_table_size; slot_idx++)
             {
                 for(ProfNode *n = prof_table[slot_idx].first; n != 0; n = n->hash_next)
                 {
-                    UI_Row UI_PrefWidth(ui_pct(1.f, 0.f)) UI_Flags(UI_BoxFlag_DrawBorder)
+                    if(row_idx >= visible_row_rng.min && row_idx <= visible_row_rng.max)
                     {
-                        ui_label(n->tag);
-                        ui_labelf("%lu", n->total_cycles);
-                        ui_labelf("%lu", n->call_count);
-                        ui_labelf("%lu", n->cycles_per_call);
-                        ui_labelf("%lu", n->total_us);
-                        ui_labelf("%lu", n->us_per_call);
+                        UI_Row UI_PrefWidth(ui_pct(1.f, 0.f)) UI_Flags(UI_BoxFlag_DrawBorder)
+                        {
+                            ui_label(n->tag);
+                            ui_labelf("%lu", n->total_cycles);
+                            ui_labelf("%lu", n->call_count);
+                            ui_labelf("%lu", n->cycles_per_call);
+                            ui_labelf("%lu", n->total_us);
+                            ui_labelf("%lu", n->us_per_call);
+                        }
                     }
+                    row_idx++;
                 }
             }
         }

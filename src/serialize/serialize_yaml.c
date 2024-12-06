@@ -34,12 +34,22 @@ se_yml_node_to_file(SE_Node *n, String8 path)
     se_yml_push_node_to_strlist(temp.arena, &strs, n);
     se_yml_pop_indent();
 
-    FILE *file = fopen((char*)path.str, "w");
-    for(String8Node *n = strs.first; n != 0; n = n->next)
+    U8 *path_cstring = push_array(temp.arena, U8, path.size+1);
+    MemoryCopy(path_cstring, path.str, path.size);
+    path_cstring[path.size] = '\0';
+    FILE *file = fopen((char*)path_cstring, "w");
+    if(file)
     {
-        fwrite(n->string.str, n->string.size, 1, file);
+        for(String8Node *n = strs.first; n != 0; n = n->next)
+        {
+            fwrite(n->string.str, n->string.size, 1, file);
+        }
+        fclose(file);
     }
-    fclose(file);
+    else
+    {
+        InvalidPath;
+    }
     temp_end(temp);
 }
 
