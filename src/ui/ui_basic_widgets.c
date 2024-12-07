@@ -483,6 +483,7 @@ ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, Rng1S64 idx_ran
         UI_PrefSize(axis, off_axis_size)
         UI_Flags(UI_BoxFlag_DrawBorder|disabled_flags)
         UI_TextAlignment(UI_TextAlign_Center)
+        UI_TextPadding(0.1f)
         UI_Font(ui_icon_font())
         {
             String8 arrow_string = ui_icon_string_from_kind(axis == Axis2_X ? UI_IconKind_LeftArrow : UI_IconKind_UpArrow);
@@ -534,6 +535,7 @@ ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, Rng1S64 idx_ran
     UI_Parent(container_box)
         UI_PrefSize(axis, off_axis_size)
         UI_Flags(UI_BoxFlag_DrawBorder|disabled_flags)
+        UI_TextPadding(0.1f)
         UI_TextAlignment(UI_TextAlign_Center)
         UI_Font(ui_icon_font())
         {

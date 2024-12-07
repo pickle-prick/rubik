@@ -33,6 +33,20 @@ struct ProfNodeSlot
     U64      count;
 };
 
+typedef struct ProfTick ProfTick;
+struct ProfTick
+{
+    Arena        *arena;
+    U64          arena_tick_pos;
+    U64          node_hash_table_size;
+    ProfNodeSlot *node_hash_table;
+
+    U64          cycles;
+    U64          us;
+    U64          tsc_start;
+    U64          us_start;
+};
+
 ////////////////////////////////
 //~ k: RDTSC
 
@@ -43,7 +57,10 @@ struct ProfNodeSlot
 # define rdtsc __rdtsc
 #elif COMPILER_CLANG
 # include <x86intrin.h>
-# define rdtsc __rdtscp
+static inline unsigned long long rdtsc() {
+ unsigned int aux;
+ return __rdtscp(&aux);
+}
 #else
 # define rdtsc (void)0
 #endif
@@ -53,87 +70,31 @@ struct ProfNodeSlot
 
 #if PROFILE_TELEMETRY
 
-#define prof_buffer_count 2
-global Arena *prof_arenas[prof_buffer_count] = {0};
-global U64 prof_hash_table_size = 1024;
-global ProfNodeSlot *prof_hash_tables[prof_buffer_count] = {0};
-global ProfNode *prof_top_node = 0; // Stacks
-global U64 prof_tick_count = 0;
-global U64 prof_idx_pst = 0;
-global U64 prof_idx_pre = 0;
+////////////////////////////////
+//- k: Globals
+#define pf_buffer_count 2
+#define pf_table_size 1000
+global ProfTick *pf_ticks[pf_buffer_count] = {0};
+global ProfNode *pf_top_node = 0;
+global U64 pf_tick_count = 0;
+global U64 pf_idx_pst = 0;
+global U64 pf_idx_pre = 0;
 
-# define ProfTick()                                                                                  \
-do                                                                                                   \
-{                                                                                                    \
-  prof_idx_pre = prof_tick_count % prof_buffer_count;                                                \
-  prof_idx_pst = (prof_tick_count+1) % prof_buffer_count;                                            \
-  prof_tick_count++;                                                                                 \
-  if(prof_arenas[0] == 0)                                                                            \
-  {                                                                                                  \
-    for(U64 i = 0; i < prof_buffer_count; i++)                                                       \
-    {                                                                                                \
-      prof_arenas[i] = arena_alloc();                                                                \
-    }                                                                                                \
-  }                                                                                                  \
-  Arena *arena = prof_arenas[prof_idx_pre];                                                          \
-  arena_clear(arena);                                                                                \
-  prof_hash_tables[prof_idx_pre] = push_array(arena, ProfNodeSlot, prof_hash_table_size);            \
-} while(0)
-  
-# define ProfBegin(...)                                                            \
-do                                                                                 \
-{                                                                                  \
-  ProfNode *node = 0;                                                              \
-  Arena *arena = prof_arenas[prof_idx_pre];                                        \
-  union                                                                            \
-  {                                                                                \
-      XXH64_hash_t xxhash;                                                         \
-      U64 u64;                                                                     \
-  }                                                                                \
-  hash;                                                                            \
-  Temp scratch = scratch_begin(0,0);                                               \
-  String8 string = push_str8f(scratch.arena, __VA_ARGS__);                         \
-  hash.xxhash = XXH3_64bits(string.str, string.size);                              \
-  U64 slot_idx = hash.u64 % prof_hash_table_size;                                  \
-  ProfNodeSlot *slot = &prof_hash_tables[prof_idx_pre][slot_idx];                  \
-  for(ProfNode *n = slot->first; n != 0; n = n->next)                              \
-  {                                                                                \
-    if(n->hash == hash.u64)                                                        \
-    {                                                                              \
-        node = n;                                                                  \
-    }                                                                              \
-  }                                                                                \
-  if(node == 0)                                                                    \
-  {                                                                                \
-    node = push_array(arena, ProfNode, 1);                                         \
-    node->hash = hash.u64;                                                         \
-    node->tag = push_str8_copy(arena, string);                                     \
-    node->file = str8_cstring(__FILE__);                                           \
-    node->line = __LINE__;                                                         \
-    DLLPushBack_NP(slot->first, slot->last, node, hash_next, hash_prev);           \
-    slot->count++;                                                                 \
-  }                                                                                \
-  node->tsc_start = rdtsc();                                                       \
-  node->us_start = os_now_microseconds();                                          \
-  SLLStackPush(prof_top_node, node);                                               \
-  scratch_end(scratch);                                                            \
-} while(0)
+////////////////////////////////
+//- k: Build Helper
 
-# define ProfEnd()                                                                 \
-do                                                                                 \
-{                                                                                  \
-  ProfNode *node = prof_top_node;                                                  \
-  SLLStackPop(prof_top_node);                                                      \
-  U64 this_tsc = rdtsc()-node->tsc_start;                                          \
-  U64 this_us = os_now_microseconds()-node->us_start;                              \
-  node->total_cycles += this_tsc;                                                  \
-  node->total_us += this_us;                                                       \
-  node->call_count++;                                                              \
-  node->cycles_per_call = node->total_cycles/node->call_count;                     \
-  node->us_per_call = node->total_us/node->call_count;                             \
-} while(0)
-# define ProfTablePst() prof_hash_tables[prof_idx_pst]
-# define ProfTablePre() prof_hash_tables[prof_idx_pre]
+internal ProfTick *pf_tick_alloc();
+internal void pf_tick();
+internal void pf_begin(char *fmt, ...);
+internal void pf_end();
+internal ProfNode *pf_node_alloc();
+
+# define ProfTick()     pf_tick()
+# define ProfBegin(...) pf_begin(__VA_ARGS__)
+# define ProfEnd()      pf_end()
+# define ProfTickPst() pf_ticks[pf_idx_pst]
+# define ProfTickPre() pf_ticks[pf_idx_pre]
+
 #endif
 
 ////////////////////////////////

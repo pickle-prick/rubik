@@ -1707,13 +1707,13 @@ internal void rk_ui_profiler(void)
     content_rect.y0 = header_box->rect.y1;
 
     // Content
-    ProfNodeSlot *prof_table = ProfTablePst();
+    ProfTick *pf_tick = ProfTickPst();
     U64 prof_node_count = 0;
-    if(prof_table != 0)
+    if(pf_tick != 0 && pf_tick->node_hash_table != 0)
     {
-        for(U64 slot_idx = 0; slot_idx < prof_hash_table_size; slot_idx++)
+        for(U64 slot_idx = 0; slot_idx < pf_table_size; slot_idx++)
         {
-            prof_node_count += prof_table[slot_idx].count;
+            prof_node_count += pf_tick->node_hash_table[slot_idx].count;
         }
     }
 
@@ -1740,22 +1740,32 @@ internal void rk_ui_profiler(void)
 
     UI_ScrollList(&scroll_list_params, &profiler->table_scroller, 0, 0, &visible_row_rng, &scroll_list_sig)
     {
-        if(prof_table != 0)
+        if(pf_tick != 0 && pf_tick->node_hash_table != 0)
         {
             U64 row_idx = 0;
-            for(U64 slot_idx = 0; slot_idx < prof_hash_table_size; slot_idx++)
+            for(U64 slot_idx = 0; slot_idx < pf_table_size; slot_idx++)
             {
-                for(ProfNode *n = prof_table[slot_idx].first; n != 0; n = n->hash_next)
+                for(ProfNode *n = pf_tick->node_hash_table[slot_idx].first; n != 0; n = n->hash_next)
                 {
                     if(row_idx >= visible_row_rng.min && row_idx <= visible_row_rng.max)
                     {
                         UI_Row UI_PrefWidth(ui_pct(1.f, 0.f)) UI_Flags(UI_BoxFlag_DrawBorder)
                         {
                             ui_label(n->tag);
-                            ui_labelf("%lu", n->total_cycles);
+                            UI_Row
+                            {
+                                ui_labelf("%lu", n->total_cycles);
+                                ui_spacer(ui_pct(1.f, 0.f));
+                                ui_labelf("%.2f", (F32)n->total_cycles/pf_tick->cycles);
+                            }
                             ui_labelf("%lu", n->call_count);
                             ui_labelf("%lu", n->cycles_per_call);
-                            ui_labelf("%lu", n->total_us);
+                            UI_Row
+                            {
+                                ui_labelf("%lu", n->total_us);
+                                ui_spacer(ui_pct(1.f, 0.f));
+                                ui_labelf("%.2f", (F32)n->total_us/pf_tick->us);
+                            }
                             ui_labelf("%lu", n->us_per_call);
                         }
                     }

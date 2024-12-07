@@ -4,5 +4,6 @@
 #include "base_strings.c"
 #include "base_darray.c"
 #include "base_thread_context.c"
+#include "base_profile.c"
 #include "base_command_line.c"
 #include "base_entry_point.c"

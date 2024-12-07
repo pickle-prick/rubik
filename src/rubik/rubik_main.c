@@ -288,7 +288,7 @@ ui_draw(OS_Handle os_wnd)
                 }
 
                 // k: debug border rendering
-                if(0)
+                if(1)
                 {
                     R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), v4f32(1, 0, 1, 0.25f), 0, 1.f, 1.f);
                     MemoryCopyArray(inst->corner_radii, b->corner_radii);

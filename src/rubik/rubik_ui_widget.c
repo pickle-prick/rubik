@@ -244,12 +244,12 @@ rk_ui_pane_begin(Rng2F32 *rect, B32 *open, String8 string)
     UI_Box *header_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_MouseClickable, "###header");
     UI_Parent(header_box)
     {
-        ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
+        ui_set_next_pref_size(Axis2_X, ui_px(39,1.0));
         if(ui_clicked(ui_expanderf(*open, "###expander"))) { *open = !(*open); }
-        ui_set_next_pref_size(Axis2_X, ui_text_dim(3, 0.0));
+        ui_set_next_pref_size(Axis2_X, ui_text_dim(3, 1.f));
         ui_label(string);
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
+        ui_spacer(ui_pct(1.0, 0.f));
+        ui_set_next_pref_size(Axis2_X, ui_px(39,1.f));
         if(ui_clicked(ui_closef("###close"))) { /* TODO */ }
     }
     UI_Signal header_signal = ui_signal_from_box(header_box);

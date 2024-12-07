@@ -516,7 +516,7 @@ ui_calc_sizes_standalone__in_place_rec(UI_Box *root, Axis2 axis)
             F32 padding = root->pref_size[axis].value;
             // F32 text_size = root->display_string_runs.dim.x;
             F32 text_size = root->display_string_runs.dim.v[axis];
-            root->fixed_size.v[axis] = padding + text_size + root->text_padding*2;
+            root->fixed_size.v[axis] = padding + text_size + root->text_padding*2.f;
         }break;
     }
 
