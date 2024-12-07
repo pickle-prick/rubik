@@ -1094,9 +1094,7 @@ internal void rk_ui_stats(void)
         }
     }
 
-    ui_set_next_focus_hot(UI_FocusKind_Root);
-    ui_set_next_focus_active(UI_FocusKind_Root);
-    RK_UI_Pane(&stats->rect, &stats->show, str8_lit("STATS###stats"))
+    UI_Transparency(0.1) RK_UI_Pane(&stats->rect, &stats->show, str8_lit("STATS###stats"))
         UI_TextAlignment(UI_TextAlign_Left)
         UI_TextPadding(9)
         {
@@ -1237,7 +1235,7 @@ internal void rk_ui_inspector(void)
 
     // Build top-level panel container
     UI_Box *pane;
-    UI_FocusActive(UI_FocusKind_Root) UI_FocusHot(UI_FocusKind_Root) UI_Transparency(0.1)
+    UI_Transparency(0.1)
     {
         pane = rk_ui_pane_begin(&inspector->rect, &inspector->show, str8_lit("INSPECTOR"));
     }
@@ -1680,10 +1678,12 @@ internal void rk_ui_profiler(void)
 
     // Top-level pane 
     UI_Box *container_box;
-    UI_FocusActive(UI_FocusKind_Root) UI_FocusHot(UI_FocusKind_Root) UI_Transparency(0.1)
+    UI_Transparency(0.1)
     {
         container_box = rk_ui_pane_begin(&profiler->rect, &profiler->show, str8_lit("PROFILER"));
     }
+
+    ui_spacer(ui_px(ui_top_font_size()*0.215, 0.f));
 
     F32 row_height = ui_top_font_size()*1.3f;
     ui_push_pref_height(ui_px(row_height, 0));

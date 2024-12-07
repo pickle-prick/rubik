@@ -233,7 +233,13 @@ rk_ui_pane_begin(Rng2F32 *rect, B32 *open, String8 string)
     ui_set_next_fixed_width(rect_dim.x);
     ui_set_next_pref_height(ui_children_sum(1.0));
     ui_set_next_child_layout_axis(Axis2_Y);
-    UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clip|UI_BoxFlag_Clickable|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow, string);
+    ui_set_next_focus_hot(UI_FocusKind_Root);
+    ui_set_next_focus_active(UI_FocusKind_Root);
+    ui_set_next_corner_radius_00(3);
+    ui_set_next_corner_radius_10(3);
+    ui_set_next_corner_radius_11(3);
+    ui_set_next_corner_radius_01(3);
+    UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clip|UI_BoxFlag_Clickable|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_RoundChildrenByParent, string);
 
     ui_push_parent(box);
     ui_push_pref_width(ui_pct(1.0, .0));
