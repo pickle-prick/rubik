@@ -288,7 +288,7 @@ ui_draw(OS_Handle os_wnd)
                 }
 
                 // k: debug border rendering
-                if(1)
+                if(0)
                 {
                     R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), v4f32(1, 0, 1, 0.25f), 0, 1.f, 1.f);
                     MemoryCopyArray(inst->corner_radii, b->corner_radii);
@@ -421,6 +421,7 @@ entry_point(CmdLine *cmd_line)
         frame_us = os_now_microseconds();
 
         //- k: begin of frame
+        ProfBegin("frame begin");
         r_begin_frame();
         U64 id = r_window_begin_frame(window, wnd);
         gpu_end_us = os_now_microseconds();
@@ -434,12 +435,7 @@ entry_point(CmdLine *cmd_line)
         // TODO: don't need to fetch rect every frame
         window_rect = os_client_rect_from_window(window);
         mouse = os_mouse_from_window(window);
-
-        /////////////////////////////////
-        // Create the top bucket (for UI)
-
-        // D_Bucket *main_ui_bucket = d_bucket_make();
-        // d_push_bucket(main_ui_bucket);
+        ProfEnd();
 
         /////////////////////////////////
         // Build ui
@@ -591,7 +587,7 @@ entry_point(CmdLine *cmd_line)
         /////////////////////////////////
         //~ Draw ui
 
-        D_BucketScope(rk_state->bucket_rect)
+        ProfScope("draw ui") D_BucketScope(rk_state->bucket_rect)
         {
             ui_draw(window);
             R_Rect2DInst *cursor = d_rect(r2f32p(mouse.x-15,mouse.y-15, mouse.x+15,mouse.y+15), v4f32(0,0.3,1,0.3), 15, 0.0, 0.7);
@@ -604,9 +600,13 @@ entry_point(CmdLine *cmd_line)
         //~ End of frame
 
         gpu_start_us = os_now_microseconds();
-        d_submit_bucket(window, wnd, d_top_bucket(), mouse);
-        r_window_end_frame(window, wnd);
-        r_end_frame();
+        ProfScope("submit")
+        {
+
+            d_submit_bucket(window, wnd, d_top_bucket(), mouse);
+            r_window_end_frame(window, wnd);
+            r_end_frame();
+        }
         arena_clear(frame_arena);
 
         cpu_end_us = os_now_microseconds();

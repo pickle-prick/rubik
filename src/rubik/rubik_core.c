@@ -1085,9 +1085,9 @@ internal void rk_ui_stats(void)
         stats->show = 1;
         stats->rect = rk_state->window_rect;
         {
-            F32 default_width = 600;
-            F32 default_height = 800;
-            F32 default_margin = 30;
+            F32 default_width = rk_state->window_dim.x * 0.3f;
+            F32 default_height = rk_state->window_dim.x * 0.15f;
+            F32 default_margin = ui_top_font_size()*1.3;
             stats->rect.x0 = stats->rect.x1 - default_width;
             stats->rect.y1 = stats->rect.y0 + default_height;
             stats->rect = pad_2f32(stats->rect, -default_margin);
@@ -1242,18 +1242,19 @@ internal void rk_ui_inspector(void)
         pane = rk_ui_pane_begin(&inspector->rect, &inspector->show, str8_lit("INSPECTOR"));
     }
 
+    ui_spacer(ui_px(ui_top_font_size()*0.215, 0.f));
+
     {
         // Scene
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
         ui_set_next_child_layout_axis(Axis2_Y);
-        ui_set_next_flags(UI_BoxFlag_DrawBorder);
         UI_Box *scene_tree_box = ui_build_box_from_stringf(0, "###scene_tree");
         UI_Parent(scene_tree_box)
         {
             // Header
             {
                 ui_set_next_child_layout_axis(Axis2_X);
-                ui_set_next_flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow);
+                ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
                 UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
                 UI_Parent(header_box)
                 {
@@ -1270,7 +1271,6 @@ internal void rk_ui_inspector(void)
             // Scene cfg
             ui_set_next_child_layout_axis(Axis2_Y);
             ui_set_next_pref_height(ui_children_sum(0));
-            ui_set_next_flags(UI_BoxFlag_DrawSideLeft|UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideTop|UI_BoxFlag_DrawSideRight);
             UI_Box *scene_cfg = ui_build_box_from_stringf(0, "###scene_cfg");
             UI_Parent(scene_cfg)
             {
@@ -1396,22 +1396,23 @@ internal void rk_ui_inspector(void)
 
             // Scene tree
             {
-                F32 size = ui_top_font_size()*30.f;
-                ui_set_next_pref_size(Axis2_Y, ui_px(size, 0.0));
+                F32 row_height = ui_top_font_size()*1.3;
+                F32 list_height = row_height*30.f;
+                ui_set_next_pref_size(Axis2_Y, ui_px(list_height, 0.0));
                 ui_set_next_child_layout_axis(Axis2_Y);
                 if(!inspector->show_scene_cfg)
                 {
                     ui_set_next_flags(UI_BoxFlag_Disabled);
                 }
-                UI_Box *container_box = ui_build_box_from_stringf(UI_BoxFlag_DrawOverlay, "###container");
-                container_box->pref_size[Axis2_Y].value = mix_1f32(size, 0, container_box->disabled_t);
+                UI_Box *container_box = ui_build_box_from_stringf(0, "###container");
+                container_box->pref_size[Axis2_Y].value = mix_1f32(list_height, 0, container_box->disabled_t);
 
                 // scroll params
                 UI_ScrollListParams scroll_list_params = {0};
                 {
                     Vec2F32 rect_dim = dim_2f32(container_box->rect);
                     scroll_list_params.flags = UI_ScrollListFlag_All;
-                    scroll_list_params.row_height_px = ui_top_font_size()*1.3;
+                    scroll_list_params.row_height_px = row_height;
                     scroll_list_params.dim_px = rect_dim;
                     scroll_list_params.item_range = r1s64(0, scene->bucket->node_count);
                     scroll_list_params.cursor_min_is_empty_selection[Axis2_Y] = 0;
@@ -1462,16 +1463,17 @@ internal void rk_ui_inspector(void)
             }
         }
 
+        ui_spacer(ui_px(ui_top_font_size()*0.215, 0.f));
+
         // Camera
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
         ui_set_next_child_layout_axis(Axis2_Y);
-        ui_set_next_flags(UI_BoxFlag_DrawBorder);
         UI_Box *camera_cfg_box = ui_build_box_from_stringf(0, "###camera_cfg");
         UI_Parent(camera_cfg_box)
         {
             // Header
             ui_set_next_child_layout_axis(Axis2_X);
-            ui_set_next_flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow);
+            ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
             UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
             UI_Parent(header_box)
             {
@@ -1540,18 +1542,17 @@ internal void rk_ui_inspector(void)
             }
         }
 
-        ui_spacer(ui_px(30, 1.0));
+        ui_spacer(ui_px(ui_top_font_size()*0.215, 0.f));
 
         // Light
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
         ui_set_next_child_layout_axis(Axis2_Y);
-        ui_set_next_flags(UI_BoxFlag_DrawBorder);
         UI_Box *light_cfg_box = ui_build_box_from_stringf(0, "###light_cfg");
         UI_Parent(light_cfg_box)
         {
             // Header
             ui_set_next_child_layout_axis(Axis2_X);
-            ui_set_next_flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow);
+            ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
             UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
             UI_Parent(header_box)
             {
@@ -1576,6 +1577,8 @@ internal void rk_ui_inspector(void)
             }
         }
 
+        ui_spacer(ui_px(ui_top_font_size()*0.215, 0.f));
+
         // Node Properties
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
         ui_set_next_child_layout_axis(Axis2_Y);
@@ -1584,7 +1587,7 @@ internal void rk_ui_inspector(void)
         {
             // Header
             ui_set_next_child_layout_axis(Axis2_X);
-            ui_set_next_flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow);
+            ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
             UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
             UI_Parent(header_box)
             {
@@ -1666,9 +1669,9 @@ internal void rk_ui_profiler(void)
         profiler->show = 1;
         profiler->rect = rk_state->window_rect;
         {
-            F32 default_width = 900;
-            F32 default_height = 1200;
-            F32 default_margin = 30;
+            F32 default_width = rk_state->window_dim.x * 0.6f;
+            F32 default_height = rk_state->window_dim.x * 0.15f;
+            F32 default_margin = ui_top_font_size()*1.3;
             profiler->rect.x0 = profiler->rect.x1 - default_width;
             profiler->rect.y0 = profiler->rect.y1 - default_height;
             profiler->rect = pad_2f32(profiler->rect, -default_margin);
@@ -1693,7 +1696,7 @@ internal void rk_ui_profiler(void)
     // NOTE(k): width - scrollbar width
     ui_set_next_pref_width(ui_px(container_box->fixed_size.x-ui_top_font_size()*0.9f, 0.f));
     UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
-    UI_Parent(header_box) UI_PrefWidth(ui_pct(1.f,0.f)) UI_Flags(UI_BoxFlag_DrawBorder) UI_TextAlignment(UI_TextAlign_Center)
+    UI_Parent(header_box) UI_PrefWidth(ui_pct(1.f,0.f)) UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow) UI_TextAlignment(UI_TextAlign_Center)
     {
         ui_labelf("Tag");
         ui_labelf("Cycles");
@@ -1707,7 +1710,7 @@ internal void rk_ui_profiler(void)
     content_rect.y0 = header_box->rect.y1;
 
     // Content
-    ProfTick *pf_tick = ProfTickPst();
+    ProfTickInfo *pf_tick = ProfTickPst();
     U64 prof_node_count = 0;
     if(pf_tick != 0 && pf_tick->node_hash_table != 0)
     {
@@ -1787,6 +1790,7 @@ internal void
 rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
 {
     ProfBeginFunction();
+
     // Begin of the frame
     {
         arena_clear(rk_state->frame_arena);
@@ -1864,6 +1868,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     }
 
     // Update/draw node in the scene tree
+    ProfScope("update/draw")
     {
         RK_Node *node = scene->root;
         while(node != 0)

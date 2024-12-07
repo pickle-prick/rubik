@@ -1,5 +1,5 @@
 name: "default_scene"
-viewport_shading: s0
+viewport_shading: s2
 polygon_mode: s0
 global_light: 
   x: f0.000000
@@ -14,7 +14,7 @@ nodes:
     flags: u0
     push_count: u0
     pop_count: u0
-    children_count: u4
+    children_count: u5
     animation_dt: f0.000000
     pos: 
       x: f0.000000
@@ -41,14 +41,14 @@ nodes:
     children_count: u0
     animation_dt: f0.000000
     pos: 
-      x: f0.000000
-      y: f-3.000000
-      z: f-3.000000
+      x: f5.560120
+      y: f-5.098010
+      z: f-6.035183
     rot: 
-      x: f-0.080582
-      y: f0.444870
-      z: f0.040232
-      w: f0.891055
+      x: f-0.354462
+      y: f-0.181904
+      z: f-0.070507
+      w: f0.914492
     scale: 
       x: f1.000000
       y: f1.000000
@@ -77,10 +77,10 @@ nodes:
       y: f-1.500000
       z: f0.000000
     rot: 
-      x: f-0.102162
-      y: f0.415996
-      z: f0.047098
-      w: f0.902364
+      x: f-0.109019
+      y: f0.359643
+      z: f0.042363
+      w: f0.925558
     scale: 
       x: f1.000000
       y: f1.000000
@@ -154,7 +154,7 @@ nodes:
     push_count: u0
     pop_count: u1
     children_count: u0
-    animation_dt: f1.243837
+    animation_dt: f2.281116
     pos: 
       x: f6.000000
       y: f0.000000
@@ -181,7 +181,7 @@ nodes:
     push_count: u0
     pop_count: u0
     children_count: u0
-    animation_dt: f4.277154
+    animation_dt: f7.214449
     pos: 
       x: f0.000000
       y: f0.000000
@@ -199,3 +199,30 @@ nodes:
     mesh: 
       kind: u5
       path: "./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"
+  - 
+    name: "box"
+    key: u7834776443222187976
+    parent_key: u746744014776526199
+    kind: u4
+    flags: u0
+    push_count: u0
+    pop_count: u0
+    children_count: u0
+    animation_dt: f0.000000
+    pos: 
+      x: f-2.874403
+      y: f-1.526701
+      z: f0.000000
+    rot: 
+      x: f0.000000
+      y: f0.000000
+      z: f0.000000
+      w: f1.000000
+    scale: 
+      x: f1.000000
+      y: f1.823000
+      z: f2.194000
+    update_functions: 
+    mesh: 
+      kind: u0
+      path: ""

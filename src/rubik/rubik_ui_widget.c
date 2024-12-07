@@ -233,7 +233,7 @@ rk_ui_pane_begin(Rng2F32 *rect, B32 *open, String8 string)
     ui_set_next_fixed_width(rect_dim.x);
     ui_set_next_pref_height(ui_children_sum(1.0));
     ui_set_next_child_layout_axis(Axis2_Y);
-    UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clip|UI_BoxFlag_Clickable, string);
+    UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clip|UI_BoxFlag_Clickable|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow, string);
 
     ui_push_parent(box);
     ui_push_pref_width(ui_pct(1.0, .0));
@@ -241,7 +241,7 @@ rk_ui_pane_begin(Rng2F32 *rect, B32 *open, String8 string)
     //- k: build the header
     ui_set_next_child_layout_axis(Axis2_X);
     ui_set_next_hover_cursor(OS_Cursor_UpDownLeftRight);
-    UI_Box *header_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_MouseClickable, "###header");
+    UI_Box *header_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_MouseClickable, "###header");
     UI_Parent(header_box)
     {
         ui_set_next_pref_size(Axis2_X, ui_px(39,1.0));

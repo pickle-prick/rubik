@@ -2711,6 +2711,7 @@ r_end_frame(void)
 internal U64
 r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
 {
+    ProfBeginFunction();
     R_Vulkan_Window *wnd = r_vulkan_window_from_handle(window_equip);
     R_Vulkan_Frame *frame = &wnd->frames[wnd->curr_frame_idx];
     R_Vulkan_Device *device = &r_vulkan_state->device;
@@ -2784,6 +2785,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
 
     // Start command recrod
     r_vulkan_cmd_begin(frame->cmd_buf);
+    ProfEnd();
     return id;
 }
 

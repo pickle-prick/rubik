@@ -33,8 +33,8 @@ struct ProfNodeSlot
     U64      count;
 };
 
-typedef struct ProfTick ProfTick;
-struct ProfTick
+typedef struct ProfTickInfo ProfTickInfo;
+struct ProfTickInfo
 {
     Arena        *arena;
     U64          arena_tick_pos;
@@ -66,24 +66,24 @@ static inline unsigned long long rdtsc() {
 #endif
 
 ////////////////////////////////
-//~ k: Debug Profile Defines
-
-#if PROFILE_TELEMETRY
-
-////////////////////////////////
 //- k: Globals
 #define pf_buffer_count 2
 #define pf_table_size 1000
-global ProfTick *pf_ticks[pf_buffer_count] = {0};
+global ProfTickInfo *pf_ticks[pf_buffer_count] = {0};
 global ProfNode *pf_top_node = 0;
 global U64 pf_tick_count = 0;
 global U64 pf_idx_pst = 0;
 global U64 pf_idx_pre = 0;
 
 ////////////////////////////////
+//~ k: Debug Profile Defines
+
+#if PROFILE
+
+////////////////////////////////
 //- k: Build Helper
 
-internal ProfTick *pf_tick_alloc();
+internal ProfTickInfo *pf_tick_alloc();
 internal void pf_tick();
 internal void pf_begin(char *fmt, ...);
 internal void pf_end();
@@ -92,8 +92,8 @@ internal ProfNode *pf_node_alloc();
 # define ProfTick()     pf_tick()
 # define ProfBegin(...) pf_begin(__VA_ARGS__)
 # define ProfEnd()      pf_end()
-# define ProfTickPst() pf_ticks[pf_idx_pst]
-# define ProfTickPre() pf_ticks[pf_idx_pre]
+# define ProfTickPst()  pf_ticks[pf_idx_pst]
+# define ProfTickPre()  pf_ticks[pf_idx_pre]
 
 #endif
 
@@ -104,8 +104,8 @@ internal ProfNode *pf_node_alloc();
 # define ProfTick(...)          (0)
 # define ProfBegin(...)         (0)
 # define ProfEnd()              (0)
-# define ProTablePst()          (0)
-# define ProTablePre()          (0)
+# define ProfTickPst()          (0)
+# define ProfTickPre()          (0)
 #endif
 
 ////////////////////////////////

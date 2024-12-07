@@ -1,9 +1,9 @@
-#if PROFILE_TELEMETRY
+#if PROFILE
 
-internal ProfTick *pf_tick_alloc()
+internal ProfTickInfo *pf_tick_alloc()
 {
     Arena *arena = arena_alloc();
-    ProfTick *tick = push_array(arena, ProfTick, 1);
+    ProfTickInfo *tick = push_array(arena, ProfTickInfo, 1);
     tick->arena = arena;
     tick->arena_tick_pos = arena_pos(arena);
     return tick;
@@ -25,12 +25,12 @@ internal void pf_tick()
     }
 
     // end last tick's tsc/us counter
-    ProfTick *last_tick = pf_ticks[pf_idx_pst];
+    ProfTickInfo *last_tick = pf_ticks[pf_idx_pst];
     last_tick->cycles = rdtsc() - last_tick->tsc_start;
     last_tick->us = os_now_microseconds() - last_tick->us_start;
 
     // start current tick
-    ProfTick *tick = pf_ticks[pf_idx_pre];
+    ProfTickInfo *tick = pf_ticks[pf_idx_pre];
     tick->tsc_start = rdtsc();
     tick->us_start = os_now_microseconds();
 
@@ -44,7 +44,7 @@ internal void pf_tick()
 
 internal void pf_begin(char* fmt, ...)
 {
-    ProfTick *tick = pf_ticks[pf_idx_pre];
+    ProfTickInfo *tick = pf_ticks[pf_idx_pre];
     Arena *arena = tick->arena;
 
     ProfNode *node = 0;

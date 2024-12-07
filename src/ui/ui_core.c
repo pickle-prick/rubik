@@ -353,6 +353,7 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
 internal void
 ui_end_build(void)
 {
+    ProfBeginFunction();
     // Prune untouched or transient widgets in the cache
     for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
     {
@@ -499,6 +500,7 @@ ui_end_build(void)
     // Clear ui_state build arena
     ui_state->build_index += 1;
     arena_clear(ui_build_arena());
+    ProfEnd();
 }
 
 internal void 

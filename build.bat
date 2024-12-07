@@ -8,13 +8,13 @@ cd /D "%~dp0"
 :: Windows development environments. It takes a list of simple alphanumeric-
 :: only arguments which control (a) what is built, (b) which compiler & linker
 :: are used, and (c) extra high-level build options. By default, if no options
-:: are passed, then the main "game" graphical game is built.
+:: are passed, then the main "rubik" graphical rubik is built.
 ::
 :: Below is a non-exhaustive list of possible ways to use the script:
-:: `build game`
-:: `build game clang`
-:: `build game release`
-:: `build game asan telemetry`
+:: `build rubik`
+:: `build rubik clang`
+:: `build rubik release`
+:: `build rubik asan telemetry`
 ::
 :: For a full list of possible build targets and their build command lines,
 :: search for @build_targets in this file.
@@ -32,12 +32,12 @@ if "%debug%"=="1"   set release=0 && echo [debug mode]
 if "%release%"=="1" set debug=0 && echo [release mode]
 if "%msvc%"=="1"    set clang=0 && echo [msvc compile]
 if "%clang%"=="1"   set msvc=0 && echo [clang compile]
-if "%~1"==""                     echo [default mode, assuming `game` build] && set game=1
-if "%~1"=="release" if "%~2"=="" echo [default mode, assuming `game` build] && set game=1
+if "%~1"==""                     echo [default mode, assuming `rubik` build] && set rubik=1
+if "%~1"=="release" if "%~2"=="" echo [default mode, assuming `rubik` build] && set rubik=1
 
 :: --- Unpack Command Line Build Arguments ------------------------------------
 set auto_compile_flags=
-if "%telemetry%"=="1" set auto_compile_flags=%auto_compile_flags% -DPROFILE_TELEMETRY=1 && echo [telemetry profiling enabled]
+if "%profile%"=="1" set auto_compile_flags=%auto_compile_flags% -DPROFILE=1 && echo [profiling enabled]
 if "%asan%"=="1"      set auto_compile_flags=%auto_compile_flags% -fsanitize=address && echo [asan enabled]
 
 :: --- Compile/Link Line Definitions ------------------------------------------
@@ -128,12 +128,11 @@ if not "%no_meta%"=="1" (
 
 :: --- Build Everything (@build_targets) --------------------------------------
 pushd build
-if "%game%"=="1"                     set didbuild=1 && %compile% ..\src\game\game_main.c                               %compile_link% %link_icon% %out%game.exe || exit /b 1
-:: if "%radlink%"=="1"                    set didbuild=1 && %compile%  ..\src\linker\lnk.c                                      %compile_link% %link_natvis%"%~dp0\src\linker\linker.natvis" %out%radlink.exe || exit /b 1
+if "%rubik%"=="1"                     set didbuild=1 && %compile% ..\src\rubik\rubik_main.c                               %compile_link% %link_icon% %out%rubik.exe || exit /b 1
 popd
 
 :: --- Warn On No Builds ------------------------------------------------------
 if "%didbuild%"=="" (
-  echo [WARNING] no valid build target specified; must use build target names as arguments to this script, like `build game`.
+  echo [WARNING] no valid build target specified; must use build target names as arguments to this script, like `build rubik`.
   exit /b 1
 )

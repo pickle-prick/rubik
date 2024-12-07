@@ -219,6 +219,7 @@ d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices,
 internal void
 d_sub_bucket(D_Bucket *bucket)
 {
+    ProfBeginFunction();
     Arena *arena = d_thread_ctx->arena;
     D_Bucket *src = bucket;
     D_Bucket *dst = d_top_bucket();
@@ -257,6 +258,7 @@ d_sub_bucket(D_Bucket *bucket)
             }break;
         }
     }
+    ProfEnd();
 }
 
 ////////////////////////////////
