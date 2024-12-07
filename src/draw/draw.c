@@ -285,25 +285,40 @@ d_fancy_run_list_from_fancy_string_list(Arena *arena, F32 tab_size_px, F_RasterF
 //~ k: text rendering
 internal void d_truncated_fancy_run_list(Vec2F32 p, D_FancyRunList *list, F32 max_x, F_Run trailer_run)
 {
+    ProfBeginFunction();
     // TODO: handle trailer_run, max_x, underline_thickness, trikethrough
-    // B32 trailer_enabled = (list->dim.x > max_x && trailer_run.dim.x < max_x);
+    B32 trailer_enabled = ((p.x+list->dim.x) > max_x && (p.x+trailer_run.dim.x) < max_x);
 
+    F32 off_x = p.x;
+    F32 off_y = p.y;
+    F32 advance = 0;
+    B32 trailer_found = 0;
+    Vec4F32 last_color = {0};
     for(D_FancyRunNode *n = list->first; n != 0; n = n->next)
     {
-        F32 off_x = p.x;
-        F32 off_y = p.y;
-
         F_Piece *piece_first = n->v.run.pieces.v;
         F_Piece *piece_opl = n->v.run.pieces.v + n->v.run.pieces.count;
 
         for(F_Piece *piece = piece_first; piece < piece_opl; piece++)
         {
+            if(trailer_enabled && (off_x+advance+piece->advance) > (max_x-trailer_run.dim.x))
+            {
+                trailer_found = 1; 
+                break;
+            }
+
+            if(!trailer_enabled && (off_x+advance+piece->advance) > max_x)
+            {
+                goto end_draw;
+            }
+
             Rng2F32 dst = r2f32p(piece->rect.x0+off_x, piece->rect.y0+off_y, piece->rect.x1+off_x, piece->rect.y1+off_y);
             Rng2F32 src = r2f32p(piece->subrect.x0, piece->subrect.y0, piece->subrect.x1, piece->subrect.y1);
-            // TODO: src wil be all zeros in release build, fix it later
+            // TODO(k): src wil be all zeros in gcc release build but not with clang
             AssertAlways((src.x0 + src.x1 + src.y0 + src.y1) != 0);
             Vec2F32 size = dim_2f32(dst);
             AssertAlways(!r_handle_match(piece->texture, r_handle_zero()));
+            last_color = n->v.color;
 
             // NOTE(k): Space will have 0 extent
             if(size.x > 0 && size.y > 0)
@@ -314,8 +329,42 @@ internal void d_truncated_fancy_run_list(Vec2F32 p, D_FancyRunList *list, F32 ma
                 }
                 d_img(dst, src, piece->texture, n->v.color, 0,0,0);
             }
+
+            advance += piece->advance;
+        }
+
+        // TODO(k): underline
+        // TODO(k): strikethrough
+
+        if(trailer_found)
+        {
+            break;
         }
     }
+    end_draw:;
+
+    // draw trailer
+    if(trailer_found)
+    {
+        off_x += advance;
+        F_Piece *piece_first = trailer_run.pieces.v;
+        F_Piece *piece_opl = trailer_run.pieces.v + trailer_run.pieces.count;
+        Vec4F32 trailer_piece_color = last_color;
+
+        for(F_Piece *piece = piece_first; piece < piece_opl; piece++)
+        {
+            R_Handle texture = piece->texture;
+            Rng2F32 dst = r2f32p(piece->rect.x0+off_x, piece->rect.y0+off_y, piece->rect.x1+off_x, piece->rect.y1+off_y);
+            Rng2F32 src = r2f32p(piece->subrect.x0, piece->subrect.y0, piece->subrect.x1, piece->subrect.y1);
+            if(!r_handle_match(texture, r_handle_zero()))
+            {
+                d_img(dst, src, texture, trailer_piece_color, 0,0,0);
+            }
+            advance += piece->advance;
+        }
+    }
+
+    ProfEnd();
 }
 
 ////////////////////////////////

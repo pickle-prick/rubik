@@ -179,11 +179,11 @@ ui_draw(OS_Handle os_wnd)
 
             if(!(box->flags & UI_BoxFlag_DisableTextTrunc))
             {
-                max_x = (box->rect.x1-text_position.x-box->text_padding);
+                max_x = (box->rect.x1-box->text_padding);
                 ellipses_run = f_push_run_from_string(scratch.arena, box->font, box->font_size, 0, box->tab_size, 0, str8_lit("..."));
             }
 
-            d_truncated_fancy_run_list(text_position, &box->display_string_runs, box->rect.max.x, ellipses_run);
+            d_truncated_fancy_run_list(text_position, &box->display_string_runs, max_x, ellipses_run);
         }
 
         // NOTE(k): draw focus viz

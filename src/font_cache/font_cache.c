@@ -200,14 +200,14 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
 
     float xpos = base_align_px;
     float ypos = 0;
-    // TODO(@k): we could get left bearing of this glphy, then add it to the offsetX
+    // TODO(k): we could get left bearing of this glphy, then add it to the offsetX
     for(U64 i = 0; i < ret.pieces.count; i++)
     {
         float x = xpos;
         float y = ypos;
 
         F_Piece *piece = &ret.pieces.v[i];
-        // TODO(@k): we could query kerning here
+        // TODO(k): we could query kerning here
         AssertAlways(string.str[i] >= 32);
         FP_PackedQuad quad = fp_get_packed_quad(hash2style_node->atlas.atlas_handle, string.str[i]-32, &x, &y);
 
