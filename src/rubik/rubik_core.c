@@ -1185,6 +1185,7 @@ internal void rk_ui_inspector(void)
 
         String8 scene_path_to_save;
         U64 scene_path_to_save_buffer_size;
+        S64 last_active_row; // -1 is used to indicate no selection
 
         // txt input buffer
         TxtPt txt_cursor;
@@ -1211,6 +1212,7 @@ internal void rk_ui_inspector(void)
         inspector->scene_path_to_save.str = push_array(inspector_view->arena, U8, inspector->scene_path_to_save_buffer_size);
         inspector->scene_path_to_save.size = scene->path.size;
         MemoryCopy(inspector->scene_path_to_save.str, scene->path.str, scene->path.size);
+        inspector->last_active_row = -1;
 
         inspector->txt_cursor           = (TxtPt){0};
         inspector->txt_mark             = (TxtPt){0};
@@ -1426,6 +1428,7 @@ internal void rk_ui_inspector(void)
                 {
                     RK_Node *root = scene->root;
                     U64 row_idx = 0;
+                    S64 active_row = -1;
                     U64 level = 0;
                     U64 indent_size = 2;
                     while(root != 0)
@@ -1445,17 +1448,28 @@ internal void rk_ui_inspector(void)
                                 ui_set_next_flags(UI_BoxFlag_DrawOverlay);
                             }
                             UI_Signal label = ui_button(string);
-                            if(ui_clicked(label)) rk_set_active_key(root->key);
+                            if(ui_clicked(label))
+                            {
+                                rk_set_active_key(root->key);
+                                inspector->last_active_row = row_idx;
+                                active_row = row_idx;
+                            }
                         }
 
-                        // if(root == active_node && scroller.idx != row_idx && scroller.off == 0)
-                        // {
-                        //     ui_scroll_pt_target_idx(&scroller, row_idx);
-                        // }
+                        if(active_row == -1 && root == active_node)
+                        {
+                            active_row = row_idx;
+                        }
 
                         level += (rec.push_count-rec.pop_count);
                         root = rec.next;
                         row_idx++;
+                    }
+
+                    if(active_row != inspector->last_active_row && active_row >= 0)
+                    {
+                        inspector->last_active_row = active_row;
+                        ui_scroll_pt_target_idx(&scroller, active_row);
                     }
                 }
             }
