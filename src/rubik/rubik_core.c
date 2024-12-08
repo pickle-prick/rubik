@@ -1190,6 +1190,7 @@ internal void rk_ui_inspector(void)
         // txt input buffer
         TxtPt txt_cursor;
         TxtPt txt_mark;
+        B32 txt_has_draft;
         U8 *txt_edit_buffer;
         U8 txt_edit_buffer_size;
         U64 txt_edit_string_size;
@@ -1216,13 +1217,14 @@ internal void rk_ui_inspector(void)
 
         inspector->txt_cursor           = (TxtPt){0};
         inspector->txt_mark             = (TxtPt){0};
+        inspector->txt_has_draft        = 0;
         inspector->txt_edit_buffer_size = 100;
         inspector->txt_edit_buffer      = push_array(inspector_view->arena, U8, inspector->txt_edit_buffer_size);
         inspector->txt_edit_string_size = 0;
 
         inspector->rect = rk_state->window_rect;
         {
-            F32 default_width = 800;
+            F32 default_width  = 800;
             F32 default_margin = 30;
             inspector->rect.x1 = 800;
             inspector->rect = pad_2f32(inspector->rect, -default_margin);
@@ -1530,26 +1532,26 @@ internal void rk_ui_inspector(void)
                 {
                     ui_labelf("pos");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&camera->pos.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("X###pos_x"));
-                    ui_f32_edit(&camera->pos.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("Y###pos_y"));
-                    ui_f32_edit(&camera->pos.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("Z###pos_z"));
+                    ui_f32_edit(&camera->pos.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
+                    ui_f32_edit(&camera->pos.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
+                    ui_f32_edit(&camera->pos.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
                 }
                 UI_Row
                 {
                     ui_labelf("scale");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&camera->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("X###scale_x"));
-                    ui_f32_edit(&camera->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("Y###scale_y"));
-                    ui_f32_edit(&camera->scale.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("Z###scale_z"));
+                    ui_f32_edit(&camera->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###scale_x"));
+                    ui_f32_edit(&camera->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###scale_y"));
+                    ui_f32_edit(&camera->scale.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###scale_z"));
                 }
                 UI_Row
                 {
                     ui_labelf("rot");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&camera->rot.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("X###rot_x"));
-                    ui_f32_edit(&camera->rot.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("Y###rot_y"));
-                    ui_f32_edit(&camera->rot.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("Z###rot_z"));
-                    ui_f32_edit(&camera->rot.w, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("W###rot_w"));
+                    ui_f32_edit(&camera->rot.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###rot_x"));
+                    ui_f32_edit(&camera->rot.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###rot_y"));
+                    ui_f32_edit(&camera->rot.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###rot_z"));
+                    ui_f32_edit(&camera->rot.w, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("W###rot_w"));
                 }
             }
         }
@@ -1576,15 +1578,17 @@ internal void rk_ui_inspector(void)
                 ui_labelf("Light");
             }
 
+            ui_spacer(ui_px(ui_top_font_size()*0.215, 0.f));
+
             if(inspector->show_light_cfg)
             {
                 UI_Row
                 {
                     ui_labelf("global_light");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&scene->global_light.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("X###pos_x"));
-                    ui_f32_edit(&scene->global_light.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("Y###pos_y"));
-                    ui_f32_edit(&scene->global_light.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("Z###pos_z"));
+                    ui_f32_edit(&scene->global_light.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
+                    ui_f32_edit(&scene->global_light.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
+                    ui_f32_edit(&scene->global_light.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
                 }
             }
         }
@@ -1632,26 +1636,26 @@ internal void rk_ui_inspector(void)
                 {
                     ui_labelf("pos");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&active_node->pos.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("X###pos_x"));
-                    ui_f32_edit(&active_node->pos.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("Y###pos_y"));
-                    ui_f32_edit(&active_node->pos.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("Z###pos_z"));
+                    ui_f32_edit(&active_node->pos.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
+                    ui_f32_edit(&active_node->pos.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
+                    ui_f32_edit(&active_node->pos.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
                 }
                 UI_Row
                 {
                     ui_labelf("scale");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&active_node->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("X###scale_x"));
-                    ui_f32_edit(&active_node->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("Y###scale_y"));
-                    ui_f32_edit(&active_node->scale.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("Z###scale_z"));
+                    ui_f32_edit(&active_node->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###scale_x"));
+                    ui_f32_edit(&active_node->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###scale_y"));
+                    ui_f32_edit(&active_node->scale.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###scale_z"));
                 }
                 UI_Row
                 {
                     ui_labelf("rot");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&active_node->rot.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("X###rot_x"));
-                    ui_f32_edit(&active_node->rot.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("Y###rot_y"));
-                    ui_f32_edit(&active_node->rot.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("Z###rot_z"));
-                    ui_f32_edit(&active_node->rot.w, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, str8_lit("W###rot_w"));
+                    ui_f32_edit(&active_node->rot.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###rot_x"));
+                    ui_f32_edit(&active_node->rot.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###rot_y"));
+                    ui_f32_edit(&active_node->rot.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###rot_z"));
+                    ui_f32_edit(&active_node->rot.w, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("W###rot_w"));
                 }
             }
         }
@@ -1926,17 +1930,25 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     }
 
     geo3d_pass->view = rk_view_from_node(camera);
-    geo3d_pass->projection = make_perspective_vulkan_4x4f32(camera->v.camera.fov, rk_state->window_dim.x/rk_state->window_dim.y, camera->v.camera.zn, camera->v.camera.zf);
+    switch(camera->v.camera.kind)
+    {
+        case RK_CameraKind_Perspective:
+        {
+            geo3d_pass->projection = make_perspective_vulkan_4x4f32(camera->v.camera.p.fov, rk_state->window_dim.x/rk_state->window_dim.y, camera->v.camera.p.zn, camera->v.camera.p.zf);
+        }break;
+        case RK_CameraKind_Orthographic:
+        {
+            geo3d_pass->projection = make_orthographic_vulkan_4x4f32(camera->v.camera.o.left, camera->v.camera.o.right, camera->v.camera.o.bottom, camera->v.camera.o.top, camera->v.camera.o.zn, camera->v.camera.o.zf);
+        }break;
+        default:{InvalidPath;}break;
+    }
     Mat4x4F32 xform_m = mul_4x4f32(geo3d_pass->projection, geo3d_pass->view);
 
     if(active_node != 0) 
     {
         geo3d_pass->show_gizmos = 1;
         geo3d_pass->gizmos_xform = active_node->fixed_xform;
-        geo3d_pass->gizmos_origin = v4f32(geo3d_pass->gizmos_xform.v[3][0],
-                                          geo3d_pass->gizmos_xform.v[3][1],
-                                          geo3d_pass->gizmos_xform.v[3][2],
-                                          1);
+        geo3d_pass->gizmos_origin = v4f32(geo3d_pass->gizmos_xform.v[3][0], geo3d_pass->gizmos_xform.v[3][1], geo3d_pass->gizmos_xform.v[3][2], 1);
     }
 
     // Update hot/active

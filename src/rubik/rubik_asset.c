@@ -106,11 +106,29 @@ rk_scene_from_se_node(SE_Node* root)
                     case RK_NodeKind_Camera3D:
                     {
                         SE_Node *senode = se_node_from_tag(n->first, str8_lit("camera"));
-                        rk_node->v.camera.fov = se_f64_from_struct(senode, str8_lit("fov"));
-                        rk_node->v.camera.zn = se_f64_from_struct(senode, str8_lit("zn"));
-                        rk_node->v.camera.zf = se_f64_from_struct(senode, str8_lit("zf"));
                         rk_node->v.camera.hide_cursor = se_b32_from_struct(senode, str8_lit("hide_cursor"));
                         rk_node->v.camera.lock_cursor = se_b32_from_struct(senode, str8_lit("lock_cursor"));
+                        RK_CameraKind camera_kind = se_u64_from_struct(senode, str8_lit("kind"));
+
+                        switch(camera_kind)
+                        {
+                            case RK_CameraKind_Perspective:
+                            {
+                                rk_node->v.camera.p.fov = se_f64_from_struct(senode, str8_lit("fov"));
+                                rk_node->v.camera.p.zn = se_f64_from_struct(senode, str8_lit("zn"));
+                                rk_node->v.camera.p.zf = se_f64_from_struct(senode, str8_lit("zf"));
+                            }break;
+                            case RK_CameraKind_Orthographic:
+                            {
+                                rk_node->v.camera.o.left = se_f64_from_struct(senode, str8_lit("left"));
+                                rk_node->v.camera.o.right = se_f64_from_struct(senode, str8_lit("right"));
+                                rk_node->v.camera.o.bottom = se_f64_from_struct(senode, str8_lit("bottom"));
+                                rk_node->v.camera.o.top = se_f64_from_struct(senode, str8_lit("top"));
+                                rk_node->v.camera.o.zn = se_f64_from_struct(senode, str8_lit("zn"));
+                                rk_node->v.camera.o.zf = se_f64_from_struct(senode, str8_lit("zf"));
+                            }break;
+                            default:{InvalidPath;}break;
+                        }
 
                         B32 is_active = se_b32_from_struct(senode, str8_lit("is_active"));
 
@@ -323,12 +341,30 @@ rk_scene_to_file(RK_Scene *scene, String8 path)
                         {
                             SE_Struct(str8_lit("camera"))
                             {
-                                se_float(str8_lit("fov"), node->v.camera.fov);
-                                se_float(str8_lit("zn"), node->v.camera.zn);
-                                se_float(str8_lit("zf"), node->v.camera.zf);
+                                se_uint(str8_lit("kind"), node->v.camera.kind);
                                 se_boolean(str8_lit("hide_cursor"), node->v.camera.hide_cursor);
                                 se_boolean(str8_lit("lock_cursor"), node->v.camera.lock_cursor);
                                 se_boolean(str8_lit("is_active"), node == scene->active_camera->v);
+
+                                switch(node->v.camera.kind)
+                                {
+                                    case RK_CameraKind_Perspective:
+                                    {
+                                        se_float(str8_lit("fov"), node->v.camera.p.fov);
+                                        se_float(str8_lit("zn"), node->v.camera.p.zn);
+                                        se_float(str8_lit("zf"), node->v.camera.p.zf);
+                                    }break;
+                                    case RK_CameraKind_Orthographic:
+                                    {
+                                        se_float(str8_lit("left"), node->v.camera.o.left);
+                                        se_float(str8_lit("right"), node->v.camera.o.right);
+                                        se_float(str8_lit("bottom"), node->v.camera.o.bottom);
+                                        se_float(str8_lit("top"), node->v.camera.o.top);
+                                        se_float(str8_lit("zn"), node->v.camera.o.zn);
+                                        se_float(str8_lit("zf"), node->v.camera.o.zf);
+                                    }break;
+                                    default:{InvalidPath;}break;
+                                }
                             }
                         }
                     }
@@ -370,11 +406,12 @@ rk_default_scene()
         {
             RK_Node *camera = rk_build_node_from_string(0, str8_lit("editor_camera"));
             {
-                camera->kind         = RK_NodeKind_Camera3D;
-                camera->pos          = v3f32(0,-3,-3);
-                camera->v.camera.fov = 0.25;
-                camera->v.camera.zn  = 0.1f;
-                camera->v.camera.zf  = 200.f;
+                camera->kind           = RK_NodeKind_Camera3D;
+                camera->pos            = v3f32(0,-3,-3);
+                camera->v.camera.kind  = RK_CameraKind_Perspective;
+                camera->v.camera.p.fov = 0.25;
+                camera->v.camera.p.zn  = 0.1f;
+                camera->v.camera.p.zf  = 200.f;
                 RK_FunctionNode *fn = rk_function_from_string(str8_lit("editor_camera_fn"));
                 rk_node_push_fn(scene->bucket->arena, camera, fn->ptr, fn->alias);
             }
@@ -387,7 +424,8 @@ rk_default_scene()
             RK_Node *player = rk_build_node_from_stringf(0, "player");
             {
                 player->flags |= RK_NodeFlags_NavigationRoot;
-                player->pos = v3f32(6,-1.5,0);
+                // player->pos = v3f32(6,-1.5,0);
+                player->pos = v3f32(0,-1.5,-3);
                 RK_FunctionNode *fn = rk_function_from_string(str8_lit("player_fn"));
                 rk_node_push_fn(scene->arena, player, fn->ptr, fn->alias);
 
@@ -403,12 +441,23 @@ rk_default_scene()
                     }
                     //- k: camera
                     RK_Node *camera = rk_build_node_from_stringf(0, "player_camera");
+                    // Vec2F32 window_dim = dim_2f32(os_client_rect_from_window(rk_state->os_wnd));
+                    // F32 ratio = window_dim.x / window_dim.y;
+                    F32 scale = 3.f;
                     camera->kind = RK_NodeKind_Camera3D;
                     {
-                        camera->pos                  = v3f32(0,-3,0);
-                        camera->v.camera.fov         = 0.25;
-                        camera->v.camera.zn          = 0.1f;
-                        camera->v.camera.zf          = 200.f;
+                        camera->pos                  = v3f32(0,0,3);
+                        camera->v.camera.kind        = RK_CameraKind_Perspective;
+                        camera->v.camera.p.fov       = 0.25;
+                        camera->v.camera.p.zn        = 0.1f;
+                        camera->v.camera.p.zf        = 200.f;
+                        // camera->v.camera.kind        = RK_CameraKind_Orthographic;
+                        // camera->v.camera.o.left      = -scale;
+                        // camera->v.camera.o.right     = +scale;
+                        // camera->v.camera.o.bottom    = +scale/ratio;
+                        // camera->v.camera.o.top       = -scale/ratio;
+                        // camera->v.camera.o.zn        = 0.1f;
+                        // camera->v.camera.o.zf        = 200.f;
                         camera->v.camera.hide_cursor = 1;
                         camera->v.camera.lock_cursor = 1;
                     }

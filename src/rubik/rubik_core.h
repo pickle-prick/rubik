@@ -15,6 +15,8 @@ typedef enum RK_PhysicsKind
 typedef enum RK_NodeKind
 {
     RK_NodeKind_Null,
+
+    // 3D stuffs
     RK_NodeKind_MeshPrimitive,
     RK_NodeKind_MeshJoint,
     RK_NodeKind_MeshGroup,
@@ -25,6 +27,13 @@ typedef enum RK_NodeKind
     RK_NodeKind_Camera3D,
     RK_NodeKind_COUNT,
 } RK_NodeKind;
+
+typedef enum RK_CameraKind
+{
+    RK_CameraKind_Perspective,
+    RK_CameraKind_Orthographic,
+    RK_CameraKind_COUNT,
+} RK_CameraKind;
 
 typedef enum RK_TransformKind
 {
@@ -165,16 +174,16 @@ typedef struct RK_MeshSkeletonAnimSpline RK_MeshSkeletonAnimSpline;
 struct RK_MeshSkeletonAnimSpline
 {
     RK_TransformKind       transform_kind;
-    F32                   *timestamps;
+    F32                    *timestamps;
     union
     {
-    void              *v;
-    F32               *floats;
-    Vec3F32           *v3s;
-    Vec4F32           *v4s;
-    } values;
+    void                   *v;
+    F32                    *floats;
+    Vec3F32                *v3s;
+    Vec4F32                *v4s;
+    }                      values;
     RK_Key                 target_key;
-    U64                   frame_count;
+    U64                    frame_count;
     RK_InterpolationMethod interpolation_method;
 };
 
@@ -377,11 +386,28 @@ struct RK_MeshCacheTable
 typedef struct RK_Camera3D RK_Camera3D;
 struct RK_Camera3D 
 {
-    F32     fov;
-    F32     zn;
-    F32     zf;
-    B32     hide_cursor;
-    B32     lock_cursor;
+    RK_CameraKind kind;
+    B32 hide_cursor;
+    B32 lock_cursor;
+
+    union {
+        // Perspective
+        struct {
+            F32 fov;
+            F32 zn;
+            F32 zf;
+        } p;
+
+        // Orthographic
+        struct {
+            F32 left;
+            F32 right;
+            F32 bottom;
+            F32 top;
+            F32 zn;
+            F32 zf;
+        } o;
+    };
 };
 
 /////////////////////////////////

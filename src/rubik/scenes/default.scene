@@ -1,5 +1,5 @@
 name: "default_scene"
-viewport_shading: s2
+viewport_shading: s0
 polygon_mode: s0
 global_light: 
   x: f0.000000
@@ -14,7 +14,7 @@ nodes:
     flags: u0
     push_count: u0
     pop_count: u0
-    children_count: u5
+    children_count: u4
     animation_dt: f0.000000
     pos: 
       x: f0.000000
@@ -41,14 +41,14 @@ nodes:
     children_count: u0
     animation_dt: f0.000000
     pos: 
-      x: f5.560120
-      y: f-5.098010
-      z: f-6.035183
+      x: f0.000000
+      y: f-3.000000
+      z: f-3.000000
     rot: 
-      x: f-0.354462
-      y: f-0.181904
-      z: f-0.070507
-      w: f0.914492
+      x: f0.000000
+      y: f0.000000
+      z: f0.000000
+      w: f1.000000
     scale: 
       x: f1.000000
       y: f1.000000
@@ -56,12 +56,13 @@ nodes:
     update_functions: 
       - "editor_camera_fn"
     camera: 
-      fov: f0.250000
-      zn: f0.100000
-      zf: f200.000000
+      kind: u0
       hide_cursor: false
       lock_cursor: false
       is_active: true
+      fov: f0.250000
+      zn: f0.100000
+      zf: f200.000000
   - 
     name: "player"
     key: u15108039293789629267
@@ -77,10 +78,10 @@ nodes:
       y: f-1.500000
       z: f0.000000
     rot: 
-      x: f-0.109019
-      y: f0.359643
-      z: f0.042363
-      w: f0.925558
+      x: f-0.106175
+      y: f0.472241
+      z: f0.057424
+      w: f0.873163
     scale: 
       x: f1.000000
       y: f1.000000
@@ -139,12 +140,13 @@ nodes:
       z: f1.000000
     update_functions: 
     camera: 
-      fov: f0.250000
-      zn: f0.100000
-      zf: f200.000000
+      kind: u0
       hide_cursor: true
       lock_cursor: true
       is_active: false
+      fov: f0.250000
+      zn: f0.100000
+      zf: f200.000000
   - 
     name: "dummy1"
     key: u2391432237293834208
@@ -154,7 +156,7 @@ nodes:
     push_count: u0
     pop_count: u1
     children_count: u0
-    animation_dt: f2.281116
+    animation_dt: f2.599481
     pos: 
       x: f6.000000
       y: f0.000000
@@ -181,7 +183,7 @@ nodes:
     push_count: u0
     pop_count: u0
     children_count: u0
-    animation_dt: f7.214449
+    animation_dt: f2.599481
     pos: 
       x: f0.000000
       y: f0.000000
@@ -199,30 +201,3 @@ nodes:
     mesh: 
       kind: u5
       path: "./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"
-  - 
-    name: "box"
-    key: u7834776443222187976
-    parent_key: u746744014776526199
-    kind: u4
-    flags: u0
-    push_count: u0
-    pop_count: u0
-    children_count: u0
-    animation_dt: f0.000000
-    pos: 
-      x: f-2.874403
-      y: f-1.526701
-      z: f0.000000
-    rot: 
-      x: f0.000000
-      y: f0.000000
-      z: f0.000000
-      w: f1.000000
-    scale: 
-      x: f1.000000
-      y: f1.823000
-      z: f2.194000
-    update_functions: 
-    mesh: 
-      kind: u0
-      path: ""

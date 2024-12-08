@@ -771,7 +771,7 @@ ui_scroll_list_end(void)
 }
 
 internal UI_Signal
-ui_f32_edit(F32 *n, F32 min, F32 max, TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, U64 *edit_string_size_out, String8 string)
+ui_f32_edit(F32 *n, F32 min, F32 max, TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, U64 *edit_string_size_out, B32 *has_draft, String8 string)
 {
     // TODO: make use of min/max
     String8 display_string = push_str8_copy(ui_build_arena(), ui_display_part_from_key_string(string));
@@ -793,9 +793,13 @@ ui_f32_edit(F32 *n, F32 min, F32 max, TxtPt *cursor, TxtPt *mark, U8 *edit_buffe
     // TODO(k): cursor won't redraw if mouse isn't moved
     ui_set_next_hover_cursor(is_focus_active ? OS_Cursor_IBar : OS_Cursor_HandPoint);
 
-    // Build top-level box
-    UI_Box *box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|
-                                        UI_BoxFlag_DrawBorder|
+    // build top-level box
+    ui_set_next_corner_radius_00(3);
+    ui_set_next_corner_radius_01(3);
+    ui_set_next_corner_radius_10(3);
+    ui_set_next_corner_radius_11(3);
+    UI_Box *box = ui_build_box_from_key(UI_BoxFlag_DrawBorder|
+                                        UI_BoxFlag_DrawDropShadow|
                                         UI_BoxFlag_MouseClickable|
                                         UI_BoxFlag_ClickToFocus|
                                         UI_BoxFlag_KeyboardClickable|
@@ -824,6 +828,11 @@ ui_f32_edit(F32 *n, F32 min, F32 max, TxtPt *cursor, TxtPt *mark, U8 *edit_buffe
                 new_string.size = Min(edit_buffer_size, new_string.size);
                 MemoryCopy(edit_buffer, new_string.str, new_string.size);
                 edit_string_size_out[0] = new_string.size;
+
+                if(op.replace.size != 0)
+                {
+                    *has_draft = 1;
+                }
             }
 
             // Commit op's changed cursor & mark to caller-provided state
@@ -889,12 +898,23 @@ ui_f32_edit(F32 *n, F32 min, F32 max, TxtPt *cursor, TxtPt *mark, U8 *edit_buffe
         *mark = txt_pt(1, 1);
     }
 
+    if(is_focus_active && *has_draft == 1)
+    {
+        String8 edit_string = str8(edit_buffer, edit_string_size_out[0]);
+        // NOTE(k): skip if only sign is presented
+        if(!(edit_string.size == 1 && (str8_match(edit_string, str8_lit("-"), 0) || str8_match(edit_string, str8_lit("+"), 0))))
+        {
+            sig.f |= UI_SignalFlag_Commit;
+            *n = f64_from_str8(edit_string);
+            *has_draft = 0;
+        }
+    }
+
     if(is_focus_active && (sig.f&UI_SignalFlag_KeyboardPressed))
     {
         ui_set_auto_focus_active_key(ui_key_zero());
         sig.f |= UI_SignalFlag_Commit;
 
-        // TODO: parse string to f32, then change f
         String8 edit_string = str8(edit_buffer, edit_string_size_out[0]);
         *n = f64_from_str8(edit_string);
     }

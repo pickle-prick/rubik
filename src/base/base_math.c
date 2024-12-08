@@ -535,24 +535,24 @@ internal Mat4x4F32 make_orthographic_vulkan_4x4f32(F32 left, F32 right, F32 bott
 {
     Mat4x4F32 result = {0};
 
-    result.v[0][0] = 2.f / (right - left);
+    result.v[0][0] = 2.f / (right-left);
     result.v[0][1] = 0.f;
     result.v[0][2] = 0.f;
-    result.v[0][3] = 0.f;
+    result.v[0][3] = -(right+left) / (right-left);
 
     result.v[1][0] = 0.f;
     result.v[1][1] = 2.f / (bottom - top);
     result.v[1][2] = 0.f;
-    result.v[1][3] = 0.f;
+    result.v[1][3] = -(bottom+top) / (bottom-top);
 
     result.v[2][0] = 0.f;
     result.v[2][1] = 0.f;
     result.v[2][2] = 1.f / (far_z - near_z);
-    result.v[2][3] = 0.f;
+    result.v[2][3] = -near_z / (far_z - near_z);
 
-    result.v[3][0] = -(right + left) / (right - left);
-    result.v[3][1] = -(bottom + top) / (bottom - top);
-    result.v[3][2] = -near_z / (far_z - near_z);
+    result.v[3][0] = 0;
+    result.v[3][1] = 0;
+    result.v[3][2] = 0;
     result.v[3][3] = 1.f;
 
     return result;
