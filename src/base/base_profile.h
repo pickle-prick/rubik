@@ -85,7 +85,7 @@ global U64 pf_idx_pre = 0;
 
 internal ProfTickInfo *pf_tick_alloc();
 internal void pf_tick();
-internal void pf_begin(char *fmt, ...);
+internal void pf_begin(const char *fmt, ...);
 internal void pf_end();
 internal ProfNode *pf_node_alloc();
 

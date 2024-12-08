@@ -42,7 +42,7 @@ internal void pf_tick()
     tick->node_hash_table = push_array(tick->arena, ProfNodeSlot, tick->node_hash_table_size);
 }
 
-internal void pf_begin(char* fmt, ...)
+internal void pf_begin(const char* fmt, ...)
 {
     ProfTickInfo *tick = pf_ticks[pf_idx_pre];
     Arena *arena = tick->arena;
@@ -57,7 +57,7 @@ internal void pf_begin(char* fmt, ...)
     Temp scratch = scratch_begin(0,0);
     va_list args;
     va_start(args, fmt);
-    String8 string = push_str8fv(scratch.arena, fmt, args);
+    String8 string = push_str8fv(scratch.arena, (char *)fmt, args);
     va_end(args);
     hash.xxhash = XXH3_64bits(string.str, string.size);
     U64 slot_idx = hash.u64 % tick->node_hash_table_size;

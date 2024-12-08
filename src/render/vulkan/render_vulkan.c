@@ -3126,7 +3126,6 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                 }
                 else
                 {
-
                     viewport.x        = params->viewport.p0.x;
                     viewport.y        = params->viewport.p0.y;
                     viewport.width    = params->viewport.p1.x;

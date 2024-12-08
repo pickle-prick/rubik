@@ -140,7 +140,7 @@ A list of the layers in the codebase and their associated namespaces is below:
 - [X] 2D collision detection
 - [ ] 2D node
 - [X] 3D scene editor UI (PARTIAL)
-    - [ ] Create/delete node
+    - [X] Create/delete node (PARTIAL)
     - [ ] Reorder node
 - [X] Scene serialization and deserialization
 - [X] Windows build

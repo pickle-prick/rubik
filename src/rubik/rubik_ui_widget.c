@@ -320,36 +320,47 @@ rk_ui_dropdown_begin(String8 string)
     B32 is_focus_hot_disabled = (!is_focus_hot && ui_top_focus_hot() == UI_FocusKind_On);
     B32 is_focus_active_disabled = (!is_focus_active && ui_top_focus_active() == UI_FocusKind_On);
 
-    // ui_set_next_hover_cursor(is_focus_active ? OS_Cursor_IBar : OS_Cursor_HandPoint);
     ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+    ui_set_next_child_layout_axis(Axis2_X);
     UI_Box *box = ui_build_box_from_key(UI_BoxFlag_Clickable|
-                                        UI_BoxFlag_DrawBackground|
                                         UI_BoxFlag_DrawBorder|
+                                        UI_BoxFlag_DrawDropShadow|
                                         UI_BoxFlag_ClickToFocus|
-                                        UI_BoxFlag_DrawText|
                                         UI_BoxFlag_DrawHotEffects|
                                         UI_BoxFlag_DrawActiveEffects,
                                         key);
+    UI_Signal sig1;
+    UI_Parent(box)
+    {
+        UI_PrefWidth(ui_pct(1.0, 0.f))
+        {
+            ui_label(string);
+        }
+        UI_Font(ui_icon_font()) UI_PrefWidth(ui_px(ui_top_pref_height().value, 1.f)) UI_TextAlignment(UI_TextAlign_Center)
+        {
+            sig1 = ui_buttonf(is_focus_hot ? "^" : "v");
+        }
+    }
     ui_box_equip_display_string(box, string);
     UI_Signal sig = ui_signal_from_box(box);
 
-    if(ui_clicked(sig) && is_focus_active)
+    if((ui_clicked(sig) || ui_clicked(sig1)) && (!is_focus_active))
+    {
+        ui_set_auto_focus_hot_key(key);
+        ui_set_auto_focus_active_key(key);
+    }
+
+    if((ui_clicked(sig) || ui_clicked(sig1)) && is_focus_active)
     {
         ui_set_auto_focus_hot_key(ui_key_zero());
         ui_set_auto_focus_active_key(ui_key_zero());
-        is_focus_hot = is_focus_active = 0;
-    }
-
-    if(ui_clicked(sig) && is_focus_hot)
-    {
-        ui_set_auto_focus_active_key(key);
     }
 
     ui_set_next_fixed_x(box->fixed_position.x);
     ui_set_next_fixed_y(box->fixed_position.y + box->fixed_size.y);
     ui_set_next_pref_width(ui_px(box->fixed_size.x, 0.0));
     ui_set_next_child_layout_axis(Axis2_Y);
-    if(is_focus_hot)
+    if(is_focus_active)
     {
         ui_set_next_pref_height(ui_children_sum(0.0));
     }
@@ -358,12 +369,8 @@ rk_ui_dropdown_begin(String8 string)
         ui_set_next_pref_height(ui_px(0.0, 1.0));
     }
     UI_Box *list_container = ui_build_box_from_stringf(UI_BoxFlag_Floating|
-                                                       UI_BoxFlag_DrawBackground|
+                                                       UI_BoxFlag_DrawDropShadow|
                                                        UI_BoxFlag_DrawBorder|
-                                                       UI_BoxFlag_DrawSideLeft|
-                                                       UI_BoxFlag_DrawSideRight|
-                                                       UI_BoxFlag_DrawSideBottom|
-                                                       UI_BoxFlag_DrawSideTop|
                                                        UI_BoxFlag_Clip,
                                                        "###%S-dropdown_container", string);
     ui_pop_focus_hot();
