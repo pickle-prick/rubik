@@ -424,8 +424,7 @@ rk_default_scene()
             RK_Node *player = rk_build_node_from_stringf(0, "player");
             {
                 player->flags |= RK_NodeFlags_NavigationRoot;
-                // player->pos = v3f32(6,-1.5,0);
-                player->pos = v3f32(0,-1.5,-3);
+                player->pos = v3f32(6,-1.5,0);
                 RK_FunctionNode *fn = rk_function_from_string(str8_lit("player_fn"));
                 rk_node_push_fn(scene->arena, player, fn->ptr, fn->alias);
 
@@ -441,23 +440,13 @@ rk_default_scene()
                     }
                     //- k: camera
                     RK_Node *camera = rk_build_node_from_stringf(0, "player_camera");
-                    // Vec2F32 window_dim = dim_2f32(os_client_rect_from_window(rk_state->os_wnd));
-                    // F32 ratio = window_dim.x / window_dim.y;
-                    F32 scale = 3.f;
                     camera->kind = RK_NodeKind_Camera3D;
                     {
-                        camera->pos                  = v3f32(0,0,3);
+                        camera->pos                  = v3f32(0,-3, 0);
                         camera->v.camera.kind        = RK_CameraKind_Perspective;
                         camera->v.camera.p.fov       = 0.25;
                         camera->v.camera.p.zn        = 0.1f;
                         camera->v.camera.p.zf        = 200.f;
-                        // camera->v.camera.kind        = RK_CameraKind_Orthographic;
-                        // camera->v.camera.o.left      = -scale;
-                        // camera->v.camera.o.right     = +scale;
-                        // camera->v.camera.o.bottom    = +scale/ratio;
-                        // camera->v.camera.o.top       = -scale/ratio;
-                        // camera->v.camera.o.zn        = 0.1f;
-                        // camera->v.camera.o.zf        = 200.f;
                         camera->v.camera.hide_cursor = 1;
                         camera->v.camera.lock_cursor = 1;
                     }

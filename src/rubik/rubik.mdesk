@@ -416,8 +416,8 @@ RK_SettingTable:
   {MenuAnimations        menu_animations         "Menu Animations"         1    0  1  }
   {ScrollingAnimations   scrolling_animations    "Scrolling Animations"    1    0  1  }
   {TabWidth              tab_width               "Tab Width"               4    1  32 }
-  {MainFontSize          main_font_size          "Main Font Size"          16   6  72 }
-  {CodeFontSize          code_font_size          "Code Font Size"          16   6  72 }
+  {MainFontSize          main_font_size          "Main Font Size"          13   6  72 }
+  {CodeFontSize          code_font_size          "Code Font Size"          13   6  72 }
 }
 
 @enum RK_SettingCode:

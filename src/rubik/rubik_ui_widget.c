@@ -6,7 +6,7 @@ rk_ui_pane_begin(Rng2F32 *rect, B32 *open, String8 string)
 {
     //- k: build bouding box for resizing
     {
-        F32 boundary_thickness = ui_top_font_size()*0.3;
+        F32 boundary_thickness = ui_top_font_size()*0.36;
         F32 half_boundary_thickness = boundary_thickness/2.f;
 
         //~ corner squares [4]
