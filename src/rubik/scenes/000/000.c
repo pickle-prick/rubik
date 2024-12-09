@@ -83,7 +83,7 @@ RK_NODE_CUSTOM_UPDATE(mesh_grp_fn)
 // Camera (editor camera)
 RK_NODE_CUSTOM_UPDATE(editor_camera_fn)
 {
-    RK_Camera3D *camera = &node->v.camera;
+    RK_Camera *camera = &node->v.camera;
 
     if(rk_state->sig.f & UI_SignalFlag_LeftDragging)
     {
@@ -143,4 +143,130 @@ RK_NODE_CUSTOM_UPDATE(editor_camera_fn)
         Vec3F32 dist = scale_3f32(f, rk_state->sig.scroll.y/3.0f);
         node->pos = add_3f32(dist, node->pos);
     }
+}
+
+// default editor scene
+internal RK_Scene *
+rk_scene_default(void)
+{
+    RK_Scene *scene = rk_scene_alloc();
+
+    // Fill base info
+    scene->name             = str8_lit("default");
+    scene->path             = str8_lit("./src/rubik/scenes/000/default.scene");
+    scene->viewport_shading = RK_ViewportShadingKind_Wireframe;
+    scene->global_light     = v3f32(0,0,1);
+    scene->polygon_mode     = R_GeoPolygonKind_Fill;
+
+    RK_Bucket_Scope(scene->bucket) RK_MeshCacheTable_Scope(&scene->mesh_cache_table)
+    {
+        // Create the origin/world node
+        RK_Node *root = rk_build_node_from_stringf(0, "root");
+        root->pos = v3f32(0, 0, 0);
+        scene->root = root;
+
+        RK_Parent_Scope(root)
+        {
+            RK_Node *camera = rk_camera_perspective(0,0,1,1, 0.25f, 0.1f, 200.f, str8_lit("editor_camera"));
+            {
+                camera->pos                 = v3f32(0,-3,-3);
+                RK_FunctionNode *fn = rk_function_from_string(str8_lit("editor_camera_fn"));
+                rk_node_push_fn(scene->bucket->arena, camera, fn->ptr, fn->alias);
+            }
+            RK_CameraNode *camera_node = push_array(scene->arena, RK_CameraNode, 1);
+            camera_node->v = camera;
+            DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
+            scene->active_camera = camera_node;
+            
+            // TODO(k): testing for orthographic projection
+            {
+                RK_Node *test_camera = rk_camera_orthographic(0,0,0,1, -4.f, 4.f, -4.f, 4.f, 0.1f, 200.f, str8_lit("test_camera"));
+                test_camera->pos.z = -3.f;
+                {
+                    RK_FunctionNode *fn = rk_function_from_string(str8_lit("editor_camera_fn"));
+                    rk_node_push_fn(scene->bucket->arena, test_camera, fn->ptr, fn->alias);
+
+                    RK_CameraNode *camera_node = push_array(scene->arena, RK_CameraNode, 1);
+                    camera_node->v = test_camera;
+                    DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
+                }
+            }
+
+            // Player
+            RK_Node *player = rk_build_node_from_stringf(0, "player");
+            {
+                player->flags |= RK_NodeFlags_NavigationRoot;
+                player->pos = v3f32(6,-1.5,0);
+                RK_FunctionNode *fn = rk_function_from_string(str8_lit("player_fn"));
+                rk_node_push_fn(scene->arena, player, fn->ptr, fn->alias);
+
+                RK_Parent_Scope(player)
+                {
+                    //- k: mesh
+                    RK_Node *body = rk_build_node_from_stringf(0, "body");
+                    body->kind = RK_NodeKind_MeshRoot;
+                    body->v.mesh_root.kind = RK_MeshKind_Capsule;
+                    RK_Parent_Scope(body)
+                    {
+                        rk_capsule_node_default(str8_lit("capsule"));
+                    }
+                    //- k: player first person camera
+                    RK_Node *camera = rk_camera_perspective(1,1,1,1, 0.25f, 0.1f, 200.f, str8_lit("player_pov_camera"));
+                    RK_CameraNode *camera_node = push_array(scene->arena, RK_CameraNode, 1);
+                    camera_node->v = camera;
+                    DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
+                }
+            }
+
+            // Dummy1
+            {
+                RK_Model *m;
+                String8 model_path = str8_lit("./models/dancing_stormtrooper/scene.gltf");
+                String8 model_directory = str8_chop_last_slash(model_path);
+                RK_Path_Scope(model_directory)
+                {
+                    m = rk_model_from_gltf_cached(model_path);
+                }
+                RK_Node *dummy = rk_build_node_from_stringf(0, "dummy1");
+                dummy->kind             = RK_NodeKind_MeshRoot;
+                dummy->skeleton_anims   = m->anims;
+                dummy->flags            = RK_NodeFlags_NavigationRoot|RK_NodeFlags_Animated|RK_NodeFlags_AnimatedSkeleton;
+                dummy->pos              = v3f32(6,0,0);
+                dummy->v.mesh_root.path = push_str8_copy(scene->arena, model_path);
+                dummy->v.mesh_root.kind = RK_MeshKind_Model;
+                QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
+                dummy->rot = mul_quat_f32(flip_y, dummy->rot);
+
+                RK_Parent_Scope(dummy)
+                {
+                    rk_node_from_model(m, rk_active_seed_key());
+                }
+            }
+
+            {
+                RK_Model *m;
+                String8 model_path = str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf");
+                String8 model_directory = str8_chop_last_slash(model_path);
+                RK_Path_Scope(model_directory)
+                {
+                    m = rk_model_from_gltf_cached(model_path);
+                }
+                RK_Node *n = rk_build_node_from_stringf(0, "dummy2");
+                n->kind             = RK_NodeKind_MeshRoot;
+                n->skeleton_anims   = m->anims;
+                n->flags            = RK_NodeFlags_NavigationRoot|RK_NodeFlags_Animated|RK_NodeFlags_AnimatedSkeleton;
+                n->pos              = v3f32(0,0,0);
+                n->v.mesh_root.path = push_str8_copy(scene->arena, model_path);
+                n->v.mesh_root.kind = RK_MeshKind_Model;
+                QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
+                n->rot = mul_quat_f32(flip_y, n->rot);
+
+                RK_Parent_Scope(n)
+                {
+                    rk_node_from_model(m, rk_active_seed_key());
+                }
+            }
+        }
+    }
+    return scene;
 }

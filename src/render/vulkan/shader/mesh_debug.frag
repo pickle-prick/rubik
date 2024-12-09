@@ -300,8 +300,9 @@ vec4 gizmos(inout float depth, inout uvec2 key)
 }
 
 void main() {
-    float depth = 0;
+    float depth = 1;
     uvec2 key = uvec2(0);
+    vec4 colr = vec4(0,0,0,0);
 
     // Grid
     if(show_grid > 0)
@@ -311,7 +312,7 @@ void main() {
         // Update ndc depth
         depth = ndc_depth(intersect);
         // out_color = grid(intersect,1) * float(t>0);
-        out_color = grid(intersect,1);
+        colr = grid(intersect,1);
 
         // Extract near and far from proj matrix
         float near = -proj[3][2] / proj[2][2];
@@ -320,7 +321,7 @@ void main() {
         // Blend, fade out when it's too far from eye
         float view_z = view_depth(intersect);
         float alpha = 1-smoothstep(near, far/3.f, view_z);
-        out_color.a *= alpha;
+        colr.a *= alpha;
         key = key_grid;
     }
 
@@ -332,13 +333,14 @@ void main() {
         vec4 color = gizmos(local_depth, local_key);
         if(color.a > 0.0)
         {
-            out_color = color;
+            colr = color;
             // Update ndc depth
             depth = local_depth;
             key = local_key;
         }
     }
-    
+
     out_id = key;
+    out_color = colr;
     gl_FragDepth = depth;
 }

@@ -103,22 +103,25 @@ rk_scene_from_se_node(SE_Node* root)
 
                 switch(kind)
                 {
-                    case RK_NodeKind_Camera3D:
+                    case RK_NodeKind_Camera:
                     {
                         SE_Node *senode = se_node_from_tag(n->first, str8_lit("camera"));
                         rk_node->v.camera.hide_cursor = se_b32_from_struct(senode, str8_lit("hide_cursor"));
                         rk_node->v.camera.lock_cursor = se_b32_from_struct(senode, str8_lit("lock_cursor"));
-                        RK_CameraKind camera_kind = se_u64_from_struct(senode, str8_lit("kind"));
+                        rk_node->v.camera.show_grid = se_b32_from_struct(senode, str8_lit("show_grid"));
+                        rk_node->v.camera.show_gizmos = se_b32_from_struct(senode, str8_lit("show_gizmos"));
+                        RK_ProjectionKind projection = se_u64_from_struct(senode, str8_lit("projection"));
+                        rk_node->v.camera.projection = projection;
 
-                        switch(camera_kind)
+                        switch(projection)
                         {
-                            case RK_CameraKind_Perspective:
+                            case RK_ProjectionKind_Perspective:
                             {
                                 rk_node->v.camera.p.fov = se_f64_from_struct(senode, str8_lit("fov"));
                                 rk_node->v.camera.p.zn = se_f64_from_struct(senode, str8_lit("zn"));
                                 rk_node->v.camera.p.zf = se_f64_from_struct(senode, str8_lit("zf"));
                             }break;
-                            case RK_CameraKind_Orthographic:
+                            case RK_ProjectionKind_Orthographic:
                             {
                                 rk_node->v.camera.o.left = se_f64_from_struct(senode, str8_lit("left"));
                                 rk_node->v.camera.o.right = se_f64_from_struct(senode, str8_lit("right"));
@@ -129,12 +132,8 @@ rk_scene_from_se_node(SE_Node* root)
                             }break;
                             default:{InvalidPath;}break;
                         }
-
                         B32 is_active = se_b32_from_struct(senode, str8_lit("is_active"));
-
-                        RK_CameraNode *camera_node = push_array(arena, RK_CameraNode, 1);
-                        camera_node->v = rk_node;
-                        SLLQueuePush(ret->first_camera, ret->last_camera, camera_node);
+                        RK_CameraNode *camera_node = rk_scene_camera_push(ret, rk_node);
                         if(is_active)
                         {
                             ret->active_camera = camera_node;
@@ -337,24 +336,26 @@ rk_scene_to_file(RK_Scene *scene, String8 path)
                             pass_level = level;
                         }
 
-                        if(node->kind == RK_NodeKind_Camera3D)
+                        if(node->kind == RK_NodeKind_Camera)
                         {
                             SE_Struct(str8_lit("camera"))
                             {
-                                se_uint(str8_lit("kind"), node->v.camera.kind);
+                                se_uint(str8_lit("projection"), node->v.camera.projection);
                                 se_boolean(str8_lit("hide_cursor"), node->v.camera.hide_cursor);
                                 se_boolean(str8_lit("lock_cursor"), node->v.camera.lock_cursor);
+                                se_boolean(str8_lit("show_gizmos"), node->v.camera.show_gizmos);
+                                se_boolean(str8_lit("show_grid"), node->v.camera.show_grid);
                                 se_boolean(str8_lit("is_active"), node == scene->active_camera->v);
 
-                                switch(node->v.camera.kind)
+                                switch(node->v.camera.projection)
                                 {
-                                    case RK_CameraKind_Perspective:
+                                    case RK_ProjectionKind_Perspective:
                                     {
                                         se_float(str8_lit("fov"), node->v.camera.p.fov);
                                         se_float(str8_lit("zn"), node->v.camera.p.zn);
                                         se_float(str8_lit("zf"), node->v.camera.p.zf);
                                     }break;
-                                    case RK_CameraKind_Orthographic:
+                                    case RK_ProjectionKind_Orthographic:
                                     {
                                         se_float(str8_lit("left"), node->v.camera.o.left);
                                         se_float(str8_lit("right"), node->v.camera.o.right);
@@ -381,132 +382,6 @@ rk_scene_to_file(RK_Scene *scene, String8 path)
     se_yml_node_to_file(root, path);
     se_build_end();
     scratch_end(temp);
-}
-
-internal RK_Scene *
-rk_default_scene()
-{
-    RK_Scene *scene = rk_scene_alloc();
-
-    // Fill base info
-    scene->name             = str8_lit("default_scene");
-    scene->path             = str8_lit("./src/rubik/scenes/default.scene");
-    scene->viewport_shading = RK_ViewportShadingKind_Wireframe;
-    scene->global_light     = v3f32(0,0,1);
-    scene->polygon_mode     = R_GeoPolygonKind_Fill;
-
-    RK_Scene_Scope(scene) RK_Bucket_Scope(scene->bucket) RK_MeshCacheTable_Scope(&scene->mesh_cache_table)
-    {
-        // Create the origin/world node
-        RK_Node *root = rk_build_node_from_string(0, str8_lit("root"));
-        root->pos = v3f32(0, 0, 0);
-        scene->root = root;
-
-        RK_Parent_Scope(root)
-        {
-            RK_Node *camera = rk_build_node_from_string(0, str8_lit("editor_camera"));
-            {
-                camera->kind           = RK_NodeKind_Camera3D;
-                camera->pos            = v3f32(0,-3,-3);
-                camera->v.camera.kind  = RK_CameraKind_Perspective;
-                camera->v.camera.p.fov = 0.25;
-                camera->v.camera.p.zn  = 0.1f;
-                camera->v.camera.p.zf  = 200.f;
-                RK_FunctionNode *fn = rk_function_from_string(str8_lit("editor_camera_fn"));
-                rk_node_push_fn(scene->bucket->arena, camera, fn->ptr, fn->alias);
-            }
-            RK_CameraNode *camera_node = push_array(scene->arena, RK_CameraNode, 1);
-            camera_node->v = camera;
-            DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
-            scene->active_camera = camera_node;
-
-            // Player
-            RK_Node *player = rk_build_node_from_stringf(0, "player");
-            {
-                player->flags |= RK_NodeFlags_NavigationRoot;
-                player->pos = v3f32(6,-1.5,0);
-                RK_FunctionNode *fn = rk_function_from_string(str8_lit("player_fn"));
-                rk_node_push_fn(scene->arena, player, fn->ptr, fn->alias);
-
-                RK_Parent_Scope(player)
-                {
-                    //- k: mesh
-                    RK_Node *body = rk_build_node_from_stringf(0, "body");
-                    body->kind = RK_NodeKind_MeshRoot;
-                    body->v.mesh_root.kind = RK_MeshKind_Capsule;
-                    RK_Parent_Scope(body)
-                    {
-                        rk_capsule_node_default(str8_lit("capsule"));
-                    }
-                    //- k: camera
-                    RK_Node *camera = rk_build_node_from_stringf(0, "player_camera");
-                    camera->kind = RK_NodeKind_Camera3D;
-                    {
-                        camera->pos                  = v3f32(0,-3, 0);
-                        camera->v.camera.kind        = RK_CameraKind_Perspective;
-                        camera->v.camera.p.fov       = 0.25;
-                        camera->v.camera.p.zn        = 0.1f;
-                        camera->v.camera.p.zf        = 200.f;
-                        camera->v.camera.hide_cursor = 1;
-                        camera->v.camera.lock_cursor = 1;
-                    }
-                    RK_CameraNode *camera_node = push_array(scene->arena, RK_CameraNode, 1);
-                    camera_node->v = camera;
-                    DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
-                }
-            }
-
-            // Dummy1
-            {
-                RK_Model *m;
-                String8 model_path = str8_lit("./models/dancing_stormtrooper/scene.gltf");
-                String8 model_directory = str8_chop_last_slash(model_path);
-                RK_Path_Scope(model_directory)
-                {
-                    m = rk_model_from_gltf_cached(model_path);
-                }
-                RK_Node *dummy = rk_build_node_from_stringf(0, "dummy1");
-                dummy->kind             = RK_NodeKind_MeshRoot;
-                dummy->skeleton_anims   = m->anims;
-                dummy->flags            = RK_NodeFlags_NavigationRoot|RK_NodeFlags_Animated|RK_NodeFlags_AnimatedSkeleton;
-                dummy->pos              = v3f32(6,0,0);
-                dummy->v.mesh_root.path = push_str8_copy(scene->arena, model_path);
-                dummy->v.mesh_root.kind = RK_MeshKind_Model;
-                QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
-                dummy->rot = mul_quat_f32(flip_y, dummy->rot);
-
-                RK_Parent_Scope(dummy)
-                {
-                    rk_node_from_model(m, rk_active_seed_key());
-                }
-            }
-
-            {
-                RK_Model *m;
-                String8 model_path = str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf");
-                String8 model_directory = str8_chop_last_slash(model_path);
-                RK_Path_Scope(model_directory)
-                {
-                    m = rk_model_from_gltf_cached(model_path);
-                }
-                RK_Node *n = rk_build_node_from_stringf(0, "dummy2");
-                n->kind             = RK_NodeKind_MeshRoot;
-                n->skeleton_anims   = m->anims;
-                n->flags            = RK_NodeFlags_NavigationRoot|RK_NodeFlags_Animated|RK_NodeFlags_AnimatedSkeleton;
-                n->pos              = v3f32(0,0,0);
-                n->v.mesh_root.path = push_str8_copy(scene->arena, model_path);
-                n->v.mesh_root.kind = RK_MeshKind_Model;
-                QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
-                n->rot = mul_quat_f32(flip_y, n->rot);
-
-                RK_Parent_Scope(n)
-                {
-                    rk_node_from_model(m, rk_active_seed_key());
-                }
-            }
-        }
-    }
-    return scene;
 }
 
 /////////////////////////////////

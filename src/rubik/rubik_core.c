@@ -285,6 +285,15 @@ rk_view_from_kind(RK_ViewKind kind)
     return &rk_state->views[kind];
 }
 
+internal RK_CameraNode *
+rk_scene_camera_push(RK_Scene *scene, RK_Node *camera)
+{
+    RK_CameraNode *camera_node = push_array(scene->arena, RK_CameraNode, 1);
+    camera_node->v = camera;
+    DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
+    return camera_node;
+}
+
 /////////////////////////////////
 // AnimatedSprite2D
 
@@ -464,8 +473,50 @@ rk_build_node_from_key(RK_NodeFlags flags, RK_Key key) {
 internal void
 rk_node_release()
 {
-    // TODO
+    // TODO(k): reuse node maybe
     NotImplemented;
+}
+
+/////////////////////////////////
+//- Camera build
+
+internal RK_Node *
+rk_camera_perspective(B32 hide_cursor, B32 lock_cursor, B32 show_grid, B32 show_gizmos, F32 fov, F32 zn, F32 zf, String8 string)
+{
+    RK_Node *ret = rk_build_node_from_string(0, string);
+    {
+        ret->kind                 = RK_NodeKind_Camera;
+        ret->v.camera.projection  = RK_ProjectionKind_Perspective;
+        ret->v.camera.lock_cursor = lock_cursor;
+        ret->v.camera.hide_cursor = hide_cursor;
+        ret->v.camera.show_gizmos = show_gizmos;
+        ret->v.camera.show_grid   = show_grid;
+        ret->v.camera.p.fov       = fov;
+        ret->v.camera.p.zn        = zn;
+        ret->v.camera.p.zf        = zf;
+    }
+    return ret;
+}
+
+internal RK_Node *
+rk_camera_orthographic(B32 hide_cursor, B32 lock_cursor, B32 show_grid, B32 show_gizmos, F32 left, F32 right, F32 top, F32 bottom, F32 zn, F32 zf, String8 string)
+{
+    RK_Node *ret = rk_build_node_from_string(0, string);
+    {
+        ret->kind                 = RK_NodeKind_Camera;
+        ret->v.camera.projection  = RK_ProjectionKind_Orthographic;
+        ret->v.camera.lock_cursor = lock_cursor;
+        ret->v.camera.hide_cursor = hide_cursor;
+        ret->v.camera.show_gizmos = show_gizmos;
+        ret->v.camera.show_grid   = show_grid;
+        ret->v.camera.o.zn        = zn;
+        ret->v.camera.o.zf        = zf;
+        ret->v.camera.o.left      = left;
+        ret->v.camera.o.right     = right;
+        ret->v.camera.o.top       = top;
+        ret->v.camera.o.bottom    = bottom;
+    }
+    return ret;
 }
 
 /////////////////////////////////
@@ -1286,16 +1337,24 @@ internal void rk_ui_inspector(void)
 
                 UI_Row
                 {
-                    if(ui_clicked(ui_buttonf("Load Default")))
+                    rk_ui_dropdown_begin(str8_lit("Load Template"));
+                    for(U64 i = 0; i < rk_state->template_count; i++)
                     {
-                        RK_Scene *new_scene = rk_default_scene();
-                        SLLStackPush(rk_state->first_to_free_scene, scene);
-                        rk_state->active_scene = new_scene;
+                        RK_SceneTemplate t = rk_state->templates[i];
+                        if(ui_clicked(ui_button(t.name)))
+                        {
+                            RK_Scene *new_scene = t.fn();
+                            SLLStackPush(rk_state->first_to_free_scene, scene);
+                            rk_state->active_scene = new_scene;
 
-                        U64 name_size = ClampBot(inspector->scene_path_to_save_buffer_size, new_scene->name.size);
-                        inspector->scene_path_to_save.size = name_size;
-                        MemoryCopy(inspector->scene_path_to_save.str, new_scene->name.str, name_size);
+                            U64 name_size = ClampTop(inspector->scene_path_to_save_buffer_size, new_scene->name.size);
+                            inspector->scene_path_to_save.size = name_size;
+                            MemoryCopy(inspector->scene_path_to_save.str, new_scene->name.str, name_size);
+                            rk_ui_dropdown_hide();
+                        }
                     }
+                    rk_ui_dropdown_end();
+
                     if(ui_clicked(ui_buttonf("Save")))
                     {
                         rk_scene_to_file(scene, inspector->scene_path_to_save);
@@ -1523,7 +1582,7 @@ internal void rk_ui_inspector(void)
                 ui_spacer(ui_pct(1.0, 0.0));
                 if(ui_clicked(ui_buttonf("wireframe"))) {scene->viewport_shading = RK_ViewportShadingKind_Wireframe;};
                 if(ui_clicked(ui_buttonf("solid")))     {scene->viewport_shading = RK_ViewportShadingKind_Solid;};
-                if(ui_clicked(ui_buttonf("material")))  {scene->viewport_shading = RK_ViewportShadingKind_MaterialPreview;};
+                if(ui_clicked(ui_buttonf("material")))  {scene->viewport_shading = RK_ViewportShadingKind_Material;};
             }
 
             if(inspector->show_camera_cfg)
@@ -1858,7 +1917,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
         }
     }
 
-    // Unpack camera
+    // Unpack active camera
     RK_Node *camera = scene->active_camera->v;
 
     // RK_Node *hot_node = 0;
@@ -1870,10 +1929,20 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     UI_Box *overlay = ui_build_box_from_string(UI_BoxFlag_MouseClickable|UI_BoxFlag_ClickToFocus|UI_BoxFlag_Scroll|UI_BoxFlag_DisableFocusOverlay, str8_lit("###game_overlay"));
     rk_state->sig = ui_signal_from_box(overlay);
 
-    B32 show_grid   = 1;
-    B32 show_gizmos = 0;
+    // TODO(k): there will be snow if show_grid is 0 (WTF)
+    B32 show_grid   = camera->v.camera.show_grid;
+    B32 show_gizmos = camera->v.camera.show_gizmos && active_node != 0;
+    // NOTE(k): gizmos xform/origin is behind by one frame
+    Mat4x4F32 gizmos_xform = mat_4x4f32(1.0);
+    Vec3F32 gizmos_origin = {0};
+    if(show_gizmos)
+    {
+        gizmos_xform = active_node->fixed_xform;
+        gizmos_origin = v3f32(gizmos_xform.v[3][0], gizmos_xform.v[3][1], gizmos_xform.v[3][2]);
+    }
+
     d_push_bucket(rk_state->bucket_geo3d);
-    R_PassParams_Geo3D *geo3d_pass = d_geo3d_begin(overlay->rect, mat_4x4f32(1.f), mat_4x4f32(1.f), normalize_3f32(scene->global_light), show_grid, show_gizmos, mat_4x4f32(1.f), v3f32(0,0,0));
+    R_PassParams_Geo3D *geo3d_pass = d_geo3d_begin(overlay->rect, mat_4x4f32(1.f), mat_4x4f32(1.f), normalize_3f32(scene->global_light), show_grid, show_gizmos, gizmos_xform, gizmos_origin);
     d_pop_bucket();
 
     R_GeoPolygonKind polygon_mode;
@@ -1881,8 +1950,8 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     {
         case RK_ViewportShadingKind_Wireframe:       {polygon_mode = R_GeoPolygonKind_Line;}break;
         case RK_ViewportShadingKind_Solid:           {polygon_mode = R_GeoPolygonKind_Fill;}break;
-        case RK_ViewportShadingKind_MaterialPreview: {polygon_mode = R_GeoPolygonKind_Fill;}break;
-        default:                                    {InvalidPath;}break;
+        case RK_ViewportShadingKind_Material:        {polygon_mode = R_GeoPolygonKind_Fill;}break;
+        default:                                     {InvalidPath;}break;
     }
 
     // Update/draw node in the scene tree
@@ -1930,26 +1999,19 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
     }
 
     geo3d_pass->view = rk_view_from_node(camera);
-    switch(camera->v.camera.kind)
+    switch(camera->v.camera.projection)
     {
-        case RK_CameraKind_Perspective:
+        case RK_ProjectionKind_Perspective:
         {
             geo3d_pass->projection = make_perspective_vulkan_4x4f32(camera->v.camera.p.fov, rk_state->window_dim.x/rk_state->window_dim.y, camera->v.camera.p.zn, camera->v.camera.p.zf);
         }break;
-        case RK_CameraKind_Orthographic:
+        case RK_ProjectionKind_Orthographic:
         {
             geo3d_pass->projection = make_orthographic_vulkan_4x4f32(camera->v.camera.o.left, camera->v.camera.o.right, camera->v.camera.o.bottom, camera->v.camera.o.top, camera->v.camera.o.zn, camera->v.camera.o.zf);
         }break;
         default:{InvalidPath;}break;
     }
     Mat4x4F32 xform_m = mul_4x4f32(geo3d_pass->projection, geo3d_pass->view);
-
-    if(active_node != 0) 
-    {
-        geo3d_pass->show_gizmos = 1;
-        geo3d_pass->gizmos_xform = active_node->fixed_xform;
-        geo3d_pass->gizmos_origin = v4f32(geo3d_pass->gizmos_xform.v[3][0], geo3d_pass->gizmos_xform.v[3][1], geo3d_pass->gizmos_xform.v[3][2], 1);
-    }
 
     // Update hot/active
     {

@@ -24,16 +24,16 @@ typedef enum RK_NodeKind
     RK_NodeKind_CollisionShape3D,
     RK_NodeKind_CharacterBody3D,
     RK_NodeKind_RigidBody3D,
-    RK_NodeKind_Camera3D,
+    RK_NodeKind_Camera,
     RK_NodeKind_COUNT,
 } RK_NodeKind;
 
-typedef enum RK_CameraKind
+typedef enum RK_ProjectionKind
 {
-    RK_CameraKind_Perspective,
-    RK_CameraKind_Orthographic,
-    RK_CameraKind_COUNT,
-} RK_CameraKind;
+    RK_ProjectionKind_Perspective,
+    RK_ProjectionKind_Orthographic,
+    RK_ProjectionKind_COUNT,
+} RK_ProjectionKind;
 
 typedef enum RK_TransformKind
 {
@@ -56,7 +56,7 @@ typedef enum RK_ViewportShadingKind
 {
     RK_ViewportShadingKind_Wireframe,
     RK_ViewportShadingKind_Solid,
-    RK_ViewportShadingKind_MaterialPreview,
+    RK_ViewportShadingKind_Material,
     RK_ViewportShadingKind_COUNT,
 } RK_ViewportShadingKind;
 
@@ -383,12 +383,14 @@ struct RK_MeshCacheTable
 //     } shape;
 // };
 
-typedef struct RK_Camera3D RK_Camera3D;
-struct RK_Camera3D 
+typedef struct RK_Camera RK_Camera;
+struct RK_Camera
 {
-    RK_CameraKind kind;
+    RK_ProjectionKind projection;
     B32 hide_cursor;
     B32 lock_cursor;
+    B32 show_grid;
+    B32 show_gizmos;
 
     union {
         // Perspective
@@ -479,7 +481,7 @@ struct RK_Node
         RK_MeshJoint     mesh_joint;
         RK_MeshGroup     mesh_grp;
         RK_MeshRoot      mesh_root; // Serializable
-        RK_Camera3D      camera; // Serializable
+        RK_Camera        camera; // Serializable
     } v;
 };
 
@@ -519,20 +521,20 @@ typedef struct RK_Scene RK_Scene;
 struct RK_Scene 
 {
     RK_Scene               *next;
-    Arena                 *arena;
+    Arena                  *arena;
     RK_Bucket              *bucket;
     RK_Node                *root;
     RK_CameraNode          *active_camera;
     RK_CameraNode          *first_camera;
     RK_CameraNode          *last_camera;
 
-    String8               name;
-    String8               path;
+    String8                name;
+    String8                path;
     RK_MeshCacheTable      mesh_cache_table;
 
     RK_ViewportShadingKind viewport_shading;
-    Vec3F32               global_light;
-    R_GeoPolygonKind      polygon_mode;
+    Vec3F32                global_light;
+    R_GeoPolygonKind       polygon_mode;
 };
 
 ////////////////////////////////
@@ -620,6 +622,13 @@ struct RK_FunctionSlot
     RK_FunctionNode *last;
 };
 
+typedef struct RK_SceneTemplate RK_SceneTemplate;
+struct RK_SceneTemplate
+{
+    String8 name;
+    RK_Scene*(*fn)(void);
+};
+
 typedef struct RK_State RK_State;
 struct RK_State
 {
@@ -663,6 +672,10 @@ struct RK_State
     //- Functions
     RK_FunctionSlot   *function_hash_table;
     U64               function_hash_table_size;
+
+    //- Scene templates
+    RK_SceneTemplate  *templates;
+    U64               template_count;
 
     //- Theme
     RK_Theme          cfg_theme_target;
@@ -719,6 +732,7 @@ internal void             rk_set_active_key(RK_Key key);
 internal RK_Node*         rk_node_from_key(RK_Key key);
 internal RK_FunctionNode* rk_function_from_string(String8 string);
 internal RK_View*         rk_view_from_kind(RK_ViewKind kind);
+internal RK_CameraNode*   rk_scene_camera_push(RK_Scene *scene, RK_Node *camera);
 
 /////////////////////////////////
 //~ Node build api
@@ -727,6 +741,12 @@ internal RK_Node* rk_build_node_from_string(RK_NodeFlags flags, String8 name);
 internal RK_Node* rk_build_node_from_stringf(RK_NodeFlags flags, char *fmt, ...);
 internal RK_Node* rk_build_node_from_key(RK_NodeFlags flags, RK_Key key);
 internal void     rk_node_release();
+
+/////////////////////////////////
+//- Camera build
+
+internal RK_Node* rk_camera_perspective(B32 hide_cursor, B32 lock_cursor, B32 show_grid, B32 show_gizmos, F32 fov, F32 zn, F32 zf, String8 string);
+internal RK_Node* rk_camera_orthographic(B32 hide_cursor, B32 lock_cursor, B32 show_grid, B32 show_gizmos, F32 left, F32 right, F32 top, F32 bottom, F32 zn, F32 zf, String8 string);
 
 /////////////////////////////////
 //~ Node Type Functions

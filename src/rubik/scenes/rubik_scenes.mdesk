@@ -3,6 +3,7 @@
 RK_ScenesTable:
 {
     {000}
+    {001}
 }
 
 @gen
@@ -41,3 +42,16 @@ RK_FnTable:
       ```{str8_lit_comp("$(a.alias)"), $(a.name), }```;
 }
 
+//~ k: Scene templates
+@table(name, fn_name)
+RK_SceneTemplateTable:
+{
+    {default, rk_scene_default}
+    {go,      rk_scene_go}
+}
+
+@data(RK_SceneTemplate) @c_file rk_scene_templates_table:
+{
+    @expand(RK_SceneTemplateTable a)
+      ```{str8_lit_comp("$(a.name)"), $(a.fn_name), }```;
+}

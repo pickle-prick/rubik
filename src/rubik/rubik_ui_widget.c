@@ -377,7 +377,7 @@ rk_ui_dropdown_begin(String8 string)
     ui_pop_focus_active();
     ui_push_parent(list_container);
     ui_push_pref_width(ui_pct(1.0, 0.0));
-    ui_push_text_alignment(UI_TextAlign_Center);
+    ui_push_text_alignment(UI_TextAlign_Left);
     return list_container;
 }
 

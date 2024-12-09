@@ -404,8 +404,12 @@ entry_point(CmdLine *cmd_line)
     {
         rk_register_function(rk_scenes_fn_table[i].name, rk_scenes_fn_table[i].ptr);
     }
-    // G_Scene *default_scene = g_scene_from_file(str8_lit("./src/game/scenes/default.scene"));
-    RK_Scene *default_scene = rk_default_scene();
+
+    // Load scene template
+    rk_state->template_count = ArrayCount(rk_scene_templates_table);
+    rk_state->templates = rk_scene_templates_table;
+
+    RK_Scene *default_scene = rk_state->templates[0].fn();
     rk_state->active_scene = default_scene;
 
     B32 window_should_close = 0;

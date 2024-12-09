@@ -7,6 +7,7 @@
 #define RUBIK_SCENES_META_H
 
 #include "../000/000.h"
+#include "../001/001.h"
 typedef struct RK_FnTalbeEntry RK_FnTableEntry;
 struct RK_FnTalbeEntry {
 String8 name;
