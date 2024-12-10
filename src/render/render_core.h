@@ -114,7 +114,7 @@ struct R_Mesh3DInst
     // NOTE: Only these two sent to the instance buffer
     Mat4x4F32 xform;
     U64       key;
-    F32       white_texture_override;
+    Vec4F32   color_texture;
 
     // TODO(k): material idx, a primitive could have array of materials
     Mat4x4F32 *joint_xforms;

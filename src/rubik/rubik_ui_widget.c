@@ -503,7 +503,7 @@ rk_ui_checkbox(B32 *b, String8 string)
             inner_rect.y1 = outer->fixed_size.y;
             F32 padding = 0;
             padding = padding + (*b != 0)*outer->fixed_size.x*0.175;
-            padding = padding + mix_1f32(0, outer->fixed_size.x*0.025, hot_t);
+            // padding = padding + mix_1f32(0, -outer->fixed_size.x*0.025, hot_t);
             UI_Parent(outer) UI_Rect(pad_2f32(inner_rect, -(padding))) UI_Palette(ui_state->widget_palette_info.scrollbar_palette)
             {
                 UI_Box *inner = ui_build_box_from_stringf(UI_BoxFlag_DrawHotEffects|

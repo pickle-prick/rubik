@@ -4,7 +4,7 @@ build_debug:
 	./build.sh rubik no_shader no_meta profile
 build_full:
 	make clean
-	./build.sh rubik shader meta 
+	./build.sh rubik shader meta profile
 run_full:
 	make build_full
 	./build/rubik

@@ -10,7 +10,7 @@ layout(location = 5)  in uvec4  joints;
 layout(location = 6)  in vec4   weights;
 
 // Instance buffer
-layout(location = 7)  in float  omit_texture;
+layout(location = 7)  in vec4   color_texture;
 layout(location = 8)  in mat4   model;
 layout(location = 12) in uvec2  id;
 layout(location = 13) in uint   first_joint;
@@ -88,9 +88,11 @@ void main() {
         float intensity = 0.5*light_alignment + 0.5;
         intensity = intensity < 0.3 ? 0.3 : intensity;
 
+        vec4 color = color_texture.a > 0 ? color_texture : vec4(col.xyz, 1.0);
+
         // Output
-        frag_color    = vec4((vec3(1,1,1)*intensity).xyz, 1.0);
+        frag_color    = vec4((color*intensity).xyz, color.a);
         frag_texcoord = tex;
         frag_id       = id;
-        frag_omit_texture = omit_texture;
+        frag_omit_texture = color_texture.a > 0 ? 1.0 : 0.0;
 }

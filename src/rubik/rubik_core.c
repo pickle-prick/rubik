@@ -2031,17 +2031,15 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                         U64 joint_count = node->parent->v.mesh_grp.joint_count;
                         R_Mesh3DInst *inst = d_mesh(node->v.mesh_primitive.vertices, node->v.mesh_primitive.indices,
                                                     R_GeoTopologyKind_Triangles, polygon_mode,
-                                                    R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, node->v.mesh_primitive.albedo_tex,
+                                                    R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, node->v.mesh_primitive.albedo_tex, node->v.mesh_primitive.color_tex_override,
                                                     joint_xforms, joint_count,
                                                     mat_4x4f32(1.f), node->key.u64[0]);
                         inst->xform = node->fixed_xform;
                         if(r_handle_match(node->v.mesh_primitive.albedo_tex, r_handle_zero()) || scene->viewport_shading == RK_ViewportShadingKind_Solid)
                         {
-                            inst->white_texture_override = 1.0f;
-                        }
-                        else 
-                        {
-                            inst->white_texture_override = 0.0f;
+                            // default to white color (alpha != 0 => omit texture/use color texture)
+                            // inst->color_texture = rgba_from_u32(0xE5E3D4FF);
+                            inst->color_texture = rgba_from_u32(0xF4E0AFFF);
                         }
                     }break;
                 }

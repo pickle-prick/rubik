@@ -1,7 +1,13 @@
+RK_NODE_CUSTOM_UPDATE(go_board)
+{
+    // spawn stone with mouse
+}
+
 internal RK_Scene *
 rk_scene_go()
 {
     RK_Scene *ret = rk_scene_alloc();
+
     // fill base info
     {
         ret->name             = str8_lit("go");
@@ -19,7 +25,7 @@ rk_scene_go()
 
     // editor camera
     RK_Node *editor_camera = rk_camera_perspective(0,0,1,1, 0.25f, 0.1f, 200.f, str8_lit("editor_camera"));
-    rk_scene_camera_push(ret, editor_camera);
+    ret->active_camera = rk_scene_camera_push(ret, editor_camera);
     {
         RK_FunctionNode *fn = rk_function_from_string(str8_lit("editor_camera_fn"));
         rk_node_push_fn(ret->bucket->arena, editor_camera, fn->ptr, fn->alias);
@@ -29,11 +35,14 @@ rk_scene_go()
     RK_Node *main_camera = rk_camera_orthographic(0,0,1,0, -4.f, 4.f, -4.f, 4.f, 0.1f, 200.f, str8_lit("main_camera"));
     rk_scene_camera_push(ret, main_camera);
 
-    // grid table
+    // grid table (go table 19x19)
+    RK_Node *grid = 0;
+    RK_MeshCacheTable_Scope(&ret->mesh_cache_table)
     {
-
+        grid = rk_box_node_cached(str8_lit("grid"), v3f32(19,19,1), 18,18,0);
     }
-        
+    rk_node_push_fn(ret->arena, grid, go_board, str8_lit("go_board"));
+
     rk_pop_parent();
     rk_pop_bucket();
     return ret;

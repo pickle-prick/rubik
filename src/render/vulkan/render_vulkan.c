@@ -2217,7 +2217,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
             vtx_attr_descs[7].binding  = 1;
             vtx_attr_descs[7].location = 7;
             vtx_attr_descs[7].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[7].offset   = offsetof(R_Mesh3DInst, white_texture_override);
+            vtx_attr_descs[7].offset   = offsetof(R_Mesh3DInst, color_texture);
 
             vtx_attr_descs[8].binding  = 1;
             vtx_attr_descs[8].location = 8;

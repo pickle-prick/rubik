@@ -283,6 +283,7 @@ struct RK_MeshPrimitive
     R_Handle vertices;
     R_Handle indices;
     R_Handle albedo_tex;
+    Vec4F32  color_tex_override;
     U64      vertice_count;
     U64      indice_count;
 };
