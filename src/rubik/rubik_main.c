@@ -27,8 +27,8 @@
 #include "draw/draw.h"
 #include "ui/ui_inc.h"
 #include "serialize/serialize_inc.h"
-#include "./rubik_ui_widget.h"
 #include "./rubik_core.h"
+#include "./rubik_ui_widget.h"
 #include "./rubik_asset.h"
 #include "./scenes/rubik_scenes_inc.h"
 
@@ -41,8 +41,8 @@
 #include "draw/draw.c"
 #include "ui/ui_inc.c"
 #include "serialize/serialize_inc.c"
-#include "./rubik_ui_widget.c"
 #include "./rubik_core.c"
+#include "./rubik_ui_widget.c"
 #include "./rubik_asset.c"
 #include "./scenes/rubik_scenes_inc.c"
 

@@ -1539,6 +1539,7 @@ internal void rk_ui_inspector(void)
         ui_spacer(ui_px(ui_top_font_size()*0.215, 0.f));
 
         // Camera
+        RK_Node *active_camera = scene->active_camera->v;
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
         ui_set_next_child_layout_axis(Axis2_Y);
         UI_Box *camera_cfg_box = ui_build_box_from_stringf(0, "###camera_cfg");
@@ -1558,12 +1559,14 @@ internal void rk_ui_inspector(void)
                 ui_labelf("Camera");
             }
 
+            ui_spacer(ui_em(0.2, 0.f));
+
             // Active cameras
             UI_Row
             {
                 ui_labelf("active camera");
                 ui_spacer(ui_pct(1.0, 0.0));
-                rk_ui_dropdown_begin(scene->active_camera->v->name);
+                rk_ui_dropdown_begin(active_camera->name);
                 for(RK_CameraNode *c = scene->first_camera; c!=0; c = c->next)
                 {
                     if(ui_clicked(ui_button(c->v->name)))
@@ -1573,7 +1576,30 @@ internal void rk_ui_inspector(void)
                     }
                 }
                 rk_ui_dropdown_end();
+                ui_spacer(ui_em(0.5, 1.0));
             }
+
+            ui_spacer(ui_em(0.2, 0.f));
+
+            // Grid
+            UI_Row
+            {
+                ui_labelf("show_grid");
+                ui_spacer(ui_pct(1.0, 0.0));
+                rk_ui_checkbox(&active_camera->v.camera.show_grid, str8_lit("###show_grid"));
+            }
+
+            ui_spacer(ui_em(0.2, 0.f));
+
+            // Gizmos
+            UI_Row
+            {
+                ui_labelf("show_gizmos");
+                ui_spacer(ui_pct(1.0, 0.0));
+                rk_ui_checkbox(&active_camera->v.camera.show_gizmos, str8_lit("###show_gizmos"));
+            }
+
+            ui_spacer(ui_em(0.2, 0.f));
 
             // Viewport shading
             UI_Row
@@ -1583,7 +1609,10 @@ internal void rk_ui_inspector(void)
                 if(ui_clicked(ui_buttonf("wireframe"))) {scene->viewport_shading = RK_ViewportShadingKind_Wireframe;};
                 if(ui_clicked(ui_buttonf("solid")))     {scene->viewport_shading = RK_ViewportShadingKind_Solid;};
                 if(ui_clicked(ui_buttonf("material")))  {scene->viewport_shading = RK_ViewportShadingKind_Material;};
+                ui_spacer(ui_em(0.5, 1.0));
             }
+
+            ui_spacer(ui_em(0.2, 0.f));
 
             if(inspector->show_camera_cfg)
             {
@@ -1594,7 +1623,9 @@ internal void rk_ui_inspector(void)
                     ui_f32_edit(&camera->pos.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
                     ui_f32_edit(&camera->pos.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
                     ui_f32_edit(&camera->pos.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
+                    ui_spacer(ui_em(0.5, 1.0));
                 }
+                ui_spacer(ui_em(0.2, 0.f));
                 UI_Row
                 {
                     ui_labelf("scale");
@@ -1602,7 +1633,9 @@ internal void rk_ui_inspector(void)
                     ui_f32_edit(&camera->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###scale_x"));
                     ui_f32_edit(&camera->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###scale_y"));
                     ui_f32_edit(&camera->scale.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###scale_z"));
+                    ui_spacer(ui_em(0.5, 1.0));
                 }
+                ui_spacer(ui_em(0.2, 0.f));
                 UI_Row
                 {
                     ui_labelf("rot");
@@ -1611,6 +1644,7 @@ internal void rk_ui_inspector(void)
                     ui_f32_edit(&camera->rot.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###rot_y"));
                     ui_f32_edit(&camera->rot.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###rot_z"));
                     ui_f32_edit(&camera->rot.w, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("W###rot_w"));
+                    ui_spacer(ui_em(0.5, 1.0));
                 }
             }
         }
@@ -1648,6 +1682,7 @@ internal void rk_ui_inspector(void)
                     ui_f32_edit(&scene->global_light.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
                     ui_f32_edit(&scene->global_light.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
                     ui_f32_edit(&scene->global_light.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
+                    ui_spacer(ui_em(0.5, 1.0));
                 }
             }
         }

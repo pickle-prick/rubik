@@ -1,4 +1,69 @@
 ////////////////////////////////
+//~ k: Basic widget
+
+internal UI_Signal rk_icon_button(RK_IconKind kind, String8 string)
+{
+    String8 display_string = ui_display_part_from_key_string(string);
+    ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+    ui_set_next_child_layout_axis(Axis2_X);
+    UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable|
+                                           UI_BoxFlag_DrawBorder|
+                                           UI_BoxFlag_DrawBackground|
+                                           UI_BoxFlag_DrawHotEffects|
+                                           UI_BoxFlag_DrawActiveEffects,
+                                           string);
+    UI_Parent(box)
+    {
+        if(display_string.size == 0)
+        {
+            ui_spacer(ui_pct(1,0));
+        }
+        else
+        {
+            ui_spacer(ui_em(1.f, 1.f));
+        }
+
+        UI_TextAlignment(UI_TextAlign_Center)
+            RK_Font(RK_FontSlot_Icons)
+            UI_PrefWidth(ui_em(2.f, 1.f))
+            UI_PrefHeight(ui_pct(1, 0))
+            UI_FlagsAdd(UI_BoxFlag_DisableTextTrunc|UI_BoxFlag_DrawTextWeak)
+            ui_label(rk_icon_kind_text_table[kind]);
+
+        if(display_string.size != 0)
+        {
+            UI_PrefWidth(ui_pct(1.f, 0.f))
+            {
+                UI_Box *box = ui_label(display_string).box;
+            }
+        }
+        if(display_string.size == 0)
+        {
+            ui_spacer(ui_pct(1, 0));
+        }
+        else
+        {
+            ui_spacer(ui_em(1.f, 1.f));
+        }
+    }
+
+    UI_Signal result = ui_signal_from_box(box);
+    return result;
+}
+
+internal UI_Signal rk_icon_buttonf(RK_IconKind kind, char *fmt, ...)
+{
+    Temp scratch = scratch_begin(0,0);
+    va_list args;
+    va_start(args, fmt);
+    String8 string = push_str8fv(scratch.arena, fmt, args);
+    va_end(args);
+    UI_Signal sig = rk_icon_button(kind, string);
+    scratch_end(scratch);
+    return sig;
+}
+
+////////////////////////////////
 //~ k: Floating/Fixed Panes
 
 internal UI_Box *
@@ -396,4 +461,67 @@ rk_ui_dropdown_hide(void)
 {
     ui_set_auto_focus_hot_key(ui_key_zero());
     ui_set_auto_focus_active_key(ui_key_zero());
+}
+
+internal UI_Signal
+rk_ui_checkbox(B32 *b, String8 string)
+{
+#if 0
+    UI_Signal result;
+    RK_IconKind icon_kind = *b == 0 ? RK_IconKind_CheckHollow : RK_IconKind_CheckFilled;
+    result = rk_icon_button(icon_kind, string);
+    if(ui_clicked(result))
+    {
+        *b = !*b;
+    }
+    return result;
+#else
+    UI_Signal result;
+    ui_set_next_child_layout_axis(Axis2_X);
+    UI_Box *container_box = ui_build_box_from_string(0, string);
+
+    UI_Parent(container_box)
+    {
+        ui_spacer(ui_pct(1,0));
+
+        UI_Size size = ui_em(1.0, 1);
+        UI_PrefWidth(size) UI_PrefHeight(size)
+        {
+            ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+            UI_Box *outer = ui_build_box_from_stringf(UI_BoxFlag_Clickable|
+                                                      UI_BoxFlag_DrawBorder|
+                                                      UI_BoxFlag_DrawBackground|
+                                                      UI_BoxFlag_DrawHotEffects|
+                                                      UI_BoxFlag_DrawActiveEffects,
+                                                      "###outer");
+            result = ui_signal_from_box(outer);
+            F32 active_t = outer->active_t;
+            F32 hot_t = outer->hot_t;
+
+            Rng2F32 inner_rect = {0};
+            inner_rect.x1 = outer->fixed_size.x;
+            inner_rect.y1 = outer->fixed_size.y;
+            F32 padding = 0;
+            padding = padding + (*b != 0)*outer->fixed_size.x*0.175;
+            padding = padding + mix_1f32(0, outer->fixed_size.x*0.025, hot_t);
+            UI_Parent(outer) UI_Rect(pad_2f32(inner_rect, -(padding))) UI_Palette(ui_state->widget_palette_info.scrollbar_palette)
+            {
+                UI_Box *inner = ui_build_box_from_stringf(UI_BoxFlag_DrawHotEffects|
+                                                          UI_BoxFlag_DrawActiveEffects|
+                                                          UI_BoxFlag_DrawBorder|
+                                                          UI_BoxFlag_DrawBackground|
+                                                          UI_BoxFlag_DrawDropShadow, "###inner");
+                inner->hot_t = Clamp(0, hot_t+*b, 1);
+                inner->active_t = active_t;
+            }
+        }
+
+        ui_spacer(ui_pct(1,0));
+    }
+    if(ui_clicked(result))
+    {
+        *b = !*b;
+    }
+    return result;
+#endif
 }
