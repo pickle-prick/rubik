@@ -44,6 +44,15 @@ internal void pf_tick()
 
 internal void pf_begin(const char* fmt, ...)
 {
+    ProfNode *parent_node = pf_top_node;
+    // TODO(k): recursive call won't work this way
+    U64 seed = 0;
+
+    if(parent_node != 0)
+    {
+        seed = parent_node->hash;
+    }
+
     ProfTickInfo *tick = pf_ticks[pf_idx_pre];
     Arena *arena = tick->arena;
 
@@ -59,10 +68,10 @@ internal void pf_begin(const char* fmt, ...)
     va_start(args, fmt);
     String8 string = push_str8fv(scratch.arena, (char *)fmt, args);
     va_end(args);
-    hash.xxhash = XXH3_64bits(string.str, string.size);
+    hash.xxhash = XXH3_64bits_withSeed(string.str, string.size, seed);
     U64 slot_idx = hash.u64 % tick->node_hash_table_size;
     ProfNodeSlot *slot = &tick->node_hash_table[slot_idx];
-    for(ProfNode *n = slot->first; n != 0; n = n->next)
+    for(ProfNode *n = slot->first; n != 0; n = n->hash_next)
     {
         if(n->hash == hash.u64)
         {
@@ -80,6 +89,13 @@ internal void pf_begin(const char* fmt, ...)
         node->line = __LINE__;
         DLLPushBack_NP(slot->first, slot->last, node, hash_next, hash_prev);
         slot->count++;
+    }
+
+    // insert to the tree
+    if(parent_node != 0)
+    {
+        DLLPushBack(parent_node->first, parent_node->last, node);
+        parent_node->child_count++;
     }
 
     // start the counter

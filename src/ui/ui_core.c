@@ -354,8 +354,11 @@ internal void
 ui_end_build(void)
 {
     ProfBeginFunction();
+
+    // TODO(k): potential bugs here, after running for while, this function (ui_end_build) will take a lot cpu cyles when window is focused but is normal when window is out of focused (weird)
+
     // Prune untouched or transient widgets in the cache
-    for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
+    ProfScope("prune ui nodes") for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
     {
         for(UI_Box *box = ui_state->box_table[slot_idx].hash_first; !ui_box_is_nil(box); box = box->hash_next)
         {
@@ -373,13 +376,13 @@ ui_end_build(void)
     }
 
     // Layout box tree
-    for(Axis2 axis = 0; axis < Axis2_COUNT; axis++)
+    ProfScope("ui layout") for(Axis2 axis = 0; axis < Axis2_COUNT; axis++)
     {
         ui_layout_root(ui_state->root, axis);
     }
 
     // Enforce child-rounding
-    for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx ++)
+    ProfScope("enforce child-rounding") for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
     {
         for(UI_Box *box = ui_state->box_table[slot_idx].hash_first; !ui_box_is_nil(box); box = box->hash_next)
         {
@@ -394,6 +397,7 @@ ui_end_build(void)
     }
 
     // Animate
+    ProfScope("animate")
     {
         // // ln(0.2) means 80%
         // // critical / 0.1f means 0.1 unit time to reach this critical point (80%)

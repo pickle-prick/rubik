@@ -7,10 +7,17 @@
 typedef struct ProfNode ProfNode;
 struct ProfNode
 {
+    ProfNode *parent;
+    ProfNode *first;
+    ProfNode *last;
     ProfNode *next;
     ProfNode *prev;
+
+    U64      child_count;
+
     ProfNode *hash_next;
     ProfNode *hash_prev;
+
     U64      hash;
     String8  tag;
     String8  file;

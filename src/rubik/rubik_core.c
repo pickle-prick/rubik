@@ -1145,6 +1145,17 @@ internal void rk_ui_stats(void)
         }
     }
 
+    // collect ui box cache count
+    U64 ui_cache_count = 0;
+    for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
+    {
+        for(UI_Box *box = ui_state->box_table[slot_idx].hash_first; !ui_box_is_nil(box); box = box->hash_next)
+        {
+            AssertAlways(!ui_key_match(box->key, ui_key_zero()));
+            ui_cache_count++;
+        }
+    }
+
     UI_Transparency(0.1) RK_UI_Pane(&stats->rect, &stats->show, str8_lit("STATS###stats"))
         UI_TextAlignment(UI_TextAlign_Left)
         UI_TextPadding(9)
@@ -1184,6 +1195,12 @@ internal void rk_ui_stats(void)
                 ui_labelf("ui_last_build_box_count");
                 ui_spacer(ui_pct(1.0, 0.0));
                 ui_labelf("%lu", ui_state->last_build_box_count);
+            }
+            UI_Row
+            {
+                ui_labelf("ui_cache_count");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%lu", ui_cache_count);
             }
             UI_Row
             {
