@@ -1611,7 +1611,7 @@ rk_box_node_cached(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_
         primitive->indice_count = indice_count;
     }
 
-    RK_Node *n = rk_build_node_from_stringf(0, "primitive");
+    RK_Node *n = rk_build_node_from_string(0, string);
     n->kind                           = RK_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices      = primitive->vertices;
     n->v.mesh_primitive.indices       = primitive->indices;
@@ -1872,7 +1872,7 @@ rk_cylinder_node_cached(String8 string, F32 radius, F32 height, U64 radial_segme
         primitive->indice_count = indice_count;
     }
 
-    RK_Node *n = rk_build_node_from_stringf(0, "primitive");
+    RK_Node *n = rk_build_node_from_string(0, string);
     n->kind                           = RK_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices      = primitive->vertices;
     n->v.mesh_primitive.indices       = primitive->indices;
@@ -1957,7 +1957,7 @@ rk_capsule_node_cached(String8 string, F32 radius, F32 height, U64 radial_segmen
         primitive->indice_count = indice_count;
     }
 
-    RK_Node *n = rk_build_node_from_stringf(0, "primitive");
+    RK_Node *n = rk_build_node_from_string(0, string);
     n->kind                           = RK_NodeKind_MeshPrimitive;
     n->v.mesh_primitive.vertices      = primitive->vertices;
     n->v.mesh_primitive.indices       = primitive->indices;

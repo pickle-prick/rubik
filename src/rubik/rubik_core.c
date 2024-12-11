@@ -2027,8 +2027,10 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
                     default: {}break;
                     case RK_NodeKind_MeshPrimitive:
                     {
+                        // TODO: this is ugly, maybe wrong abstraction here
                         Mat4x4F32 *joint_xforms = node->parent->v.mesh_grp.joint_xforms;
                         U64 joint_count = node->parent->v.mesh_grp.joint_count;
+
                         R_Mesh3DInst *inst = d_mesh(node->v.mesh_primitive.vertices, node->v.mesh_primitive.indices,
                                                     R_GeoTopologyKind_Triangles, polygon_mode,
                                                     R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, node->v.mesh_primitive.albedo_tex, node->v.mesh_primitive.color_tex_override,

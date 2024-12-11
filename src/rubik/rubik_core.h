@@ -110,57 +110,57 @@ typedef U64 RK_SpecialKeyKind;
 /////////////////////////////////
 //~ Key
 
-typedef struct RK_Key RK_Key;
-struct RK_Key
-{
-    U64 u64[1];
-};
-
-/////////////////////////////////
-//~ Resource (alloc/load once)
-
-//- 2D Sprite
-
-typedef struct RK_Tex2D RK_Tex2D;
-struct RK_Tex2D 
-{
-    R_Handle texture;
-    U64      w;
-    U64      h;
-    U64      rc;
-};
-
-typedef struct RK_Sprite2D_Frame RK_Sprite2D_Frame;
-struct RK_Sprite2D_Frame 
-{
-    U64       x;
-    U64       y;
-    U64       w;
-    U64       h;
-    R_Handle  texture;
-    F32       duration;
-};
-
-typedef struct RK_Sprite2D_FrameTag RK_Sprite2D_FrameTag;
-struct RK_Sprite2D_FrameTag 
-{
-    String8 name;
-    U64     from;
-    U64     to;
-};
-
-typedef struct RK_SpriteSheet2D RK_SpriteSheet2D;
-struct RK_SpriteSheet2D
-{
-    R_Handle            texture;
-    U64                 w;
-    U64                 h;
-
-    RK_Sprite2D_FrameTag *tags;
-    U64                 tag_count;
-    RK_Sprite2D_Frame    *frames;
-    U64                 frame_count;
-};
+// typedef struct RK_Key RK_Key;
+// struct RK_Key
+// {
+//     U64 u64[1];
+// };
+// 
+// /////////////////////////////////
+// //~ Resource (alloc/load once)
+// 
+// //- 2D Sprite
+// 
+// typedef struct RK_Tex2D RK_Tex2D;
+// struct RK_Tex2D 
+// {
+//     R_Handle texture;
+//     U64      w;
+//     U64      h;
+//     U64      rc;
+// };
+// 
+// typedef struct RK_Sprite2D_Frame RK_Sprite2D_Frame;
+// struct RK_Sprite2D_Frame 
+// {
+//     U64       x;
+//     U64       y;
+//     U64       w;
+//     U64       h;
+//     R_Handle  texture;
+//     F32       duration;
+// };
+// 
+// typedef struct RK_Sprite2D_FrameTag RK_Sprite2D_FrameTag;
+// struct RK_Sprite2D_FrameTag 
+// {
+//     String8 name;
+//     U64     from;
+//     U64     to;
+// };
+// 
+// typedef struct RK_SpriteSheet2D RK_SpriteSheet2D;
+// struct RK_SpriteSheet2D
+// {
+//     R_Handle             texture;
+//     U64                  w;
+//     U64                  h;
+// 
+//     RK_Sprite2D_FrameTag *tags;
+//     U64                  tag_count;
+//     RK_Sprite2D_Frame    *frames;
+//     U64                  frame_count;
+// };
 
 //- Mesh
 
@@ -214,42 +214,42 @@ struct RK_ModelNode
     RK_ModelNode             *prev;
     RK_ModelNode             *hash_next;
     RK_ModelNode             *hash_prev;
-    U64                     children_count;
+    U64                      children_count;
 
-    String8                 name;
-    String8                 path;
+    String8                  name;
+    String8                  path;
     RK_Key                   key;
 
     // Xform
-    Mat4x4F32               xform;
+    Mat4x4F32                xform;
 
     // Joint
-    B32                     is_joint;
-    B32                     is_skin; // root joint
-    Mat4x4F32               inverse_bind_matrix;
+    B32                      is_joint;
+    B32                      is_skin;
+    Mat4x4F32                inverse_bind_matrix;
 
     // Mesh
-    B32                     is_mesh_group;
-    B32                     is_mesh_primitive;
-    R_Handle                vertices;
-    R_Handle                indices;
-    R_Handle                albedo_tex;
+    B32                      is_mesh_group;
+    B32                      is_mesh_primitive;
+    R_Handle                 vertices;
+    R_Handle                 indices;
+    R_Handle                 albedo_tex;
 
     // Skeleton
-    B32                     is_skinned;
-    U64                     joint_count;
+    B32                      is_skinned;
+    U64                      joint_count;
     RK_ModelNode             **joints;
     RK_ModelNode             *root_joint;
 
     // Animation
-    U64                     anim_count;
+    U64                      anim_count;
     RK_MeshSkeletonAnimation **anims;
 
     // Hash table
     RK_ModelNode_HashSlot    *hash_table;
-    U64                     hash_table_size;
+    U64                      hash_table_size;
 
-    U64                     rc; // TODO: make use of this
+    U64                      rc; // TODO: make use of this
 };
 
 /////////////////////////////////

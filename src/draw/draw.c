@@ -204,10 +204,11 @@ d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo
 
     // Push a new instance to the batch group, then return it
     R_Mesh3DInst *inst = (R_Mesh3DInst *)r_batch_list_push_inst(arena, &node->batches, 256);
-    inst->xform        = inst_xform;
-    inst->key          = inst_key;
-    inst->joint_xforms = joint_xforms;
-    inst->joint_count  = joint_count;
+    inst->xform         = inst_xform;
+    inst->key           = inst_key;
+    inst->joint_xforms  = joint_xforms;
+    inst->joint_count   = joint_count;
+    inst->color_texture = color_tex;
     return inst;
 }
 

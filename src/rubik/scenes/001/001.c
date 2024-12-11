@@ -43,6 +43,18 @@ rk_scene_go()
     }
     rk_node_push_fn(ret->arena, grid, go_board, str8_lit("go_board"));
 
+    // stone
+    RK_Parent_Scope(grid) RK_MeshCacheTable_Scope(&ret->mesh_cache_table) for(U64 i = 0; i < 3; i++)
+    {
+        for(U64 j = 0; j < 3; j++)
+        {
+            String8 string = push_str8f(ret->bucket->arena, "%d-%d", i, j);
+            RK_Node *stone = rk_cylinder_node_cached(string, 0.5, 0.2, 6, 6, 1, 1);
+            stone->rot = make_rotate_quat_f32(v3f32(1,0,0), 0.25);
+            stone->pos = v3f32(i,0,j);
+        }
+    }
+
     rk_pop_parent();
     rk_pop_bucket();
     return ret;
