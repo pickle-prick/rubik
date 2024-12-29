@@ -41,18 +41,729 @@ return old_value;
 #include "generated/rubik.meta.c"
 
 internal void
+rk_ui_draw()
+{
+    Temp scratch = scratch_begin(0,0);
+
+    // DEBUG mouse
+    if(0)
+    {
+        R_Rect2DInst *cursor = d_rect(r2f32p(ui_state->mouse.x-15,ui_state->mouse.y-15, ui_state->mouse.x+15,ui_state->mouse.y+15), v4f32(0,0.3,1,0.3), 15, 0.0, 0.7);
+    }
+
+    // Recusivly drawing boxes
+    UI_Box *box = ui_root_from_state(ui_state);
+    while(!ui_box_is_nil(box))
+    {
+        UI_BoxRec rec = ui_box_rec_df_post(box, &ui_nil_box);
+
+        if(box->transparency != 0)
+        {
+            d_push_transparency(box->transparency);
+        }
+
+        //- k: draw drop_shadw
+        if(box->flags & UI_BoxFlag_DrawDropShadow)
+        {
+            Rng2F32 drop_shadow_rect = shift_2f32(pad_2f32(box->rect, 8), v2f32(4, 4));
+            Vec4F32 drop_shadow_color = rk_rgba_from_theme_color(RK_ThemeColor_DropShadow);
+            d_rect(drop_shadow_rect, drop_shadow_color, 0.8f, 0, 8.f);
+        }
+
+        //- k: draw background
+        if(box->flags & UI_BoxFlag_DrawBackground)
+        {
+            // Main rectangle
+            R_Rect2DInst *inst = d_rect(pad_2f32(box->rect, 1), box->palette->colors[UI_ColorCode_Background], 0, 0, 1.f);
+            MemoryCopyArray(inst->corner_radii, box->corner_radii);
+
+            if(box->flags & UI_BoxFlag_DrawHotEffects)
+            {
+                F32 effective_active_t = box->active_t;
+                if (!(box->flags & UI_BoxFlag_DrawActiveEffects))
+                {
+                    effective_active_t = 0;
+                }
+                F32 t = box->hot_t * (1-effective_active_t);
+
+                // Brighten
+                {
+                    R_Rect2DInst *inst = d_rect(box->rect, v4f32(0, 0, 0, 0), 0, 0, 1.f);
+                    Vec4F32 color = rk_rgba_from_theme_color(RK_ThemeColor_Hover);
+                    color.w *= t*0.2f;
+                    inst->colors[Corner_00] = color;
+                    inst->colors[Corner_01] = color;
+                    inst->colors[Corner_10] = color;
+                    inst->colors[Corner_11] = color;
+                    inst->colors[Corner_10].w *= t;
+                    inst->colors[Corner_11].w *= t;
+                    MemoryCopyArray(inst->corner_radii, box->corner_radii);
+                }
+
+                // rjf: slight emboss fadeoff
+                if(0)
+                {
+                    Rng2F32 rect = r2f32p(box->rect.x0, box->rect.y0, box->rect.x1, box->rect.y1);
+                    R_Rect2DInst *inst = d_rect(rect, v4f32(0, 0, 0, 0), 0, 0, 1.f);
+                    inst->colors[Corner_00] = v4f32(0.f, 0.f, 0.f, 0.0f*t);
+                    inst->colors[Corner_01] = v4f32(0.f, 0.f, 0.f, 0.3f*t);
+                    inst->colors[Corner_10] = v4f32(0.f, 0.f, 0.f, 0.0f*t);
+                    inst->colors[Corner_11] = v4f32(0.f, 0.f, 0.f, 0.3f*t);
+                    MemoryCopyArray(inst->corner_radii, box->corner_radii);
+                }
+
+                // Active effect extension
+                if(box->flags & UI_BoxFlag_DrawActiveEffects)
+                {
+                    Vec4F32 shadow_color = rk_rgba_from_theme_color(RK_ThemeColor_Hover);
+                    shadow_color.x *= 0.3f;
+                    shadow_color.y *= 0.3f;
+                    shadow_color.z *= 0.3f;
+                    shadow_color.w *= 0.5f*box->active_t;
+
+                    Vec2F32 shadow_size =
+                    {
+                        (box->rect.x1 - box->rect.x0)*0.60f*box->active_t,
+                        (box->rect.y1 - box->rect.y0)*0.60f*box->active_t,
+                    };
+                    shadow_size.x = Clamp(0, shadow_size.x, box->font_size*2.f);
+                    shadow_size.y = Clamp(0, shadow_size.y, box->font_size*2.f);
+
+                    // rjf: top -> bottom dark effect
+                    {
+                        R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x0, box->rect.y0, box->rect.x1, box->rect.y0 + shadow_size.y), v4f32(0, 0, 0, 0), 0, 0, 1.f);
+                        inst->colors[Corner_00] = inst->colors[Corner_10] = shadow_color;
+                        inst->colors[Corner_01] = inst->colors[Corner_11] = v4f32(0.f, 0.f, 0.f, 0.0f);
+                        MemoryCopyArray(inst->corner_radii, box->corner_radii);
+                    }
+
+                    // rjf: bottom -> top light effect
+                    {
+                        R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x0, box->rect.y1 - shadow_size.y, box->rect.x1, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
+                        inst->colors[Corner_00] = inst->colors[Corner_10] = v4f32(0, 0, 0, 0);
+                        inst->colors[Corner_01] = inst->colors[Corner_11] = v4f32(0.4f, 0.4f, 0.4f, 0.4f*box->active_t);
+                        MemoryCopyArray(inst->corner_radii, box->corner_radii);
+                    }
+
+                    // rjf: left -> right dark effect
+                    {
+                        R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x0, box->rect.y0, box->rect.x0 + shadow_size.x, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
+                        inst->colors[Corner_10] = inst->colors[Corner_11] = v4f32(0.f, 0.f, 0.f, 0.f);
+                        inst->colors[Corner_00] = shadow_color;
+                        inst->colors[Corner_01] = shadow_color;
+                        MemoryCopyArray(inst->corner_radii, box->corner_radii);
+                    }
+
+                    // rjf: right -> left dark effect
+                    {
+                        R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x1 - shadow_size.x, box->rect.y0, box->rect.x1, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
+                        inst->colors[Corner_00] = inst->colors[Corner_01] = v4f32(0.f, 0.f, 0.f, 0.f);
+                        inst->colors[Corner_10] = shadow_color;
+                        inst->colors[Corner_11] = shadow_color;
+                        MemoryCopyArray(inst->corner_radii, box->corner_radii);
+                    }
+                }
+            }
+        }
+
+        // Draw string
+        if(box->flags & UI_BoxFlag_DrawText)
+        {
+            // TODO: handle font color
+            Vec2F32 text_position = ui_box_text_position(box);
+
+            // Max width
+            F32 max_x = 100000.0f;
+            F_Run ellipses_run = {0};
+
+            if(!(box->flags & UI_BoxFlag_DisableTextTrunc))
+            {
+                max_x = (box->rect.x1-box->text_padding);
+                ellipses_run = f_push_run_from_string(scratch.arena, box->font, box->font_size, 0, box->tab_size, 0, str8_lit("..."));
+            }
+
+            d_truncated_fancy_run_list(text_position, &box->display_string_runs, max_x, ellipses_run);
+        }
+
+        // NOTE(k): draw focus viz
+        if(1)
+        {
+            B32 focused = (box->flags & (UI_BoxFlag_FocusHot|UI_BoxFlag_FocusActive) &&
+                    box->flags & UI_BoxFlag_Clickable);
+            B32 disabled = 0;
+            for(UI_Box *p = box; !ui_box_is_nil(p); p = p->parent)
+            {
+                if(p->flags & (UI_BoxFlag_FocusHotDisabled|UI_BoxFlag_FocusActiveDisabled))
+                {
+                    disabled = 1;
+                    break;
+                }
+            }
+            if(focused)
+            {
+                Vec4F32 color = v4f32(0.3f, 0.8f, 0.3f, 1.f);
+                if(disabled)
+                {
+                    color = v4f32(0.8f, 0.3f, 0.3f, 1.f);
+                }
+                d_rect(r2f32p(box->rect.x0-6, box->rect.y0-6, box->rect.x0+6, box->rect.y0+6), color, 2, 0, 1);
+                d_rect(box->rect, color, 2, 2, 1);
+            }
+            if(box->flags & (UI_BoxFlag_FocusHot|UI_BoxFlag_FocusActive))
+            {
+                if(box->flags & (UI_BoxFlag_FocusHotDisabled|UI_BoxFlag_FocusActiveDisabled))
+                {
+                    d_rect(r2f32p(box->rect.x0-6, box->rect.y0-6, box->rect.x0+6, box->rect.y0+6), v4f32(1, 0, 0, 0.2f), 2, 0, 1);
+                }
+                else
+                {
+                    d_rect(r2f32p(box->rect.x0-6, box->rect.y0-6, box->rect.x0+6, box->rect.y0+6), v4f32(0, 1, 0, 0.2f), 2, 0, 1);
+                }
+            }
+        }
+
+        if(box->flags & UI_BoxFlag_Clip)
+        {
+            Rng2F32 top_clip = d_top_clip();
+            Rng2F32 new_clip = pad_2f32(box->rect, -1);
+            if(top_clip.x1 != 0 || top_clip.y1 != 0)
+            {
+                new_clip = intersect_2f32(new_clip, top_clip);
+            }
+            d_push_clip(new_clip);
+        }
+
+        // k: custom draw list
+        if(box->flags & UI_BoxFlag_DrawBucket)
+        {
+            Mat3x3F32 xform = make_translate_3x3f32(box->position_delta);
+            D_XForm2DScope(xform)
+            {
+                d_sub_bucket(box->draw_bucket);
+            }
+        }
+
+        // Call custom draw callback
+        if(box->custom_draw != 0)
+        {
+            box->custom_draw(box, box->custom_draw_user_data);
+        }
+
+        // k: pop stacks
+        {
+            S32 pop_idx = 0;
+            for(UI_Box *b = box; !ui_box_is_nil(b) && pop_idx <= rec.pop_count; b = b->parent)
+            {
+                pop_idx += 1;
+                if(b == box && rec.push_count != 0) continue;
+
+                // k: pop clip
+                if(b->flags & UI_BoxFlag_Clip)
+                {
+                    d_pop_clip();
+                }
+
+                // rjf: draw overlay
+                if(b->flags & UI_BoxFlag_DrawOverlay)
+                {
+                    R_Rect2DInst *inst = d_rect(b->rect, b->palette->colors[UI_ColorCode_Overlay], 0, 0, 1.f);
+                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
+                }
+
+                //- k: draw the border
+                if(b->flags & UI_BoxFlag_DrawBorder)
+                {
+                    R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1.f), b->palette->colors[UI_ColorCode_Border], 0, 1.f, 1.f);
+                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
+
+                    // rjf: hover effect
+                    if(b->flags & UI_BoxFlag_DrawHotEffects)
+                    {
+                        Vec4F32 color = rk_rgba_from_theme_color(RK_ThemeColor_Hover);
+                        color.w *= b->hot_t;
+                        R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), color, 0, 1.f, 1.f);
+                        MemoryCopyArray(inst->corner_radii, b->corner_radii);
+                    }
+                }
+
+                // k: debug border rendering
+                if(0)
+                {
+                    R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), v4f32(1, 0, 1, 0.25f), 0, 1.f, 1.f);
+                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
+                }
+
+                // rjf: draw sides
+                {
+                    Rng2F32 r = b->rect;
+                    F32 half_thickness = 1.f;
+                    F32 softness = 0.5f;
+                    if(b->flags & UI_BoxFlag_DrawSideTop)
+                    {
+                        d_rect(r2f32p(r.x0, r.y0-half_thickness, r.x1, r.y0+half_thickness), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
+                    }
+                    if(b->flags & UI_BoxFlag_DrawSideBottom)
+                    {
+                        d_rect(r2f32p(r.x0, r.y1-half_thickness, r.x1, r.y1+half_thickness), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
+                    }
+                    if(b->flags & UI_BoxFlag_DrawSideLeft)
+                    {
+                        d_rect(r2f32p(r.x0-half_thickness, r.y0, r.x0+half_thickness, r.y1), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
+                    }
+                    if(b->flags & UI_BoxFlag_DrawSideRight)
+                    {
+                        d_rect(r2f32p(r.x1-half_thickness, r.y0, r.x1+half_thickness, r.y1), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
+                    }
+                }
+
+                // rjf: draw focus overlay
+                if(b->flags & UI_BoxFlag_Clickable && !(b->flags & UI_BoxFlag_DisableFocusOverlay) && b->focus_hot_t > 0.01f)
+                {
+                    Vec4F32 color = rk_rgba_from_theme_color(RK_ThemeColor_Focus);
+                    color.w *= 0.2f*b->focus_hot_t;
+                    R_Rect2DInst *inst = d_rect(b->rect, color, 0, 0, 0.f);
+                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
+                }
+
+                // rjf: draw focus border
+                if(b->flags & UI_BoxFlag_Clickable && !(b->flags & UI_BoxFlag_DisableFocusBorder) && b->focus_active_t > 0.01f)
+                {
+                    Vec4F32 color = rk_rgba_from_theme_color(RK_ThemeColor_Focus);
+                    color.w *= b->focus_active_t;
+                    R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 0.f), color, 0, 1.f, 1.f);
+                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
+                }
+
+                // rjf: disabled overlay
+                if(b->disabled_t >= 0.005f)
+                {
+                    Vec4F32 color = rk_rgba_from_theme_color(RK_ThemeColor_DisabledOverlay);
+                    color.w *= b->disabled_t;
+                    R_Rect2DInst *inst = d_rect(b->rect, color, 0, 0, 1);
+                    MemoryCopyArray(inst->corner_radii, b->corner_radii);
+                }
+
+                // k: pop transparency
+                if(b->transparency != 0)
+                {
+                    d_pop_transparency();
+                }
+            }
+        }
+        box = rec.next;
+    }
+    scratch_end(scratch);
+}
+
+/////////////////////////////////
+// Basic Type Functions
+
+internal U64
+rk_hash_from_string(U64 seed, String8 string)
+{
+    U64 result = XXH3_64bits_withSeed(string.str, string.size, seed);
+    return result;
+}
+
+internal String8
+rk_hash_part_from_key_string(String8 string)
+{
+    String8 result = string;
+
+    // k: look for ### patterns, which can replace the entirety of the part of
+    // the string that is hashed.
+    U64 hash_replace_signifier_pos = str8_find_needle(string, 0, str8_lit("###"), 0);
+    if(hash_replace_signifier_pos < string.size)
+    {
+        result = str8_skip(string, hash_replace_signifier_pos);
+    }
+
+    return result;
+}
+
+internal String8
+rk_display_part_from_key_string(String8 string)
+{
+    U64 hash_pos = str8_find_needle(string, 0, str8_lit("##"), 0);
+    string.size = hash_pos;
+    return string;
+}
+
+/////////////////////////////////
+//~ Key
+
+internal RK_Key
+rk_key_from_string(RK_Key seed_key, String8 string)
+{
+    RK_Key result = {0};
+    if(string.size != 0)
+    {
+        String8 hash_part = rk_hash_part_from_key_string(string);
+        result.u64[0] = rk_hash_from_string(seed_key.u64[0], hash_part);
+    }
+    return result;
+}
+
+internal RK_Key
+rk_key_from_stringf(RK_Key seed_key, char *fmt, ...)
+{
+    Temp scratch = scratch_begin(0,0);
+    va_list args;
+    va_start(args, fmt);
+    String8 string = push_str8fv(scratch.arena, fmt, args);
+    va_end(args);
+
+    RK_Key result = {0};
+    result = rk_key_from_string(seed_key, string);
+    scratch_end(scratch);
+    return result;
+}
+
+internal RK_Key
+rk_active_seed_key(void)
+{
+    RK_Key key = rk_key_zero();
+    for(RK_Node *n = rk_top_parent(); n != 0; n = n->parent)
+    {
+        if(!rk_key_match(rk_key_zero(), n->key))
+        {
+            key = n->key;
+            break;
+        }
+    }
+    return key;
+}
+
+internal RK_Key
+rk_key_merge(RK_Key a, RK_Key b)
+{
+    return rk_key_from_string(a, str8((U8*)(&b), 8));
+}
+
+internal B32
+rk_key_match(RK_Key a, RK_Key b)
+{
+    return a.u64[0] == b.u64[0];
+}
+
+internal RK_Key
+rk_key_make(U64 v)
+{
+    RK_Key result = {v};
+    return result;
+}
+
+internal RK_Key
+rk_key_zero()
+{
+    return (RK_Key){0}; 
+}
+
+/////////////////////////////////
+// Handle
+
+internal RK_Handle
+rk_handle_zero()
+{
+    RK_Handle ret = {0};
+    return ret;
+}
+
+internal B32
+rk_handle_match(RK_Handle a, RK_Handle b)
+{
+    return a.u64[0] == b.u64[0] && a.u64[1] == b.u64[1];
+}
+
+/////////////////////////////////
+// Bucket
+
+internal RK_NodeBucket *
+rk_node_bucket_make(Arena *arena, U64 max_nodes)
+{
+    RK_NodeBucket *ret = push_array(arena, RK_NodeBucket, 1);
+    ret->arena_ref = arena;
+    ret->hash_table = push_array(arena, RK_NodeBucketSlot, max_nodes);
+    ret->hash_table_size = max_nodes;
+    return ret;
+}
+
+internal RK_ResourceBucket *
+rk_res_bucket_make(Arena *arena, U64 max_resources)
+{
+    RK_ResourceBucket *ret = push_array(arena, RK_ResourceBucket, 1);
+    ret->arena_ref = arena;
+    ret->hash_table = push_array(arena, RK_ResourceBucketSlot, max_resources);
+    ret->hash_table_size = max_resources;
+    return ret;
+}
+
+internal void
+rk_res_bucket_release(RK_ResourceBucket *res_bucket)
+{
+    for(U64 i = 0; i < res_bucket->hash_table_size; i++)
+    {
+        RK_ResourceBucketSlot *slot = &res_bucket->hash_table[i];
+
+        for(RK_Resource *res = slot->first; res != 0; res = res->next)
+        {
+            rk_res_release(res);
+        }
+    }
+}
+
+internal RK_Node *
+rk_node_from_key(RK_Key key)
+{
+    RK_Node *result = 0;
+    RK_NodeBucket *node_bucket = rk_top_node_bucket();
+    U64 slot_idx = key.u64[0] % node_bucket->hash_table_size;
+    for(RK_Node *node = node_bucket->hash_table[slot_idx].first; node != 0; node = node->hash_next)
+    {
+        if(rk_key_match(node->key, key))
+        {
+            result = node;
+            break;
+        }
+    }
+    return result;
+}
+
+//~ Resourcea Type Functions
+
+internal RK_Key
+rk_res_key_from_string(RK_ResourceKind kind, RK_Key seed, String8 string)
+{
+    RK_Key ret;
+    RK_Key src_key = rk_key_from_string(seed, string);
+    ret = rk_key_merge(rk_key_make(kind), src_key);
+    return ret;
+}
+
+internal RK_Key
+rk_res_key_from_stringf(RK_ResourceKind kind, RK_Key seed, char* fmt, ...)
+{
+    Temp scratch = scratch_begin(0,0);
+    va_list args;
+    va_start(args, fmt);
+    String8 string = push_str8fv(scratch.arena, fmt, args);
+    va_end(args);
+
+    RK_Key result = {0};
+    result = rk_res_key_from_string(kind, seed, string);
+    scratch_end(scratch);
+    return result;
+}
+
+internal RK_Handle
+rk_resh_alloc(RK_Key key, RK_ResourceKind kind, B32 acquire)
+{
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    RK_Resource *ret = res_bucket->first_free_res;
+
+    if(ret != 0)
+    {
+        U64 generation = ret->generation;
+        SLLStackPop(res_bucket->first_free_res);
+        MemoryZeroStruct(ret);
+        ret->generation = generation;
+    }
+    else
+    {
+        ret = push_array(res_bucket->arena_ref, RK_Resource, 1);
+    }
+
+    // fill info
+    ret->kind = kind;
+    ret->key = key;
+    ret->rc = !!acquire;
+
+    // insert into hash table
+    U64 slot_idx = key.u64[0] % res_bucket->hash_table_size;
+    RK_ResourceBucketSlot *slot = &res_bucket->hash_table[slot_idx];
+    DLLPushBack_NP(slot->first, slot->last, ret, hash_next, hash_prev);
+    res_bucket->resource_count++;
+    return rk_handle_from_res(ret);
+}
+
+internal void
+rk_res_release(RK_Resource *res)
+{
+    // TODO
+    NotImplemented;
+
+    RK_ResourceBucket *res_bucket = 0;
+    if(res != 0)
+    {
+        res_bucket = res->owner_bucket;
+    }
+}
+
+internal RK_Handle
+rk_resh_from_key(RK_Key key)
+{
+    RK_Resource *ret = 0;
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    U64 slot_idx = key.u64[0] % res_bucket->hash_table_size;
+    for(RK_Resource *res = res_bucket->hash_table[slot_idx].first; res != 0; res = res->hash_next)
+    {
+        if(rk_key_match(res->key, key))
+        {
+            ret = res;
+            break;
+        }
+    }
+    return rk_handle_from_res(ret);
+}
+
+internal RK_Handle
+rk_resh_acquire_from_key(RK_Key key)
+{
+    RK_Resource *ret = 0;
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    U64 slot_idx = key.u64[0] % res_bucket->hash_table_size;
+    for(RK_Resource *res = res_bucket->hash_table[slot_idx].first; res != 0; res = res->hash_next)
+    {
+        if(rk_key_match(res->key, key))
+        {
+            ret = res;
+            break;
+        }
+    }
+    if(ret!=0) ret->rc++;
+    return rk_handle_from_res(ret);
+}
+
+internal void
+rk_resh_acquire(RK_Handle handle)
+{
+    RK_Resource *res = rk_res_from_handle(handle);
+    if(res !=0 )
+    {
+        res->rc++;
+    }
+}
+
+internal void rk_resh_return(RK_Handle handle)
+{
+    RK_Resource *res = rk_res_from_handle(handle);
+    if(res != 0)
+    {
+        res->rc--;
+
+        if(res->rc == 0 && res->auto_free)
+        {
+            rk_res_release(res);
+        }
+    }
+}
+
+internal RK_Resource *
+rk_res_from_handle(RK_Handle handle)
+{
+    RK_Resource *ret = (RK_Resource *)handle.u64[0];
+    U64 generation = handle.u64[1];
+    if(ret != 0 && generation == ret->generation)
+    {
+        return ret;
+    }
+    return 0;
+}
+
+internal void *
+rk_res_data_from_handle(RK_Handle handle)
+{
+    void *ret = 0;
+    RK_Resource *res = rk_res_from_handle(handle);
+    if(res != 0)
+    {
+        ret = &res->v;
+    }
+    return ret;
+}
+
+internal RK_Handle
+rk_handle_from_res(RK_Resource *res)
+{
+    RK_Handle ret = {0};
+    ret.u64[0] = (U64)res;
+    if(res) ret.u64[1] = res->generation;
+    return ret;
+}
+
+/////////////////////////////////
+//- Resourcea Building Helpers (subresource management etc...)
+
+internal RK_Animation *
+rk_animation_alloc()
+{
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    RK_Animation *ret = res_bucket->first_free_animation;
+
+    if(ret != 0)
+    {
+        SLLStackPop(res_bucket->first_free_animation);
+    }
+    else
+    {
+        ret = push_array_no_zero(res_bucket->arena_ref, RK_Animation, 1);
+    }
+    MemoryZeroStruct(ret);
+    return ret;
+}
+internal RK_Track *
+rk_track_alloc()
+{
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    RK_Track *ret = res_bucket->first_free_track;
+    if(ret != 0)
+    {
+        SLLStackPop(res_bucket->first_free_track);
+    }
+    else
+    {
+        ret = push_array_no_zero(res_bucket->arena_ref, RK_Track, 1);
+    }
+    MemoryZeroStruct(ret);
+    return ret;
+}
+internal RK_TrackFrame *
+rk_track_frame_alloc()
+{
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    RK_TrackFrame *ret = res_bucket->first_free_track_frame;
+    if(ret != 0)
+    {
+        SLLStackPop(res_bucket->first_free_track_frame);
+    }
+    else
+    {
+        ret = push_array_no_zero(res_bucket->arena_ref, RK_TrackFrame, 1);
+    }
+    MemoryZeroStruct(ret);
+    return ret;
+}
+
+/////////////////////////////////
+// State accessor/mutator
+
+internal void
 rk_init(OS_Handle os_wnd)
 {
     Arena *arena = arena_alloc();
     rk_state = push_array(arena, RK_State, 1);
-    rk_state->arena = arena;
-    rk_state->frame_arena = arena_alloc();
-    rk_state->node_bucket = rk_bucket_make(arena, 3000);
-    rk_state->os_wnd = os_wnd;
-    rk_state->mesh_cache_table.slot_count = 1000;
-    rk_state->mesh_cache_table.arena = arena;
-    rk_state->mesh_cache_table.slots = push_array(arena, RK_MeshCacheSlot, rk_state->mesh_cache_table.slot_count);
-    rk_state->last_dpi = os_dpi_from_window(os_wnd);
+    {
+        rk_state->arena           = arena;
+        for(U64 i = 0; i < ArrayCount(rk_state->frame_arenas); i++)
+        {
+            rk_state->frame_arenas[i] = arena_alloc();
+        }
+        rk_state->node_bucket     = rk_node_bucket_make(arena, 4096-1);
+        rk_state->res_node_bucket = rk_node_bucket_make(arena, 4096-1);
+        rk_state->res_bucket      = rk_res_bucket_make(arena, 4096-1);
+        rk_state->os_wnd          = os_wnd;
+        rk_state->last_dpi        = os_dpi_from_window(os_wnd);
+    }
 
     // Settings
     for EachEnumVal(RK_SettingCode, code)
@@ -147,101 +858,10 @@ rk_init(OS_Handle os_wnd)
     RK_InitStackNils(rk_state)
 }
 
-/////////////////////////////////
-//~ Key
-
-internal RK_Key
-rk_key_from_string(RK_Key seed_key, String8 string)
+internal Arena *
+rk_frame_arena()
 {
-    RK_Key result = {0};
-    result.u64[0] = rk_hash_from_string(seed_key.u64[0], string);
-    return result;
-}
-
-internal RK_Key
-rk_active_seed_key(void)
-{
-    RK_Key key = rk_key_zero();
-    for(RK_Node *n = rk_top_parent(); n != 0; n = n->parent)
-    {
-        if(!rk_key_match(rk_key_zero(), n->key))
-        {
-            key = n->key;
-            break;
-        }
-    }
-    return key;
-}
-
-internal RK_Key
-rk_key_merge(RK_Key a, RK_Key b)
-{
-    return rk_key_from_string(a, str8((U8*)(&b), 8));
-}
-
-internal U64
-rk_hash_from_string(U64 seed, String8 string)
-{
-    U64 result = XXH3_64bits_withSeed(string.str, string.size, seed);
-    return result;
-}
-
-internal B32 rk_key_match(RK_Key a, RK_Key b)
-{
-    return a.u64[0] == b.u64[0];
-}
-
-internal RK_Key rk_key_zero()
-{
-    return (RK_Key){0}; 
-}
-
-/////////////////////////////////
-// Bucket
-
-internal RK_Bucket *
-rk_bucket_make(Arena *arena, U64 hash_table_size)
-{
-    RK_Bucket *result = push_array(arena, RK_Bucket, 1);
-    result->node_hash_table = push_array(arena, RK_BucketSlot, hash_table_size);
-    result->node_hash_table_size = hash_table_size;
-    result->arena = arena;
-    return result;
-}
-
-/////////////////////////////////
-// State accessor/mutator
-
-internal void
-rk_set_active_key(RK_Key key)
-{
-    rk_state->active_key = key;
-    // RK_Node *node = rk_node_from_key(key);
-    // rk_state->active_key = rk_key_zero();
-    // for(RK_Node *n = node; n != 0; n = n->parent)
-    // {
-    //     if(n->flags & RK_NodeFlags_NavigationRoot)
-    //     {
-    //         rk_state->active_key = n->key;
-    //     }
-    // }
-}
-
-internal RK_Node *
-rk_node_from_key(RK_Key key)
-{
-    RK_Node *result = 0;
-    RK_Bucket *bucket = rk_top_bucket();
-    U64 slot_idx = key.u64[0] % bucket->node_hash_table_size;
-    for(RK_Node *node = bucket->node_hash_table[slot_idx].first; node != 0; node = node->hash_next)
-    {
-        if(rk_key_match(node->key, key))
-        {
-            result = node;
-            break;
-        }
-    }
-    return result;
+    return rk_state->frame_arenas[rk_state->frame_counter % ArrayCount(rk_state->frame_arenas)];
 }
 
 internal void 
@@ -285,181 +905,219 @@ rk_view_from_kind(RK_ViewKind kind)
     return &rk_state->views[kind];
 }
 
-internal RK_CameraNode *
-rk_scene_camera_push(RK_Scene *scene, RK_Node *camera)
-{
-    RK_CameraNode *camera_node = push_array(scene->arena, RK_CameraNode, 1);
-    camera_node->v = camera;
-    DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
-    return camera_node;
-}
-
 /////////////////////////////////
-// AnimatedSprite2D
-
-// internal RK_SpriteSheet2D *
-// rk_spritesheet_2d_from_file(Arena *arena, String8 path, String8 meta_path) {
-//     RK_SpriteSheet2D *result = 0;
-//     result = push_array(arena, RK_SpriteSheet2D, 1);
-// 
-//     int x,y,n; 
-//     U8 *pixels = stbi_load((char *)path.str, &x, &y, &n, 4);
-//     R_Handle texture = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Nearest, v2s32(x,y), R_Tex2DFormat_RGBA8, pixels);
-//     stbi_image_free(pixels);
-// 
-//     // Parse meta file 
-//     RK_Sprite2D_FrameTag *tags  = 0;
-//     U64 tag_count   = 0;
-//     RK_Sprite2D_Frame *frames   = 0;
-//     U64 frame_count = 0;
-// 
-//     {
-//         Temp scratch = scratch_begin(0,0);
-//         U8 *s;
-//         U64 size;
-//         FileReadAll(scratch.arena, meta_path, &s, &size);
-//         cJSON *root = cJSON_ParseWithLength((char *)s, size);
-// 
-//         // Find frames and meta obj
-//         cJSON *frames_json = 0;
-//         cJSON *meta_json   = 0;
-//         for(cJSON *child = root->child; child != 0; child = child->next) {
-//             if(cJSON_IsObject(child) && strcmp(child->string, "frames") == 0) {
-//                 frames_json = child;
-//             }
-//             if(cJSON_IsObject(child) && strcmp(child->string, "meta") == 0) {
-//                 meta_json = child;
-//             }
-//         }
-// 
-//         // Parse meta
-//         for(cJSON *meta = meta_json->child; meta != 0; meta = meta->next) {
-//             if(cJSON_IsArray(meta) && strcmp(meta->string, "frameTags") == 0) {
-//                 for(cJSON *tag = meta->child; tag != 0; tag = tag->next) { tag_count++; }
-//                 tags = push_array(arena, RK_Sprite2D_FrameTag, tag_count);
-//                 U64 tag_idx = 0;
-//                 for(cJSON *tag = meta->child; tag != 0; tag = tag->next, tag_idx++) {
-//                     for(cJSON *key = tag->child; key != 0; key = key->next) {
-//                         if(cJSON_IsString(key) && strcmp(key->string, "name") == 0) {
-//                             tags[tag_idx].name = push_str8_copy(arena, str8_cstring(key->valuestring));
-//                         }
-// 
-//                         if(cJSON_IsNumber(key) && strcmp(key->string, "from") == 0) {
-//                             tags[tag_idx].from = key->valueint;
-//                         }
-// 
-//                         if(cJSON_IsNumber(key) && strcmp(key->string, "to") == 0) { 
-//                             tags[tag_idx].to = key->valueint;
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-// 
-//         // Find out frame count
-//         AssertAlways(tag_count > 0);
-//         frame_count = tags[tag_count-1].to + 1;
-//         AssertAlways(frame_count > 0 && frame_count < 1000);
-//         frames = push_array(arena, RK_Sprite2D_Frame, frame_count);
-// 
-//         // Parse frames
-//         U64 frame_idx = 0; 
-//         for(cJSON *frame = frames_json->child; frame != 0; frame = frame->next, frame_idx++) {
-//             AssertAlways(cJSON_IsObject(frame));
-//             frames[frame_idx].texture = texture;
-// 
-//             for(cJSON *key = frame->child; key != 0; key = key->next) {
-//                 if(cJSON_IsNumber(key) && strcmp(key->string, "duration") == 0) {
-//                     frames[frame_idx].duration = key->valueint;
-//                 }
-// 
-//                 if(cJSON_IsObject(key) && strcmp(key->string, "frame") == 0) {
-//                     for(cJSON *frame_key = key->child; frame_key != 0; frame_key = frame_key->next) {
-//                         if(cJSON_IsNumber(frame_key) && strcmp(frame_key->string, "x") == 0) {
-//                             frames[frame_idx].x = frame_key->valueint;
-//                         }
-//                         if(cJSON_IsNumber(frame_key) && strcmp(frame_key->string, "y") == 0) {
-//                             frames[frame_idx].y = frame_key->valueint;
-//                         }
-//                         if(cJSON_IsNumber(frame_key) && strcmp(frame_key->string, "w") == 0) {
-//                             frames[frame_idx].w = frame_key->valueint;
-//                         }
-//                         if(cJSON_IsNumber(frame_key) && strcmp(frame_key->string, "h") == 0) {
-//                             frames[frame_idx].h = frame_key->valueint;
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//         scratch_end(scratch);
-//         cJSON_Delete(root);
-//     }
-// 
-//     result->texture     = texture;
-//     result->w           = x;
-//     result->h           = y;
-//     result->tags        = tags;
-//     result->tag_count   = tag_count;
-//     result->frames      = frames;
-//     result->frame_count = frame_count;
-//     return result;
-// }
-
-
-/////////////////////////////////
-// Node build api
+//~ Node build api
 
 internal RK_Node *
-rk_build_node_from_string(RK_NodeFlags flags, String8 string) {
-    Arena *arena = rk_top_bucket()->arena;
+rk_node_alloc(RK_NodeTypeFlags type_flags)
+{
+    RK_Node *ret = 0;
+    RK_NodeBucket *node_bucket = rk_top_node_bucket();
+
+    if(node_bucket->first_free_node != 0)
+    {
+        ret = node_bucket->first_free_node;
+        U64 generation = ret->generation;
+        MemoryZeroStruct(ret);
+        ret->generation = generation;
+        SLLStackPop(node_bucket->first_free_node);
+    }
+    else
+    {
+        ret = push_array(node_bucket->arena_ref, RK_Node, 1);
+    }
+
+    ret->owner_bucket = node_bucket;
+
+    if(type_flags & RK_NodeTypeFlag_Node2D)
+    {
+        RK_Node2D *node2d;
+        if(node_bucket->first_free_node2d != 0)
+        {
+            node2d = node_bucket->first_free_node2d;
+            SLLStackPop(node_bucket->first_free_node2d);
+        }
+        else
+        {
+            node2d = push_array_no_zero(node_bucket->arena_ref, RK_Node2D, 1);
+        }
+        MemoryZeroStruct(node2d);
+        ret->node2d = node2d;
+    }
+
+    if(type_flags & RK_NodeTypeFlag_Node3D)
+    {
+        RK_Node3D *node3d;
+        if(node_bucket->first_free_node3d != 0)
+        {
+            node3d = node_bucket->first_free_node3d;
+            SLLStackPop(node_bucket->first_free_node3d);
+        }
+        else
+        {
+            node3d = push_array_no_zero(node_bucket->arena_ref, RK_Node3D, 1);
+        }
+        MemoryZeroStruct(node3d);
+        node3d->transform.rotation = make_indentity_quat_f32();
+        node3d->transform.scale = v3f32(1,1,1);
+        ret->node3d = node3d;
+    }
+
+    if(type_flags & RK_NodeTypeFlag_Camera3D)
+    {
+        RK_Camera3D *camera3d;
+        if(node_bucket->first_free_camera3d != 0)
+        {
+            camera3d = node_bucket->first_free_camera3d;
+            SLLStackPop(node_bucket->first_free_camera3d);
+        }
+        else
+        {
+            camera3d = push_array_no_zero(node_bucket->arena_ref, RK_Camera3D, 1);
+        }
+        MemoryZeroStruct(camera3d);
+        ret->camera3d = camera3d;
+    }
+
+    if(type_flags & RK_NodeTypeFlag_MeshInstance3D)
+    {
+        RK_MeshInstance3D *mesh_inst3d;
+        if(node_bucket->first_free_mesh_inst3d != 0)
+        {
+            mesh_inst3d = node_bucket->first_free_mesh_inst3d;
+            SLLStackPop(node_bucket->first_free_mesh_inst3d);
+        }
+        else
+        {
+            mesh_inst3d = push_array_no_zero(node_bucket->arena_ref, RK_MeshInstance3D, 1);
+        }
+        MemoryZeroStruct(mesh_inst3d);
+        ret->mesh_inst3d = mesh_inst3d;
+    }
+
+    if(type_flags & RK_NodeTypeFlag_AnimationPlayer)
+    {
+        RK_AnimationPlayer *animation_player;
+        if(node_bucket->first_free_animation_player != 0)
+        {
+            animation_player = node_bucket->first_free_animation_player;
+            SLLStackPop(node_bucket->first_free_animation_player);
+        }
+        else
+        {
+            animation_player = push_array_no_zero(node_bucket->arena_ref, RK_AnimationPlayer, 1);
+        }
+        MemoryZeroStruct(animation_player);
+        ret->animation_player = animation_player;
+    }
+    return ret;
+}
+
+internal void
+rk_node_release(RK_Node *node)
+{
+    // recursive first
+    for(RK_Node *child = node->first; child != 0; child = child->next)
+    {
+        rk_node_release(child);
+    }
+
+    RK_NodeBucket *bucket = node->owner_bucket;
+    node->generation++;
+
+    // Remove from node tree
+    if(node->parent != 0)
+    {
+        DLLRemove(node->parent->first, node->parent->last, node);
+    }
+
+    // Remove from node bucket
+    {
+        U64 slot_idx = node->key.u64[0] % bucket->hash_table_size;
+        RK_NodeBucketSlot *slot = &bucket->hash_table[slot_idx];
+        DLLRemove_NP(slot->first, slot->last, node, hash_next, hash_prev);
+    }
+
+    // free equipments
+    {
+        if(node->type_flags & RK_NodeTypeFlag_Node2D)
+        {
+            SLLStackPush(bucket->first_free_node2d, node->node2d);
+        }
+
+        if(node->type_flags & RK_NodeTypeFlag_Node3D)
+        {
+            SLLStackPush(bucket->first_free_node3d, node->node3d);
+        }
+
+        if(node->type_flags & RK_NodeTypeFlag_Camera3D)
+        {
+            SLLStackPush(bucket->first_free_camera3d, node->camera3d);
+        }
+
+        if(node->type_flags & RK_NodeTypeFlag_MeshInstance3D)
+        {
+            SLLStackPush(bucket->first_free_mesh_inst3d, node->mesh_inst3d);
+        }
+
+        if(node->type_flags & RK_NodeTypeFlag_AnimationPlayer)
+        {
+            SLLStackPush(bucket->first_free_animation_player, node->animation_player);
+        }
+    }
+
+    // free update fn node
+    for(RK_UpdateFnNode *fn_node = node->first_update_fn; fn_node != 0; fn_node = fn_node->next)  
+    {
+        SLLStackPush(bucket->first_free_update_fn_node, fn_node);
+    }
+
+    // free node
+    SLLStackPush(bucket->first_free_node, node);
+}
+
+internal RK_Node *
+rk_build_node_from_string(RK_NodeTypeFlags type_flags, RK_NodeFlags flags, String8 string)
+{
+    Arena *arena = rk_top_node_bucket()->arena_ref;
     RK_Key key = rk_key_from_string(rk_active_seed_key(), string);
-    RK_Node *node = rk_build_node_from_key(flags, key);
-    node->name = push_str8_copy(arena, string);
+    RK_Node *node = rk_build_node_from_key(type_flags, flags, key);
+
+    rk_node_equip_display_string(node, string);
     return node;
 }
 
 internal RK_Node *
-rk_build_node_from_stringf(RK_NodeFlags flags, char *fmt, ...) {
+rk_build_node_from_stringf(RK_NodeTypeFlags type_flags, RK_NodeFlags flags, char *fmt, ...)
+{
     Temp scratch = scratch_begin(0,0);
     va_list args;
     va_start(args, fmt);
     String8 string = push_str8fv(scratch.arena, fmt, args);
     va_end(args);
-    RK_Node *ret = rk_build_node_from_string(flags, string);
+    RK_Node *ret = rk_build_node_from_string(type_flags, flags, string);
     scratch_end(scratch);
     return ret;
 }
 
 internal RK_Node *
-rk_build_node_from_key(RK_NodeFlags flags, RK_Key key) {
+rk_build_node_from_key(RK_NodeTypeFlags type_flags, RK_NodeFlags flags, RK_Key key)
+{
+    RK_Node *result = rk_node_alloc(type_flags);
     RK_Node *parent = rk_top_parent();
-    RK_Bucket *bucket = rk_top_bucket();
-    Arena *arena = bucket->arena;
+    RK_NodeBucket *node_bucket = rk_top_node_bucket();
 
-    // TODO(k): reuse free node
-    RK_Node *result = push_array(arena, RK_Node, 1);
-
-    // Fill info
-    {
-        result->key             = key;
-        // TODO: make a flag stack
-        result->flags           = flags;
-        result->pos             = v3f32(0,0,0);
-        result->pre_pos_delta   = v3f32(0,0,0);
-        result->pst_pos_delta   = v3f32(0,0,0);
-        result->rot             = make_indentity_quat_f32();
-        result->pre_rot_delta   = make_indentity_quat_f32();
-        result->pst_rot_delta   = make_indentity_quat_f32();
-        result->scale           = v3f32(1,1,1);
-        result->pre_scale_delta = v3f32(0,0,0);
-        result->pst_scale_delta = v3f32(1,1,1);
-        result->parent          = parent;
-    }
+    // fill base info
+    result->key             = key;
+    result->flags           = flags;
+    result->type_flags      = type_flags;
+    result->parent          = parent;
 
     // Insert to the bucket
-    U64 slot_idx = result->key.u64[0] % bucket->node_hash_table_size;
-    DLLPushBack_NP(bucket->node_hash_table[slot_idx].first, bucket->node_hash_table[slot_idx].last, result, hash_next, hash_prev);
-    bucket->node_count++;
+    U64 slot_idx = result->key.u64[0] % node_bucket->hash_table_size;
+    RK_NodeBucketSlot *slot = &node_bucket->hash_table[slot_idx];
+    DLLPushBack_NP(slot->first, slot->last, result, hash_next, hash_prev);
+    node_bucket->node_count++;
 
     // Insert to the parent tree
     if(parent != 0)
@@ -471,52 +1129,10 @@ rk_build_node_from_key(RK_NodeFlags flags, RK_Key key) {
 }
 
 internal void
-rk_node_release()
+rk_node_equip_display_string(RK_Node* node, String8 string)
 {
-    // TODO(k): reuse node maybe
-    NotImplemented;
-}
-
-/////////////////////////////////
-//- Camera build
-
-internal RK_Node *
-rk_camera_perspective(B32 hide_cursor, B32 lock_cursor, B32 show_grid, B32 show_gizmos, F32 fov, F32 zn, F32 zf, String8 string)
-{
-    RK_Node *ret = rk_build_node_from_string(0, string);
-    {
-        ret->kind                 = RK_NodeKind_Camera;
-        ret->v.camera.projection  = RK_ProjectionKind_Perspective;
-        ret->v.camera.lock_cursor = lock_cursor;
-        ret->v.camera.hide_cursor = hide_cursor;
-        ret->v.camera.show_gizmos = show_gizmos;
-        ret->v.camera.show_grid   = show_grid;
-        ret->v.camera.p.fov       = fov;
-        ret->v.camera.p.zn        = zn;
-        ret->v.camera.p.zf        = zf;
-    }
-    return ret;
-}
-
-internal RK_Node *
-rk_camera_orthographic(B32 hide_cursor, B32 lock_cursor, B32 show_grid, B32 show_gizmos, F32 left, F32 right, F32 top, F32 bottom, F32 zn, F32 zf, String8 string)
-{
-    RK_Node *ret = rk_build_node_from_string(0, string);
-    {
-        ret->kind                 = RK_NodeKind_Camera;
-        ret->v.camera.projection  = RK_ProjectionKind_Orthographic;
-        ret->v.camera.lock_cursor = lock_cursor;
-        ret->v.camera.hide_cursor = hide_cursor;
-        ret->v.camera.show_gizmos = show_gizmos;
-        ret->v.camera.show_grid   = show_grid;
-        ret->v.camera.o.zn        = zn;
-        ret->v.camera.o.zf        = zf;
-        ret->v.camera.o.left      = left;
-        ret->v.camera.o.right     = right;
-        ret->v.camera.o.top       = top;
-        ret->v.camera.o.bottom    = bottom;
-    }
-    return ret;
+    Arena *arena = node->owner_bucket->arena_ref;
+    node->name = push_str8_copy_static(rk_display_part_from_key_string(string), node->name_buffer, ArrayCount(node->name_buffer));
 }
 
 /////////////////////////////////
@@ -543,90 +1159,86 @@ rk_node_df(RK_Node *n, RK_Node* root, U64 sib_member_off, U64 child_member_off)
     return result;
 }
 
-internal void
-rk_local_coord_from_node(RK_Node *n, Vec3F32 *f, Vec3F32 *s, Vec3F32 *u)
-{
-    ProfBeginFunction();
-    Mat4x4F32 xform = n->fixed_xform;
-    // NOTE: remove translate, only rotation matters
-    xform.v[3][0] = xform.v[3][1] = xform.v[3][2] = 0;
-    Vec4F32 i_hat = v4f32(1,0,0,1);
-    Vec4F32 j_hat = v4f32(0,1,0,1);
-    Vec4F32 k_hat = v4f32(0,0,1,1);
-
-    i_hat = mat_4x4f32_transform_4f32(xform, i_hat);
-    j_hat = mat_4x4f32_transform_4f32(xform, j_hat);
-    k_hat = mat_4x4f32_transform_4f32(xform, k_hat);
-
-    MemoryCopy(f, &k_hat, sizeof(Vec3F32));
-    MemoryCopy(s, &i_hat, sizeof(Vec3F32));
-    MemoryCopy(u, &j_hat, sizeof(Vec3F32));
-
-    *f = normalize_3f32(*f);
-    *s = normalize_3f32(*s);
-    *u = normalize_3f32(*u);
-
-    // Vec4F32 side    = v4f32(1,0,0,0);
-    // Vec4F32 up      = v4f32(0,-1,0,0);
-    // Vec4F32 forward = v4f32(0,0,1,0);
-
-    // side    = mul_quat_f32(rot_conj,side);
-    // side    = mul_quat_f32(side,rot);
-    // up      = mul_quat_f32(rot_conj,up);
-    // up      = mul_quat_f32(up,rot);
-    // forward = mul_quat_f32(rot_conj,forward);
-    // forward = mul_quat_f32(forward,rot);
-
-    // MemoryCopy(f, &forward, sizeof(Vec3F32));
-    // MemoryCopy(s, &side, sizeof(Vec3F32));
-    // MemoryCopy(u, &up, sizeof(Vec3F32));
-    ProfEnd();
-}
-
-internal Mat4x4F32
-rk_view_from_node(RK_Node *node)
-{
-    return inverse_4x4f32(node->fixed_xform);
-}
-
-internal Vec3F32
-rk_pos_from_node(RK_Node *node)
-{
-    Vec3F32 c = {
-        node->fixed_xform.v[3][0],
-        node->fixed_xform.v[3][1],
-        node->fixed_xform.v[3][2],
-    };
-    return c;
-}
+// internal void
+// rk_local_coord_from_node(RK_Node *n, Vec3F32 *f, Vec3F32 *s, Vec3F32 *u)
+// {
+//     ProfBeginFunction();
+//     Mat4x4F32 xform = n->fixed_xform;
+//     // NOTE: remove translate, only rotation matters
+//     xform.v[3][0] = xform.v[3][1] = xform.v[3][2] = 0;
+//     Vec4F32 i_hat = v4f32(1,0,0,1);
+//     Vec4F32 j_hat = v4f32(0,1,0,1);
+//     Vec4F32 k_hat = v4f32(0,0,1,1);
+// 
+//     i_hat = mat_4x4f32_transform_4f32(xform, i_hat);
+//     j_hat = mat_4x4f32_transform_4f32(xform, j_hat);
+//     k_hat = mat_4x4f32_transform_4f32(xform, k_hat);
+// 
+//     MemoryCopy(f, &k_hat, sizeof(Vec3F32));
+//     MemoryCopy(s, &i_hat, sizeof(Vec3F32));
+//     MemoryCopy(u, &j_hat, sizeof(Vec3F32));
+// 
+//     *f = normalize_3f32(*f);
+//     *s = normalize_3f32(*s);
+//     *u = normalize_3f32(*u);
+// 
+//     // Vec4F32 side    = v4f32(1,0,0,0);
+//     // Vec4F32 up      = v4f32(0,-1,0,0);
+//     // Vec4F32 forward = v4f32(0,0,1,0);
+// 
+//     // side    = mul_quat_f32(rot_conj,side);
+//     // side    = mul_quat_f32(side,rot);
+//     // up      = mul_quat_f32(rot_conj,up);
+//     // up      = mul_quat_f32(up,rot);
+//     // forward = mul_quat_f32(rot_conj,forward);
+//     // forward = mul_quat_f32(forward,rot);
+// 
+//     // MemoryCopy(f, &forward, sizeof(Vec3F32));
+//     // MemoryCopy(s, &side, sizeof(Vec3F32));
+//     // MemoryCopy(u, &up, sizeof(Vec3F32));
+//     ProfEnd();
+// }
 
 internal void
-rk_node_delta_commit(RK_Node *node)
+rk_node_push_fn(RK_Node *n, RK_NodeCustomUpdateFunctionType *fn, String8 name)
 {
-    MemoryZeroStruct(&node->pre_pos_delta);
-    node->pre_rot_delta = make_indentity_quat_f32();
-    MemoryZeroStruct(&node->pre_scale_delta);
+    RK_NodeBucket *node_bucket = n->owner_bucket;
+    Arena *arena = node_bucket->arena_ref;
 
-    MemoryZeroStruct(&node->pst_pos_delta);
-    node->pst_rot_delta = make_indentity_quat_f32();
-    node->pst_scale_delta = v3f32(1.0f, 1.0f, 1.0f);
-
-    Mat4x4F32 parent_xform = mat_4x4f32(1.0f);
-    if(node->parent != 0)
+    RK_UpdateFnNode *fn_node = node_bucket->first_free_update_fn_node;
+    if(fn_node != 0)
     {
-        parent_xform = node->parent->fixed_xform;
+        fn_node = node_bucket->first_free_update_fn_node;
+        SLLStackPop(node_bucket->first_free_update_fn_node);
     }
-    Mat4x4F32 loc_m = mul_4x4f32(inverse_4x4f32(parent_xform), node->fixed_xform);
-    rk_trs_from_matrix(&loc_m, &node->pos, &node->rot, &node->scale);
-}
+    else
+    {
+        fn_node = push_array_no_zero(arena, RK_UpdateFnNode, 1);
+    }
+    MemoryZeroStruct(fn_node);
 
-internal void
-rk_node_push_fn(Arena *arena, RK_Node *n, RK_NodeCustomUpdateFunctionType *fn, String8 name)
-{
-    RK_UpdateFnNode *fn_node = push_array(arena, RK_UpdateFnNode, 1);
     fn_node->f = fn;
     fn_node->name = push_str8_copy(arena, name);
     DLLPushBack(n->first_update_fn, n->last_update_fn, fn_node);
+}
+
+internal RK_Handle
+rk_handle_from_node(RK_Node *n)
+{
+    RK_Handle ret = {0};
+    ret.u64[0] = (U64)n;
+    if(n) ret.u64[1] = n->generation;
+    return ret;
+}
+
+internal RK_Node*
+rk_node_from_handle(RK_Handle handle)
+{
+    RK_Node *ret = 0;
+    RK_Node *node = (RK_Node*)handle.u64[0];
+    U64 generation = handle.u64[1];
+    if(node != 0 && node->generation == generation) ret = node;
+    return ret;
 }
 
 /////////////////////////////////
@@ -634,170 +1246,7 @@ rk_node_push_fn(Arena *arena, RK_Node *n, RK_NodeCustomUpdateFunctionType *fn, S
 
 RK_NODE_CUSTOM_UPDATE(base_fn)
 {
-    ProfBegin("base_fn");
-    // Update fixed_xform 
-    {
-        Mat4x4F32 xform = mat_4x4f32(1.0f);
-
-        // QuatF32 rot   = mul_quat_f32(node->rot_delta, node->rot);
-        // Vec3F32 pos   = add_3f32(node->pos_delta, node->pos);
-        // Vec3F32 scale = add_3f32(node->scale_delta, node->scale);
-
-        // Mat4x4F32 rot_m = mat_4x4f32_from_quat_f32(rot);
-        // Mat4x4F32 tra_m = make_translate_4x4f32(pos);
-        // Mat4x4F32 sca_m = make_scale_4x4f32(scale);
-
-        // // TRS order
-        // xform = mul_4x4f32(sca_m, xform);
-        // xform = mul_4x4f32(rot_m, xform);
-        // xform = mul_4x4f32(tra_m, xform);
-
-        QuatF32 rot   = mul_quat_f32(node->pre_rot_delta, node->rot);
-        Vec3F32 pos   = add_3f32(node->pre_pos_delta, node->pos);
-        Vec3F32 scale = add_3f32(node->pre_scale_delta, node->scale);
-
-        Mat4x4F32 rot_m = mat_4x4f32_from_quat_f32(rot);
-        Mat4x4F32 tra_m = make_translate_4x4f32(pos);
-        Mat4x4F32 sca_m = make_scale_4x4f32(scale);
-
-        Mat4x4F32 pst_rot_delta_m = mat_4x4f32_from_quat_f32(node->pst_rot_delta);
-        Mat4x4F32 pst_tra_delta_m = make_translate_4x4f32(node->pst_pos_delta);
-        Mat4x4F32 pst_sca_delta_m = make_scale_4x4f32(node->pst_scale_delta);
-
-        // TRS order
-        xform = mul_4x4f32(sca_m, xform);
-        xform = mul_4x4f32(rot_m, xform);
-        xform = mul_4x4f32(tra_m, xform);
-
-        if(node->parent != 0 && !(node->flags & RK_NodeFlags_Float)) 
-        {
-            xform = mul_4x4f32(node->parent->fixed_xform, xform);
-        }
-
-        xform = mul_4x4f32(pst_sca_delta_m, xform);
-        xform = mul_4x4f32(pst_rot_delta_m, xform);
-        xform = mul_4x4f32(pst_tra_delta_m, xform);
-        
-        node->fixed_xform = xform;
-    }
-
-    // Advance anim_dt
-    if(node->flags & RK_NodeFlags_Animated) { node->anim_dt += dt_sec; }
-
-    // Play animations
-    // TODO: some weird artifacts when playing animation, fix it later
-    if((node->flags & RK_NodeFlags_Animated) && (node->flags & RK_NodeFlags_AnimatedSkeleton))
-    {
-        // TODO: testing for now, play the first animation
-        RK_Bucket *bucket = scene->bucket;
-        RK_MeshSkeletonAnimation *anim = node->skeleton_anims[0];
-
-        while(node->anim_dt > anim->duration)
-        {
-            node->anim_dt -= anim->duration;
-        }
-
-        RK_Key seed_key = node->key;
-        for(U64 i = 0; i < anim->spline_count; i++)
-        {
-            RK_MeshSkeletonAnimSpline *spline = &anim->splines[i];
-            RK_Key target_key_pre = spline->target_key;
-            RK_Key target_key_pst = rk_key_merge(seed_key, target_key_pre);
-            RK_Node *target = 0;
-            RK_Bucket_Scope(bucket)
-            {
-                target = rk_node_from_key(target_key_pst);
-            }
-            AssertAlways(target != 0);
-
-            // TODO: only linear is supported for now  (STEP, LINEAR, CUBICSPLINE)
-            AssertAlways(spline->interpolation_method == RK_InterpolationMethod_Linear);
-
-            U64 last_frame = 0;
-            U64 next_frame = 0;
-            F32 t = 0;
-
-            // Interpolation between frames
-            for(U64 frame_idx = 0; frame_idx < spline->frame_count; frame_idx++)
-            {
-                F32 curr_ts = spline->timestamps[frame_idx];
-                if(node->anim_dt < curr_ts)
-                {
-                    F32 last_ts = spline->timestamps[frame_idx-1];
-                    t = (node->anim_dt-last_ts) / curr_ts;
-                    last_frame = frame_idx-1;
-                    next_frame = frame_idx;
-                    break;
-                }
-            }
-
-            switch(spline->transform_kind)
-            {
-                case RK_TransformKind_Scale:
-                {
-                    target->scale = mix_3f32(spline->values.v3s[last_frame], spline->values.v3s[next_frame], t);
-                }break;
-                case RK_TransformKind_Rotation:
-                {
-                    // spherical linear
-                    target->rot = mix_quat_f32(spline->values.v4s[last_frame], spline->values.v4s[next_frame], t);
-                }break;
-                case RK_TransformKind_Translation:
-                {
-                    target->pos = mix_3f32(spline->values.v3s[last_frame], spline->values.v3s[next_frame], t);
-                }break;
-                default: {}break;
-            }
-        }
-    }
-    ProfEnd();
 }
-
-/////////////////////////////////
-// Physics
-
-// internal void
-// rk_physics_dynamic_root(RK_Node *node, F32 dt) {
-//     // TODO: update physics dynamic in timely manner to avoid vary delta t
-//     switch(node->rigidbody2d.physics_kind)
-//     {
-//         default:{}break;
-//         case RK_PhysicsKind_Dynamic:
-//         {
-//             // Euler Integration
-//             Vec2F32 d_acc = {0};
-//             d_acc.x = node->rigidbody2d.force.x / node->rigidbody2d.mass;
-//             d_acc.y = node->rigidbody2d.force.y / node->rigidbody2d.mass;
-// 
-//             node->rigidbody2d.velocity.x += d_acc.x * dt;
-//             node->rigidbody2d.velocity.y += d_acc.y * dt;
-// 
-//             Vec2F32 d_pos = {0, 0};
-//             d_pos.x = node->rigidbody2d.velocity.x * dt;
-//             d_pos.y = node->rigidbody2d.velocity.y * dt;
-// 
-//             // Update position
-//             node->pos.x += d_pos.x;
-//             node->pos.y += d_pos.y;
-// 
-//         }break;
-//         case RK_PhysicsKind_Kinematic:
-//         {
-//             // TODO: this is wrong
-//             // Velocity Verlet
-//             RK_RigidBody2D *body = &node->rigidbody2d;
-//             Vec2F32 d_pos = add_2f32(scale_2f32(body->velocity, dt),
-//                                     (scale_2f32(body->acc, 0.5f*dt*dt)));
-//             node->pos = add_2f32(node->pos, d_pos);
-//             Vec2F32 d_velocity = scale_2f32(body->acc, dt);
-//             body->velocity = add_2f32(body->velocity, d_velocity);
-//         }break;
-//     }
-// 
-//     for(RK_Node *child = node->first; child != 0; child = child->next) {
-//         rk_physics_dynamic_root(child, dt);
-//     }
-// }
 
 /////////////////////////////////
 // Magic
@@ -914,6 +1363,7 @@ RK_SHAPE_SUPPORT_FN(RK_SHAPE_RECT_SUPPORT_FN) {
 internal Vec2F32
 triple_product_2f32(Vec2F32 a, Vec2F32 b, Vec2F32 c)
 {
+#if 1
     // Triple product expansion is used to calculate perpendicular normal vectors 
     // which kinda 'prefer' pointing towards the Origin in Minkowski space
     Vec2F32 r;
@@ -925,19 +1375,20 @@ triple_product_2f32(Vec2F32 a, Vec2F32 b, Vec2F32 c)
     r.x = b.x * ac - a.x * bc;
     r.y = b.y * ac - a.y * bc;
     return r;
-
+#else
     // Version -1
-    // Vec3F32 a = {A.x, A.y, 0};
-    // Vec3F32 b = {B.x, B.y, 0};
-    // Vec3F32 c = {C.x, C.y, 0};
+    Vec3F32 a = {A.x, A.y, 0};
+    Vec3F32 b = {B.x, B.y, 0};
+    Vec3F32 c = {C.x, C.y, 0};
 
-    // Vec3F32 r = cross_3f32(a,b);
-    // r = cross_3f32(r, c);
-    // return v2f32(r.x, r.y);
+    Vec3F32 r = cross_3f32(a,b);
+    r = cross_3f32(r, c);
+    return v2f32(r.x, r.y);
+#endif
 }
 
 internal B32
-p_in_triangle(Vec2F32 P, Vec2F32 A, Vec2F32 B, Vec2F32 C) {
+v2_in_triangle(Vec2F32 P, Vec2F32 A, Vec2F32 B, Vec2F32 C) {
     // Compute vectors        
     Vec2F32 v0 = sub_2f32(C,A);
     Vec2F32 v1 = sub_2f32(B,A);
@@ -1222,15 +1673,9 @@ internal void rk_ui_stats(void)
             }
             UI_Row
             {
-                ui_labelf("geo3d hot id");
-                ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%lu", rk_state->active_key.u64[0]);
-            }
-            UI_Row
-            {
                 ui_labelf("scene node count");
                 ui_spacer(ui_pct(1.0, 0.0));
-                ui_labelf("%lu", scene->bucket->node_count);
+                ui_labelf("%lu", scene->node_bucket->node_count);
             }
         }
 }
@@ -1239,6 +1684,16 @@ internal void rk_ui_inspector(void)
 {
     ProfBeginFunction();
     RK_Scene *scene = rk_top_scene();
+
+    // unpack active camera
+    RK_Node *camera_node = rk_node_from_handle(scene->active_camera);
+    AssertAlways(camera_node != 0 && "No active camera was found");
+    RK_Camera3D *camera = camera_node->camera3d;
+    RK_Transform3D *camera_transform = &camera_node->node3d->transform;
+    Mat4x4F32 camera_xform = camera_node->fixed_xform;
+
+    // unpack active node
+    RK_Node *active_node = rk_node_from_key(scene->active_key);
 
     typedef struct RK_Inspector_State RK_Inspector_State;
     struct RK_Inspector_State
@@ -1277,10 +1732,10 @@ internal void rk_ui_inspector(void)
         inspector->show_light_cfg  = 1;
         inspector->show_node_cfg   = 1;
 
-        inspector->scene_path_to_save_buffer_size = Max(scene->path.size*2, 1000);
+        inspector->scene_path_to_save_buffer_size = Max(scene->save_path.size*2, 1000);
         inspector->scene_path_to_save.str = push_array(inspector_view->arena, U8, inspector->scene_path_to_save_buffer_size);
-        inspector->scene_path_to_save.size = scene->path.size;
-        MemoryCopy(inspector->scene_path_to_save.str, scene->path.str, scene->path.size);
+        inspector->scene_path_to_save.size = scene->save_path.size;
+        MemoryCopy(inspector->scene_path_to_save.str, scene->save_path.str, scene->save_path.size);
         inspector->last_active_row = -1;
 
         inspector->txt_cursor           = (TxtPt){0};
@@ -1299,9 +1754,6 @@ internal void rk_ui_inspector(void)
         }
     }
 
-    RK_Node *camera = scene->active_camera->v;
-    RK_Node *active_node = rk_node_from_key(rk_state->active_key);
-
     // Animation rate
     F32 fast_rate = 1 - pow_f32(2, (-40.f * rk_state->dt_sec));
 
@@ -1318,18 +1770,18 @@ internal void rk_ui_inspector(void)
         // Scene
         ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
         ui_set_next_child_layout_axis(Axis2_Y);
-        UI_Box *scene_tree_box = ui_build_box_from_stringf(0, "###scene_tree");
+        UI_Box *scene_tree_box = ui_build_box_from_key(0, ui_key_zero());
         UI_Parent(scene_tree_box)
         {
             // Header
             {
                 ui_set_next_child_layout_axis(Axis2_X);
                 ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
-                UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
+                UI_Box *header_box = ui_build_box_from_key(0, ui_key_zero());
                 UI_Parent(header_box)
                 {
                     ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
-                    if(ui_clicked(ui_expanderf(inspector->show_scene_cfg, "###scene_cfg")))
+                    if(ui_clicked(ui_expanderf(inspector->show_scene_cfg, "###show_scene_cfg")))
                     {
                         inspector->show_scene_cfg = !inspector->show_scene_cfg;
                     }
@@ -1341,7 +1793,7 @@ internal void rk_ui_inspector(void)
             // Scene cfg
             ui_set_next_child_layout_axis(Axis2_Y);
             ui_set_next_pref_height(ui_children_sum(0));
-            UI_Box *scene_cfg = ui_build_box_from_stringf(0, "###scene_cfg");
+            UI_Box *scene_cfg = ui_build_box_from_key(0, ui_key_zero());
             UI_Parent(scene_cfg)
             {
                 UI_Flags(UI_BoxFlag_ClickToFocus)
@@ -1374,100 +1826,11 @@ internal void rk_ui_inspector(void)
 
                     if(ui_clicked(ui_buttonf("Save")))
                     {
-                        rk_scene_to_file(scene, inspector->scene_path_to_save);
+                        // TODO
                     }
                     if(ui_clicked(ui_buttonf("Reload")))
                     {
-                        RK_Scene *new_scene = rk_scene_from_file(inspector->scene_path_to_save);
-                        SLLStackPush(rk_state->first_to_free_scene, scene);
-                        rk_state->active_scene = new_scene;
-                    }
-                }
-
-                UI_Row RK_MeshCacheTable_Scope(&scene->mesh_cache_table)
-                {
-                    RK_Node *parent = active_node;
-                    if(parent == 0) parent = scene->root;
-
-                    rk_ui_dropdown_begin(str8_lit("Create"));
-                    RK_Bucket_Scope(scene->bucket) RK_Parent_Scope(parent)
-                    {
-                        if(ui_clicked(ui_buttonf("box")))
-                        {
-                            // TODO: check name collision
-                            RK_Node *n = rk_build_node_from_stringf(0, "box");
-                            n->kind = RK_NodeKind_MeshRoot;
-                            n->v.mesh_root.kind = RK_MeshKind_Box;
-                            RK_Parent_Scope(n)
-                            {
-                                rk_box_node_default(str8_lit("box"));
-                            }
-                            rk_ui_dropdown_hide();
-                            rk_set_active_key(n->key);
-                        }
-                        if(ui_clicked(ui_buttonf("plane")))
-                        {
-                            // TODO: check name collision
-                            RK_Node *n = rk_build_node_from_stringf(0, "plane");
-                            n->kind = RK_NodeKind_MeshRoot;
-                            n->v.mesh_root.kind = RK_MeshKind_Plane;
-                            RK_Parent_Scope(n)
-                            {
-                                rk_plane_node_default(str8_lit("plane"));
-                            }
-                            rk_ui_dropdown_hide();
-                            rk_set_active_key(n->key);
-                        }
-                        if(ui_clicked(ui_buttonf("sphere")))
-                        {
-                            // TODO: check name collision
-                            RK_Node *n = rk_build_node_from_stringf(0, "sphere");
-                            n->kind = RK_NodeKind_MeshRoot;
-                            n->v.mesh_root.kind = RK_MeshKind_Sphere;
-                            RK_Parent_Scope(n)
-                            {
-                                rk_sphere_node_default(str8_lit("sphere"));
-                            }
-                            rk_ui_dropdown_hide();
-                            rk_set_active_key(n->key);
-                        }
-                        if(ui_clicked(ui_buttonf("cylinder")))
-                        {
-                            // TODO: check name collision
-                            RK_Node *n = rk_build_node_from_stringf(0, "cylinder");
-                            n->kind = RK_NodeKind_MeshRoot;
-                            n->v.mesh_root.kind = RK_MeshKind_Cylinder;
-                            RK_Parent_Scope(n)
-                            {
-                                rk_cylinder_node_default(str8_lit("cylinder"));
-                            }
-                            rk_ui_dropdown_hide();
-                            rk_set_active_key(n->key);
-                        }
-                        if(ui_clicked(ui_buttonf("capsule")))
-                        {
-                            // TODO: check name collision
-                            RK_Node *n = rk_build_node_from_stringf(0, "capsule");
-                            n->kind = RK_NodeKind_MeshRoot;
-                            n->v.mesh_root.kind = RK_MeshKind_Capsule;
-                            RK_Parent_Scope(n)
-                            {
-                                rk_capsule_node_default(str8_lit("capsule"));
-                            }
-                            rk_ui_dropdown_hide();
-                            rk_set_active_key(n->key);
-                        }
-                        if(ui_clicked(ui_buttonf("mesh"))) {}
-                    }
-                    rk_ui_dropdown_end();
-
-                    if(ui_clicked(ui_buttonf("Delete")))
-                    {
-                        if(active_node != 0)
-                        {
-                            DLLRemove(active_node->parent->first, active_node->parent->last, active_node);
-                            // TODO: free node
-                        }
+                        // TODO
                     }
                 }
             }
@@ -1482,7 +1845,7 @@ internal void rk_ui_inspector(void)
                 {
                     ui_set_next_flags(UI_BoxFlag_Disabled);
                 }
-                UI_Box *container_box = ui_build_box_from_stringf(0, "###container");
+                UI_Box *container_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder, "##container");
                 container_box->pref_size[Axis2_Y].value = mix_1f32(list_height, 0, container_box->disabled_t);
 
                 // scroll params
@@ -1492,7 +1855,7 @@ internal void rk_ui_inspector(void)
                     scroll_list_params.flags = UI_ScrollListFlag_All;
                     scroll_list_params.row_height_px = row_height;
                     scroll_list_params.dim_px = rect_dim;
-                    scroll_list_params.item_range = r1s64(0, scene->bucket->node_count);
+                    scroll_list_params.item_range = r1s64(0, scene->node_bucket->node_count);
                     scroll_list_params.cursor_min_is_empty_selection[Axis2_Y] = 0;
                 }
                 UI_ScrollListSignal scroll_list_sig = {0};
@@ -1504,37 +1867,41 @@ internal void rk_ui_inspector(void)
 
                 UI_Parent(container_box) UI_ScrollList(&scroll_list_params, &scroller, 0, 0, &visible_row_rng, &scroll_list_sig)
                 {
-                    RK_Node *root = scene->root;
+                    RK_Node *root = rk_node_from_handle(scene->root);
                     U64 row_idx = 0;
                     S64 active_row = -1;
                     U64 level = 0;
                     U64 indent_size = 2;
+                    Temp scratch = scratch_begin(0,0);
                     while(root != 0)
                     {
                         RK_NodeRec rec = rk_node_df_pre(root, 0);
 
+                        B32 is_active = rk_key_match(scene->active_key, root->key);
+
                         if(row_idx >= visible_row_rng.min && row_idx <= visible_row_rng.max)
                         {
                             String8 indent = str8(0, level*indent_size);
-                            indent.str = push_array(ui_build_arena(), U8, indent.size);
+                            indent.str = push_array(scratch.arena, U8, indent.size);
                             MemorySet(indent.str, ' ', indent.size);
 
-                            String8 string = push_str8f(ui_build_arena(), "%S%S###%d", indent, root->name, row_idx);
-                            if(active_node == root)
+                            String8 string = push_str8f(scratch.arena, "%S%S###%d", indent, root->name, row_idx);
+                            if(is_active)
                             {
                                 ui_set_next_palette(ui_build_palette(ui_top_palette(), .overlay = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
                                 ui_set_next_flags(UI_BoxFlag_DrawOverlay);
                             }
                             UI_Signal label = ui_button(string);
-                            if(ui_clicked(label))
+
+                            if(ui_clicked(label) && !is_active)
                             {
-                                rk_set_active_key(root->key);
+                                scene->active_key = root->key;
                                 inspector->last_active_row = row_idx;
                                 active_row = row_idx;
                             }
                         }
 
-                        if(active_row == -1 && root == active_node)
+                        if(active_row == -1 && is_active)
                         {
                             active_row = row_idx;
                         }
@@ -1543,6 +1910,7 @@ internal void rk_ui_inspector(void)
                         root = rec.next;
                         row_idx++;
                     }
+                    scratch_end(scratch);
 
                     if(active_row != inspector->last_active_row && active_row >= 0)
                     {
@@ -1553,220 +1921,185 @@ internal void rk_ui_inspector(void)
             }
         }
 
-        ui_spacer(ui_px(ui_top_font_size()*0.215, 0.f));
+        ui_spacer(ui_em(0.215, 0.f));
 
         // Camera
-        RK_Node *active_camera = scene->active_camera->v;
-        ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
-        ui_set_next_child_layout_axis(Axis2_Y);
-        UI_Box *camera_cfg_box = ui_build_box_from_stringf(0, "###camera_cfg");
-        UI_Parent(camera_cfg_box)
         {
-            // Header
-            ui_set_next_child_layout_axis(Axis2_X);
-            ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
-            UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
-            UI_Parent(header_box)
+            UI_Box *camera_cfg_box;
+            UI_PrefSize(Axis2_Y, ui_children_sum(1.0)) UI_ChildLayoutAxis(Axis2_Y)
             {
-                ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
-                if(ui_clicked(ui_expanderf(inspector->show_camera_cfg, "###camera_cfg")))
-                {
-                    inspector->show_camera_cfg = !inspector->show_camera_cfg;
-                }
-                ui_labelf("Camera");
+                camera_cfg_box = ui_build_box_from_key(0, ui_key_zero());
             }
-
-            ui_spacer(ui_em(0.2, 0.f));
-
-            // Active cameras
-            UI_Row
+            UI_Parent(camera_cfg_box)
             {
-                ui_labelf("active camera");
-                ui_spacer(ui_pct(1.0, 0.0));
-                rk_ui_dropdown_begin(active_camera->name);
-                for(RK_CameraNode *c = scene->first_camera; c!=0; c = c->next)
+                ui_set_next_child_layout_axis(Axis2_X);
+                ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
+                UI_Box *header_box = ui_build_box_from_key(0, ui_key_zero());
+                UI_Parent(header_box)
                 {
-                    if(ui_clicked(ui_button(c->v->name)))
+                    ui_set_next_pref_size(Axis2_X, ui_em(2.f, 0.f));
+                    if(ui_clicked(ui_expanderf(inspector->show_camera_cfg, "###show_camera_cfg")))
                     {
-                        scene->active_camera = c;
-                        rk_ui_dropdown_hide();
+                        inspector->show_camera_cfg = !inspector->show_camera_cfg;
                     }
+                    ui_labelf("Camera");
                 }
-                rk_ui_dropdown_end();
-                ui_spacer(ui_em(0.5, 1.0));
-            }
 
-            ui_spacer(ui_em(0.2, 0.f));
+                ui_spacer(ui_em(0.2f, 0.f));
 
-            // Grid
-            UI_Row
-            {
-                ui_labelf("show_grid");
-                ui_spacer(ui_pct(1.0, 0.0));
-                rk_ui_checkbox(&active_camera->v.camera.show_grid, str8_lit("###show_grid"));
-            }
-
-            ui_spacer(ui_em(0.2, 0.f));
-
-            // Gizmos
-            UI_Row
-            {
-                ui_labelf("show_gizmos");
-                ui_spacer(ui_pct(1.0, 0.0));
-                rk_ui_checkbox(&active_camera->v.camera.show_gizmos, str8_lit("###show_gizmos"));
-            }
-
-            ui_spacer(ui_em(0.2, 0.f));
-
-            // Viewport shading
-            UI_Row
-            {
-                ui_labelf("shading");
-                ui_spacer(ui_pct(1.0, 0.0));
-                if(ui_clicked(ui_buttonf("wireframe"))) {scene->viewport_shading = RK_ViewportShadingKind_Wireframe;};
-                if(ui_clicked(ui_buttonf("solid")))     {scene->viewport_shading = RK_ViewportShadingKind_Solid;};
-                if(ui_clicked(ui_buttonf("material")))  {scene->viewport_shading = RK_ViewportShadingKind_Material;};
-                ui_spacer(ui_em(0.5, 1.0));
-            }
-
-            ui_spacer(ui_em(0.2, 0.f));
-
-            if(inspector->show_camera_cfg)
-            {
                 UI_Row
                 {
-                    ui_labelf("pos");
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&camera->pos.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
-                    ui_f32_edit(&camera->pos.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
-                    ui_f32_edit(&camera->pos.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
-                    ui_spacer(ui_em(0.5, 1.0));
+                    ui_labelf("show_grid");
+                    ui_spacer(ui_pct(1.f,0.f));
+                    rk_ui_checkbox(&camera->show_grid);
                 }
-                ui_spacer(ui_em(0.2, 0.f));
+
+                ui_spacer(ui_em(0.2f, 0.f));
+
                 UI_Row
                 {
-                    ui_labelf("scale");
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&camera->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###scale_x"));
-                    ui_f32_edit(&camera->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###scale_y"));
-                    ui_f32_edit(&camera->scale.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###scale_z"));
-                    ui_spacer(ui_em(0.5, 1.0));
+                    ui_labelf("show_gizmos");
+                    ui_spacer(ui_pct(1.f,0.f));
+                    rk_ui_checkbox(&camera->show_gizmos);
                 }
-                ui_spacer(ui_em(0.2, 0.f));
+
+                ui_spacer(ui_em(0.2f, 0.f));
+
                 UI_Row
                 {
-                    ui_labelf("rot");
+                    ui_labelf("shading");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&camera->rot.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###rot_x"));
-                    ui_f32_edit(&camera->rot.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###rot_y"));
-                    ui_f32_edit(&camera->rot.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###rot_z"));
-                    ui_f32_edit(&camera->rot.w, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("W###rot_w"));
+                    // TODO(k): radio button
+                    if(ui_clicked(ui_buttonf("wireframe"))) {camera->viewport_shading = RK_ViewportShadingKind_Wireframe;};
+                    if(ui_clicked(ui_buttonf("solid")))     {camera->viewport_shading = RK_ViewportShadingKind_Solid;};
+                    if(ui_clicked(ui_buttonf("material")))  {camera->viewport_shading = RK_ViewportShadingKind_Material;};
                     ui_spacer(ui_em(0.5, 1.0));
                 }
             }
         }
 
-        ui_spacer(ui_px(ui_top_font_size()*0.215, 0.f));
+        ui_spacer(ui_em(0.2f, 0.f));
 
-        // Light
-        ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
-        ui_set_next_child_layout_axis(Axis2_Y);
-        UI_Box *light_cfg_box = ui_build_box_from_stringf(0, "###light_cfg");
-        UI_Parent(light_cfg_box)
+        // Active Node
         {
-            // Header
-            ui_set_next_child_layout_axis(Axis2_X);
-            ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
-            UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
-            UI_Parent(header_box)
+            UI_Box *node_cfg_box;
+            UI_PrefSize(Axis2_Y, ui_children_sum(1.0)) UI_ChildLayoutAxis(Axis2_Y)
             {
-                ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
-                if(ui_clicked(ui_expanderf(inspector->show_light_cfg, "###light_cfg")))
-                {
-                    inspector->show_light_cfg = !inspector->show_light_cfg;
-                }
-                ui_labelf("Light");
+                node_cfg_box = ui_build_box_from_key(0, ui_key_zero());
             }
-
-            ui_spacer(ui_px(ui_top_font_size()*0.215, 0.f));
-
-            if(inspector->show_light_cfg)
+            if(active_node != 0) UI_Parent(node_cfg_box)
             {
-                UI_Row
+                ui_set_next_child_layout_axis(Axis2_X);
+                ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
+                UI_Box *header_box = ui_build_box_from_key(0, ui_key_zero());
+                UI_Parent(header_box)
                 {
-                    ui_labelf("global_light");
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&scene->global_light.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
-                    ui_f32_edit(&scene->global_light.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
-                    ui_f32_edit(&scene->global_light.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
-                    ui_spacer(ui_em(0.5, 1.0));
+                    ui_set_next_pref_size(Axis2_X, ui_em(2.f, 0.f));
+                    if(ui_clicked(ui_expanderf(inspector->show_node_cfg, "###show_node_cfg")))
+                    {
+                        inspector->show_node_cfg = !inspector->show_node_cfg;
+                    }
+                    ui_labelf("Node");
                 }
-            }
-        }
 
-        ui_spacer(ui_px(ui_top_font_size()*0.215, 0.f));
+                ui_spacer(ui_em(0.2f, 0.f));
 
-        // Node Properties
-        ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
-        ui_set_next_child_layout_axis(Axis2_Y);
-        UI_Box *node_cfg_box = ui_build_box_from_stringf(0, "###node_cfg");
-        UI_Parent(node_cfg_box)
-        {
-            // Header
-            ui_set_next_child_layout_axis(Axis2_X);
-            ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
-            UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
-            UI_Parent(header_box)
-            {
-                ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
-                if(ui_clicked(ui_expander(inspector->show_node_cfg, str8_lit("###node_cfg"))))
+                // basic info
                 {
-                    inspector->show_node_cfg = !inspector->show_node_cfg;
-                }
-                ui_labelf("Node Properties");
-            }
+                    ui_set_next_child_layout_axis(Axis2_X);
+                    UI_Box *header_box = ui_build_box_from_key(0, ui_key_zero());
+                    UI_Parent(header_box)
+                    {
+                        ui_spacer(ui_em(0.3f,0.f));
+                        ui_set_next_flags(UI_BoxFlag_DrawBorder);
+                        ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+                        ui_labelf("basic");
+                    }
 
-            if(inspector->show_node_cfg && active_node != 0)
-            {
-                UI_Row
-                {
-                    ui_labelf("name");
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_labelf("%S", active_node->name);
-                }
-                if(active_node->parent != 0)
-                {
                     UI_Row
                     {
+                        ui_labelf("name");
+                        ui_spacer(ui_pct(1.f,0.f));
+                        ui_label(active_node->name);
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("key");
+                        ui_spacer(ui_pct(1.f,0.f));
+                        ui_labelf("%lu", active_node->key);
+                    }
+
+                    if(active_node->parent) UI_Row
+                    {
                         ui_labelf("parent");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_labelf("%S", active_node->parent->name);
+                        ui_spacer(ui_pct(1.f,0.f));
+                        ui_label(active_node->parent->name);
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("children_count");
+                        ui_spacer(ui_pct(1.f,0.f));
+                        ui_labelf("%lu", active_node->children_count);
                     }
                 }
-                UI_Row
+
+                ////////////////////////////////
+                //~ equipment info
+
+                ////////////////////////////////
+                //- node2d
+
+                if(active_node->type_flags & RK_NodeTypeFlag_Node2D)
                 {
-                    ui_labelf("pos");
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&active_node->pos.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
-                    ui_f32_edit(&active_node->pos.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
-                    ui_f32_edit(&active_node->pos.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
+                    NotImplemented;
                 }
-                UI_Row
+
+                ////////////////////////////////
+                //- node3d
+
+                if(active_node->type_flags & RK_NodeTypeFlag_Node3D)
                 {
-                    ui_labelf("scale");
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&active_node->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###scale_x"));
-                    ui_f32_edit(&active_node->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###scale_y"));
-                    ui_f32_edit(&active_node->scale.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###scale_z"));
-                }
-                UI_Row
-                {
-                    ui_labelf("rot");
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    ui_f32_edit(&active_node->rot.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###rot_x"));
-                    ui_f32_edit(&active_node->rot.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###rot_y"));
-                    ui_f32_edit(&active_node->rot.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###rot_z"));
-                    ui_f32_edit(&active_node->rot.w, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("W###rot_w"));
+                    RK_Transform3D *transform3d = &active_node->node3d->transform;
+
+                    ui_set_next_child_layout_axis(Axis2_X);
+                    UI_Box *header_box = ui_build_box_from_key(0, ui_key_zero());
+                    UI_Parent(header_box)
+                    {
+                        ui_spacer(ui_em(0.3f,0.f));
+                        ui_set_next_flags(UI_BoxFlag_DrawBorder);
+                        ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+                        ui_labelf("node3d");
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("position");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_f32_edit(&transform3d->position.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
+                        ui_f32_edit(&transform3d->position.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
+                        ui_f32_edit(&transform3d->position.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("scale");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_f32_edit(&transform3d->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###scale_x"));
+                        ui_f32_edit(&transform3d->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###scale_y"));
+                        ui_f32_edit(&transform3d->scale.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###scale_z"));
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("rotation");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_f32_edit(&transform3d->rotation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###rot_x"));
+                        ui_f32_edit(&transform3d->rotation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###rot_y"));
+                        ui_f32_edit(&transform3d->rotation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###rot_z"));
+                        ui_f32_edit(&transform3d->rotation.w, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("W###rot_w"));
+                    }
                 }
             }
         }
@@ -1828,10 +2161,10 @@ internal void rk_ui_profiler(void)
     UI_Parent(header_box) UI_PrefWidth(ui_pct(1.f,0.f)) UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow) UI_TextAlignment(UI_TextAlign_Center)
     {
         ui_labelf("Tag");
-        ui_labelf("Cycles");
+        ui_labelf("Cycles n/p");
         ui_labelf("Calls");
         ui_labelf("Cycles per call");
-        ui_labelf("US");
+        ui_labelf("US n/p");
         ui_labelf("US per call");
     }
 
@@ -1881,13 +2214,19 @@ internal void rk_ui_profiler(void)
                 {
                     if(row_idx >= visible_row_rng.min && row_idx <= visible_row_rng.max)
                     {
-                        UI_Row UI_PrefWidth(ui_pct(1.f, 0.f)) UI_Flags(UI_BoxFlag_DrawBorder)
+                        UI_Box *row = 0;
+                        UI_ChildLayoutAxis(Axis2_X) UI_Flags(UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawBackground) UI_PrefWidth(ui_pct(1.f,0.f))
+                        {
+                            row = ui_build_box_from_stringf(0,"###row_%d", row_idx);
+                            ui_signal_from_box(row);
+                        }
+                        UI_Parent(row) UI_PrefWidth(ui_pct(1.0,0.f)) UI_Flags(UI_BoxFlag_DrawSideRight)
                         {
                             ui_label(n->tag);
                             UI_Row
                             {
                                 ui_labelf("%lu", n->total_cycles);
-                                ui_spacer(ui_pct(1.f, 0.f));
+                                ui_spacer(ui_pct(1.f,0.f));
                                 ui_labelf("%.2f", (F32)n->total_cycles/pf_tick->cycles);
                             }
                             ui_labelf("%lu", n->call_count);
@@ -1895,7 +2234,7 @@ internal void rk_ui_profiler(void)
                             UI_Row
                             {
                                 ui_labelf("%lu", n->total_us);
-                                ui_spacer(ui_pct(1.f, 0.f));
+                                ui_spacer(ui_pct(1.f,0.f));
                                 ui_labelf("%.2f", (F32)n->total_us/pf_tick->us);
                             }
                             ui_labelf("%lu", n->us_per_call);
@@ -1915,31 +2254,171 @@ internal void rk_ui_profiler(void)
 /////////////////////////////////
 // Frame
 
-internal void
-rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
+internal D_Bucket *
+rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 {
     ProfBeginFunction();
 
     // Begin of the frame
     {
-        arena_clear(rk_state->frame_arena);
-        rk_push_bucket(scene->bucket);
+        rk_push_node_bucket(scene->node_bucket);
+        rk_push_res_bucket(scene->res_bucket);
         rk_push_scene(scene);
 
-        rk_state->dt = dt;
-        rk_state->dt_sec = dt/1000000.0f;
-        rk_state->dt_ms = dt/1000.0f;
-        rk_state->hot_key = (RK_Key){ hot_key };
+        rk_state->dt_us = dt_us;
+        rk_state->dt_sec = dt_us/1000000.0f;
+        rk_state->dt_ms = dt_us/1000.0f;
         rk_state->window_rect = os_client_rect_from_window(rk_state->os_wnd);
         rk_state->window_dim = dim_2f32(rk_state->window_rect);
         rk_state->last_cursor = rk_state->cursor;
         rk_state->cursor = os_mouse_from_window(rk_state->os_wnd);
     }
 
-    // Remake bucket every frame
+    // Remake drawing bucket every frame
     rk_state->bucket_rect = d_bucket_make();
     rk_state->bucket_geo3d = d_bucket_make();
 
+    /////////////////////////////////
+    //~ Build ui
+
+    //- Build event list for ui
+    UI_EventList ui_events = {0};
+    OS_Event *os_evt_first = os_events.first;
+    OS_Event *os_evt_opl = os_events.last + 1;
+    for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
+    {
+        if(os_evt == 0) continue;
+
+        UI_Event ui_evt = zero_struct;
+
+        UI_EventKind kind = UI_EventKind_Null;
+        switch(os_evt->kind)
+        {
+            default:{}break;
+            case OS_EventKind_Press:       {kind = UI_EventKind_Press;}break;
+            case OS_EventKind_Release:     {kind = UI_EventKind_Release;}break;
+            case OS_EventKind_MouseMove:   {kind = UI_EventKind_MouseMove;}break;
+            case OS_EventKind_Text:        {kind = UI_EventKind_Text;}break;
+            case OS_EventKind_Scroll:      {kind = UI_EventKind_Scroll;}break;
+            case OS_EventKind_FileDrop:    {kind = UI_EventKind_FileDrop;}break;
+        }
+
+        ui_evt.kind         = kind;
+        ui_evt.key          = os_evt->key;
+        ui_evt.modifiers    = os_evt->modifiers;
+        ui_evt.string       = os_evt->character ? str8_from_32(ui_build_arena(), str32(&os_evt->character, 1)) : str8_zero();
+        ui_evt.pos          = os_evt->pos;
+        ui_evt.delta_2f32   = os_evt->delta;
+        ui_evt.timestamp_us = os_evt->timestamp_us;
+
+        if(ui_evt.key == OS_Key_Backspace && ui_evt.kind == UI_EventKind_Press)
+        {
+            ui_evt.kind       = UI_EventKind_Edit;
+            ui_evt.flags      = UI_EventFlag_Delete | UI_EventFlag_KeepMark;
+            ui_evt.delta_unit = UI_EventDeltaUnit_Char;
+            ui_evt.delta_2s32 = v2s32(-1,0);
+        }
+
+        if(ui_evt.kind == UI_EventKind_Text)
+        {
+            ui_evt.flags = UI_EventFlag_KeepMark;
+        }
+
+        if(ui_evt.key == OS_Key_Return && ui_evt.kind == UI_EventKind_Press)
+        {
+            ui_evt.slot = UI_EventActionSlot_Accept;
+        }
+
+        if(ui_evt.key == OS_Key_A && (ui_evt.modifiers & OS_Modifier_Ctrl) && ui_evt.kind == UI_EventKind_Press)
+        {
+            ui_evt.kind       = UI_EventKind_Navigate;
+            ui_evt.flags      = UI_EventFlag_KeepMark;
+            ui_evt.delta_unit = UI_EventDeltaUnit_Whole;
+            ui_evt.delta_2s32 = v2s32(1,0);
+
+            UI_Event ui_evt_0 = ui_evt;
+            ui_evt_0.flags      = 0;
+            ui_evt_0.delta_unit = UI_EventDeltaUnit_Whole;
+            ui_evt_0.delta_2s32 = v2s32(-1,0);
+            ui_event_list_push(ui_build_arena(), &ui_events, &ui_evt_0);
+        }
+
+        if(ui_evt.key == OS_Key_Left && ui_evt.kind == UI_EventKind_Press)
+        {
+            ui_evt.kind       = UI_EventKind_Navigate;
+            ui_evt.flags      = 0;
+            ui_evt.delta_unit = ui_evt.modifiers & OS_Modifier_Ctrl ? UI_EventDeltaUnit_Word : UI_EventDeltaUnit_Char;
+            ui_evt.delta_2s32 = v2s32(-1,0);
+        }
+
+        if(ui_evt.key == OS_Key_Right && ui_evt.kind == UI_EventKind_Press)
+        {
+            ui_evt.kind       = UI_EventKind_Navigate;
+            ui_evt.flags      = 0;
+            ui_evt.delta_unit = ui_evt.modifiers & OS_Modifier_Ctrl ? UI_EventDeltaUnit_Word : UI_EventDeltaUnit_Char;
+            ui_evt.delta_2s32 = v2s32(1,0);
+        }
+
+        ui_event_list_push(ui_build_arena(), &ui_events, &ui_evt);
+
+        // TODO(k): we may want to handle this somewhere else
+        if(os_evt->kind == OS_EventKind_WindowClose) {rk_state->window_should_close = 1;}
+    }
+
+    // Begin build ui
+    {
+        // Gather font info
+        F_Tag main_font = rk_font_from_slot(RK_FontSlot_Main);
+        F32 main_font_size = rk_font_size_from_slot(RK_FontSlot_Main);
+        F_Tag icon_font = rk_font_from_slot(RK_FontSlot_Icons);
+
+        // Build icon info
+        UI_IconInfo icon_info = {0};
+        {
+            icon_info.icon_font = icon_font;
+            icon_info.icon_kind_text_map[UI_IconKind_RightArrow]     = rk_icon_kind_text_table[RK_IconKind_RightScroll];
+            icon_info.icon_kind_text_map[UI_IconKind_DownArrow]      = rk_icon_kind_text_table[RK_IconKind_DownScroll];
+            icon_info.icon_kind_text_map[UI_IconKind_LeftArrow]      = rk_icon_kind_text_table[RK_IconKind_LeftScroll];
+            icon_info.icon_kind_text_map[UI_IconKind_UpArrow]        = rk_icon_kind_text_table[RK_IconKind_UpScroll];
+            icon_info.icon_kind_text_map[UI_IconKind_RightCaret]     = rk_icon_kind_text_table[RK_IconKind_RightCaret];
+            icon_info.icon_kind_text_map[UI_IconKind_DownCaret]      = rk_icon_kind_text_table[RK_IconKind_DownCaret];
+            icon_info.icon_kind_text_map[UI_IconKind_LeftCaret]      = rk_icon_kind_text_table[RK_IconKind_LeftCaret];
+            icon_info.icon_kind_text_map[UI_IconKind_UpCaret]        = rk_icon_kind_text_table[RK_IconKind_UpCaret];
+            icon_info.icon_kind_text_map[UI_IconKind_CheckHollow]    = rk_icon_kind_text_table[RK_IconKind_CheckHollow];
+            icon_info.icon_kind_text_map[UI_IconKind_CheckFilled]    = rk_icon_kind_text_table[RK_IconKind_CheckFilled];
+        }
+
+        UI_WidgetPaletteInfo widget_palette_info = {0};
+        {
+            widget_palette_info.tooltip_palette   = rk_palette_from_code(RK_PaletteCode_Floating);
+            widget_palette_info.ctx_menu_palette  = rk_palette_from_code(RK_PaletteCode_Floating);
+            widget_palette_info.scrollbar_palette = rk_palette_from_code(RK_PaletteCode_ScrollBarButton);
+        }
+
+        // Build animation info
+        UI_AnimationInfo animation_info = {0};
+        {
+            animation_info.flags |= UI_AnimationInfoFlag_HotAnimations;
+            animation_info.flags |= UI_AnimationInfoFlag_ActiveAnimations;
+            animation_info.flags |= UI_AnimationInfoFlag_FocusAnimations;
+            animation_info.flags |= UI_AnimationInfoFlag_TooltipAnimations;
+            animation_info.flags |= UI_AnimationInfoFlag_ContextMenuAnimations;
+            animation_info.flags |= UI_AnimationInfoFlag_ScrollingAnimations;
+        }
+
+        // Begin & push initial stack values
+        ui_begin_build(rk_state->os_wnd, &ui_events, &icon_info, &widget_palette_info, &animation_info, rk_state->dt_sec);
+
+        ui_push_font(main_font);
+        ui_push_font_size(main_font_size);
+        // ui_push_text_raster_flags(...);
+        ui_push_text_padding(main_font_size*0.2f);
+        ui_push_pref_width(ui_em(20.f, 1.f));
+        ui_push_pref_height(ui_em(1.35f, 1.f));
+        ui_push_palette(rk_palette_from_code(RK_PaletteCode_Base));
+    }
+
+    // Game view (debug/game ui)
     D_BucketScope(rk_state->bucket_rect)
     {
         rk_ui_inspector();
@@ -1947,58 +2426,61 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
         rk_ui_profiler();
     }
 
-    // Process events
-    OS_Event *os_evt_first = os_events.first;
-    OS_Event *os_evt_opl = os_events.last + 1;
-    for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
-    {
-        if(os_evt == 0) continue;
-        // if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
-        if(os_evt->kind == OS_EventKind_Press)
-        {
-            U64 camera_idx = os_evt->key - OS_Key_F1;
-            U64 i = 0;
-            for(RK_CameraNode *cn = scene->first_camera; cn != 0; cn = cn->next, i++)
-            {
-                if(i == camera_idx)
-                {
-                    scene->active_camera = cn;
-                    break;
-                }
-            }
-        }
-    }
+    // Process events for game logic
+    // OS_Event *os_evt_first = os_events.first;
+    // OS_Event *os_evt_opl = os_events.last + 1;
+    // for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
+    // {
+    //     if(os_evt == 0) continue;
+    //     // if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
+    //     if(os_evt->kind == OS_EventKind_Press)
+    //     {
+    //         U64 camera_idx = os_evt->key - OS_Key_F1;
+    //         U64 i = 0;
+    //         for(RK_CameraNode *cn = scene->first_camera; cn != 0; cn = cn->next, i++)
+    //         {
+    //             if(i == camera_idx)
+    //             {
+    //                 scene->active_camera = cn;
+    //                 break;
+    //             }
+    //         }
+    //     }
+    // }
 
-    // Unpack active camera
-    RK_Node *camera = scene->active_camera->v;
-
-    // RK_Node *hot_node = 0;
-    RK_Node *active_node = rk_node_from_key(rk_state->active_key);
-
-    // UI Box for game viewport (Handle user interaction)
+    // UI Box for game viewport (handle user interaction)
     ui_set_next_rect(rk_state->window_rect);
-    ui_set_next_child_layout_axis(Axis2_X);
     UI_Box *overlay = ui_build_box_from_string(UI_BoxFlag_MouseClickable|UI_BoxFlag_ClickToFocus|UI_BoxFlag_Scroll|UI_BoxFlag_DisableFocusOverlay, str8_lit("###game_overlay"));
     rk_state->sig = ui_signal_from_box(overlay);
 
-    // TODO(k): there will be snow if show_grid is 0 (WTF)
-    B32 show_grid   = camera->v.camera.show_grid;
-    B32 show_gizmos = camera->v.camera.show_gizmos && active_node != 0;
-    // NOTE(k): gizmos xform/origin is behind by one frame
-    Mat4x4F32 gizmos_xform = mat_4x4f32(1.0);
-    Vec3F32 gizmos_origin = {0};
-    if(show_gizmos)
+    /////////////////////////////////
+    // Update hot/active key
     {
-        gizmos_xform = active_node->fixed_xform;
-        gizmos_origin = v3f32(gizmos_xform.v[3][0], gizmos_xform.v[3][1], gizmos_xform.v[3][2]);
+        scene->hot_key = rk_key_make(hot_key);
+        if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
+        {
+            scene->active_key = scene->hot_key;
+        }
     }
 
-    d_push_bucket(rk_state->bucket_geo3d);
-    R_PassParams_Geo3D *geo3d_pass = d_geo3d_begin(overlay->rect, mat_4x4f32(1.f), mat_4x4f32(1.f), normalize_3f32(scene->global_light), show_grid, show_gizmos, gizmos_xform, gizmos_origin);
-    d_pop_bucket();
+    RK_Node *active_node = rk_node_from_key(scene->active_key);
 
+    /////////////////////////////////
+    //~ Start geo3d pass
+
+    // Unpack active camera
+    RK_Node *camera_node = rk_node_from_handle(scene->active_camera);
+    AssertAlways(camera_node != 0 && "No active camera was found");
+    RK_Camera3D *camera = camera_node->camera3d;
+    Mat4x4F32 camera_xform = camera_node->fixed_xform;
+
+    //- Unpack camera settings
+    B32 show_grid   = camera->show_grid;
+    B32 projection  = camera->projection;
+
+    // polygon mode
     R_GeoPolygonKind polygon_mode;
-    switch(scene->viewport_shading)
+    switch(camera->viewport_shading)
     {
         case RK_ViewportShadingKind_Wireframe:       {polygon_mode = R_GeoPolygonKind_Line;}break;
         case RK_ViewportShadingKind_Solid:           {polygon_mode = R_GeoPolygonKind_Fill;}break;
@@ -2006,15 +2488,41 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
         default:                                     {InvalidPath;}break;
     }
 
-    // Update/draw node in the scene tree
-    ProfScope("update/draw")
+    //- view/projection (NOTE(k): behind by one frame)
+    Mat4x4F32 view_m = inverse_4x4f32(camera_xform);
+    Mat4x4F32 projection_m;
+    switch(camera->projection)
     {
-        RK_Node *node = scene->root;
+        case RK_ProjectionKind_Perspective:
+        {
+            projection_m = make_perspective_vulkan_4x4f32(camera->perspective.fov, rk_state->window_dim.x/rk_state->window_dim.y, camera->perspective.zn, camera->perspective.zf);
+        }break;
+        case RK_ProjectionKind_Orthographic:
+        {
+            projection_m = make_orthographic_vulkan_4x4f32(camera->orthographic.left, camera->orthographic.right, camera->orthographic.bottom, camera->orthographic.top, camera->orthographic.zn, camera->orthographic.zf);
+        }break;
+        default:{InvalidPath;}break;
+    }
+
+    // start the geo3d pass
+    R_PassParams_Geo3D *geo3d_pass = 0;
+    {
+        d_push_bucket(rk_state->bucket_geo3d);
+        // TODO: handle global light
+        geo3d_pass = d_geo3d_begin(overlay->rect, view_m, projection_m, v3f32(1,0,0), show_grid);
+        d_pop_bucket();
+    }
+
+    /////////////////////////////////
+    //~ Update/draw node in the scene tree
+    ProfScope("update/draw game")
+    {
+        RK_Node *node = rk_node_from_handle(scene->root);
         while(node != 0)
         {
             RK_NodeRec rec = rk_node_df_pre(node, 0);
+            RK_Node *parent = node->parent;
 
-            base_fn(node, scene, os_events, rk_state->dt_sec);
             for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
             {
                 fn->f(node, scene, os_events, rk_state->dt_sec);
@@ -2022,156 +2530,330 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key)
 
             D_BucketScope(rk_state->bucket_geo3d)
             {
-                switch(node->kind)
+                B32 has_transform = 0;
+                // Update fixed_xform in DFS order
+                if(node->type_flags & RK_NodeTypeFlag_Node2D)
                 {
-                    default: {}break;
-                    case RK_NodeKind_MeshPrimitive:
-                    {
-                        // TODO: this is ugly, maybe wrong abstraction here
-                        Mat4x4F32 *joint_xforms = node->parent->v.mesh_grp.joint_xforms;
-                        U64 joint_count = node->parent->v.mesh_grp.joint_count;
-
-                        R_Mesh3DInst *inst = d_mesh(node->v.mesh_primitive.vertices, node->v.mesh_primitive.indices,
-                                                    R_GeoTopologyKind_Triangles, polygon_mode,
-                                                    R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, node->v.mesh_primitive.albedo_tex, node->v.mesh_primitive.color_tex_override,
-                                                    joint_xforms, joint_count,
-                                                    mat_4x4f32(1.f), node->key.u64[0]);
-                        inst->xform = node->fixed_xform;
-                        if(r_handle_match(node->v.mesh_primitive.albedo_tex, r_handle_zero()) || scene->viewport_shading == RK_ViewportShadingKind_Solid)
-                        {
-                            // default to white color (alpha != 0 => omit texture/use color texture)
-                            // inst->color_texture = rgba_from_u32(0xE5E3D4FF);
-                            inst->color_texture = rgba_from_u32(0xF4E0AFFF);
-                        }
-                    }break;
+                    has_transform = 1;
+                    NotImplemented;
                 }
+
+                // Update fixed_xform in DFS order
+                if(node->type_flags & RK_NodeTypeFlag_Node3D)
+                {
+                    has_transform = 1;
+                    node->position = node->node3d->transform.position;
+                    node->scale = node->node3d->transform.scale;
+                    node->rotation = node->node3d->transform.rotation;
+                }
+
+                // Update fixed_xform in DFS order 
+                if(has_transform)
+                {
+                    Mat4x4F32 xform = mat_4x4f32(1.0);
+                    Mat4x4F32 rotation_m = mat_4x4f32_from_quat_f32(node->rotation);
+                    Mat4x4F32 translate_m = make_translate_4x4f32(node->position);
+                    Mat4x4F32 scale_m = make_scale_4x4f32(node->scale);
+                    // TRS order
+                    xform = mul_4x4f32(scale_m, xform);
+                    xform = mul_4x4f32(rotation_m, xform);
+                    xform = mul_4x4f32(translate_m, xform);
+
+                    if(parent != 0 && !(node->flags & RK_NodeFlag_Float))
+                    {
+                        xform = mul_4x4f32(parent->fixed_xform, xform);
+                    }
+                    node->fixed_xform = xform;
+                }
+
+                if(node->type_flags & RK_NodeTypeFlag_Camera3D)
+                {
+                    if(node->camera3d->is_active) 
+                    {
+                        rk_scene_active_camera_set(scene, node);
+                    }
+                }
+
+                // Animation Player progress
+                if(node->type_flags & RK_NodeTypeFlag_AnimationPlayer)
+                {
+                    RK_AnimationPlayer *anim_player = node->animation_player;
+                    // TODO(k): TESTING, play the first animation
+                    if(rk_handle_is_zero(anim_player->playback.curr))
+                    {
+                        anim_player->playback.curr = anim_player->animations[0]; 
+                        anim_player->playback.loop = 1;
+                    }
+                
+                    // play animation if there is any
+                    if(!rk_handle_is_zero(anim_player->playback.curr))
+                    {
+                        anim_player->playback.pos += rk_state->dt_sec;
+                        RK_Animation *animation = rk_res_data_from_handle(anim_player->playback.curr);
+                        if(anim_player->playback.pos > animation->duration_sec && anim_player->playback.loop)
+                        {
+                            anim_player->playback.pos = mod_f32(anim_player->playback.pos, animation->duration_sec);
+                        }
+                        if(animation)
+                        {
+                            F32 pos = anim_player->playback.pos;
+                            for(RK_Track *track = animation->first_track; track != 0; track = track->next)
+                            {
+                                RK_Node *target = rk_node_from_key(rk_key_merge(anim_player->target_seed, track->target_key));
+                                AssertAlways(target != 0);
+
+                                F32 t = 0;
+                                RK_TrackFrame *prev_frame = 0;
+                                BTSetFindPrev_PLRKZ(track->frame_btree_root,pos,prev_frame,parent,left,right,ts_sec,0);
+                                RK_TrackFrame *next_frame = 0;
+                                BTNext_PLRZ(prev_frame, next_frame, parent, left, right, 0);
+                                // NOTE(k): single frame track or track is finished
+                                if(next_frame == 0)
+                                {
+                                    next_frame = prev_frame;
+                                    t = 0;
+                                }
+                                else
+                                {
+                                    Assert(next_frame->ts_sec > prev_frame->ts_sec);
+                                    Assert(pos > prev_frame->ts_sec);
+                                    Assert(pos <= next_frame->ts_sec);
+                                    switch(track->interpolation)
+                                    {
+                                        case RK_InterpolationKind_Linear:
+                                        {
+                                            t = (pos-prev_frame->ts_sec)/(next_frame->ts_sec-prev_frame->ts_sec);
+                                        }break;
+                                        case RK_InterpolationKind_Cubic:
+                                        case RK_InterpolationKind_Step:
+                                        {
+                                            NotImplemented;
+                                        }break;
+                                        default: {InvalidPath;}break;
+                                    }
+                                }
+
+                                switch(track->target_kind)
+                                {
+                                    case RK_TrackTargetKind_Position3D:
+                                    {
+                                        target->node3d->transform.position = mix_3f32(prev_frame->v.position3d, next_frame->v.position3d, t);
+                                    }break;
+                                    case RK_TrackTargetKind_Rotation3D:
+                                    {
+                                        target->node3d->transform.rotation = mix_quat_f32(prev_frame->v.rotation3d, next_frame->v.rotation3d, t);
+                                    }break;
+                                    case RK_TrackTargetKind_Scale3D:
+                                    {
+                                        target->node3d->transform.scale = mix_3f32(prev_frame->v.scale3d, next_frame->v.scale3d, t);
+                                    }break;
+                                    case RK_TrackTargetKind_MorphWeight3D:
+                                    default: {}break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Draw mesh(3d/2d)
+                if(node->type_flags & RK_NodeTypeFlag_MeshInstance3D)
+                {
+                    RK_MeshInstance3D *mesh_inst3d = node->mesh_inst3d;
+                    RK_Mesh *mesh = rk_res_data_from_handle(mesh_inst3d->mesh);
+                    RK_Skin *skin = rk_res_data_from_handle(mesh_inst3d->skin);
+                    RK_Key skin_seed = mesh_inst3d->skin_seed;
+                    U64 joint_count = 0;
+                    Mat4x4F32 *joint_xforms = 0;
+
+                    if(skin != 0)
+                    {
+                        joint_count = skin->bind_count;
+                        joint_xforms = push_array(rk_frame_arena(), Mat4x4F32, joint_count);
+
+                        RK_Bind *bind;
+                        for(U64 i = 0; i < joint_count; i++)
+                        {
+                            bind = &skin->binds[i];
+                            RK_Key target_key = rk_key_merge(skin_seed, bind->joint);
+                            RK_Node *target = rk_node_from_key(target_key);
+                            AssertAlways(target != 0);
+                            joint_xforms[i] = mul_4x4f32(target->fixed_xform, bind->inverse_bind_matrix);
+                        }
+                    }
+                    
+                    RK_Material *material = rk_res_data_from_handle(mesh->material);
+                    R_Handle albedo_tex = {0};
+                    // NOTE(k): alpha != 0 => omit texture and use color texture
+                    Vec4F32 clr_tex = {1,1,1,0};
+                    // TODO: PBR rendering
+                    if(material != 0)
+                    {
+                        RK_Texture2D *tex2d = rk_res_data_from_handle(material->base_clr_tex);
+                        if(tex2d) albedo_tex = tex2d->tex;
+                        if(camera->viewport_shading != RK_ViewportShadingKind_Material)
+                        {
+                            clr_tex = material->base_clr_factor;
+                        }
+                    }
+                    else
+                    {
+                        clr_tex = rgba_from_u32(0xF4E0AFFF);
+                    }
+
+                    if(mesh != 0)
+                    {
+                        R_Mesh3DInst *inst = d_mesh(mesh->vertices, mesh->indices, mesh->topology,
+                                                    polygon_mode, R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, albedo_tex, clr_tex,
+                                                    joint_xforms, joint_count,
+                                                    node->fixed_xform, node->key.u64[0]);
+                    }
+                    else
+                    {
+                        // NOTE(k): THIS SHOULD NOT HAPPEDN
+                        InvalidPath;
+                    }
+                }
+            }
+
+            // pop stacks
+            {
+                // TODO(k): we could have some stacks here
             }
             node = rec.next;
         }
     }
 
-    geo3d_pass->view = rk_view_from_node(camera);
-    switch(camera->v.camera.projection)
-    {
-        case RK_ProjectionKind_Perspective:
-        {
-            geo3d_pass->projection = make_perspective_vulkan_4x4f32(camera->v.camera.p.fov, rk_state->window_dim.x/rk_state->window_dim.y, camera->v.camera.p.zn, camera->v.camera.p.zf);
-        }break;
-        case RK_ProjectionKind_Orthographic:
-        {
-            geo3d_pass->projection = make_orthographic_vulkan_4x4f32(camera->v.camera.o.left, camera->v.camera.o.right, camera->v.camera.o.bottom, camera->v.camera.o.top, camera->v.camera.o.zn, camera->v.camera.o.zf);
-        }break;
-        default:{InvalidPath;}break;
-    }
-    Mat4x4F32 xform_m = mul_4x4f32(geo3d_pass->projection, geo3d_pass->view);
+    // Gizmos3D dragging
+    // if(active_node != 0 && (active_node->type_flags & RK_NodeTypeFlag_Node3D))
+    // {
+    //     if(rk_state->sig.f & UI_SignalFlag_LeftDragging && (rk_state->active_key.u64[0] == RK_SpecialKeyKind_GizmosIhat || rk_state->active_key.u64[0] == RK_SpecialKeyKind_GizmosJhat || scene->active_key.u64[0] == RK_SpecialKeyKind_GizmosKhat))
+    //     {
+    //         RK_Transform3D *transform = &active_node->node3d->transform;
 
-    // Update hot/active
-    {
-        if(rk_state->sig.f & UI_SignalFlag_LeftReleased)
-        {
-            rk_state->is_dragging = 0;
-        }
+    //         typedef struct RK_Gizmos3DDraggingData RK_Gizmos3DDraggingData;
+    //         struct RK_Gizmos3DDraggingData
+    //         {
+    //             Vec3F32 start_direction;
+    //             RK_Transform3D start_transform;
+    //             Vec2F32 projected_direction; // for moving along ijk
+    //         };
 
-        if((rk_state->sig.f & UI_SignalFlag_LeftReleased) && active_node != 0)
-        {
-            rk_node_delta_commit(active_node);
-        }
+    //         if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
+    //         {
+    //             Vec3F32 i,j,k;
+    //             rk_ijk_from_matrix(gizmos_xform,&i,&j,&k);
+    //             Mat4x4F32 gizmos_xform = active_node->fixed_xform;
+    //             Vec4F32 gizmos_origin = v4f32(gizmos_xform.v[3][0], gizmos_xform.v[3][1], gizmos_xform.v[3][2], 1.0);
 
-        if((rk_state->sig.f & UI_SignalFlag_LeftPressed) &&
-            rk_state->hot_key.u64[0] != RK_SpecialKeyKind_GizmosIhat &&
-            rk_state->hot_key.u64[0] != RK_SpecialKeyKind_GizmosJhat &&
-            rk_state->hot_key.u64[0] != RK_SpecialKeyKind_GizmosKhat)
-        {
-            rk_set_active_key(rk_state->hot_key);
-        }
+    //             RK_Gizmos3DDraggingData drag_data = {0};
+    //             drag_data.start_transform = *transform;
+    //             switch(hot_key)
+    //             {
+    //                 default: {InvalidPath;}break;
+    //                 case RK_SpecialKeyKind_GizmosIhat: {drag_data.start_direction = i;}break;
+    //                 case RK_SpecialKeyKind_GizmosJhat: {drag_data.start_direction = j;}break;
+    //                 case RK_SpecialKeyKind_GizmosKhat: {drag_data.start_direction = k;}break;
+    //             }
+    //             Mat4x4F32 xform = mul_4x4f32(geo3d_pass->projection, geo3d_pass->view);
+    //             Vec4F32 dir = v4f32(drag_data.start_direction.x,
+    //                                 drag_data.start_direction.y,
+    //                                 drag_data.start_direction.z,
+    //                                 0.0);
 
-        if(active_node != 0)
-        {
-            // Gizmos dragging
-            Vec3F32 local_i;
-            Vec3F32 local_j;
-            Vec3F32 local_k;
-            rk_local_coord_from_node(active_node, &local_k, &local_i, &local_j);
+    //             Vec2F32 screen_dim = rk_state->window_dim;
+    //             Vec4F32 projected_start = mat_4x4f32_transform_4f32(xform, gizmos_origin);
+    //             if(projected_start.w != 0)
+    //             {
+    //                 projected_start.x /= projected_start.w;
+    //                 projected_start.y /= projected_start.w;
+    //             }
+    //             // vulkan ndc space to screen space
+    //             projected_start.x += 1.0;
+    //             projected_start.x *= (screen_dim.x/2.0f);
+    //             projected_start.y += 1.0;
+    //             projected_start.y *= (screen_dim.y/2.0f);
+    //             Vec4F32 projected_end = mat_4x4f32_transform_4f32(xform, add_4f32(gizmos_origin, dir));
+    //             if(projected_end.w != 0)
+    //             {
+    //                 projected_end.x /= projected_end.w;
+    //                 projected_end.y /= projected_end.w;
+    //             }
+    //             // vulkan ndc space to screen space
+    //             projected_end.x += 1.0;
+    //             projected_end.x *= (screen_dim.x/2.0f);
+    //             projected_end.y += 1.0;
+    //             projected_end.y *= (screen_dim.y/2.0f);
 
-            // Dragging started
-            if((rk_state->sig.f & UI_SignalFlag_LeftDragging) &&
-                rk_state->is_dragging == 0 &&
-                (rk_state->hot_key.u64[0] == RK_SpecialKeyKind_GizmosIhat || rk_state->hot_key.u64[0] == RK_SpecialKeyKind_GizmosJhat  || rk_state->hot_key.u64[0] == RK_SpecialKeyKind_GizmosKhat))
-            {
-                Vec3F32 direction = {0};
-                switch(rk_state->hot_key.u64[0])
-                {
-                    default: {InvalidPath;}break;
-                    case RK_SpecialKeyKind_GizmosIhat: {direction = local_i;}break;
-                    case RK_SpecialKeyKind_GizmosJhat: {direction = local_j;}break;
-                    case RK_SpecialKeyKind_GizmosKhat: {direction = local_k;}break;
-                }
-                rk_state->is_dragging = 1;
-                rk_state->drag_start_direction = direction;
-            }
+    //             drag_data.projected_direction = sub_2f32(v2f32(projected_end.x, projected_end.y), v2f32(projected_start.x, projected_start.y));
+    //             ui_store_drag_struct(&drag_data);
+    //         }
 
-            // Dragging
-            if(rk_state->is_dragging)
-            {
-                Vec2F32 delta = ui_drag_delta();
-                Vec4F32 dir = v4f32(rk_state->drag_start_direction.x,
-                                    rk_state->drag_start_direction.y,
-                                    rk_state->drag_start_direction.z,
-                                    1.0);
-                Vec4F32 projected_start = mat_4x4f32_transform_4f32(xform_m, v4f32(0,0,0,1.0));
-                if(projected_start.w != 0)
-                {
-                    projected_start.x /= projected_start.w;
-                    projected_start.y /= projected_start.w;
-                }
-                Vec4F32 projected_end = mat_4x4f32_transform_4f32(xform_m, dir);
-                if(projected_end.w != 0)
-                {
-                    projected_end.x /= projected_end.w;
-                    projected_end.y /= projected_end.w;
-                }
-                Vec2F32 projected_dir = sub_2f32(v2f32(projected_end.x, projected_end.y), v2f32(projected_start.x, projected_start.y));
+    //         // TODO(k): dragging still fell a bit weird
 
-                // TODO: negating direction could cause rapid changes on the position, we would want to avoid that 
-                S32 n = dot_2f32(delta, projected_dir) > 0 ? 1 : -1;
+    //         RK_Gizmos3DDraggingData *drag_data = ui_get_drag_struct(RK_Gizmos3DDraggingData);
+    //         Vec2F32 delta = ui_drag_delta();
+    //         // TODO: negating direction could cause rapid changes on the position, we would want to avoid that 
+    //         F32 scale = 0;
+    //         Vec2F32 projected_dir = drag_data->projected_direction;
+    //         if((delta.x+delta.y) != 0)
+    //         {
+    //             scale = dot_2f32(delta, normalize_2f32(projected_dir)) / length_2f32(projected_dir);
+    //         }
+    //         Vec3F32 position_delta = scale_3f32(drag_data->start_direction, scale);
+    //         transform->position = add_3f32(drag_data->start_transform.position, position_delta);
+    //     }
+    // }
 
-                // 10.0 in word coordinate per pixel (scaled by the distance to the eye)
-                F32 speed = 1.0/(rk_state->window_dim.x*length_2f32(projected_dir));
-                active_node->pst_pos_delta = scale_3f32(rk_state->drag_start_direction, length_2f32(delta)*speed*n);
-            }
-        }
-    }
-
-    if(camera->v.camera.hide_cursor && (!rk_state->cursor_hidden))
+    /////////////////////////////////
+    // handle cursors
+    if(camera->hide_cursor && (!rk_state->cursor_hidden))
     {
         os_hide_cursor(rk_state->os_wnd);
         rk_state->cursor_hidden = 1;
     }
-
-    if(!camera->v.camera.hide_cursor && rk_state->cursor_hidden)
+    if(!camera->hide_cursor && rk_state->cursor_hidden)
     {
         os_show_cursor(rk_state->os_wnd);
         rk_state->cursor_hidden = 0;
     }
-    if(camera->v.camera.lock_cursor)
+    if(camera->lock_cursor)
     {
         Vec2F32 cursor = center_2f32(rk_state->window_rect);
         os_wrap_cursor(rk_state->os_wnd, cursor.x, cursor.y);
         rk_state->cursor = cursor;
     }
 
-    // End of the frame
+    /////////////////////////////////
+    // Draw ui
+    ui_end_build();
+    ProfScope("draw ui") D_BucketScope(rk_state->bucket_rect)
     {
-        rk_pop_bucket();
+        rk_ui_draw();
+    }
+
+    /////////////////////////////////
+    // End of the frame (pop, release scene)
+    {
+        rk_pop_node_bucket();
+        rk_pop_res_bucket();
         rk_pop_scene();
 
         RK_Scene *s = rk_state->first_to_free_scene;
         for(RK_Scene *s = rk_state->first_to_free_scene; s != 0; s = rk_state->first_to_free_scene)
         {
+            SLLStackPop(rk_state->first_to_free_scene);
             rk_scene_release(s);
         }
     }
+
+    /////////////////////////////////
+    // geo3d => rect in this order
+    d_push_bucket(rk_state->bucket_geo3d);
+    d_sub_bucket(rk_state->bucket_rect);
+
     ProfEnd();
+    rk_state->frame_counter++;
+    return rk_state->bucket_geo3d;
 }
 
 /////////////////////////////////
@@ -2209,36 +2891,105 @@ rk_trs_from_matrix(Mat4x4F32 *m, Vec3F32 *trans, QuatF32 *rot, Vec3F32 *scale)
     *rot = quat_f32_from_4x4f32(rot_m);
 }
 
+internal void
+rk_ijk_from_matrix(Mat4x4F32 m, Vec3F32 *i, Vec3F32 *j, Vec3F32 *k)
+{
+    // NOTE(K): don't apply translation, hence 0 for w
+    Vec4F32 i_hat = {1,0,0,0};
+    Vec4F32 j_hat = {0,1,0,0};
+    Vec4F32 k_hat = {0,0,1,0};
+    i_hat = mat_4x4f32_transform_4f32(m, i_hat);
+    j_hat = mat_4x4f32_transform_4f32(m, j_hat);
+    k_hat = mat_4x4f32_transform_4f32(m, k_hat);
+
+    MemoryCopy(i, &i_hat, sizeof(Vec3F32));
+    MemoryCopy(j, &j_hat, sizeof(Vec3F32));
+    MemoryCopy(k, &k_hat, sizeof(Vec3F32));
+
+    *i = normalize_3f32(*i);
+    *j = normalize_3f32(*j);
+    *k = normalize_3f32(*k);
+}
+
+/////////////////////////////////
+//~ Enum to string
+
+internal String8
+rk_string_from_projection_kind(RK_ProjectionKind kind)
+{
+    String8 ret = {0};
+    switch(kind)
+    {
+        case RK_ProjectionKind_Perspective:  { ret = str8_lit("perspective"); }break;
+        case RK_ProjectionKind_Orthographic: { ret = str8_lit("orthographic"); }break;
+        default:                             { InvalidPath; }break;
+    }
+    return ret;
+}
+
+internal String8
+rk_string_from_viewport_shading_kind(RK_ViewportShadingKind kind)
+{
+
+    String8 ret = {0};
+    switch(kind)
+    {
+        case RK_ViewportShadingKind_Solid:     { ret = str8_lit("solid"); }break;
+        case RK_ViewportShadingKind_Wireframe: { ret = str8_lit("wireframe"); }break;
+        case RK_ViewportShadingKind_Material:  { ret = str8_lit("material"); }break;
+        default:                               { InvalidPath; }break;
+    }
+    return ret;
+}
+
+internal String8
+rk_string_from_polygon_kind(RK_ViewportShadingKind kind)
+{
+    String8 ret = {0};
+    switch(kind)
+    {
+        case R_GeoPolygonKind_Line:  { ret = str8_lit("line"); }break;
+        case R_GeoPolygonKind_Point: { ret = str8_lit("point"); }break;
+        case R_GeoPolygonKind_Fill:  { ret = str8_lit("fill"); }break;
+        default:                     { InvalidPath; }break;
+    }
+    return ret;
+}
+
 /////////////////////////////////
 // Scene creation and destruction
 
 internal RK_Scene *
-rk_scene_alloc()
+rk_scene_alloc(String8 name, String8 save_path)
 {
-    Arena *arena = 0;
-    RK_Scene *scene = 0;
-    if(rk_state->first_free_scene == 0)
+    Arena *arena = arena_alloc();
+    RK_Scene *ret = push_array(arena, RK_Scene, 1);
     {
-        arena = arena_alloc(.reserve_size = MB(64), .commit_size = MB(64));
+        ret->arena           = arena;
+        ret->node_bucket     = rk_node_bucket_make(arena, 4096-1);
+        ret->res_node_bucket = rk_node_bucket_make(arena, 4096-1);
+        ret->res_bucket      = rk_res_bucket_make(arena, 4096-1);
+        ret->name            = push_str8_copy(arena, name);
+        ret->save_path       = push_str8_copy(arena, save_path);
     }
-    else
-    {
-        arena = rk_state->first_free_scene->arena;
-        arena_clear(arena);
-    }
-    scene = push_array(arena, RK_Scene, 1);
-    scene->arena = arena;
-    scene->bucket = rk_bucket_make(arena, 1000);
-    scene->mesh_cache_table.slot_count = 1000;
-    scene->mesh_cache_table.arena      = arena;
-    scene->mesh_cache_table.slots = push_array(arena, RK_MeshCacheSlot, scene->mesh_cache_table.slot_count);
-    return scene;
+    return ret;
 }
 
 internal void
 rk_scene_release(RK_Scene *s)
 {
-    SLLStackPop(rk_state->first_to_free_scene);
-    SLLStackPush(rk_state->first_free_scene, s);
-    // TODO: there should something else to do here
+    // TODO: release resources 
+    // NotImplemented;
+    arena_release(s->arena);
+}
+
+internal void
+rk_scene_active_camera_set(RK_Scene *s, RK_Node *camera_node)
+{
+    RK_Node *old_camera = rk_node_from_handle(s->active_camera);
+    if(old_camera != 0 && old_camera != camera_node)
+    {
+        old_camera->camera3d->is_active = 0;
+    }
+    s->active_camera = rk_handle_from_node(camera_node);
 }

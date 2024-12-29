@@ -5,42 +5,30 @@
 
 #if 1
 #define RK_Parent_Scope(v) DeferLoop(rk_push_parent(v), rk_pop_parent())
-#define RK_Bucket_Scope(v) DeferLoop(rk_push_bucket(v), rk_pop_bucket())
+#define RK_NodeBucket_Scope(v) DeferLoop(rk_push_node_bucket(v), rk_pop_node_bucket())
+#define RK_ResourceBucket_Scope(v) DeferLoop(rk_push_res_bucket(v), rk_pop_res_bucket())
 #define RK_Scene_Scope(v) DeferLoop(rk_push_scene(v), rk_pop_scene())
-#define RK_Flags_Scope(v) DeferLoop(rk_push_flags(v), rk_pop_flags())
-#define RK_Path_Scope(v) DeferLoop(rk_push_path(v), rk_pop_path())
-#define RK_MeshCacheTable_Scope(v) DeferLoop(rk_push_mesh_cache_table(v), rk_pop_mesh_cache_table())
 #endif
 internal RK_Node * rk_top_parent(void) { RK_StackTopImpl(rk_state, Parent, parent) }
-internal RK_Bucket * rk_top_bucket(void) { RK_StackTopImpl(rk_state, Bucket, bucket) }
+internal RK_NodeBucket * rk_top_node_bucket(void) { RK_StackTopImpl(rk_state, NodeBucket, node_bucket) }
+internal RK_ResourceBucket * rk_top_res_bucket(void) { RK_StackTopImpl(rk_state, ResourceBucket, res_bucket) }
 internal RK_Scene * rk_top_scene(void) { RK_StackTopImpl(rk_state, Scene, scene) }
-internal RK_NodeFlags rk_top_flags(void) { RK_StackTopImpl(rk_state, Flags, flags) }
-internal String8 rk_top_path(void) { RK_StackTopImpl(rk_state, Path, path) }
-internal RK_MeshCacheTable * rk_top_mesh_cache_table(void) { RK_StackTopImpl(rk_state, MeshCacheTable, mesh_cache_table) }
 internal RK_Node * rk_bottom_parent(void) { RK_StackBottomImpl(rk_state, Parent, parent) }
-internal RK_Bucket * rk_bottom_bucket(void) { RK_StackBottomImpl(rk_state, Bucket, bucket) }
+internal RK_NodeBucket * rk_bottom_node_bucket(void) { RK_StackBottomImpl(rk_state, NodeBucket, node_bucket) }
+internal RK_ResourceBucket * rk_bottom_res_bucket(void) { RK_StackBottomImpl(rk_state, ResourceBucket, res_bucket) }
 internal RK_Scene * rk_bottom_scene(void) { RK_StackBottomImpl(rk_state, Scene, scene) }
-internal RK_NodeFlags rk_bottom_flags(void) { RK_StackBottomImpl(rk_state, Flags, flags) }
-internal String8 rk_bottom_path(void) { RK_StackBottomImpl(rk_state, Path, path) }
-internal RK_MeshCacheTable * rk_bottom_mesh_cache_table(void) { RK_StackBottomImpl(rk_state, MeshCacheTable, mesh_cache_table) }
 internal RK_Node * rk_push_parent(RK_Node * v) { RK_StackPushImpl(rk_state, Parent, parent, RK_Node *, v) }
-internal RK_Bucket * rk_push_bucket(RK_Bucket * v) { RK_StackPushImpl(rk_state, Bucket, bucket, RK_Bucket *, v) }
+internal RK_NodeBucket * rk_push_node_bucket(RK_NodeBucket * v) { RK_StackPushImpl(rk_state, NodeBucket, node_bucket, RK_NodeBucket *, v) }
+internal RK_ResourceBucket * rk_push_res_bucket(RK_ResourceBucket * v) { RK_StackPushImpl(rk_state, ResourceBucket, res_bucket, RK_ResourceBucket *, v) }
 internal RK_Scene * rk_push_scene(RK_Scene * v) { RK_StackPushImpl(rk_state, Scene, scene, RK_Scene *, v) }
-internal RK_NodeFlags rk_push_flags(RK_NodeFlags v) { RK_StackPushImpl(rk_state, Flags, flags, RK_NodeFlags, v) }
-internal String8 rk_push_path(String8 v) { RK_StackPushImpl(rk_state, Path, path, String8, v) }
-internal RK_MeshCacheTable * rk_push_mesh_cache_table(RK_MeshCacheTable * v) { RK_StackPushImpl(rk_state, MeshCacheTable, mesh_cache_table, RK_MeshCacheTable *, v) }
 internal RK_Node * rk_pop_parent(void) { RK_StackPopImpl(rk_state, Parent, parent) }
-internal RK_Bucket * rk_pop_bucket(void) { RK_StackPopImpl(rk_state, Bucket, bucket) }
+internal RK_NodeBucket * rk_pop_node_bucket(void) { RK_StackPopImpl(rk_state, NodeBucket, node_bucket) }
+internal RK_ResourceBucket * rk_pop_res_bucket(void) { RK_StackPopImpl(rk_state, ResourceBucket, res_bucket) }
 internal RK_Scene * rk_pop_scene(void) { RK_StackPopImpl(rk_state, Scene, scene) }
-internal RK_NodeFlags rk_pop_flags(void) { RK_StackPopImpl(rk_state, Flags, flags) }
-internal String8 rk_pop_path(void) { RK_StackPopImpl(rk_state, Path, path) }
-internal RK_MeshCacheTable * rk_pop_mesh_cache_table(void) { RK_StackPopImpl(rk_state, MeshCacheTable, mesh_cache_table) }
 internal RK_Node * rk_set_next_parent(RK_Node * v) { RK_StackSetNextImpl(rk_state, Parent, parent, RK_Node *, v) }
-internal RK_Bucket * rk_set_next_bucket(RK_Bucket * v) { RK_StackSetNextImpl(rk_state, Bucket, bucket, RK_Bucket *, v) }
+internal RK_NodeBucket * rk_set_next_node_bucket(RK_NodeBucket * v) { RK_StackSetNextImpl(rk_state, NodeBucket, node_bucket, RK_NodeBucket *, v) }
+internal RK_ResourceBucket * rk_set_next_res_bucket(RK_ResourceBucket * v) { RK_StackSetNextImpl(rk_state, ResourceBucket, res_bucket, RK_ResourceBucket *, v) }
 internal RK_Scene * rk_set_next_scene(RK_Scene * v) { RK_StackSetNextImpl(rk_state, Scene, scene, RK_Scene *, v) }
-internal RK_NodeFlags rk_set_next_flags(RK_NodeFlags v) { RK_StackSetNextImpl(rk_state, Flags, flags, RK_NodeFlags, v) }
-internal String8 rk_set_next_path(String8 v) { RK_StackSetNextImpl(rk_state, Path, path, String8, v) }
-internal RK_MeshCacheTable * rk_set_next_mesh_cache_table(RK_MeshCacheTable * v) { RK_StackSetNextImpl(rk_state, MeshCacheTable, mesh_cache_table, RK_MeshCacheTable *, v) }
 C_LINKAGE_BEGIN
 String8 rk_icon_kind_text_table[69] =
 {

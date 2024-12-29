@@ -22,9 +22,7 @@ RK_ScenesTable:
 @table(alias name)
 RK_FnTable:
 {
-    {mesh_grp_fn,      mesh_grp_fn     }
     {editor_camera_fn, editor_camera_fn}
-    {player_fn,        player_fn       }
 }
 
 @gen
@@ -46,7 +44,7 @@ RK_FnTable:
 @table(name, fn_name)
 RK_SceneTemplateTable:
 {
-    {default, rk_scene_default}
+    {default, rk_scene_000}
     {go,      rk_scene_go}
 }
 

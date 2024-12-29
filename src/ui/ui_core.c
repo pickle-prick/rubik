@@ -40,6 +40,13 @@ ui_key_zero(void)
 }
 
 internal UI_Key
+ui_key_make(U64 v)
+{
+    UI_Key result = {v};
+    return result;
+}
+
+internal UI_Key
 ui_key_from_string(UI_Key seed_key, String8 string)
 {
     UI_Key result = {0};
@@ -48,6 +55,19 @@ ui_key_from_string(UI_Key seed_key, String8 string)
         String8 hash_part = ui_hash_part_from_key_string(string);
         result.u64[0] = ui_hash_from_string(seed_key.u64[0], hash_part);
     }
+    return result;
+}
+
+internal UI_Key
+ui_key_from_stringf(UI_Key seed_key, char *fmt, ...)
+{
+    Temp scratch = scratch_begin(0, 0);
+    va_list args;
+    va_start(args, fmt);
+    String8 string = push_str8fv(scratch.arena, fmt, args);
+    va_end(args);
+    UI_Key result = ui_key_from_string(seed_key, string);
+    scratch_end(scratch);
     return result;
 }
 
@@ -354,7 +374,6 @@ internal void
 ui_end_build(void)
 {
     ProfBeginFunction();
-
     // TODO(k): potential bugs here, after running for while, this function (ui_end_build) will take a lot cpu cyles when window is focused but is normal when window is out of focused (weird)
 
     // Prune untouched or transient widgets in the cache
@@ -362,7 +381,7 @@ ui_end_build(void)
     {
         for(UI_Box *box = ui_state->box_table[slot_idx].hash_first; !ui_box_is_nil(box); box = box->hash_next)
         {
-            AssertAlways(!ui_key_match(box->key, ui_key_zero()));
+            Assert(!ui_key_match(box->key, ui_key_zero()));
             if(box->last_touched_build_index < ui_state->build_index)
             {
                 DLLRemove_NPZ(&ui_nil_box,
@@ -486,6 +505,7 @@ ui_end_build(void)
     }
 
     // k: hover cursor
+    ProfScope("hover_cursor")
     {
         UI_Box *hot = ui_box_from_key(ui_state->hot_box_key);
         UI_Box *active = ui_box_from_key(ui_state->active_box_key[UI_MouseButtonKind_Left]);
@@ -501,8 +521,8 @@ ui_end_build(void)
         }
     }
 
-    // Clear ui_state build arena
-    ui_state->build_index += 1;
+    // clear (next to use) ui_state build arena
+    ui_state->build_index++;
     arena_clear(ui_build_arena());
     ProfEnd();
 }
@@ -1249,7 +1269,8 @@ ui_signal_from_box(UI_Box *box)
             evt->key == OS_Key_RightMouseButton  ? UI_MouseButtonKind_Right  :
             evt->key == OS_Key_MiddleMouseButton ? UI_MouseButtonKind_Middle :
             UI_MouseButtonKind_Left;
-        B32 evt_key_is_mouse = evt->key == OS_Key_LeftMouseButton  || 
+        B32 evt_key_is_mouse =
+            evt->key == OS_Key_LeftMouseButton  || 
             evt->key == OS_Key_RightMouseButton ||
             evt->key == OS_Key_MiddleMouseButton;
         sig.event_flags |= evt->modifiers;

@@ -937,6 +937,7 @@ internal QuatF32 quat_f32_from_4x4f32(Mat4x4F32 M)
 }
 internal QuatF32 mix_quat_f32(QuatF32 qa, QuatF32 qb, F32 t)
 {
+#if 0
     // NOTE: interpolation between two quaterions mean spherical linear
     // http://www.euclideanspace.com/maths/algebra/realNormedAlgebra/quaternions/slerp/index.htm
 	QuatF32 ret;
@@ -951,25 +952,93 @@ internal QuatF32 mix_quat_f32(QuatF32 qa, QuatF32 qb, F32 t)
 		return ret;
 	}
 	// Calculate temporary values.
-	F32 half_theta = acos(cos_half_theta);
-	F32 sin_half_theta = sqrt(1.0 - cos_half_theta*cos_half_theta);
+	F32 half_theta = acosf(cos_half_theta);
+	F32 sin_half_theta = sqrtf(1.0 - cos_half_theta*cos_half_theta);
 	// if theta = 180 degrees then result is not fully defined
 	// we could rotate around any axis normal to qa or qb
-	if (fabs(sin_half_theta) < 0.001){ // fabs is floating point absolute
+	if (abs_f32(sin_half_theta) < 0.001){ // fabs is floating point absolute
 		ret.w = (qa.w * 0.5 + qb.w * 0.5);
 		ret.x = (qa.x * 0.5 + qb.x * 0.5);
 		ret.y = (qa.y * 0.5 + qb.y * 0.5);
 		ret.z = (qa.z * 0.5 + qb.z * 0.5);
 		return ret;
 	}
-	F32 ratioA = sin((1 - t) * half_theta) / sin_half_theta;
-	F32 ratioB = sin(t * half_theta) / sin_half_theta; 
+	F32 ratioA = sinf((1 - t) * half_theta) / sin_half_theta;
+	F32 ratioB = sinf(t * half_theta) / sin_half_theta; 
 	//calculate Quaternion.
 	ret.w = (qa.w * ratioA + qb.w * ratioB);
 	ret.x = (qa.x * ratioA + qb.x * ratioB);
 	ret.y = (qa.y * ratioA + qb.y * ratioB);
 	ret.z = (qa.z * ratioA + qb.z * ratioB);
+    ret = normalize_4f32(ret);
     return ret;
+#elif 0
+    QuatF32 ret;
+    F32 dot = qa.x * qb.x + qa.y*qb.y + qa.z*qb.z + qa.w*qb.w;
+
+    F32 theta,st,sut,sout,coeff1,coeff2;
+    // algorithm adapted from Shoemake's paper
+    t /= 2.0;
+    theta = (F32)acos(dot);
+    if(theta<0.f) theta = -theta;
+    
+    st = (F32)sin(theta);
+    sut = (F32)sin(t*theta);
+    sout = (F32)sin((1-t)*theta);
+    coeff1 = sout/st;
+    coeff2 = sut/st;
+
+    ret.x = coeff1*qa.x + coeff2*qb.x;
+    ret.y = coeff1*qa.y + coeff2*qb.y;
+    ret.z = coeff1*qa.z + coeff2*qb.z;
+    ret.w = coeff1*qa.w + coeff2*qb.w;
+    ret = normalize_4f32(ret);
+    return ret;
+#else
+    QuatF32 ret;
+
+    // Ensure both quaternions are normalized
+    // qa = normalize_4f32(qa);
+    // qb = normalize_4f32(qb);
+
+    // Compute the dot product
+    F32 dot = qa.x * qb.x + qa.y * qb.y + qa.z * qb.z + qa.w * qb.w;
+
+    // Adjust quaternions if necessary to ensure shortest path
+    if (dot < 0.0f) {
+        dot = -dot;
+        qb.x = -qb.x;
+        qb.y = -qb.y;
+        qb.z = -qb.z;
+        qb.w = -qb.w;
+    }
+
+    // Handle small angle approximation
+    if (dot > 0.9995f) { // Use LERP for very small angles
+        ret.x = qa.x + t * (qb.x - qa.x);
+        ret.y = qa.y + t * (qb.y - qa.y);
+        ret.z = qa.z + t * (qb.z - qa.z);
+        ret.w = qa.w + t * (qb.w - qa.w);
+        ret = normalize_4f32(ret);
+        return ret;
+    }
+
+    // Perform SLERP for other cases
+    F32 theta_0 = acosf(dot);      // Angle between quaternions
+    F32 sin_theta_0 = sinf(theta_0);
+    F32 theta = theta_0 * t;       // Interpolated angle
+    F32 sin_theta = sinf(theta);
+
+    F32 ratioA = sinf(theta_0 - theta) / sin_theta_0;
+    F32 ratioB = sin_theta / sin_theta_0;
+
+    ret.x = ratioA * qa.x + ratioB * qb.x;
+    ret.y = ratioA * qa.y + ratioB * qb.y;
+    ret.z = ratioA * qa.z + ratioB * qb.z;
+    ret.w = ratioA * qa.w + ratioB * qb.w;
+
+    return ret;
+#endif
 }
 
 ////////////////////////////////

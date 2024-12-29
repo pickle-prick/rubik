@@ -118,7 +118,7 @@ d_top_bucket(void)
 
 //- rjf: 3d rendering pass params
 internal R_PassParams_Geo3D *
-d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection, Vec3F32 global_light, B32 show_grid, B32 show_gizmos, Mat4x4F32 gizmos_xform, Vec3F32 gizmos_origin)
+d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection, Vec3F32 global_light, B32 show_grid)
 {
     Arena *arena = d_thread_ctx->arena;
     D_Bucket *bucket = d_top_bucket();
@@ -130,9 +130,6 @@ d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection, Vec3F32 gl
         params->projection    = projection;
         params->global_light  = global_light;
         params->show_grid     = show_grid;
-        params->show_gizmos   = show_gizmos;
-        params->gizmos_xform  = gizmos_xform;
-        params->gizmos_origin = v4f32(gizmos_origin.x, gizmos_origin.y, gizmos_origin.z, 1.0f);
     }
     return params;
 }

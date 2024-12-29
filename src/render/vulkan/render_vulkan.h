@@ -14,7 +14,7 @@
 #define VK_Assert(result, message) \
     do { \
         if ((result) != VK_SUCCESS) { \
-            fprintf(stderr, "[VK_ERROR] in (%s): %s\n", __FUNCTION__, message); \
+            fprintf(stderr, "[VK_ERROR] in (%s)(%s:%d): %s\n", __FUNCTION__, __FILE__, __LINE__, message); \
             __builtin_trap(); \
             exit(EXIT_FAILURE); \
         } \
@@ -65,11 +65,8 @@ struct R_Vulkan_Uniforms_Mesh
     Vec4F32   global_light;
 
     // Debug
-    Vec4F32   gizmos_origin;
-    Mat4x4F32 gizmos_xform;
     U32       show_grid;
-    U32       show_gizmos;
-    U32       _padding1_[2];
+    U32       _padding1_[3];
 };
 
 #define R_Vulkan_Storage_Mesh Mat4x4F32
@@ -357,8 +354,6 @@ struct R_Vulkan_State {
     R_Vulkan_Window                     *first_free_window;
     R_Vulkan_Tex2D                      *first_free_tex2d;
     R_Vulkan_Buffer                     *first_free_buffer;
-    R_Vulkan_Tex2D                      *first_to_free_tex2d;
-    R_Vulkan_Buffer                     *first_to_free_buffer;
 
     VkInstance                          instance;
     R_Vulkan_Device                     device;

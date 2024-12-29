@@ -7,18 +7,10 @@
 RK_StackTable:
 {
   //- k: parents
-  { Parent                             parent                       `RK_Node *`            0                                }
-  { Bucket                             bucket                       `RK_Bucket *`          0                                }
-  { Scene                              scene                        `RK_Scene *`           0                                }
-  
-  //- k: flags
-  { Flags                              flags                         RK_NodeFlags          0                                }
-
-  //- k: path
-  { Path                               path                          String8              `str8(0,0)`                      }
-
-  //- k: mesh cache table
-  { MeshCacheTable                     mesh_cache_table              `RK_MeshCacheTable *` 0                                }
+  { Parent                             parent                       `RK_Node *`                0                                }
+  { NodeBucket                         node_bucket                  `RK_NodeBucket *`          0                                }
+  { ResourceBucket                     res_bucket                   `RK_ResourceBucket *`      0                                }
+  { Scene                              scene                        `RK_Scene *`               0                                }
 }
 
 //- rjf: declaring stack node types

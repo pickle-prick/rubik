@@ -5,20 +5,17 @@ layout(location = 0)       in   vec3 near_p;
 layout(location = 1)       in   vec3 far_p;
 layout(location = 2)  flat in   mat4 view;
 layout(location = 6)  flat in   mat4 proj;
-layout(location = 10) flat in   vec4 gizmos_origin;
-layout(location = 11) flat in   mat4 gizmos_xform;
-layout(location = 15) flat in   uint show_grid;
-layout(location = 16) flat in   uint show_gizmos;
+layout(location = 10) flat in   uint show_grid;
 
 // Output
 layout(location = 0) out vec4  out_color;
-layout(location = 1) out uvec2 out_id;
+layout(location = 1) out uvec2 out_id; // TODO: this one could be removed later
 
 // Predefined keys
-uvec2 key_gizmos_ihat = uvec2(0xFFFFFFFF-0, 0xFFFFFFFF);
-uvec2 key_gizmos_jhat = uvec2(0xFFFFFFFF-1, 0xFFFFFFFF);
-uvec2 key_gizmos_khat = uvec2(0xFFFFFFFF-2, 0xFFFFFFFF);
-uvec2 key_grid        = uvec2(0xFFFFFFFF-3, 0xFFFFFFFF);
+// uvec2 key_gizmos_ihat = uvec2(0xFFFFFFFF-0, 0xFFFFFFFF);
+// uvec2 key_gizmos_jhat = uvec2(0xFFFFFFFF-1, 0xFFFFFFFF);
+// uvec2 key_gizmos_khat = uvec2(0xFFFFFFFF-2, 0xFFFFFFFF);
+// uvec2 key_grid        = uvec2(0xFFFFFFFF-3, 0xFFFFFFFF);
 
 vec3 red   = vec3(1.,0.271,0.271);
 vec3 green = vec3(0.,0.416,0.404);
@@ -169,135 +166,135 @@ float plane_intersect(vec3 ray_start, vec3 ray_end, vec3 N, vec3 p_plane)
     }
 }
 
-vec4 gizmos(inout float depth, inout uvec2 key)
-{
-    vec4 color = vec4(0);
-    depth = 1.0;
-
-    vec3 i_hat = normalize(gizmos_xform[0].xyz); // First column
-    vec3 j_hat = normalize(gizmos_xform[1].xyz); // Second column
-    vec3 k_hat = normalize(gizmos_xform[2].xyz); // Third column
-
-    vec3 ro = (inverse(view) * vec4(0,0,0,1)).xyz; // Eye position
-    vec3 rd = normalize(far_p-near_p); // Ray direction
-
-    // Raymarching
-    float t        = 0; // Total distance travelled (also known depth from eye standpoint)
-    int hit        = 0;
-    vec4 hit_color = vec4(0);
-    uvec2 hit_key  = uvec2(0);
-
-    float dist     = length(view*gizmos_origin);
-    vec3 origin    = gizmos_origin.xyz;
-    float center_r = 0.02 * dist;
-    float axis_r   = center_r/2.0;
-    float axis_l   = 0.1 * dist;
-    vec3 i_end     = origin+(i_hat*axis_l);
-    vec3 j_end     = origin-(j_hat*axis_l);
-    vec3 k_end     = origin+(k_hat*axis_l);
-
-    for(int i = 0; i < 30; i++)
-    {
-        vec3 p = ro + rd*t;
-        vec3 relative_p = p - origin;
-
-        float min_d    = 99999;
-        vec4 min_color = vec4(0.0);
-        uvec2 min_key  = uvec2(0);
-
-        // Distance to the scene
-        {
-            // Origin point
-            float d_sphere = sd_sphere(relative_p, center_r);
-            min_d          = d_sphere;
-            min_color      = vec4(0.953,0.776,0.137,1.0);
-
-            // Y Axis
-            float d_cyl_y    = sd_capped_cylinder(p, origin, j_end, axis_r);
-            bool is_closer_y = d_cyl_y < min_d;
-            min_d            = is_closer_y ? d_cyl_y : min_d;
-            min_color        = is_closer_y ? vec4(green.xyz,1) : min_color;
-            min_key          = is_closer_y ? key_gizmos_jhat : min_key;
-
-            // X Axis
-            float d_cyl_x    = sd_capped_cylinder(p, origin, i_end, axis_r);
-            bool is_closer_x = d_cyl_x < min_d;
-            min_d            = is_closer_x ? d_cyl_x : min_d;
-            min_color        = is_closer_x ? vec4(red.xyz,1) : min_color;
-            min_key          = is_closer_x ? key_gizmos_ihat : min_key;
-
-            // Z Axis
-            float d_cyl_z    = sd_capped_cylinder(p, origin, k_end, axis_r);
-            bool is_closer_z = d_cyl_z < min_d;
-            min_d            = is_closer_z ? d_cyl_z : min_d;
-            min_color        = is_closer_z ? vec4(blue.xyz,1) : min_color;
-            min_key          = is_closer_z ? key_gizmos_khat : min_key;
-        }
-
-        t+=min_d; // "Marching" the ray
-
-        // TODO: we may need to pass the near and far here
-        if(min_d < 0.01)
-        {
-            hit       = 1;
-            hit_color = min_color;
-            hit_key   = min_key;
-            break;
-        }
-
-        if(min_d > 200) { break; }
-    }
-
-    color = hit > 0 ? hit_color : color;
-    key = hit > 0 ? hit_key : key;
-    depth = hit > 0 ? 0.0f : depth;
-    return color;
-
-    // NOTE(k): old code for plane intersection
-    // ZY plane
-    // float i_t = plane_intersect(near_p, far_p, i_hat, gizmos_origin.xyz);
-    // XZ plane
-    // float j_t = plane_intersect(near_p, far_p, j_hat, gizmos_origin.xyz);
-    // XY plane
-    // float k_t = plane_intersect(near_p, far_p, k_hat, gizmos_origin.xyz);
-
-    // // Transform coordinate to local
-    // mat4 m = mat4(
-    //     i_hat.x, i_hat.y, i_hat.z, 0,
-    //     j_hat.x, j_hat.y, j_hat.z, 0,
-    //     k_hat.x, k_hat.y, k_hat.z, 0,
-    //     0,       0,       0,       1
-    // );
-    // m = translate(origin) * m;
-    // mat4 m_inv = inverse(gizmos_xform);
-
-    // ZY plane
-    // if(i_t>0.001)
-    // {
-    //     vec3 p = near_p + i_t*(far_p-near_p);
-    //     float p_depth = ndc_depth(p);
-    //     if(p_depth < depth)
-    //     {
-    //         vec3 loc_p = (m_inv*vec4(p.xyz, 1.0)).xyz;
-    //         // vec3 dpdy = dFdy(loc_p);
-    //         // float dy = dpdy.y;
-    //         vec3 dp= fwidth(loc_p);
-    //         // TODO: we may need to clmap to some range
-    //         float dz = dp.z;
-
-    //         float half_line_width = 9;
-    //         // Y-Axis in ZY plane
-    //         if(loc_p.y < 0.0 && loc_p.y > -3 &&
-    //            loc_p.z > -(half_line_width*dz) && loc_p.z < (half_line_width*dz) &&
-    //            loc_p.x > -0.01 && loc_p.x < 0.01)
-    //         {
-    //             float a = smoothstep(0,half_line_width*dz,loc_p.z);
-    //             color = vec4(1,0,0,1-a);
-    //             depth = p_depth;
-    //         }
-    //     }
-    // }
-}
+// vec4 gizmos(inout float depth, inout uvec2 key)
+// {
+//     vec4 color = vec4(0);
+//     depth = 1.0;
+// 
+//     vec3 i_hat = normalize(gizmos_xform[0].xyz); // First column
+//     vec3 j_hat = normalize(gizmos_xform[1].xyz); // Second column
+//     vec3 k_hat = normalize(gizmos_xform[2].xyz); // Third column
+// 
+//     vec3 ro = (inverse(view) * vec4(0,0,0,1)).xyz; // Eye position
+//     vec3 rd = normalize(far_p-near_p); // Ray direction
+// 
+//     // Raymarching
+//     float t        = 0; // Total distance travelled (also known depth from eye standpoint)
+//     int hit        = 0;
+//     vec4 hit_color = vec4(0);
+//     uvec2 hit_key  = uvec2(0);
+// 
+//     float dist     = length(view*gizmos_origin);
+//     vec3 origin    = gizmos_origin.xyz;
+//     float center_r = 0.02 * dist;
+//     float axis_r   = center_r/2.0;
+//     float axis_l   = 0.1 * dist;
+//     vec3 i_end     = origin+(i_hat*axis_l);
+//     vec3 j_end     = origin-(j_hat*axis_l);
+//     vec3 k_end     = origin+(k_hat*axis_l);
+// 
+//     for(int i = 0; i < 30; i++)
+//     {
+//         vec3 p = ro + rd*t;
+//         vec3 relative_p = p - origin;
+// 
+//         float min_d    = 99999;
+//         vec4 min_color = vec4(0.0);
+//         uvec2 min_key  = uvec2(0);
+// 
+//         // Distance to the scene
+//         {
+//             // Origin point
+//             float d_sphere = sd_sphere(relative_p, center_r);
+//             min_d          = d_sphere;
+//             min_color      = vec4(0.953,0.776,0.137,1.0);
+// 
+//             // Y Axis
+//             float d_cyl_y    = sd_capped_cylinder(p, origin, j_end, axis_r);
+//             bool is_closer_y = d_cyl_y < min_d;
+//             min_d            = is_closer_y ? d_cyl_y : min_d;
+//             min_color        = is_closer_y ? vec4(green.xyz,1) : min_color;
+//             min_key          = is_closer_y ? key_gizmos_jhat : min_key;
+// 
+//             // X Axis
+//             float d_cyl_x    = sd_capped_cylinder(p, origin, i_end, axis_r);
+//             bool is_closer_x = d_cyl_x < min_d;
+//             min_d            = is_closer_x ? d_cyl_x : min_d;
+//             min_color        = is_closer_x ? vec4(red.xyz,1) : min_color;
+//             min_key          = is_closer_x ? key_gizmos_ihat : min_key;
+// 
+//             // Z Axis
+//             float d_cyl_z    = sd_capped_cylinder(p, origin, k_end, axis_r);
+//             bool is_closer_z = d_cyl_z < min_d;
+//             min_d            = is_closer_z ? d_cyl_z : min_d;
+//             min_color        = is_closer_z ? vec4(blue.xyz,1) : min_color;
+//             min_key          = is_closer_z ? key_gizmos_khat : min_key;
+//         }
+// 
+//         t+=min_d; // "Marching" the ray
+// 
+//         // TODO: we may need to pass the near and far here
+//         if(min_d < 0.01)
+//         {
+//             hit       = 1;
+//             hit_color = min_color;
+//             hit_key   = min_key;
+//             break;
+//         }
+// 
+//         if(min_d > 200) { break; }
+//     }
+// 
+//     color = hit > 0 ? hit_color : color;
+//     key = hit > 0 ? hit_key : key;
+//     depth = hit > 0 ? 0.0f : depth;
+//     return color;
+// 
+//     // NOTE(k): old code for plane intersection
+//     // ZY plane
+//     // float i_t = plane_intersect(near_p, far_p, i_hat, gizmos_origin.xyz);
+//     // XZ plane
+//     // float j_t = plane_intersect(near_p, far_p, j_hat, gizmos_origin.xyz);
+//     // XY plane
+//     // float k_t = plane_intersect(near_p, far_p, k_hat, gizmos_origin.xyz);
+// 
+//     // // Transform coordinate to local
+//     // mat4 m = mat4(
+//     //     i_hat.x, i_hat.y, i_hat.z, 0,
+//     //     j_hat.x, j_hat.y, j_hat.z, 0,
+//     //     k_hat.x, k_hat.y, k_hat.z, 0,
+//     //     0,       0,       0,       1
+//     // );
+//     // m = translate(origin) * m;
+//     // mat4 m_inv = inverse(gizmos_xform);
+// 
+//     // ZY plane
+//     // if(i_t>0.001)
+//     // {
+//     //     vec3 p = near_p + i_t*(far_p-near_p);
+//     //     float p_depth = ndc_depth(p);
+//     //     if(p_depth < depth)
+//     //     {
+//     //         vec3 loc_p = (m_inv*vec4(p.xyz, 1.0)).xyz;
+//     //         // vec3 dpdy = dFdy(loc_p);
+//     //         // float dy = dpdy.y;
+//     //         vec3 dp= fwidth(loc_p);
+//     //         // TODO: we may need to clmap to some range
+//     //         float dz = dp.z;
+// 
+//     //         float half_line_width = 9;
+//     //         // Y-Axis in ZY plane
+//     //         if(loc_p.y < 0.0 && loc_p.y > -3 &&
+//     //            loc_p.z > -(half_line_width*dz) && loc_p.z < (half_line_width*dz) &&
+//     //            loc_p.x > -0.01 && loc_p.x < 0.01)
+//     //         {
+//     //             float a = smoothstep(0,half_line_width*dz,loc_p.z);
+//     //             color = vec4(1,0,0,1-a);
+//     //             depth = p_depth;
+//     //         }
+//     //     }
+//     // }
+// }
 
 void main() {
     float depth = 1;
@@ -322,23 +319,23 @@ void main() {
         float view_z = view_depth(intersect);
         float alpha = 1-smoothstep(near, far/3.f, view_z);
         colr.a *= alpha;
-        key = key_grid;
+        // key = key_grid;
     }
 
     // Gizmos
-    if(show_gizmos > 0)
-    {
-        float local_depth;
-        uvec2 local_key; 
-        vec4 color = gizmos(local_depth, local_key);
-        if(color.a > 0.0)
-        {
-            colr = color;
-            // Update ndc depth
-            depth = local_depth;
-            key = local_key;
-        }
-    }
+    // if(show_gizmos > 0)
+    // {
+    //     float local_depth;
+    //     uvec2 local_key; 
+    //     vec4 color = gizmos(local_depth, local_key);
+    //     if(color.a > 0.0)
+    //     {
+    //         colr = color;
+    //         // Update ndc depth
+    //         depth = local_depth;
+    //         key = local_key;
+    //     }
+    // }
 
     out_id = key;
     out_color = colr;

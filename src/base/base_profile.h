@@ -22,6 +22,7 @@ struct ProfNode
     String8  tag;
     String8  file;
     U64      line;
+    // TODO: min/max/avg
     U64      total_cycles;
     U64      call_count;
     U64      cycles_per_call;

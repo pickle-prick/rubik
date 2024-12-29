@@ -151,7 +151,7 @@ internal U64 f_little_hash_from_bytes(U8 *bytes, U64 count);
 //~ rjf: Font Tags
 
 internal F_Tag f_tag_zero(void);
-// internal B32 f_tag_match(F_Tag a, F_Tag b);
+internal B32 f_tag_match(F_Tag a, F_Tag b);
 internal FP_Handle f_handle_from_tag(F_Tag tag);
 internal FP_Metrics f_fp_metrics_from_tag(F_Tag tag);
 internal F_Tag f_tag_from_path(String8 path);

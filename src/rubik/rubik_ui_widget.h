@@ -15,7 +15,7 @@ internal UI_Signal rk_ui_pane_end(void);
 internal UI_Box*   rk_ui_dropdown_begin(String8 string);
 internal UI_Signal rk_ui_dropdown_end(void);
 internal void      rk_ui_dropdown_hide(void);
-internal UI_Signal rk_ui_checkbox(B32 *b, String8 string);
+internal UI_Signal rk_ui_checkbox(B32 *b);
 
 ////////////////////////////////
 //~ k: Macro Loop Wrappers

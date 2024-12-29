@@ -643,9 +643,9 @@ internal U64     ui_hash_from_string(U64 seed, String8 string);
 internal String8 ui_hash_part_from_key_string(String8 string);
 internal String8 ui_display_part_from_key_string(String8 string);
 internal UI_Key  ui_key_zero(void);
-// internal UI_Key  ui_key_make(U64 v);
+internal UI_Key  ui_key_make(U64 v);
 internal UI_Key  ui_key_from_string(UI_Key seed_key, String8 string);
-// internal UI_Key  ui_key_from_stringf(UI_Key seed_key, char *fmt, ...);
+internal UI_Key  ui_key_from_stringf(UI_Key seed_key, char *fmt, ...);
 internal B32     ui_key_match(UI_Key a, UI_Key b);
 
 /////////////////////////////////////////////////////////////////////////////////////////

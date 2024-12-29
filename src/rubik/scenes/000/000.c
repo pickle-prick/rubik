@@ -1,89 +1,8 @@
-typedef struct RK_PlayerData RK_PlayerData;
-struct RK_PlayerData {};
-
-RK_NODE_CUSTOM_UPDATE(player_fn)
-{
-    RK_PlayerData *data = (RK_PlayerData *)node->custom_data;
-
-    Vec2F32 mouse_delta = sub_2f32(rk_state->cursor, rk_state->last_cursor);
-
-    Vec3F32 f = {0};
-    Vec3F32 s = {0};
-    Vec3F32 u = {0};
-    rk_local_coord_from_node(node, &f, &s, &u);
-
-    if(1)
-    {
-        // TODO: float percision issue when v_turn_speed is too high, fix it later
-        F32 h_turn_speed = 1.5f/(rk_state->window_dim.x);
-        F32 v_turn_speed = 0.5f/(rk_state->window_dim.y);
-
-        // TODO: we may need to clamp the turns to 0-1
-        F32 v_turn = -mouse_delta.y * v_turn_speed;
-        F32 h_turn = -mouse_delta.x * h_turn_speed;
-
-        QuatF32 h_quat = make_rotate_quat_f32(v3f32(0, -1, 0), h_turn);
-        Vec3F32 s_after_h = mul_quat_f32_v3f32(h_quat, s);
-        QuatF32 v_quat = make_rotate_quat_f32(s_after_h, v_turn);
-        QuatF32 rot_quat = mul_quat_f32(v_quat,h_quat);
-        node->rot = mul_quat_f32(rot_quat, node->rot);
-    }
-
-    // F32 h = 230;
-    // F32 foot_speed = 180;
-    // F32 xh = 60;
-    // F32 v0 = (-2*h*foot_speed) / xh;
-    // F32 g = (2*h*foot_speed*foot_speed) / (xh*xh);
-
-    Vec3F32 move_dir = {0,0,0};
-    if(os_key_is_down(OS_Key_Left) || os_key_is_down(OS_Key_A)) 
-    {
-        move_dir = sub_3f32(move_dir, s);
-    }
-    if(os_key_is_down(OS_Key_Right) || os_key_is_down(OS_Key_D))
-    { 
-        move_dir = add_3f32(move_dir, s);
-    }
-    if(os_key_is_down(OS_Key_Up) || os_key_is_down(OS_Key_W))
-    { 
-        move_dir = add_3f32(move_dir, f);
-    }
-    if(os_key_is_down(OS_Key_Down) || os_key_is_down(OS_Key_S))
-    { 
-        move_dir = sub_3f32(move_dir, f);
-    }
-    if(os_key_is_down(OS_Key_Space))
-    {
-        node->rot = make_indentity_quat_f32();
-    }
-
-    move_dir.y = 0;
-
-    F32 velocity = 6.f;
-    if(move_dir.x != 0 && move_dir.y != 0 && move_dir.z != 0) move_dir = normalize_3f32(move_dir);
-    node->pos = add_3f32(node->pos, scale_3f32(move_dir, velocity*dt_sec));
-}
-
-RK_NODE_CUSTOM_UPDATE(mesh_grp_fn)
-{
-    if(node->v.mesh_grp.is_skinned)
-    {
-        for(U64 i = 0; i < node->v.mesh_grp.joint_count; i++)
-        {
-            RK_Node *joint_node = node->v.mesh_grp.joints[i];
-            Mat4x4F32 joint_xform = joint_node->v.mesh_joint.inverse_bind_matrix;
-            joint_xform = mul_4x4f32(joint_node->fixed_xform, joint_xform);
-            // NOTE(k): we can either set the root joint float or we multiply with the inverse of mesh's global transform
-            // joint_xform = mul_4x4f32(inverse_4x4f32(node->fixed_xform), joint_xform);
-            node->v.mesh_grp.joint_xforms[i] = joint_xform;
-        }
-    }
-}
-
 // Camera (editor camera)
 RK_NODE_CUSTOM_UPDATE(editor_camera_fn)
 {
-    RK_Camera *camera = &node->v.camera;
+    Assert(node->type_flags & RK_NodeTypeFlag_Camera3D);
+    RK_Transform3D *transform = &node->node3d->transform;
 
     if(rk_state->sig.f & UI_SignalFlag_LeftDragging)
     {
@@ -93,180 +12,138 @@ RK_NODE_CUSTOM_UPDATE(editor_camera_fn)
     Vec3F32 f = {0};
     Vec3F32 s = {0};
     Vec3F32 u = {0};
-    rk_local_coord_from_node(node, &f, &s, &u);
+    rk_ijk_from_matrix(node->fixed_xform, &s, &u, &f);
+
+    typedef struct RK_CameraDragData RK_CameraDragData;
+    struct RK_CameraDragData
+    {
+        RK_Transform3D start_transform;
+    };
 
     if(rk_state->sig.f & UI_SignalFlag_MiddleDragging)
     {
+        if(rk_state->sig.f & UI_SignalFlag_MiddlePressed)
+        {
+            RK_CameraDragData start_transform = {*transform};
+            ui_store_drag_struct(&start_transform);
+        }
+        RK_CameraDragData drag_data = *ui_get_drag_struct(RK_CameraDragData);
         Vec2F32 delta = ui_drag_delta();
-        // Horizontal
-        F32 h_pct = delta.x / rk_state->window_dim.x;
-        F32 h_dist = 2.0 * h_pct;
-        // Vertical
-        F32 v_pct = delta.y / rk_state->window_dim.y;
-        F32 v_dist = -2.0 * v_pct;
-        node->pre_pos_delta = scale_3f32(s, -h_dist * 6);
-        node->pre_pos_delta = add_3f32(node->pre_pos_delta, scale_3f32(u, v_dist*6));
-    }
-    else if(rk_state->sig.f & UI_SignalFlag_MiddleReleased)
-    {
-        // Commit pos delta
-        rk_node_delta_commit(node);
+
+        // TODO: how to scale the moving distance
+        F32 h_speed_per_screen_px = 4/rk_state->window_dim.x;
+        F32 h_pct = -delta.x * h_speed_per_screen_px;
+        Vec3F32 h_dist = scale_3f32(s, h_pct);
+
+        F32 v_speed_per_screen_px = 4/rk_state->window_dim.y;
+        F32 v_pct = -delta.y * v_speed_per_screen_px;
+        Vec3F32 v_dist = scale_3f32(u, v_pct);
+
+        Vec3F32 position = drag_data.start_transform.position;
+        position = add_3f32(position, h_dist);
+        position = add_3f32(position, v_dist);
+        transform->position = position;
     }
 
     if(rk_state->sig.f & UI_SignalFlag_RightDragging)
     {
+        if(rk_state->sig.f & UI_SignalFlag_RightPressed)
+        {
+            RK_CameraDragData start_transform = {*transform};
+            ui_store_drag_struct(&start_transform);
+        }
+        RK_CameraDragData drag_data = *ui_get_drag_struct(RK_CameraDragData);
         Vec2F32 delta = ui_drag_delta();
 
-        // TODO: float percision issue when v_turn_speed is too high, fix it later
-        F32 h_turn_speed = 2.0f/(rk_state->window_dim.x);
-        F32 v_turn_speed = 0.5f/(rk_state->window_dim.y);
+        F32 h_turn = -delta.x * (1.f) * (1.f/rk_state->window_dim.x);
+        F32 v_turn = -delta.y * (0.5f) * (1.f/rk_state->window_dim.y);
 
-        // TODO: we may need to clamp the turns to 0-1
-        F32 v_turn = -delta.y * v_turn_speed;
-        F32 h_turn = -delta.x * h_turn_speed;
+        QuatF32 rotation = drag_data.start_transform.rotation;
+        QuatF32 h_q = make_rotate_quat_f32(v3f32(0,-1,0), h_turn);
+        rotation = mul_quat_f32(h_q, rotation);
 
-        QuatF32 h_quat = make_rotate_quat_f32(v3f32(0,-1,0), h_turn);
-        Vec3F32 side = mul_quat_f32_v3f32(node->rot, v3f32(1,0,0));
-        // NOTE: we should use s after h, but it doesn't seem to work as expected
-        Vec3F32 s_after_h = mul_quat_f32_v3f32(h_quat, side);
-        QuatF32 v_quat = make_rotate_quat_f32(s_after_h, v_turn);
-        node->pre_rot_delta = mul_quat_f32(v_quat,h_quat);
-    }
-    else if(rk_state->sig.f & UI_SignalFlag_RightReleased)
-    {
-        rk_node_delta_commit(node);
+        Vec3F32 side = mul_quat_f32_v3f32(rotation, v3f32(1,0,0));
+        QuatF32 v_q = make_rotate_quat_f32(side, v_turn);
+        rotation = mul_quat_f32(v_q, rotation);
+
+        transform->rotation = rotation;
     }
 
     // Scroll
     if(rk_state->sig.scroll.x != 0 || rk_state->sig.scroll.y != 0)
     {
-        Vec3F32 dist = scale_3f32(f, rk_state->sig.scroll.y/3.0f);
-        node->pos = add_3f32(dist, node->pos);
+        Vec3F32 dist = scale_3f32(f, rk_state->sig.scroll.y/3.f);
+        transform->position = add_3f32(dist, transform->position);
     }
 }
 
 // default editor scene
 internal RK_Scene *
-rk_scene_default(void)
+rk_scene_000(void)
 {
-    RK_Scene *scene = rk_scene_alloc();
+    RK_Scene *ret = rk_scene_alloc(str8_lit("default"), str8_lit("./src/rubik/scenes/000/default.rscn"));
+    rk_push_node_bucket(ret->node_bucket);
+    rk_push_res_bucket(ret->res_bucket);
 
-    // Fill base info
-    scene->name             = str8_lit("default");
-    scene->path             = str8_lit("./src/rubik/scenes/000/default.scene");
-    scene->viewport_shading = RK_ViewportShadingKind_Wireframe;
-    scene->global_light     = v3f32(0,0,1);
-    scene->polygon_mode     = R_GeoPolygonKind_Fill;
-
-    RK_Bucket_Scope(scene->bucket) RK_MeshCacheTable_Scope(&scene->mesh_cache_table)
+    RK_Node *root = rk_build_node3d_from_stringf(0, 0, "root");
+    Arena *arena = rk_top_node_bucket()->arena_ref;
+    RK_Parent_Scope(root)
     {
-        // Create the origin/world node
-        RK_Node *root = rk_build_node_from_stringf(0, "root");
-        root->pos = v3f32(0, 0, 0);
-        scene->root = root;
+        RK_Node *box_1 = rk_box_node(str8_lit("box1"), v3f32(1,1,1), 1,1,1);
+        RK_Node *box_2 = rk_box_node(str8_lit("box2"), v3f32(1,1,1), 1,1,1);
+        box_2->node3d->transform.position.y = -3;
 
-        RK_Parent_Scope(root)
+        // create the editor camera
+        RK_Node *main_camera = rk_build_camera3d_from_stringf(0, 0, "main_camera");
         {
-            RK_Node *camera = rk_camera_perspective(0,0,1,1, 0.25f, 0.1f, 200.f, str8_lit("editor_camera"));
-            {
-                camera->pos                 = v3f32(0,-3,-3);
-                RK_FunctionNode *fn = rk_function_from_string(str8_lit("editor_camera_fn"));
-                rk_node_push_fn(scene->bucket->arena, camera, fn->ptr, fn->alias);
-            }
-            RK_CameraNode *camera_node = push_array(scene->arena, RK_CameraNode, 1);
-            camera_node->v = camera;
-            DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
-            scene->active_camera = camera_node;
-            
-            // TODO(k): testing for orthographic projection
-            {
-                RK_Node *test_camera = rk_camera_orthographic(0,0,0,1, -4.f, 4.f, -4.f, 4.f, 0.1f, 200.f, str8_lit("test_camera"));
-                test_camera->pos.z = -3.f;
-                {
-                    RK_FunctionNode *fn = rk_function_from_string(str8_lit("editor_camera_fn"));
-                    rk_node_push_fn(scene->bucket->arena, test_camera, fn->ptr, fn->alias);
+            main_camera->camera3d->projection = RK_ProjectionKind_Perspective;
+            main_camera->camera3d->viewport_shading = RK_ViewportShadingKind_Solid;
+            main_camera->camera3d->polygon_mode = R_GeoPolygonKind_Fill;
+            main_camera->camera3d->hide_cursor = 0;
+            main_camera->camera3d->lock_cursor = 0;
+            main_camera->camera3d->show_grid = 1;
+            main_camera->camera3d->show_gizmos = 1;
+            main_camera->camera3d->is_active = 1;
+            main_camera->camera3d->perspective.zn = 0.1;
+            main_camera->camera3d->perspective.zf = 200.f;
+            main_camera->camera3d->perspective.fov = 0.25f;
+            rk_node_push_fn(main_camera, editor_camera_fn, str8_lit("editor_camera"));
+            main_camera->node3d->transform.position = v3f32(0,-3,0);
+        }
+        ret->active_camera = rk_handle_from_node(main_camera);
 
-                    RK_CameraNode *camera_node = push_array(scene->arena, RK_CameraNode, 1);
-                    camera_node->v = test_camera;
-                    DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
-                }
-            }
+        rk_push_node_bucket(ret->res_node_bucket);
+        rk_push_parent(0);
+        RK_Handle dancing_stormtrooper = rk_packed_scene_from_gltf(str8_lit("./models/dancing_stormtrooper/scene.gltf"));
+        // RK_Handle blackguard = rk_packed_scene_from_gltf(str8_lit("./models/blackguard/scene.gltf"));
+        // RK_Handle droide = rk_packed_scene_from_gltf(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
 
-            // Player
-            RK_Node *player = rk_build_node_from_stringf(0, "player");
-            {
-                player->flags |= RK_NodeFlags_NavigationRoot;
-                player->pos = v3f32(6,-1.5,0);
-                RK_FunctionNode *fn = rk_function_from_string(str8_lit("player_fn"));
-                rk_node_push_fn(scene->arena, player, fn->ptr, fn->alias);
+        rk_pop_parent();
+        rk_pop_node_bucket();
 
-                RK_Parent_Scope(player)
-                {
-                    //- k: mesh
-                    RK_Node *body = rk_build_node_from_stringf(0, "body");
-                    body->kind = RK_NodeKind_MeshRoot;
-                    body->v.mesh_root.kind = RK_MeshKind_Capsule;
-                    RK_Parent_Scope(body)
-                    {
-                        rk_capsule_node_default(str8_lit("capsule"));
-                    }
-                    //- k: player first person camera
-                    RK_Node *camera = rk_camera_perspective(1,1,1,1, 0.25f, 0.1f, 200.f, str8_lit("player_pov_camera"));
-                    RK_CameraNode *camera_node = push_array(scene->arena, RK_CameraNode, 1);
-                    camera_node->v = camera;
-                    DLLPushBack(scene->first_camera, scene->last_camera, camera_node);
-                }
-            }
+        // RK_Node *n1 = rk_node_from_packed_scene(str8_lit("1"), droide);
+        // {
+        //     // flip y
+        //     n1->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n1->node3d->transform.rotation);
+        // }
 
-            // Dummy1
-            {
-                RK_Model *m;
-                String8 model_path = str8_lit("./models/dancing_stormtrooper/scene.gltf");
-                String8 model_directory = str8_chop_last_slash(model_path);
-                RK_Path_Scope(model_directory)
-                {
-                    m = rk_model_from_gltf_cached(model_path);
-                }
-                RK_Node *dummy = rk_build_node_from_stringf(0, "dummy1");
-                dummy->kind             = RK_NodeKind_MeshRoot;
-                dummy->skeleton_anims   = m->anims;
-                dummy->flags            = RK_NodeFlags_NavigationRoot|RK_NodeFlags_Animated|RK_NodeFlags_AnimatedSkeleton;
-                dummy->pos              = v3f32(6,0,0);
-                dummy->v.mesh_root.path = push_str8_copy(scene->arena, model_path);
-                dummy->v.mesh_root.kind = RK_MeshKind_Model;
-                QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
-                dummy->rot = mul_quat_f32(flip_y, dummy->rot);
+        // RK_Node *n2 = rk_node_from_packed_scene(str8_lit("2"), blackguard);
+        // {
+        //     // flip y
+        //     n2->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n2->node3d->transform.rotation);
+        //     n2->node3d->transform.position = v3f32(3,0,0);
+        // }
 
-                RK_Parent_Scope(dummy)
-                {
-                    rk_node_from_model(m, rk_active_seed_key());
-                }
-            }
-
-            {
-                RK_Model *m;
-                String8 model_path = str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf");
-                String8 model_directory = str8_chop_last_slash(model_path);
-                RK_Path_Scope(model_directory)
-                {
-                    m = rk_model_from_gltf_cached(model_path);
-                }
-                RK_Node *n = rk_build_node_from_stringf(0, "dummy2");
-                n->kind             = RK_NodeKind_MeshRoot;
-                n->skeleton_anims   = m->anims;
-                n->flags            = RK_NodeFlags_NavigationRoot|RK_NodeFlags_Animated|RK_NodeFlags_AnimatedSkeleton;
-                n->pos              = v3f32(0,0,0);
-                n->v.mesh_root.path = push_str8_copy(scene->arena, model_path);
-                n->v.mesh_root.kind = RK_MeshKind_Model;
-                QuatF32 flip_y = make_rotate_quat_f32(v3f32(1,0,0), 0.5);
-                n->rot = mul_quat_f32(flip_y, n->rot);
-
-                RK_Parent_Scope(n)
-                {
-                    rk_node_from_model(m, rk_active_seed_key());
-                }
-            }
+        RK_Node *n3 = rk_node_from_packed_scene(str8_lit("3"), dancing_stormtrooper);
+        {
+            // flip y
+            n3->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n3->node3d->transform.rotation);
+            n3->node3d->transform.position = v3f32(6,0,0);
         }
     }
-    return scene;
+
+    ret->root = rk_handle_from_node(root);
+    rk_pop_node_bucket();
+    rk_pop_res_bucket();
+    return ret;
 }

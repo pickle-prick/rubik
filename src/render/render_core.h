@@ -88,7 +88,7 @@ struct R_Vertex
     Vec3F32 tan;
     Vec3F32 col;
     Vec4U32 joints;
-    Vec4F32 weights;
+    Vec4F32 weights; // morph target weights
 };
 
 ////////////////////////////////
@@ -234,10 +234,7 @@ struct R_PassParams_Geo3D
     Vec3F32           global_light;
 
     // Debug usage
-    Vec4F32           gizmos_origin;
-    Mat4x4F32         gizmos_xform;
     B32               show_grid;
-    B32               show_gizmos;
 };
 
 typedef struct R_Pass R_Pass;
@@ -293,7 +290,6 @@ internal void *r_batch_list_push_inst(Arena *arena, R_BatchList *list,
 internal void r_init(const char* app_name, OS_Handle window, bool debug);
 
 //- rjf: window setup/teardown
-// internal R_Handle r_window_equip(OS_Handle window);
 internal R_Handle r_window_equip(OS_Handle os_wnd);
 // internal void r_window_unequip(OS_Handle window, R_Handle window_equip);
 
@@ -307,13 +303,11 @@ internal void r_tex2d_release(R_Handle texture);
 
 //- rjf: buffers
 internal R_Handle r_buffer_alloc(R_ResourceKind kind, U64 size, void *data);
-// internal void r_buffer_release(R_Handle buffer);
+internal void     r_buffer_release(R_Handle buffer);
 
 //- rjf: frame markers
 internal void r_begin_frame(void);
 internal void r_end_frame(void);
-// internal void r_window_begin_frame(OS_Handle window, R_Handle window_equip);
-// internal void r_window_end_frame(OS_Handle window, R_Handle window_equip);
 internal U64  r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip);
 internal void r_window_end_frame(OS_Handle os_wnd, R_Handle window_equip);
 

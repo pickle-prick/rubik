@@ -431,13 +431,14 @@ ui_closef(char *fmt, ...)
 internal UI_Signal
 ui_expander(B32 is_expanded, String8 string)
 {
-    // ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+    ui_set_next_hover_cursor(OS_Cursor_HandPoint);
     ui_set_next_text_alignment(UI_TextAlign_Center);
     ui_set_next_font(ui_icon_font());
-    // UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable|UI_BoxFlag_DrawText, string);
-    // ui_box_equip_display_string(box, is_expanded ? str8_lit("v") : str8_lit(">"));
-    UI_Signal sig = ui_button(string);
-    ui_box_equip_display_string(sig.box, is_expanded ? str8_lit("v") : str8_lit(">"));
+    UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable|UI_BoxFlag_DrawText, string);
+    ui_box_equip_display_string(box, is_expanded ? str8_lit("v") : str8_lit(">"));
+    // UI_Signal sig = ui_button(string);
+    // ui_box_equip_display_string(sig.box, is_expanded ? str8_lit("v") : str8_lit(">"));
+    UI_Signal sig = ui_signal_from_box(box);
     return sig;
 }
 

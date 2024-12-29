@@ -464,7 +464,7 @@ rk_ui_dropdown_hide(void)
 }
 
 internal UI_Signal
-rk_ui_checkbox(B32 *b, String8 string)
+rk_ui_checkbox(B32 *b)
 {
 #if 0
     UI_Signal result;
@@ -478,7 +478,7 @@ rk_ui_checkbox(B32 *b, String8 string)
 #else
     UI_Signal result;
     ui_set_next_child_layout_axis(Axis2_X);
-    UI_Box *container_box = ui_build_box_from_string(0, string);
+    UI_Box *container_box = ui_build_box_from_string(0, str8((U8*)b, sizeof(*b)));
 
     UI_Parent(container_box)
     {

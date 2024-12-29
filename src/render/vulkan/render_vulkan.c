@@ -1,4 +1,4 @@
-// TODO: memory leak when window resized
+// TODO: gpu memory leak when window resized
 
 internal void
 r_init(const char* app_name, OS_Handle window, bool debug)
@@ -513,6 +513,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         };
         VK_Assert(vkCreateShaderModule(r_vulkan_state->device.h, &create_info, NULL, vshad_mo), "Failed to create shader module");
     }
+
     for(U64 kind = 0; kind < R_Vulkan_FShadKind_COUNT; kind++)
     {
         VkShaderModule *fshad_mo = &r_vulkan_state->fshad_modules[kind];
@@ -1480,7 +1481,6 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
         MemoryZeroStruct(texture);
         texture->generation = gen;
     }
-    texture->generation++;
     texture->image.extent.width  = size.x;
     texture->image.extent.height = size.y;
     texture->format = format;
@@ -1700,7 +1700,6 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
         MemoryZeroStruct(buffer);
         buffer->generation = gen;
     }
-    buffer->generation++;
 
     if(kind == R_ResourceKind_Static) Assert(data != 0);
 
@@ -1811,6 +1810,18 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
 
     R_Handle ret = r_vulkan_handle_from_buffer(buffer);
     return ret;
+}
+
+internal void
+r_buffer_release(R_Handle handle)
+{
+    R_Vulkan_Buffer *buffer = r_vulkan_buffer_from_handle(handle);
+    if(buffer->mapped != 0) vkUnmapMemory(r_vulkan_state->device.h, buffer->memory);
+    vkDestroyBuffer(r_vulkan_state->device.h, buffer->h, NULL);
+    vkFreeMemory(r_vulkan_state->device.h, buffer->memory, NULL);
+    SLLStackPush(r_vulkan_state->first_free_buffer, buffer);
+    // NOTE(k): we should increase generation here
+    buffer->generation++;
 }
 
 /*
@@ -3071,6 +3082,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
             }break;
             case R_PassKind_Geo3D: 
             {
+                // TODO: to be refactored, support multiple geo_mesh pass
+
                 // Unpack params
                 R_PassParams_Geo3D *params = pass->params_geo3d;
                 R_BatchGroup3DMap *mesh_group_map = &params->mesh_batches;
@@ -3109,9 +3122,6 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                 uniforms.view          = params->view;
                 uniforms.global_light  = v4f32(params->global_light.x, params->global_light.y, params->global_light.z, 0.0);
                 uniforms.show_grid     = params->show_grid;
-                uniforms.show_gizmos   = params->show_gizmos;
-                uniforms.gizmos_xform  = params->gizmos_xform;
-                uniforms.gizmos_origin = params->gizmos_origin;
 
                 MemoryCopy((U8 *)uniform_buffer->buffer.mapped, &uniforms, sizeof(R_Vulkan_Uniforms_Mesh));
                 vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipelines[0].layout, 0, 1, &uniform_buffer->set.h, 0, NULL);
@@ -3506,7 +3516,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         if(pool->cmt < pool->cap) { SLLStackPush(r_vulkan_state->first_avail_ds_pool[kind], pool); }
     }
 
-    // NOTE(@k): set could have multiple writes due multiple bindings
+    // NOTE(k): set could have multiple writes due multiple bindings
     U64 writes_count = set_count * set_layout.binding_count;
     VkWriteDescriptorSet writes[writes_count];
     MemoryZeroArray(writes);

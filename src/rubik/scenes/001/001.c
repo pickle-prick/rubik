@@ -6,56 +6,69 @@ RK_NODE_CUSTOM_UPDATE(go_board)
 internal RK_Scene *
 rk_scene_go()
 {
-    RK_Scene *ret = rk_scene_alloc();
+    RK_Scene *ret = rk_scene_alloc(str8_lit("go"), str8_lit("./src/rubik/scenes/001/default.rscn"));
+    rk_push_node_bucket(ret->node_bucket);
+    rk_push_res_bucket(ret->res_bucket);
 
-    // fill base info
+    RK_Node *root = rk_build_node3d_from_stringf(0, 0, "root");
+    Arena *arena = rk_top_node_bucket()->arena_ref;
+    RK_Parent_Scope(root)
     {
-        ret->name             = str8_lit("go");
-        ret->path             = str8_lit("./src/rubik/scenes/001/go.scene");
-        ret->viewport_shading = RK_ViewportShadingKind_Material;
-        ret->global_light     = v3f32(0,0,1);
-        ret->polygon_mode     = R_GeoPolygonKind_Fill;
-    }
+        RK_Node *box_1 = rk_box_node(str8_lit("box1"), v3f32(1,1,1), 1,1,1);
+        RK_Node *box_2 = rk_box_node(str8_lit("box2"), v3f32(1,1,1), 1,1,1);
+        box_2->node3d->transform.position.y = -3;
 
-    rk_push_bucket(ret->bucket);
-
-    RK_Node *root = rk_build_node_from_stringf(0, "root");
-    ret->root = root;
-    rk_push_parent(root);
-
-    // editor camera
-    RK_Node *editor_camera = rk_camera_perspective(0,0,1,1, 0.25f, 0.1f, 200.f, str8_lit("editor_camera"));
-    ret->active_camera = rk_scene_camera_push(ret, editor_camera);
-    {
-        RK_FunctionNode *fn = rk_function_from_string(str8_lit("editor_camera_fn"));
-        rk_node_push_fn(ret->bucket->arena, editor_camera, fn->ptr, fn->alias);
-    }
-
-    // spawn a orthographic camera
-    RK_Node *main_camera = rk_camera_orthographic(0,0,1,0, -4.f, 4.f, -4.f, 4.f, 0.1f, 200.f, str8_lit("main_camera"));
-    rk_scene_camera_push(ret, main_camera);
-
-    // grid table (go table 19x19)
-    RK_Node *grid = 0;
-    RK_MeshCacheTable_Scope(&ret->mesh_cache_table)
-    {
-        grid = rk_box_node_cached(str8_lit("grid"), v3f32(19,19,1), 18,18,0);
-    }
-    rk_node_push_fn(ret->arena, grid, go_board, str8_lit("go_board"));
-
-    // stone
-    RK_Parent_Scope(grid) RK_MeshCacheTable_Scope(&ret->mesh_cache_table) for(U64 i = 0; i < 3; i++)
-    {
-        for(U64 j = 0; j < 3; j++)
+        // create the editor camera
+        RK_Node *main_camera = rk_build_camera3d_from_stringf(0, 0, "main_camera");
         {
-            String8 string = push_str8f(ret->bucket->arena, "%d-%d", i, j);
-            RK_Node *stone = rk_cylinder_node_cached(string, 0.5, 0.2, 6, 6, 1, 1);
-            stone->rot = make_rotate_quat_f32(v3f32(1,0,0), 0.25);
-            stone->pos = v3f32(i,0,j);
+            main_camera->camera3d->projection = RK_ProjectionKind_Perspective;
+            main_camera->camera3d->viewport_shading = RK_ViewportShadingKind_Solid;
+            main_camera->camera3d->polygon_mode = R_GeoPolygonKind_Fill;
+            main_camera->camera3d->hide_cursor = 0;
+            main_camera->camera3d->lock_cursor = 0;
+            main_camera->camera3d->show_grid = 1;
+            main_camera->camera3d->show_gizmos = 1;
+            main_camera->camera3d->is_active = 1;
+            main_camera->camera3d->perspective.zn = 0.1;
+            main_camera->camera3d->perspective.zf = 200.f;
+            main_camera->camera3d->perspective.fov = 0.25f;
+            rk_node_push_fn(main_camera, editor_camera_fn, str8_lit("editor_camera"));
+            main_camera->node3d->transform.position = v3f32(0,-3,0);
+        }
+        ret->active_camera = rk_handle_from_node(main_camera);
+
+        rk_push_node_bucket(ret->res_node_bucket);
+        rk_push_parent(0);
+        RK_Handle dancing_stormtrooper = rk_packed_scene_from_gltf(str8_lit("./models/dancing_stormtrooper/scene.gltf"));
+        // RK_Handle blackguard = rk_packed_scene_from_gltf(str8_lit("./models/blackguard/scene.gltf"));
+        // RK_Handle droide = rk_packed_scene_from_gltf(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
+
+        rk_pop_parent();
+        rk_pop_node_bucket();
+
+        // RK_Node *n1 = rk_node_from_packed_scene(str8_lit("1"), droide);
+        // {
+        //     // flip y
+        //     n1->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n1->node3d->transform.rotation);
+        // }
+
+        // RK_Node *n2 = rk_node_from_packed_scene(str8_lit("2"), blackguard);
+        // {
+        //     // flip y
+        //     n2->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n2->node3d->transform.rotation);
+        //     n2->node3d->transform.position = v3f32(3,0,0);
+        // }
+
+        RK_Node *n3 = rk_node_from_packed_scene(str8_lit("3"), dancing_stormtrooper);
+        {
+            // flip y
+            n3->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n3->node3d->transform.rotation);
+            n3->node3d->transform.position = v3f32(6,0,0);
         }
     }
 
-    rk_pop_parent();
-    rk_pop_bucket();
+    ret->root = rk_handle_from_node(root);
+    rk_pop_node_bucket();
+    rk_pop_res_bucket();
     return ret;
 }

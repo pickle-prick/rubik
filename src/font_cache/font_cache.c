@@ -90,7 +90,6 @@ f_tag_from_path(String8 path)
         new_node->path = push_str8_copy(f_state->arena, path);
         SLLQueuePush_N(slot->first, slot->last, new_node, hash_next);
     }
-
     return result;
 }
 
@@ -143,6 +142,12 @@ internal F_Tag f_tag_zero(void)
 {
     F_Tag result = {0};
     return result;
+}
+
+internal B32
+f_tag_match(F_Tag a, F_Tag b)
+{
+    return a.u64[0] == b.u64[0] && a.u64[1] == b.u64[1];
 }
 
 internal FP_Handle
