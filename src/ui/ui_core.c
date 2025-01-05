@@ -517,6 +517,7 @@ ui_end_build(void)
         }
         if(os_window_is_focused(ui_state->os_wnd) || !ui_box_is_nil(active))
         {
+            // TODO(k): after a while, this function will run very slow, maybe we need to clear some resource here
             os_set_cursor(cursor);
         }
     }

@@ -91,7 +91,7 @@ typedef enum RK_ResourceKind
 
 typedef U64 RK_NodeFlags;
 #define RK_NodeFlag_NavigationRoot       (RK_NodeFlags)(1ull<<0)
-#define RK_NodeFlag_Float                (RK_NodeFlags)(1ull<<0)
+#define RK_NodeFlag_Float                (RK_NodeFlags)(1ull<<1)
 
 typedef U64 RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_Node2D           (RK_NodeTypeFlags)(1ull<<0)
@@ -379,6 +379,7 @@ struct RK_Resource
 
     RK_ResourceKind          kind;
     RK_Key                   key;
+    // TODO(k): maybe it's a bad idea to individually free resource
     U64                      rc;
     B32                      auto_free; /* Release after rc hit 0 */
 
@@ -423,7 +424,7 @@ struct RK_MeshInstance3D
     RK_Handle         mesh;
     RK_Handle         skin;
     RK_Key            skin_seed;
-    RK_Handle         *material_override;
+    RK_Handle         material_override;
 };
 
 #define RK_MAX_ANIMATION_PER_INST_COUNT 10
@@ -497,7 +498,6 @@ typedef RK_NODE_CUSTOM_DRAW(RK_NodeCustomDrawFunctionType);
 typedef struct RK_UpdateFnNode RK_UpdateFnNode;
 struct RK_UpdateFnNode
 {
-    String8                         name;
     RK_UpdateFnNode                 *next;
     RK_UpdateFnNode                 *prev;
     RK_NodeCustomUpdateFunctionType *f;
@@ -904,7 +904,7 @@ internal RK_NodeRec rk_node_df(RK_Node *n, RK_Node *root, U64 sib_member_off, U6
 #define rk_node_df_pre(node, root) rk_node_df(node, root, OffsetOf(RK_Node, next), OffsetOf(RK_Node, first))
 #define rk_node_df_post(node, root) rk_node_df(node, root, OffsetOf(RK_Node, prev), OffsetOf(RK_Node, last))
 
-internal void      rk_node_push_fn(RK_Node *n, RK_NodeCustomUpdateFunctionType *fn, String8 name);
+internal void      rk_node_push_fn(RK_Node *n, RK_NodeCustomUpdateFunctionType *fn);
 internal RK_Handle rk_handle_from_node(RK_Node *n);
 internal RK_Node*  rk_node_from_handle(RK_Handle handle);
 
@@ -979,5 +979,7 @@ internal String8 rk_string_from_polygon_kind(RK_ViewportShadingKind kind);
 internal RK_Scene* rk_scene_alloc(String8 namee, String8 save_path);
 internal void      rk_scene_release(RK_Scene *s);
 internal void      rk_scene_active_camera_set(RK_Scene *s, RK_Node *camera_node);
+internal void      rk_scene_hot_key_set(RK_Scene *s, RK_Key key, B32 only_navigation_root);
+internal void      rk_scene_active_key_set(RK_Scene *s, RK_Key key, B32 only_navigation_root);
 
 #endif

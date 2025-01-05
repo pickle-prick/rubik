@@ -10,6 +10,7 @@ layout(location = 10) flat in   uint show_grid;
 // Output
 layout(location = 0) out vec4  out_color;
 layout(location = 1) out uvec2 out_id; // TODO: this one could be removed later
+layout(location = 2) out vec4  out_normal_depth;
 
 // Predefined keys
 // uvec2 key_gizmos_ihat = uvec2(0xFFFFFFFF-0, 0xFFFFFFFF);
@@ -296,7 +297,8 @@ float plane_intersect(vec3 ray_start, vec3 ray_end, vec3 N, vec3 p_plane)
 //     // }
 // }
 
-void main() {
+void main()
+{
     float depth = 1;
     uvec2 key = uvec2(0);
     vec4 colr = vec4(0,0,0,0);
@@ -339,5 +341,6 @@ void main() {
 
     out_id = key;
     out_color = colr;
+    out_normal_depth = vec4(0,0,0,1);
     gl_FragDepth = depth;
 }

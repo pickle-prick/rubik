@@ -4,12 +4,15 @@ layout(location = 0)      in vec2  texcoord;
 layout(location = 1)      in vec4  color;
 layout(location = 2) flat in uvec2 id;
 layout(location = 3) flat in float omit_texture;
+layout(location = 4) flat in vec3  normal;
+layout(location = 5) flat in uint  draw_edge;
 
 // There are equivalent sampler1D and sampler3D types for other types of images
 layout(set = 2, binding = 0) uniform sampler2D texSampler;
 
 layout(location = 0) out vec4  out_color;
 layout(location = 1) out uvec2 out_id;
+layout(location = 2) out vec4  out_normal_depth;
 
 void main()
 {
@@ -27,4 +30,7 @@ void main()
     // Assign to the output variable
     // out_id = uvec2(id_low, id_high);
     out_id = id;
+
+    out_normal_depth.rgb = draw_edge > 0 ? normal : vec3(0,0,0);
+    out_normal_depth.a = draw_edge > 0 ? gl_FragCoord.z : 1.0f;
 }

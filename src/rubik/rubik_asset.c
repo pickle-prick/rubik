@@ -564,6 +564,7 @@ rk_node_from_packed_scene(String8 string, RK_Handle handle)
     {
         ret = rk_node_from_packed_scene_node(packed_scene->root, seed_key);
         ret->instance = handle;
+        ret->name = push_str8_copy_static(string, ret->name_buffer, ArrayCount(ret->name_buffer));
     }
     return ret;
 }
@@ -576,6 +577,8 @@ rk_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide
 {
     U64 i,j,prevrow,thisrow,vertex_idx,indice_idx;
     F32 x,y,z;
+    F32 onethird = 1.f/3.f;
+    F32 twothirds = 2.f/3.f;
 
     Vec3F32 start_pos = scale_3f32(size, -0.5);
 
@@ -589,11 +592,13 @@ rk_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide
     indice_idx = 0;
 
     Vec3F32 pos,nor;
+    Vec2F32 uv;
 
     // front + back
     y = start_pos.y;
     thisrow = 0;
     prevrow = 0;
+    // y advancing loop
     for(j = 0; j < (subdivide_h+2); j++)
     {
         F32 v = j; 
@@ -601,6 +606,7 @@ rk_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide
         v /= (2.0 * (subdivide_h+1.0));
 
         x = start_pos.x;
+        // x advancing loop
         for(i = 0; i < (subdivide_w+2); i++)
         {
             F32 u = i;
@@ -608,14 +614,16 @@ rk_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide
             u /= (3.0 * (subdivide_w+1.0));
 
             // front
-            pos = (Vec3F32){x, -y, -start_pos.z};
+            pos = (Vec3F32){x, y, start_pos.z};
             nor = (Vec3F32){0.0, 0.0, 1.0};
-            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor};
+            uv = (Vec2F32){u2,v2};
+            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor, .tex=uv};
 
             // back
-            pos = (Vec3F32){-x, -y, start_pos.z};
+            pos = (Vec3F32){-x, -y, -start_pos.z};
             nor = (Vec3F32){0.0, 0.0, -1.0};
-            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor};
+            uv = (Vec2F32){v2,u2};
+            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor, .tex=uv};
 
             if(i > 0 && j > 0)
             {
@@ -632,12 +640,12 @@ rk_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide
 
                 // back
                 indices[indice_idx++] = prevrow + i2 - 1;
-                indices[indice_idx++] = thisrow + i2 - 1;
                 indices[indice_idx++] = prevrow + i2 + 1;
+                indices[indice_idx++] = thisrow + i2 - 1;
 
                 indices[indice_idx++] = prevrow + i2 + 1;
-                indices[indice_idx++] = thisrow + i2 - 1;
                 indices[indice_idx++] = thisrow + i2 + 1;
+                indices[indice_idx++] = thisrow + i2 - 1;
             }
             x += size.x / (subdivide_w + 1.0);
         }
@@ -664,15 +672,17 @@ rk_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide
             F32 u2 = u / (subdivide_d+1.0);
             u /= (3.0 * (subdivide_d+1.0));
 
-            // right
-            pos = (Vec3F32){-start_pos.x, -y, -z};
-            nor = (Vec3F32){1.0, 0.0, 0.0};
-            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor};
-
             // left
-            pos = (Vec3F32){start_pos.x, -y, z};
+            pos = (Vec3F32){start_pos.x, y, -z};
             nor = (Vec3F32){-1.0, 0.0, 0.0};
-            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor};
+            uv = (Vec2F32){u2,v2};
+            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor, .tex=uv};
+
+            // right
+            pos = (Vec3F32){-start_pos.x, -y, z};
+            nor = (Vec3F32){1.0, 0.0, 0.0};
+            uv = (Vec2F32){v2,u2};
+            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor, .tex=uv};
 
             if(i > 0 && j > 0)
             {
@@ -689,12 +699,12 @@ rk_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide
 
                 // left
                 indices[indice_idx++] = prevrow + i2 - 1;
-                indices[indice_idx++] = thisrow + i2 - 1;
                 indices[indice_idx++] = prevrow + i2 + 1;
+                indices[indice_idx++] = thisrow + i2 - 1;
 
                 indices[indice_idx++] = prevrow + i2 + 1;
-                indices[indice_idx++] = thisrow + i2 - 1;
                 indices[indice_idx++] = thisrow + i2 + 1;
+                indices[indice_idx++] = thisrow + i2 - 1;
             }
             z += size.z / (subdivide_d + 1.0);
         }
@@ -721,14 +731,16 @@ rk_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide
             u /= (3.0 * (subdivide_w+1.0));
 
             // top
-            pos = (Vec3F32){-x, -start_pos.y, -z};
-            nor = (Vec3F32){0.0, 1.0, 0.0};
-            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor};
-
-            // bottom
             pos = (Vec3F32){x, start_pos.y, -z};
             nor = (Vec3F32){0.0, -1.0, 0.0};
-            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor};
+            uv = (Vec2F32){u2,v2};
+            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor, .tex=uv};
+
+            // bottom
+            pos = (Vec3F32){-x, -start_pos.y, z};
+            nor = (Vec3F32){0.0, 1.0, 0.0};
+            uv = (Vec2F32){v2,u2};
+            vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor, .tex=uv};
 
             if(i > 0 && j > 0)
             {
@@ -745,12 +757,12 @@ rk_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide
 
                 // left
                 indices[indice_idx++] = prevrow + i2 - 1;
-                indices[indice_idx++] = thisrow + i2 - 1;
                 indices[indice_idx++] = prevrow + i2 + 1;
+                indices[indice_idx++] = thisrow + i2 - 1;
 
                 indices[indice_idx++] = prevrow + i2 + 1;
-                indices[indice_idx++] = thisrow + i2 - 1;
                 indices[indice_idx++] = thisrow + i2 + 1;
+                indices[indice_idx++] = thisrow + i2 - 1;
             }
             x += size.x / (subdivide_w + 1.0);
         }
@@ -778,11 +790,10 @@ rk_mesh_primitive_plane(Arena *arena, Vec2F32 size, U64 subdivide_w, U64 subdivi
     // Face Y
     Vec3F32 normal = {0.0f, -1.0f, 0.0f};
 
-    // TODO: fix it later
-    U64 vertex_count = (subdivide_d+2) * (subdivide_w+2);
-    U64 indice_count = (subdivide_d+1) * (subdivide_w+1) * 6;
+    U64 vertex_count   = (subdivide_d+2) * (subdivide_w+2);
+    U64 indice_count   = (subdivide_d+1) * (subdivide_w+1) * 6;
     R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
-    U32 *indices = push_array(arena, U32, indice_count);
+    U32 *indices       = push_array(arena, U32, indice_count);
 
     vertex_idx = 0;
     indice_idx = 0;
@@ -806,7 +817,7 @@ rk_mesh_primitive_plane(Arena *arena, Vec2F32 size, U64 subdivide_w, U64 subdivi
             
             pos = (Vec3F32){-x, 0.0, -z};
             nor = normal;
-            uv = (Vec2F32){1.0-u, 1.0-v}; /* 1.0-uv to match orientation with Quad */
+            uv = (Vec2F32){1.0-u, v}; /* 1.0-uv to match orientation with Quad */
             vertices[vertex_idx++] = (R_Vertex){.pos=pos, .nor=nor, .tex=uv};
 
             if(i > 0 && j > 0)
@@ -828,6 +839,7 @@ rk_mesh_primitive_plane(Arena *arena, Vec2F32 size, U64 subdivide_w, U64 subdivi
 
     Assert(vertex_count == vertex_idx);
     Assert(indice_count == indice_idx);
+
     *vertices_out = vertices;
     *vertices_count_out = vertex_count;
     *indices_out = indices;

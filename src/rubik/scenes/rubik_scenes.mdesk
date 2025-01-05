@@ -1,55 +1,24 @@
 //~ k: Scenes table
-@table(directory)
+@table(id,name)
 RK_ScenesTable:
 {
-    {000}
-    {001}
+    {0, default3d}
+    {1, entropy}
+    {2, go}
 }
 
 @gen
 {
     @expand(RK_ScenesTable a)
-        `#include "../$(a.directory)/$(a.directory).h"`
+        `#include "../$(a.id)/$(a.id).h"`
+}
+@gen @c_file {
+    @expand(RK_ScenesTable a)
+        `#include "../$(a.id)/$(a.id).c"`
 }
 
-@gen @c_file
+@data(RK_SceneTemplate) @c_file rk_scene_templates:
 {
     @expand(RK_ScenesTable a)
-        `#include "../$(a.directory)/$(a.directory).c"`
-}
-
-//~ k: Game global void functions
-@table(alias name)
-RK_FnTable:
-{
-    {editor_camera_fn, editor_camera_fn}
-}
-
-@gen
-{
-    `typedef struct RK_FnTalbeEntry RK_FnTableEntry;`;
-    `struct RK_FnTalbeEntry {`;
-        `String8 name;`;
-        `void * ptr;`;
-    `};`;
-}
-
-@data(RK_FnTableEntry) @c_file rk_scenes_fn_table:
-{
-    @expand(RK_FnTable a)
-      ```{str8_lit_comp("$(a.alias)"), $(a.name), }```;
-}
-
-//~ k: Scene templates
-@table(name, fn_name)
-RK_SceneTemplateTable:
-{
-    {default, rk_scene_000}
-    {go,      rk_scene_go}
-}
-
-@data(RK_SceneTemplate) @c_file rk_scene_templates_table:
-{
-    @expand(RK_SceneTemplateTable a)
-      ```{str8_lit_comp("$(a.name)"), $(a.fn_name), }```;
+      ```{str8_lit_comp("$(a.id)"), rk_scene_entry__$(a.id), }```;
 }

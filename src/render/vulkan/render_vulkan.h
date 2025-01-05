@@ -314,6 +314,8 @@ struct R_Vulkan_Bag {
     R_Vulkan_Buffer        geo3d_id_cpu;
     R_Vulkan_Image         geo3d_color_image;
     R_Vulkan_DescriptorSet geo3d_color_ds;
+    R_Vulkan_Image         geo3d_normal_depth_image;
+    R_Vulkan_DescriptorSet geo3d_normal_depth_ds;
     R_Vulkan_Image         geo3d_depth_image;
 
     VkFramebuffer          framebuffers[R_Vulkan_RenderPassKind_COUNT + MAX_IMAGE_COUNT - 1];

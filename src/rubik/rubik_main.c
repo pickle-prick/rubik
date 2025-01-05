@@ -86,16 +86,12 @@ entry_point(CmdLine *cmd_line)
     UI_State *ui = ui_state_alloc();
     ui_select_state(ui);
 
-    //- Init game state and load static function ptrs
+    //- Init game state
     rk_init(window);
-    for(U64 i = 0; i < ArrayCount(rk_scenes_fn_table); i++)
-    {
-        rk_register_function(rk_scenes_fn_table[i].name, rk_scenes_fn_table[i].ptr);
-    }
 
     //- Load scene template and load default scene
-    rk_state->template_count = ArrayCount(rk_scene_templates_table);
-    rk_state->templates = rk_scene_templates_table;
+    rk_state->template_count = ArrayCount(rk_scene_templates);
+    rk_state->templates = rk_scene_templates;
 
     RK_Scene *default_scene = rk_state->templates[0].fn();
     rk_state->active_scene = default_scene;

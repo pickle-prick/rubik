@@ -6,11 +6,7 @@
 #ifndef RUBIK_SCENES_META_H
 #define RUBIK_SCENES_META_H
 
-#include "../000/000.h"
-#include "../001/001.h"
-typedef struct RK_FnTalbeEntry RK_FnTableEntry;
-struct RK_FnTalbeEntry {
-String8 name;
-void * ptr;
-};
+#include "../0/0.h"
+#include "../1/1.h"
+#include "../2/2.h"
 #endif // RUBIK_SCENES_META_H

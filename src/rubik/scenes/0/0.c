@@ -1,17 +1,91 @@
-RK_NODE_CUSTOM_UPDATE(go_board)
+// Camera (editor camera)
+RK_NODE_CUSTOM_UPDATE(editor_camera_fn)
 {
-    // spawn stone with mouse
+    Assert(node->type_flags & RK_NodeTypeFlag_Camera3D);
+    RK_Transform3D *transform = &node->node3d->transform;
+
+    if(rk_state->sig.f & UI_SignalFlag_LeftDragging)
+    {
+        Vec2F32 delta = ui_drag_delta();
+    }
+
+    Vec3F32 f = {0};
+    Vec3F32 s = {0};
+    Vec3F32 u = {0};
+    rk_ijk_from_matrix(node->fixed_xform, &s, &u, &f);
+
+    typedef struct RK_CameraDragData RK_CameraDragData;
+    struct RK_CameraDragData
+    {
+        RK_Transform3D start_transform;
+    };
+
+    if(rk_state->sig.f & UI_SignalFlag_MiddleDragging)
+    {
+        if(rk_state->sig.f & UI_SignalFlag_MiddlePressed)
+        {
+            RK_CameraDragData start_transform = {*transform};
+            ui_store_drag_struct(&start_transform);
+        }
+        RK_CameraDragData drag_data = *ui_get_drag_struct(RK_CameraDragData);
+        Vec2F32 delta = ui_drag_delta();
+
+        // TODO: how to scale the moving distance
+        F32 h_speed_per_screen_px = 4/rk_state->window_dim.x;
+        F32 h_pct = -delta.x * h_speed_per_screen_px;
+        Vec3F32 h_dist = scale_3f32(s, h_pct);
+
+        F32 v_speed_per_screen_px = 4/rk_state->window_dim.y;
+        F32 v_pct = -delta.y * v_speed_per_screen_px;
+        Vec3F32 v_dist = scale_3f32(u, v_pct);
+
+        Vec3F32 position = drag_data.start_transform.position;
+        position = add_3f32(position, h_dist);
+        position = add_3f32(position, v_dist);
+        transform->position = position;
+    }
+
+    if(rk_state->sig.f & UI_SignalFlag_RightDragging)
+    {
+        if(rk_state->sig.f & UI_SignalFlag_RightPressed)
+        {
+            RK_CameraDragData start_transform = {*transform};
+            ui_store_drag_struct(&start_transform);
+        }
+        RK_CameraDragData drag_data = *ui_get_drag_struct(RK_CameraDragData);
+        Vec2F32 delta = ui_drag_delta();
+
+        F32 h_turn = -delta.x * (1.f) * (1.f/rk_state->window_dim.x);
+        F32 v_turn = -delta.y * (0.5f) * (1.f/rk_state->window_dim.y);
+
+        QuatF32 rotation = drag_data.start_transform.rotation;
+        QuatF32 h_q = make_rotate_quat_f32(v3f32(0,-1,0), h_turn);
+        rotation = mul_quat_f32(h_q, rotation);
+
+        Vec3F32 side = mul_quat_f32_v3f32(rotation, v3f32(1,0,0));
+        QuatF32 v_q = make_rotate_quat_f32(side, v_turn);
+        rotation = mul_quat_f32(v_q, rotation);
+
+        transform->rotation = rotation;
+    }
+
+    // Scroll
+    if(rk_state->sig.scroll.x != 0 || rk_state->sig.scroll.y != 0)
+    {
+        Vec3F32 dist = scale_3f32(f, rk_state->sig.scroll.y/3.f);
+        transform->position = add_3f32(dist, transform->position);
+    }
 }
 
+// default editor scene
 internal RK_Scene *
-rk_scene_go()
+rk_scene_entry__0()
 {
-    RK_Scene *ret = rk_scene_alloc(str8_lit("go"), str8_lit("./src/rubik/scenes/001/default.rscn"));
+    RK_Scene *ret = rk_scene_alloc(str8_lit("default"), str8_lit("./src/rubik/scenes/0/default.rscn"));
     rk_push_node_bucket(ret->node_bucket);
     rk_push_res_bucket(ret->res_bucket);
 
     RK_Node *root = rk_build_node3d_from_stringf(0, 0, "root");
-    Arena *arena = rk_top_node_bucket()->arena_ref;
     RK_Parent_Scope(root)
     {
         RK_Node *box_1 = rk_box_node(str8_lit("box1"), v3f32(1,1,1), 1,1,1);
@@ -32,7 +106,7 @@ rk_scene_go()
             main_camera->camera3d->perspective.zn = 0.1;
             main_camera->camera3d->perspective.zf = 200.f;
             main_camera->camera3d->perspective.fov = 0.25f;
-            rk_node_push_fn(main_camera, editor_camera_fn, str8_lit("editor_camera"));
+            rk_node_push_fn(main_camera, editor_camera_fn);
             main_camera->node3d->transform.position = v3f32(0,-3,0);
         }
         ret->active_camera = rk_handle_from_node(main_camera);

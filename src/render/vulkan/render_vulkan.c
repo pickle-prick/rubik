@@ -494,12 +494,12 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         String8 vshad_path;
         switch(kind)
         {
-            case (R_Vulkan_VShadKind_Rect):           {vshad_path = str8_lit("src/render/vulkan/shader/rect_vert.spv");}break;
-            case (R_Vulkan_VShadKind_MeshDebug):      {vshad_path = str8_lit("src/render/vulkan/shader/mesh_debug_vert.spv");}break;
-            case (R_Vulkan_VShadKind_Mesh):           {vshad_path = str8_lit("src/render/vulkan/shader/mesh_vert.spv");}break;
-            case (R_Vulkan_VShadKind_Geo3DComposite): {vshad_path = str8_lit("src/render/vulkan/shader/geo3d_composite_vert.spv");}break;
-            case (R_Vulkan_VShadKind_Finalize):       {vshad_path = str8_lit("src/render/vulkan/shader/finalize_vert.spv");}break;
-            default:                                  {InvalidPath;}break;
+            case R_Vulkan_VShadKind_Rect:           {vshad_path = str8_lit("src/render/vulkan/shader/rect_vert.spv");}break;
+            case R_Vulkan_VShadKind_MeshDebug:      {vshad_path = str8_lit("src/render/vulkan/shader/mesh_debug_vert.spv");}break;
+            case R_Vulkan_VShadKind_Mesh:           {vshad_path = str8_lit("src/render/vulkan/shader/mesh_vert.spv");}break;
+            case R_Vulkan_VShadKind_Geo3DComposite: {vshad_path = str8_lit("src/render/vulkan/shader/geo3d_composite_vert.spv");}break;
+            case R_Vulkan_VShadKind_Finalize:       {vshad_path = str8_lit("src/render/vulkan/shader/finalize_vert.spv");}break;
+            default:                                {InvalidPath;}break;
         }
         long vshad_size = 0;
         U8 *vshad_code  = 0;
@@ -520,12 +520,12 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         String8 fshad_path;
         switch(kind)
         {
-            case (R_Vulkan_FShadKind_Rect):           {fshad_path = str8_lit("src/render/vulkan/shader/rect_frag.spv");}break;
-            case (R_Vulkan_FShadKind_MeshDebug):      {fshad_path = str8_lit("src/render/vulkan/shader/mesh_debug_frag.spv");}break;
-            case (R_Vulkan_FShadKind_Mesh):           {fshad_path = str8_lit("src/render/vulkan/shader/mesh_frag.spv");}break;
-            case (R_Vulkan_FShadKind_Geo3DComposite): {fshad_path = str8_lit("src/render/vulkan/shader/geo3d_composite_frag.spv");}break;
-            case (R_Vulkan_FShadKind_Finalize):       {fshad_path = str8_lit("src/render/vulkan/shader/finalize_frag.spv");}break;
-            default:                                  {InvalidPath;}break;
+            case R_Vulkan_FShadKind_Rect:           {fshad_path = str8_lit("src/render/vulkan/shader/rect_frag.spv");}break;
+            case R_Vulkan_FShadKind_MeshDebug:      {fshad_path = str8_lit("src/render/vulkan/shader/mesh_debug_frag.spv");}break;
+            case R_Vulkan_FShadKind_Mesh:           {fshad_path = str8_lit("src/render/vulkan/shader/mesh_frag.spv");}break;
+            case R_Vulkan_FShadKind_Geo3DComposite: {fshad_path = str8_lit("src/render/vulkan/shader/geo3d_composite_frag.spv");}break;
+            case R_Vulkan_FShadKind_Finalize:       {fshad_path = str8_lit("src/render/vulkan/shader/finalize_frag.spv");}break;
+            default:                                {InvalidPath;}break;
         }
         long fshad_size = 0;
         U8 *fshad_code  = 0;
@@ -1216,7 +1216,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
             case R_Vulkan_RenderPassKind_Mesh:
             {
                 // Output to geo3d_color buffer, using ge3d_depth
-                U64                     attachment_count = 3;
+                U64                     attachment_count = 4;
                 U64                     subpass_count    = 1;
                 U64                     dep_count        = 1;
                 VkAttachmentDescription att_descs[attachment_count] = {};
@@ -1235,6 +1235,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 att_descs[0].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
                 att_descs[0].finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+                // Id attachment
                 att_descs[1].format         = VK_FORMAT_R32G32_UINT;
                 att_descs[1].samples        = VK_SAMPLE_COUNT_1_BIT;
                 att_descs[1].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -1244,15 +1245,25 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 att_descs[1].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
                 att_descs[1].finalLayout    = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
-                // Depth attachment
-                att_descs[2].format         = r_vulkan_state->gpu.depth_image_format;
+                // Normal,depth attachment
+                att_descs[2].format         = VK_FORMAT_R32G32B32A32_SFLOAT;
                 att_descs[2].samples        = VK_SAMPLE_COUNT_1_BIT;
                 att_descs[2].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
-                att_descs[2].storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                att_descs[2].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
                 att_descs[2].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
                 att_descs[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
                 att_descs[2].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-                att_descs[2].finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                att_descs[2].finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+                // Depth attachment
+                att_descs[3].format         = r_vulkan_state->gpu.depth_image_format;
+                att_descs[3].samples        = VK_SAMPLE_COUNT_1_BIT;
+                att_descs[3].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                att_descs[3].storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                att_descs[3].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+                att_descs[3].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                att_descs[3].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+                att_descs[3].finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
                 VkAttachmentReference refs[attachment_count];
                 refs[0].attachment = 0;
@@ -1260,12 +1271,14 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 refs[1].attachment = 1;
                 refs[1].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                 refs[2].attachment = 2;
-                refs[2].layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                refs[2].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                refs[3].attachment = 3;
+                refs[3].layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
                 subpasses[0].pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
-                subpasses[0].colorAttachmentCount    = 2,
+                subpasses[0].colorAttachmentCount    = 3,
                 subpasses[0].pColorAttachments       = &refs[0];
-                subpasses[0].pDepthStencilAttachment = &refs[2];
+                subpasses[0].pDepthStencilAttachment = &refs[3];
 
                 deps[0].srcSubpass    = VK_SUBPASS_EXTERNAL;
                 deps[0].dstSubpass    = 0; /* the first subpass */
@@ -1939,9 +1952,9 @@ r_vulkan_sampler2d(R_Tex2DSampleKind kind)
     // The choices are VK_FILTER_NEAREST and VK_FILTER_LINEAR render_vulkan
     switch(kind)
     {
-        case (R_Tex2DSampleKind_Nearest): {create_info.magFilter = VK_FILTER_NEAREST; create_info.minFilter = VK_FILTER_NEAREST;}break;
-        case (R_Tex2DSampleKind_Linear):  {create_info.magFilter = VK_FILTER_LINEAR; create_info.minFilter = VK_FILTER_LINEAR;}break;
-        default:                          {InvalidPath;}break;
+        case R_Tex2DSampleKind_Nearest: {create_info.magFilter = VK_FILTER_NEAREST; create_info.minFilter = VK_FILTER_NEAREST;}break;
+        case R_Tex2DSampleKind_Linear:  {create_info.magFilter = VK_FILTER_LINEAR; create_info.minFilter = VK_FILTER_LINEAR;}break;
+        default:                        {InvalidPath;}break;
     }
 
     // Note that the axes are called U, V and W instead of X, Y and Z
@@ -2002,27 +2015,27 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
     VkShaderModule vshad_mo, fshad_mo;
     switch(kind)
     {
-        case (R_Vulkan_PipelineKind_Rect):
+        case(R_Vulkan_PipelineKind_Rect):
         {
             vshad_mo = r_vulkan_state->vshad_modules[R_Vulkan_VShadKind_Rect];
             fshad_mo = r_vulkan_state->fshad_modules[R_Vulkan_FShadKind_Rect];
         }break;
-        case (R_Vulkan_PipelineKind_MeshDebug):
+        case(R_Vulkan_PipelineKind_MeshDebug):
         {
             vshad_mo = r_vulkan_state->vshad_modules[R_Vulkan_VShadKind_MeshDebug];
             fshad_mo = r_vulkan_state->fshad_modules[R_Vulkan_FShadKind_MeshDebug];
         }break;
-        case (R_Vulkan_PipelineKind_Mesh):
+        case(R_Vulkan_PipelineKind_Mesh):
         {
             vshad_mo = r_vulkan_state->vshad_modules[R_Vulkan_VShadKind_Mesh];
             fshad_mo = r_vulkan_state->fshad_modules[R_Vulkan_FShadKind_Mesh];
         }break;
-        case (R_Vulkan_PipelineKind_Geo3DComposite):
+        case(R_Vulkan_PipelineKind_Geo3DComposite):
         {
             vshad_mo = r_vulkan_state->vshad_modules[R_Vulkan_VShadKind_Geo3DComposite];
             fshad_mo = r_vulkan_state->fshad_modules[R_Vulkan_FShadKind_Geo3DComposite];
         }break;
-        case (R_Vulkan_PipelineKind_Finalize):
+        case(R_Vulkan_PipelineKind_Finalize):
         {
             vshad_mo = r_vulkan_state->vshad_modules[R_Vulkan_VShadKind_Finalize];
             fshad_mo = r_vulkan_state->fshad_modules[R_Vulkan_FShadKind_Finalize];
@@ -2136,22 +2149,22 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
     VkPipelineVertexInputStateCreateInfo vtx_input_state_create_info = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 
     VkVertexInputBindingDescription vtx_binding_desc[2] = {};
-#define MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT 15
+#define MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT 16
     VkVertexInputAttributeDescription vtx_attr_descs[MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT];
 
     U64 vtx_binding_desc_count = 0;
     U64 vtx_attr_desc_cnt      = 0;
     switch(kind)
     {
-        case (R_Vulkan_PipelineKind_MeshDebug):
+        case R_Vulkan_PipelineKind_MeshDebug:
         {
             vtx_binding_desc_count = 0;
             vtx_attr_desc_cnt = 0;
         }break;
-        case (R_Vulkan_PipelineKind_Mesh):
+        case R_Vulkan_PipelineKind_Mesh:
         {
             vtx_binding_desc_count = 2;
-            vtx_attr_desc_cnt = 15;
+            vtx_attr_desc_cnt = 16;
 
             // All of our per-vertex data is packed together in one array, so we'are only going to have one binding for now
             // This specifies the index of the binding in the array of bindings
@@ -2228,44 +2241,49 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
             vtx_attr_descs[7].binding  = 1;
             vtx_attr_descs[7].location = 7;
             vtx_attr_descs[7].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[7].offset   = offsetof(R_Mesh3DInst, color_texture);
+            vtx_attr_descs[7].offset   = offsetof(R_Mesh3DInst, xform) + sizeof(Vec4F32) * 0;
 
             vtx_attr_descs[8].binding  = 1;
             vtx_attr_descs[8].location = 8;
             vtx_attr_descs[8].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[8].offset   = sizeof(Vec4F32) * 0;
+            vtx_attr_descs[8].offset   = offsetof(R_Mesh3DInst, xform) + sizeof(Vec4F32) * 1;
 
             vtx_attr_descs[9].binding  = 1;
             vtx_attr_descs[9].location = 9;
             vtx_attr_descs[9].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[9].offset   = sizeof(Vec4F32) * 1;
+            vtx_attr_descs[9].offset   = offsetof(R_Mesh3DInst, xform) + sizeof(Vec4F32) * 2;
 
             vtx_attr_descs[10].binding  = 1;
             vtx_attr_descs[10].location = 10;
             vtx_attr_descs[10].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[10].offset   = sizeof(Vec4F32) * 2;
+            vtx_attr_descs[10].offset   = offsetof(R_Mesh3DInst, xform) + sizeof(Vec4F32) * 3;
 
             vtx_attr_descs[11].binding  = 1;
             vtx_attr_descs[11].location = 11;
-            vtx_attr_descs[11].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[11].offset   = sizeof(Vec4F32) * 3;
+            vtx_attr_descs[11].format   = VK_FORMAT_R32G32_UINT;
+            vtx_attr_descs[11].offset   = offsetof(R_Mesh3DInst, key);
 
             vtx_attr_descs[12].binding  = 1;
             vtx_attr_descs[12].location = 12;
-            vtx_attr_descs[12].format   = VK_FORMAT_R32G32_UINT;
-            vtx_attr_descs[12].offset   = offsetof(R_Mesh3DInst, key);
+            vtx_attr_descs[12].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
+            vtx_attr_descs[12].offset   = offsetof(R_Mesh3DInst, color_texture);
 
             vtx_attr_descs[13].binding  = 1;
             vtx_attr_descs[13].location = 13;
             vtx_attr_descs[13].format   = VK_FORMAT_R32_UINT;
-            vtx_attr_descs[13].offset   = offsetof(R_Mesh3DInst, first_joint);
+            vtx_attr_descs[13].offset   = offsetof(R_Mesh3DInst, draw_edge);
 
             vtx_attr_descs[14].binding  = 1;
             vtx_attr_descs[14].location = 14;
             vtx_attr_descs[14].format   = VK_FORMAT_R32_UINT;
             vtx_attr_descs[14].offset   = offsetof(R_Mesh3DInst, joint_count);
+
+            vtx_attr_descs[15].binding  = 1;
+            vtx_attr_descs[15].location = 15;
+            vtx_attr_descs[15].format   = VK_FORMAT_R32_UINT;
+            vtx_attr_descs[15].offset   = offsetof(R_Mesh3DInst, first_joint);
         }break;
-        case (R_Vulkan_PipelineKind_Rect):
+        case(R_Vulkan_PipelineKind_Rect):
         {
             vtx_binding_desc_count = 1;
             vtx_attr_desc_cnt = 8;
@@ -2322,8 +2340,8 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
             vtx_attr_descs[7].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
             vtx_attr_descs[7].offset   = offsetof(R_Rect2DInst, border_thickness);
         }break;
-        case (R_Vulkan_PipelineKind_Geo3DComposite):
-        case (R_Vulkan_PipelineKind_Finalize):
+        case(R_Vulkan_PipelineKind_Geo3DComposite):
+        case(R_Vulkan_PipelineKind_Finalize):
         {
             vtx_binding_desc_count = 0;
             vtx_attr_desc_cnt = 0;
@@ -2408,15 +2426,15 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
 
     switch(kind)
     {
-        case (R_Vulkan_PipelineKind_Mesh):
+        case R_Vulkan_PipelineKind_Mesh:
         {
             // rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_LINE;
             rasterization_state_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         }break;
-        case (R_Vulkan_PipelineKind_MeshDebug):
-        case (R_Vulkan_PipelineKind_Rect):
-        case (R_Vulkan_PipelineKind_Geo3DComposite):
-        case (R_Vulkan_PipelineKind_Finalize):
+        case R_Vulkan_PipelineKind_MeshDebug:
+        case R_Vulkan_PipelineKind_Rect:
+        case R_Vulkan_PipelineKind_Geo3DComposite:
+        case R_Vulkan_PipelineKind_Finalize:
         default: {}break;
     }
 
@@ -2444,8 +2462,8 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
     VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
     switch(kind)
     {
-        case (R_Vulkan_PipelineKind_MeshDebug): 
-        case (R_Vulkan_PipelineKind_Mesh): 
+        case R_Vulkan_PipelineKind_MeshDebug:
+        case R_Vulkan_PipelineKind_Mesh: 
         {
             // The depthTestEnable field specifies if the depth of new fragments should be compared to the depth buffer to see if they should be discarded
             // The depthWriteEnable field specifies if the new depth of fragments that pass the depth test should actually be written to the depth buffer
@@ -2465,9 +2483,9 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
             depth_stencil_state_create_info.front                 = (VkStencilOpState){}; // Optional
             depth_stencil_state_create_info.back                  = (VkStencilOpState){}; // Optional
         }break;
-        case (R_Vulkan_PipelineKind_Rect): 
-        case (R_Vulkan_PipelineKind_Geo3DComposite): 
-        case (R_Vulkan_PipelineKind_Finalize): 
+        case R_Vulkan_PipelineKind_Rect:
+        case R_Vulkan_PipelineKind_Geo3DComposite:
+        case R_Vulkan_PipelineKind_Finalize:
         {
             depth_stencil_state_create_info.depthTestEnable       = VK_FALSE;
             depth_stencil_state_create_info.depthWriteEnable      = VK_FALSE;
@@ -2528,7 +2546,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
     // colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
     // colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
     // NOTE(k): mesh pass have two color attachment
-    VkPipelineColorBlendAttachmentState color_blend_attachment_state[2] = {
+    VkPipelineColorBlendAttachmentState color_blend_attachment_state[3] = {
         {
             .colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
             .blendEnable         = VK_TRUE,
@@ -2542,13 +2560,23 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
         {
             .colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
             .blendEnable         = VK_FALSE,
-            .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA, // Optional
-            .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, // Optional
-            .colorBlendOp        = VK_BLEND_OP_ADD, // Optional
-            .srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA, // Optional
-            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, // Optional
-            .alphaBlendOp        = VK_BLEND_OP_ADD, // Optional
-        }
+            .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+            .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+            .colorBlendOp        = VK_BLEND_OP_ADD,
+            .srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+            .alphaBlendOp        = VK_BLEND_OP_ADD,
+        },
+        {
+            .colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+            .blendEnable         = VK_FALSE,
+            .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+            .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+            .colorBlendOp        = VK_BLEND_OP_ADD,
+            .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+            .alphaBlendOp        = VK_BLEND_OP_ADD,
+        },
     };
     switch(kind)
     {
@@ -2594,7 +2622,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
         case R_Vulkan_PipelineKind_MeshDebug:
         case R_Vulkan_PipelineKind_Mesh:
         {
-            color_blend_state_create_info.attachmentCount = 2;
+            color_blend_state_create_info.attachmentCount = 3;
         }break;
     }
 
@@ -2612,30 +2640,31 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
 
         switch(kind)
         {
-            case (R_Vulkan_PipelineKind_Rect): 
+            case R_Vulkan_PipelineKind_Rect:
             {
                 set_layout_count = 2;
                 set_layouts[0]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Rect].h;
                 set_layouts[1]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D].h;
             }break;
-            case (R_Vulkan_PipelineKind_MeshDebug):
+            case R_Vulkan_PipelineKind_MeshDebug:
             {
                 set_layout_count = 1;
                 set_layouts[0]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Mesh].h;
             }break;
-            case (R_Vulkan_PipelineKind_Mesh):
+            case R_Vulkan_PipelineKind_Mesh:
             {
                 set_layout_count = 3;
                 set_layouts[0]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Mesh].h;
                 set_layouts[1]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Storage_Mesh].h;
                 set_layouts[2]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D].h;
             }break;
-            case (R_Vulkan_PipelineKind_Geo3DComposite):
+            case R_Vulkan_PipelineKind_Geo3DComposite:
             {
-                set_layout_count = 1;
+                set_layout_count = 2;
                 set_layouts[0]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D].h;
+                set_layouts[1]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D].h;
             }break;
-            case (R_Vulkan_PipelineKind_Finalize): 
+            case R_Vulkan_PipelineKind_Finalize:
             {
                 set_layout_count = 1;
                 set_layouts[0]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D].h;
@@ -2675,12 +2704,12 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
         // subpass index within the render_pass
         switch(kind)
         {
-            case (R_Vulkan_PipelineKind_Rect):           {create_info.subpass = 0;}break;
-            case (R_Vulkan_PipelineKind_MeshDebug):      {create_info.subpass = 0;}break;
-            case (R_Vulkan_PipelineKind_Mesh):           {create_info.subpass = 0;}break;
-            case (R_Vulkan_PipelineKind_Geo3DComposite): {create_info.subpass = 0;}break;
-            case (R_Vulkan_PipelineKind_Finalize):       {create_info.subpass = 0;}break;
-            default:                                     {InvalidPath;}break;
+            case R_Vulkan_PipelineKind_Rect:           {create_info.subpass = 0;}break;
+            case R_Vulkan_PipelineKind_MeshDebug:      {create_info.subpass = 0;}break;
+            case R_Vulkan_PipelineKind_Mesh:           {create_info.subpass = 0;}break;
+            case R_Vulkan_PipelineKind_Geo3DComposite: {create_info.subpass = 0;}break;
+            case R_Vulkan_PipelineKind_Finalize:       {create_info.subpass = 0;}break;
+            default:                                   {InvalidPath;}break;
         }
         // Vulkan allows you to create a new graphics pipeline by deriving from an existing pipeline
         // The idea of pipeline derivatives is that it is less expensive to set up pipelines when they have much functionality in common with an existing pipeline and 
@@ -3102,13 +3131,17 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                 begin_info.renderArea.extent = wnd->bag->stage_color_image.extent;
                 
                 // Note that the order of clear_values should be identical to the order of your attachments
-                VkClearValue clear_colors[3];
+                VkClearValue clear_colors[4];
+                // color image
                 clear_colors[0].color        = (VkClearColorValue){{ 0.0f, 0.0f, 0.0f, 0.0f }}; /* black with 100% opacity */
-                clear_colors[1].color        = (VkClearColorValue){{ 0.0f }}; /* black with 100% opacity */
+                // id image
+                clear_colors[1].color        = (VkClearColorValue){{ 0.0f }};
                 // The range of depths in the depth buffer is 0.0 to 1.0 in Vulkan, where 1.0 lies at the far view plane and 0.0 at the near view plane. The initial value at each point in the depth buffer should be the furthest possible depth, which is 1.0
-                clear_colors[2].depthStencil = (VkClearDepthStencilValue){1.0f, 0};
+                // normal depth image
+                clear_colors[2].color        = (VkClearColorValue){0.f, 0.f, 0.f, 1.f};
+                clear_colors[3].depthStencil = (VkClearDepthStencilValue){1.0f, 0};
                 // Those two parameters define the clear values to use for VK_ATTACHMENT_LOAD_OP_CLEAR, which we used as load operations for the color attachment
-                begin_info.clearValueCount = 3;
+                begin_info.clearValueCount = 4;
                 begin_info.pClearValues    = clear_colors;
                 vkCmdBeginRenderPass(cmd_buf, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -3257,14 +3290,12 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                     VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
                     VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
-                    vkCmdPipelineBarrier(
-                        cmd_buf,
-                        srcStage, dstStage, // Source and destination pipeline stages
-                        0,                  // No dependency flags
-                        0, NULL,            // Memory barriers
-                        0, NULL,            // Buffer memory barriers
-                        1, &barrier         // Image memory barriers
-                    );
+                    vkCmdPipelineBarrier(cmd_buf,
+                                         srcStage, dstStage, // Source and destination pipeline stages
+                                         0,                  // No dependency flags
+                                         0, NULL,            // Memory barriers
+                                         0, NULL,            // Buffer memory barriers
+                                         1, &barrier);       // Image memory barriers
 
                     VkBufferImageCopy region = {0};
                     region.bufferOffset = 0;
@@ -3317,6 +3348,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec
                     vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
                     // Bind stage color descriptor
                     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.geo3d_composite.layout, 0, 1, &wnd->bag->geo3d_color_ds.h, 0, NULL);
+                    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.geo3d_composite.layout, 1, 1, &wnd->bag->geo3d_normal_depth_ds.h, 0, NULL);
                     vkCmdDraw(cmd_buf, 4, 1, 0, 0);
                     vkCmdEndRenderPass(cmd_buf);
                 }
@@ -3529,7 +3561,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
             U64 set_idx = i + j;
             switch(kind)
             {
-                case (R_Vulkan_DescriptorSetKind_UBO_Rect):
+                case R_Vulkan_DescriptorSetKind_UBO_Rect:
                 {
                     VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
                     buffer_info->buffer = buffers[i];
@@ -3552,7 +3584,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     writes[set_idx].pImageInfo       = NULL; // Optional
                     writes[set_idx].pTexelBufferView = NULL; // Optional
                 }break;
-                case (R_Vulkan_DescriptorSetKind_UBO_Mesh):
+                case R_Vulkan_DescriptorSetKind_UBO_Mesh:
                 {
                     VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
                     buffer_info->buffer = buffers[i];
@@ -3569,7 +3601,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     writes[set_idx].pImageInfo       = NULL; // Optional
                     writes[set_idx].pTexelBufferView = NULL; // Optional
                 }break;
-                case (R_Vulkan_DescriptorSetKind_Storage_Mesh):
+                case R_Vulkan_DescriptorSetKind_Storage_Mesh:
                 {
                     VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
                     buffer_info->buffer = buffers[i];
@@ -3587,7 +3619,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     writes[set_idx].pImageInfo       = NULL; // Optional
                     writes[set_idx].pTexelBufferView = NULL; // Optional
                 }break;
-                case (R_Vulkan_DescriptorSetKind_Tex2D):
+                case R_Vulkan_DescriptorSetKind_Tex2D:
                 {
                     VkDescriptorImageInfo *image_info = push_array(temp.arena, VkDescriptorImageInfo, 1);
                     image_info->sampler     = samplers[i];
@@ -3741,14 +3773,16 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
     // Create swapchain
     bag->swapchain = r_vulkan_swapchain(surface, window->os_wnd, swp_format, swp_color_space, old_swapchain);
 
-    R_Vulkan_Swapchain *swapchain          = &bag->swapchain;
-    R_Vulkan_Image *stage_color_image      = &bag->stage_color_image;
-    R_Vulkan_DescriptorSet *stage_color_ds = &bag->stage_color_ds;
-    R_Vulkan_Image *geo3d_id_image         = &bag->geo3d_id_image;
-    R_Vulkan_Buffer *geo3d_id_cpu         =  &bag->geo3d_id_cpu;
-    R_Vulkan_Image *geo3d_color_image      = &bag->geo3d_color_image;
-    R_Vulkan_DescriptorSet *geo3d_color_ds = &bag->geo3d_color_ds;
-    R_Vulkan_Image *geo3d_depth_image      = &bag->geo3d_depth_image;
+    R_Vulkan_Swapchain *swapchain                 = &bag->swapchain;
+    R_Vulkan_Image *stage_color_image             = &bag->stage_color_image;
+    R_Vulkan_DescriptorSet *stage_color_ds        = &bag->stage_color_ds;
+    R_Vulkan_Image *geo3d_id_image                = &bag->geo3d_id_image;
+    R_Vulkan_Buffer *geo3d_id_cpu                 = &bag->geo3d_id_cpu;
+    R_Vulkan_Image *geo3d_color_image             = &bag->geo3d_color_image;
+    R_Vulkan_DescriptorSet *geo3d_color_ds        = &bag->geo3d_color_ds;
+    R_Vulkan_Image *geo3d_normal_depth_image      = &bag->geo3d_normal_depth_image;
+    R_Vulkan_DescriptorSet *geo3d_normal_depth_ds = &bag->geo3d_normal_depth_ds;
+    R_Vulkan_Image *geo3d_depth_image             = &bag->geo3d_depth_image;
 
     // Create staging buffer and staging color sampler descriptor set
     {
@@ -3928,6 +3962,59 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
                                       geo3d_color_ds);
     }
 
+    // Create geo3d_normal_depth_image and its sampler descriptor set
+    {
+        geo3d_normal_depth_image->format        = VK_FORMAT_R32G32B32A32_SFLOAT; // first 3 is normal, last w is depth
+        geo3d_normal_depth_image->extent.width  = swapchain->extent.width;
+        geo3d_normal_depth_image->extent.height = swapchain->extent.height;
+
+        VkImageCreateInfo create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+        create_info.imageType         = VK_IMAGE_TYPE_2D;
+        create_info.extent.width      = geo3d_normal_depth_image->extent.width;
+        create_info.extent.height     = geo3d_normal_depth_image->extent.height;
+        create_info.extent.depth      = 1;
+        create_info.mipLevels         = 1;
+        create_info.arrayLayers       = 1;
+        create_info.format            = geo3d_normal_depth_image->format;
+        create_info.tiling            = VK_IMAGE_TILING_OPTIMAL;
+        create_info.initialLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
+        create_info.usage             = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        create_info.sharingMode       = VK_SHARING_MODE_EXCLUSIVE;
+        create_info.samples           = VK_SAMPLE_COUNT_1_BIT;
+        create_info.flags             = 0; // Optional
+        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &geo3d_normal_depth_image->h), "Failed to create vk buffer");
+
+        VkMemoryRequirements mem_requirements;
+        vkGetImageMemoryRequirements(r_vulkan_state->device.h, geo3d_normal_depth_image->h, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &geo3d_normal_depth_image->memory), "Failed to allocate buffer memory");
+        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, geo3d_normal_depth_image->h, geo3d_normal_depth_image->memory, 0), "Failed to bind buffer memory");
+
+        VkImageViewCreateInfo image_view_create_info = {
+            .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image                           = geo3d_normal_depth_image->h,
+            .viewType                        = VK_IMAGE_VIEW_TYPE_2D,
+            .format                          = geo3d_normal_depth_image->format,
+            .subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+            .subresourceRange.baseMipLevel   = 0,
+            .subresourceRange.levelCount     = 1,
+            .subresourceRange.baseArrayLayer = 0,
+            .subresourceRange.layerCount     = 1,
+        };
+        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &geo3d_normal_depth_image->view), "Failed to create image view");
+
+        // Create geo3d_color sampler descriptor set
+        r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind_Tex2D,
+                                      1, 16, NULL, &geo3d_normal_depth_image->view,
+                                      &r_vulkan_state->samplers[R_Tex2DSampleKind_Nearest],
+                                      geo3d_normal_depth_ds);
+    }
+
     // Create geo3d_depth_image
     {
         geo3d_depth_image->format        = r_vulkan_state->gpu.depth_image_format;
@@ -3997,7 +4084,8 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &geo3d_depth_image->memory), "Failed to allocate buffer memory");
         VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, geo3d_depth_image->h, geo3d_depth_image->memory, 0), "Failed to bind buffer memory");
 
-        VkImageViewCreateInfo image_view_create_info = {
+        VkImageViewCreateInfo image_view_create_info =
+        {
             .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image                           = geo3d_depth_image->h,
             .viewType                        = VK_IMAGE_VIEW_TYPE_2D,
@@ -4028,13 +4116,14 @@ r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
 {
     for(U64 kind = 0; kind < R_Vulkan_RenderPassKind_COUNT; kind++)
     {
-        VkFramebuffer *framebuffer        = &bag->framebuffers[kind];
-        R_Vulkan_Swapchain *swapchain     = &bag->swapchain;
-        R_Vulkan_Image *stage_color_image = &bag->stage_color_image;
-        R_Vulkan_Image *geo3d_id_image    = &bag->geo3d_id_image;
-        R_Vulkan_Image *geo3d_color_image = &bag->geo3d_color_image;
-        R_Vulkan_Image *geo3d_depth_image = &bag->geo3d_depth_image;
-        R_Vulkan_RenderPass *renderpass   = &grp->passes[kind];
+        VkFramebuffer *framebuffer               = &bag->framebuffers[kind];
+        R_Vulkan_Swapchain *swapchain            = &bag->swapchain;
+        R_Vulkan_Image *stage_color_image        = &bag->stage_color_image;
+        R_Vulkan_Image *geo3d_id_image           = &bag->geo3d_id_image;
+        R_Vulkan_Image *geo3d_color_image        = &bag->geo3d_color_image;
+        R_Vulkan_Image *geo3d_normal_depth_image = &bag->geo3d_normal_depth_image;
+        R_Vulkan_Image *geo3d_depth_image        = &bag->geo3d_depth_image;
+        R_Vulkan_RenderPass *renderpass          = &grp->passes[kind];
 
         switch(kind)
         {
@@ -4057,15 +4146,20 @@ r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
                 };
 
                 VK_Assert(vkCreateFramebuffer(r_vulkan_state->device.h, &frame_buffer_create_info, NULL, framebuffer), "Failed to create famebuffer");
-
             }break;
             case R_Vulkan_RenderPassKind_Mesh:
             {
-                VkImageView attachments[3] = { geo3d_color_image->view, geo3d_id_image->view, geo3d_depth_image->view };
+                VkImageView attachments[4] =
+                { 
+                    geo3d_color_image->view,
+                    geo3d_id_image->view,
+                    geo3d_normal_depth_image->view,
+                    geo3d_depth_image->view,
+                };
                 VkFramebufferCreateInfo frame_buffer_create_info = {
                     .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                     .renderPass      = renderpass->h,
-                    .attachmentCount = 3,
+                    .attachmentCount = 4,
                     .pAttachments    = attachments,
                     .width           = swapchain->extent.width,
                     .height          = swapchain->extent.height,
@@ -4149,6 +4243,11 @@ r_vulkan_bag_destroy(R_Vulkan_Bag *bag)
     vkDestroyImageView(r_vulkan_state->device.h, bag->geo3d_color_image.view, NULL);
     r_vulkan_descriptor_set_destroy(&bag->geo3d_color_ds);
     vkFreeMemory(r_vulkan_state->device.h, bag->geo3d_color_image.memory, NULL);
+
+    vkDestroyImage(r_vulkan_state->device.h, bag->geo3d_normal_depth_image.h, NULL);
+    vkDestroyImageView(r_vulkan_state->device.h, bag->geo3d_normal_depth_image.view, NULL);
+    r_vulkan_descriptor_set_destroy(&bag->geo3d_normal_depth_ds);
+    vkFreeMemory(r_vulkan_state->device.h, bag->geo3d_normal_depth_image.memory, NULL);
 
     vkDestroyImage(r_vulkan_state->device.h, bag->geo3d_depth_image.h, NULL);
     vkDestroyImageView(r_vulkan_state->device.h, bag->geo3d_depth_image.view, NULL);

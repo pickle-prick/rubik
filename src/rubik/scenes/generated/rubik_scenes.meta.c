@@ -3,18 +3,15 @@
 
 //- GENERATED CODE
 
-#include "../000/000.c"
-#include "../001/001.c"
+#include "../0/0.c"
+#include "../1/1.c"
+#include "../2/2.c"
 C_LINKAGE_BEGIN
-RK_FnTableEntry rk_scenes_fn_table[1] =
+RK_SceneTemplate rk_scene_templates[3] =
 {
-{str8_lit_comp("editor_camera_fn"), editor_camera_fn, },
-};
-
-RK_SceneTemplate rk_scene_templates_table[2] =
-{
-{str8_lit_comp("default"), rk_scene_000, },
-{str8_lit_comp("go"), rk_scene_go, },
+{str8_lit_comp("0"), rk_scene_entry__0, },
+{str8_lit_comp("1"), rk_scene_entry__1, },
+{str8_lit_comp("2"), rk_scene_entry__2, },
 };
 
 C_LINKAGE_END

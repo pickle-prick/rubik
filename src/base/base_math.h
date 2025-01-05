@@ -18,6 +18,15 @@ union Vec2F32 {
         F32 v[2];
 };
 
+typedef union Vec2U64 Vec2U64;
+union Vec2U64 {
+        struct {
+                U64 x;
+                U64 y;
+        };
+        U64 v[2];
+};
+
 typedef union Vec2U32 Vec2U32;
 union Vec2U32 {
         struct {

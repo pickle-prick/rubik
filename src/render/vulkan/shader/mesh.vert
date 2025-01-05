@@ -10,11 +10,12 @@ layout(location = 5)  in uvec4  joints;
 layout(location = 6)  in vec4   weights;
 
 // Instance buffer
-layout(location = 7)  in vec4   color_texture;
-layout(location = 8)  in mat4   model;
-layout(location = 12) in uvec2  id;
-layout(location = 13) in uint   first_joint;
-layout(location = 14) in uint   joint_count;
+layout(location = 7)  in mat4  model;
+layout(location = 11) in uvec2 id;
+layout(location = 12) in vec4  color_texture;
+layout(location = 13) in uint  draw_edge;
+layout(location = 14) in uint  joint_count;
+layout(location = 15) in uint  first_joint;
 
 // It is important to know that some types, like dvec3 64 bit vectors, use multiple slots
 // That means that the index after it must be at least 2 higher
@@ -22,6 +23,8 @@ layout(location = 0)      out  vec2  frag_texcoord;
 layout(location = 1)      out  vec4  frag_color;
 layout(location = 2) flat out  uvec2 frag_id;
 layout(location = 3) flat out  float frag_omit_texture;
+layout(location = 4) flat out  vec3  frag_normal;
+layout(location = 5) flat out  uint  frag_draw_edge;
 
 layout(set = 0, binding = 0) uniform UniformBufferObject {
     mat4 view;
@@ -91,8 +94,10 @@ void main() {
         vec4 color = color_texture.a > 0 ? color_texture : vec4(col.xyz, 1.0);
 
         // Output
-        frag_color    = vec4((color*intensity).xyz, color.a);
-        frag_texcoord = tex;
-        frag_id       = id;
+        frag_texcoord     = tex;
+        frag_color        = vec4((color*intensity).xyz, color.a);
+        frag_id           = id;
         frag_omit_texture = color_texture.a > 0 ? 1.0 : 0.0;
+        frag_normal       = nor;
+        frag_draw_edge    = draw_edge;
 }

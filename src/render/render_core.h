@@ -111,15 +111,15 @@ typedef struct R_Mesh3DInst R_Mesh3DInst;
 struct R_Mesh3DInst
 {
     // TODO(k): kind a mess here, some attributes were sent to instance buffer, some were copied to storage buffer 
-    // NOTE: Only these two sent to the instance buffer
     Mat4x4F32 xform;
     U64       key;
     Vec4F32   color_texture;
-
-    // TODO(k): material idx, a primitive could have array of materials
+    B32       draw_edge;
+    // NOTE(k): joint_xforms is stored in storage buffer instead of instance buffer
     Mat4x4F32 *joint_xforms;
     U32       joint_count;
-    U32       first_joint; // TODO: Set it in render side, quite ugly, fix it later
+    U32       first_joint;
+    // TODO(k): material idx, a primitive could have array of materials
 };
 
 ////////////////////////////////
@@ -274,14 +274,12 @@ internal B32 r_handle_match(R_Handle a, R_Handle b);
 //~ rjf: Batch Type Functions
 
 internal R_BatchList r_batch_list_make(U64 instance_size);
-internal void *r_batch_list_push_inst(Arena *arena, R_BatchList *list,
-                                      U64 batch_inst_cap);
+internal void *r_batch_list_push_inst(Arena *arena, R_BatchList *list, U64 batch_inst_cap);
 
 ////////////////////////////////
 //~ rjf: Pass Type Functions
 
-// internal R_Pass *r_pass_from_kind(Arena *arena, R_PassList *list,
-//                                   R_PassKind kind);
+internal R_Pass *r_pass_from_kind(Arena *arena, R_PassList *list, R_PassKind kind);
 
 ////////////////////////////////
 //~ rjf: Backend Hooks

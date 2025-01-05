@@ -174,7 +174,7 @@ internal inline R_Rect2DInst *d_img(Rng2F32 dst, Rng2F32 src, R_Handle texture, 
 internal R_PassParams_Geo3D *d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection, Vec3F32 global_light, B32 show_grid);
 
 //- rjf: meshes
-internal R_Mesh3DInst * d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags, R_Handle albedo_tex, Vec4F32 color_tex, Mat4x4F32 *joint_xforms, U64 joint_count, Mat4x4F32 inst_xform, U64 inst_key);
+internal R_Mesh3DInst * d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags, R_Handle albedo_tex, Vec4F32 color_tex, Mat4x4F32 *joint_xforms, U64 joint_count, Mat4x4F32 inst_xform, U64 inst_key, B32 draw_edge);
 
 //- rjf: collating one pre-prepped bucket into parent bucket
 internal void d_sub_bucket(D_Bucket *bucket);

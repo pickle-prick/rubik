@@ -137,7 +137,7 @@ d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection, Vec3F32 gl
 //- k: meshes
 
 internal R_Mesh3DInst *
-d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags, R_Handle albedo_tex, Vec4F32 color_tex, Mat4x4F32 *joint_xforms, U64 joint_count, Mat4x4F32 inst_xform, U64 inst_key)
+d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags, R_Handle albedo_tex, Vec4F32 color_tex, Mat4x4F32 *joint_xforms, U64 joint_count, Mat4x4F32 inst_xform, U64 inst_key, B32 draw_edge)
 {
     Arena *arena = d_thread_ctx->arena;
     D_Bucket *bucket = d_top_bucket();
@@ -206,6 +206,7 @@ d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo
     inst->joint_xforms  = joint_xforms;
     inst->joint_count   = joint_count;
     inst->color_texture = color_tex;
+    inst->draw_edge     = draw_edge;
     return inst;
 }
 
