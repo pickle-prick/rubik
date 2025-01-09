@@ -1132,7 +1132,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 // 2. VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:          images to be presented in the swap chain
                 // 3. VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:     images to be used as destination for a memory copy operation
                 att_descs[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                att_descs[0].finalLayout   = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                att_descs[0].finalLayout   = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
                 VkAttachmentReference refs[attachment_count];
                 // Subpasses and attachment references
@@ -2937,6 +2937,10 @@ r_window_end_frame(OS_Handle os_wnd, R_Handle window_equip, Vec2F32 mouse_ptr)
     begin_info.framebuffer       = framebuffers[R_Vulkan_RenderPassKind_Finalize+frame->img_idx];
     begin_info.renderArea.offset = (VkOffset2D){0, 0};
     begin_info.renderArea.extent = wnd->bag->stage_color_image.extent;
+
+    // transition stage color image layout to shader read optimal
+    r_vulkan_image_transition(cmd_buf,wnd->bag->stage_color_image.h, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                              VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
 
     // Clear swapchain image
     VkClearValue clear_colors[1];
