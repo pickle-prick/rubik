@@ -6,13 +6,14 @@ layout(location = 2) flat in uvec2 id;
 layout(location = 3) flat in float omit_texture;
 layout(location = 4) flat in vec3  normal;
 layout(location = 5) flat in uint  draw_edge;
+layout(location = 6) flat in uint  depth_test;
 
 // There are equivalent sampler1D and sampler3D types for other types of images
 layout(set = 2, binding = 0) uniform sampler2D texSampler;
 
 layout(location = 0) out vec4  out_color;
-layout(location = 1) out uvec2 out_id;
-layout(location = 2) out vec4  out_normal_depth;
+layout(location = 1) out vec4  out_normal_depth;
+layout(location = 2) out uvec2 out_id;
 
 void main()
 {
@@ -33,4 +34,8 @@ void main()
 
     out_normal_depth.rgb = draw_edge > 0 ? normal : vec3(0,0,0);
     out_normal_depth.a = draw_edge > 0 ? gl_FragCoord.z : 1.0f;
+
+    // NOTE(k): https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_FragDepth.xhtml
+    // If a shader statically assigns to gl_FragDepth, then the value of the fragment's depth may be undefined for executions of the shader that don't take that path
+    gl_FragDepth = depth_test == 1 ? gl_FragCoord.z : 0.0f;
 }

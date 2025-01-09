@@ -119,6 +119,7 @@ struct R_Mesh3DInst
     Mat4x4F32 *joint_xforms;
     U32       joint_count;
     U32       first_joint;
+    B32       depth_test;
     // TODO(k): material idx, a primitive could have array of materials
 };
 
@@ -306,10 +307,10 @@ internal void     r_buffer_release(R_Handle buffer);
 //- rjf: frame markers
 internal void r_begin_frame(void);
 internal void r_end_frame(void);
-internal U64  r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip);
-internal void r_window_end_frame(OS_Handle os_wnd, R_Handle window_equip);
+internal void r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip);
+internal U64 r_window_end_frame(OS_Handle os_wnd, R_Handle window_equip, Vec2F32 mouse_ptr);
 
 //- rjf: render pass submission
-internal void r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes, Vec2F32 ptr);
+internal void r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes);
 
 #endif // RENDER_CORE_H

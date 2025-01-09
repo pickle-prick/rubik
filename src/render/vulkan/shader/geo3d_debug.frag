@@ -9,8 +9,8 @@ layout(location = 10) flat in   uint show_grid;
 
 // Output
 layout(location = 0) out vec4  out_color;
-layout(location = 1) out uvec2 out_id; // TODO: this one could be removed later
-layout(location = 2) out vec4  out_normal_depth;
+layout(location = 1) out vec4  out_normal_depth;
+layout(location = 2) out uvec2 out_id; // TODO: this one could be removed later
 
 // Predefined keys
 // uvec2 key_gizmos_ihat = uvec2(0xFFFFFFFF-0, 0xFFFFFFFF);

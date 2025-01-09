@@ -63,6 +63,7 @@ typedef enum RK_MeshSourceKind
     RK_MeshSourceKind_SpherePrimitive,
     RK_MeshSourceKind_CylinderPrimitive,
     RK_MeshSourceKind_CapsulePrimitive,
+    RK_MeshSourceKind_TorusPrimitive,
     RK_MeshSourceKind_Extern,
     RK_MeshSourceKind_COUNT,
 } RK_MeshSourceKind;
@@ -92,6 +93,8 @@ typedef enum RK_ResourceKind
 typedef U64 RK_NodeFlags;
 #define RK_NodeFlag_NavigationRoot       (RK_NodeFlags)(1ull<<0)
 #define RK_NodeFlag_Float                (RK_NodeFlags)(1ull<<1)
+#define RK_NodeFlag_Hidden               (RK_NodeFlags)(1ull<<2)
+#define RK_NodeFlag_Gizmos               (RK_NodeFlags)(1ull<<3)
 
 typedef U64 RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_Node2D           (RK_NodeTypeFlags)(1ull<<0)
@@ -244,6 +247,10 @@ struct RK_Material
     // emissive texture
     RK_Handle emissive_tex;
     Vec3F32 emissive_factor;
+
+    // TODO(k): for serialization
+    String8 path;
+    U8 path_buffer[300];
 };
 
 typedef struct RK_Skin RK_Skin;
@@ -251,6 +258,10 @@ struct RK_Skin
 {
     RK_Bind     binds[300];
     U64         bind_count;
+
+    // TODO: for serialization
+    String8 path;
+    U8 path_buffer[300];
 };
 
 typedef struct RK_Mesh RK_Mesh;
@@ -318,6 +329,15 @@ struct RK_Mesh
         capsule_primitive;
         struct
         {
+            F32 inner_radius;
+            F32 outer_radius;
+            U64 rings;
+            U64 ring_segments;
+        }
+        torus_primitive;
+        // external mesh (obj format maybe?)
+        struct
+        {
 
             String8 path;
             U8 path_buffer[300];
@@ -338,6 +358,9 @@ struct RK_Animation
     RK_Track *first_track;
     RK_Track *last_track;
     U64 track_count;
+
+    String8 path;
+    U8 path_buffer[300];
 };
 
 typedef struct RK_Texture2D RK_Texture2D;
@@ -425,6 +448,7 @@ struct RK_MeshInstance3D
     RK_Handle         skin;
     RK_Key            skin_seed;
     RK_Handle         material_override;
+    B32               disable_depth;
 };
 
 #define RK_MAX_ANIMATION_PER_INST_COUNT 10
@@ -489,7 +513,7 @@ struct RK_Camera3D
 
 struct RK_Node;
 struct RK_Scene;
-#define RK_NODE_CUSTOM_UPDATE(name) void name(struct RK_Node *node, struct RK_Scene *scene, OS_EventList os_events, F32 dt_sec)
+#define RK_NODE_CUSTOM_UPDATE(name) void name(struct RK_Node *node, struct RK_Scene *scene, OS_EventList os_events, F32 dt_sec, Mat4x4F32 projection_m, Mat4x4F32 view_m)
 typedef RK_NODE_CUSTOM_UPDATE(RK_NodeCustomUpdateFunctionType);
 
 #define RK_NODE_CUSTOM_DRAW(name) void name(struct RK_Node *node, void *node_data)
@@ -547,6 +571,7 @@ struct RK_Node
     RK_AnimationPlayer            *animation_player;
 
     //~ Custom update/draw functions
+    // TODO(k): reuse custom_data memory block based on its size
     void                          *custom_data;
     RK_UpdateFnNode               *first_update_fn;
     RK_UpdateFnNode               *last_update_fn;
@@ -636,6 +661,8 @@ struct RK_Scene
 
     RK_Key            hot_key;
     RK_Key            active_key;
+
+    RK_Handle         active_node;
 
     String8           name;
     String8           save_path;
@@ -854,11 +881,15 @@ internal RK_Handle    rk_resh_alloc(RK_Key key, RK_ResourceKind kind, B32 acquir
 internal void         rk_res_release(RK_Resource *ses);
 internal RK_Handle    rk_resh_from_key(RK_Key key);
 internal RK_Handle    rk_resh_acquire_from_key(RK_Key key);
-internal void         rk_resh_acquire(RK_Handle handle);
+internal RK_Handle    rk_resh_acquire(RK_Handle handle);
 internal void         rk_resh_return(RK_Handle handle);
 internal RK_Resource* rk_res_from_handle(RK_Handle handle);
 internal void*        rk_res_data_from_handle(RK_Handle handle);
 internal RK_Handle    rk_handle_from_res(RK_Resource *res);
+
+//- High-lelve Resource Allocation Functions
+
+internal RK_Handle    rk_material_from_color(String8 name, Vec4F32 color);
 
 /////////////////////////////////
 //- Resourcea Building Helpers (subresource management etc...)
@@ -900,13 +931,15 @@ internal void     rk_node_equip_display_string(RK_Node* node, String8 string);
 //~ Node Type Functions
 
 //- DFS (pre/pos order)
-internal RK_NodeRec rk_node_df(RK_Node *n, RK_Node *root, U64 sib_member_off, U64 child_member_off);
-#define rk_node_df_pre(node, root) rk_node_df(node, root, OffsetOf(RK_Node, next), OffsetOf(RK_Node, first))
-#define rk_node_df_post(node, root) rk_node_df(node, root, OffsetOf(RK_Node, prev), OffsetOf(RK_Node, last))
+internal RK_NodeRec rk_node_df(RK_Node *n, RK_Node *root, U64 sib_member_off, U64 child_member_off, B32 force_leaf);
+#define rk_node_df_pre(node, root, force_leaf) rk_node_df(node, root, OffsetOf(RK_Node, next), OffsetOf(RK_Node, first), force_leaf)
+#define rk_node_df_post(node, root, force_leaf) rk_node_df(node, root, OffsetOf(RK_Node, prev), OffsetOf(RK_Node, last), force_leaf)
 
 internal void      rk_node_push_fn(RK_Node *n, RK_NodeCustomUpdateFunctionType *fn);
 internal RK_Handle rk_handle_from_node(RK_Node *n);
 internal RK_Node*  rk_node_from_handle(RK_Handle handle);
+
+internal B32       rk_node_is_active(RK_Node *node);
 
 /////////////////////////////////
 // Node scripting
@@ -979,7 +1012,6 @@ internal String8 rk_string_from_polygon_kind(RK_ViewportShadingKind kind);
 internal RK_Scene* rk_scene_alloc(String8 namee, String8 save_path);
 internal void      rk_scene_release(RK_Scene *s);
 internal void      rk_scene_active_camera_set(RK_Scene *s, RK_Node *camera_node);
-internal void      rk_scene_hot_key_set(RK_Scene *s, RK_Key key, B32 only_navigation_root);
-internal void      rk_scene_active_key_set(RK_Scene *s, RK_Key key, B32 only_navigation_root);
+internal void      rk_scene_active_node_set(RK_Scene *s, RK_Key key, B32 only_navigation_root);
 
 #endif

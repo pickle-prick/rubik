@@ -77,9 +77,9 @@ struct R_Vulkan_Uniforms_Mesh
 typedef enum R_Vulkan_VShadKind {
     R_Vulkan_VShadKind_Rect,
     // R_Vulkan_VShadKind_Blur,
-    R_Vulkan_VShadKind_MeshDebug,
-    R_Vulkan_VShadKind_Mesh,
-    R_Vulkan_VShadKind_Geo3DComposite,
+    R_Vulkan_VShadKind_Geo3dDebug,
+    R_Vulkan_VShadKind_Geo3dForward,
+    R_Vulkan_VShadKind_Geo3dComposite,
     R_Vulkan_VShadKind_Finalize,
     R_Vulkan_VShadKind_COUNT,
 } R_Vulkan_VShadKind;
@@ -87,9 +87,9 @@ typedef enum R_Vulkan_VShadKind {
 typedef enum R_Vulkan_FShadKind {
     R_Vulkan_FShadKind_Rect,
     // R_Vulkan_FShadKind_Blur,
-    R_Vulkan_FShadKind_MeshDebug,
-    R_Vulkan_FShadKind_Mesh,
-    R_Vulkan_FShadKind_Geo3DComposite,
+    R_Vulkan_FShadKind_Geo3dDebug,
+    R_Vulkan_FShadKind_Geo3dForward,
+    R_Vulkan_FShadKind_Geo3dComposite,
     R_Vulkan_FShadKind_Finalize,
     R_Vulkan_FShadKind_COUNT,
 } R_Vulkan_FShadKind;
@@ -97,19 +97,19 @@ typedef enum R_Vulkan_FShadKind {
 typedef enum R_Vulkan_UniformTypeKind {
     R_Vulkan_UniformTypeKind_Rect,
     // R_Vulkan_UniformTypeKind_Blur,
-    R_Vulkan_UniformTypeKind_Mesh,
+    R_Vulkan_UniformTypeKind_Geo3d,
     R_Vulkan_UniformTypeKind_COUNT,
 } R_Vulkan_UniformTypeKind;
 
 typedef enum R_Vulkan_StorageTypeKind {
-    R_Vulkan_StorageTypeKind_Mesh,
+    R_Vulkan_StorageTypeKind_Geo3d,
     R_Vulkan_StorageTypeKind_COUNT,
 } R_Vulkan_StorageTypeKind;
 
 typedef enum R_Vulkan_DescriptorSetKind{
     R_Vulkan_DescriptorSetKind_UBO_Rect,
-    R_Vulkan_DescriptorSetKind_UBO_Mesh,
-    R_Vulkan_DescriptorSetKind_Storage_Mesh,
+    R_Vulkan_DescriptorSetKind_UBO_Geo3d,
+    R_Vulkan_DescriptorSetKind_Storage_Geo3d,
     R_Vulkan_DescriptorSetKind_Tex2D,
     R_Vulkan_DescriptorSetKind_COUNT,
 } R_Vulkan_DescriptorSetKind;
@@ -117,9 +117,9 @@ typedef enum R_Vulkan_DescriptorSetKind{
 typedef enum R_Vulkan_PipelineKind {
     R_Vulkan_PipelineKind_Rect,
     // R_Vulkan_PipelineKind_Blur,
-    R_Vulkan_PipelineKind_MeshDebug,
-    R_Vulkan_PipelineKind_Mesh,
-    R_Vulkan_PipelineKind_Geo3DComposite,
+    R_Vulkan_PipelineKind_Geo3dDebug,
+    R_Vulkan_PipelineKind_Geo3dForward,
+    R_Vulkan_PipelineKind_Geo3dComposite,
     R_Vulkan_PipelineKind_Finalize,
     R_Vulkan_PipelineKind_COUNT,
 } R_Vulkan_PipelineKind;
@@ -127,8 +127,8 @@ typedef enum R_Vulkan_PipelineKind {
 typedef enum R_Vulkan_RenderPassKind {
     R_Vulkan_RenderPassKind_Rect,
     // R_Vulkan_RenderPassKind_Blur,
-    R_Vulkan_RenderPassKind_Mesh,
-    R_Vulkan_RenderPassKind_Geo3DComposite,
+    R_Vulkan_RenderPassKind_Geo3d,
+    R_Vulkan_RenderPassKind_Geo3dComposite,
     R_Vulkan_RenderPassKind_Finalize,
     R_Vulkan_RenderPassKind_COUNT,
 } R_Vulkan_RenderPassKind;
@@ -226,11 +226,15 @@ typedef struct R_Vulkan_RenderPass R_Vulkan_RenderPass;
 struct R_Vulkan_RenderPass {
     VkRenderPass h;
 
-    // TODO(k): single renderpass could use multiple pipelines
     union {
         R_Vulkan_Pipeline first;
         R_Vulkan_Pipeline rect;
-        R_Vulkan_Pipeline mesh[2][R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT];
+        // NOTE(k): geo3d renderpass use multiple pipelines
+        struct
+        {
+            R_Vulkan_Pipeline debug[R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT];
+            R_Vulkan_Pipeline forward[R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT];
+        } geo3d;
         R_Vulkan_Pipeline geo3d_composite;
         R_Vulkan_Pipeline finalize;
     } pipeline;
@@ -310,8 +314,8 @@ struct R_Vulkan_Bag {
 
     R_Vulkan_Image         stage_color_image;
     R_Vulkan_DescriptorSet stage_color_ds;
-    R_Vulkan_Image         geo3d_id_image;
-    R_Vulkan_Buffer        geo3d_id_cpu;
+    R_Vulkan_Image         stage_id_image;
+    R_Vulkan_Buffer        stage_id_cpu;
     R_Vulkan_Image         geo3d_color_image;
     R_Vulkan_DescriptorSet geo3d_color_ds;
     R_Vulkan_Image         geo3d_normal_depth_image;
@@ -397,7 +401,7 @@ internal S32                      r_vulkan_memory_index_from_type_filer(U32 type
 // internal ID3D11Buffer *r_vulkan_instance_buffer_from_size(U64 size);
 // internal void r_usage_access_flags_from_resource_kind(R_ResourceKind kind, D3D11_USAGE *out_vulkan_usage, UINT *out_cpu_access_flags);
 internal void                     r_vulkan_format_for_swapchain(VkSurfaceFormatKHR *formats, U64 count, VkFormat *format, VkColorSpaceKHR *color_space);
-internal VkFormat                 r_vulkan_dep_format();
+internal VkFormat                 r_vulkan_dep_format_optimal();
 internal void                     r_vulkan_surface_update(R_Vulkan_Surface *surface);
 internal R_Vulkan_Bag             *r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *old_bag);
 internal R_Vulkan_Swapchain       r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format, VkColorSpaceKHR color_space, R_Vulkan_Swapchain *old);
@@ -413,28 +417,19 @@ internal VKAPI_ATTR               VkBool32 VKAPI_CALL debug_callback(VkDebugUtil
 internal VkFence                  r_vulkan_fence(VkDevice device);
 internal VkSemaphore              r_vulkan_semaphore(VkDevice device);
 internal void                     r_vulkan_cmd_begin(VkCommandBuffer cmd_buf);
-internal void                     r_vulkan_cmd_end(VkCommandBuffer cmd_buf, VkSubmitInfo *submit_info);
-internal void                     r_vulkan_image_transition(VkImage image, VkImageLayout old_layout, VkImageLayout new_layout);
+internal void                     r_vulkan_cmd_end(VkCommandBuffer cmd_buf);
+internal void                     r_vulkan_image_transition(VkCommandBuffer cmd_buf, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout, VkPipelineStageFlags src_stage, VkAccessFlags src_access_flag, VkPipelineStageFlags dst_stage, VkAccessFlags dst_access_flag);
 internal void                     r_vulkan_descriptor_pool_alloc();
 internal VkSampler                r_vulkan_sampler2d(R_Tex2DSampleKind kind);
 
-#define WaitGfxQueue     vkQueueWaitIdle(r_vulkan_state->device.gfx_queue)
-#define CmdScope(c,s)    DeferLoop((r_vulkan_cmd_begin((c))), r_vulkan_cmd_end((c), (s)))
-// TODO(k): use seamphore to wait upon the command
-#define OneshotCmdScope(c)                                                               \
-        VkSubmitInfo ___s = {                                                            \
-                .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,                     \
-                .commandBufferCount = 1,                                                 \
-                .pCommandBuffers    = &(c)                                               \
-        };                                                                               \
-        DeferLoop((void)0, WaitGfxQueue) CmdScope((c), &(___s)) 
-#define FileReadAll(arena, fp, return_data, return_size)                                 \
-        do {                                                                             \
-                OS_Handle f = os_file_open(OS_AccessFlag_Read, (fp));                    \
-                FileProperties f_props = os_properties_from_file(f);                     \
-                *return_size = f_props.size;                                             \
-                *return_data = push_array(arena, U8, f_props.size);                      \
-                os_file_read(f, rng_1u64(0,f_props.size), *return_data);                 \
-        } while (0);
+#define CmdScope(c)    DeferLoop((r_vulkan_cmd_begin((c))), r_vulkan_cmd_end((c)))
+#define FileReadAll(arena, fp, return_data, return_size)                             \
+    do {                                                                             \
+            OS_Handle f = os_file_open(OS_AccessFlag_Read, (fp));                    \
+            FileProperties f_props = os_properties_from_file(f);                     \
+            *return_size = f_props.size;                                             \
+            *return_data = push_array(arena, U8, f_props.size);                      \
+            os_file_read(f, rng_1u64(0,f_props.size), *return_data);                 \
+    } while (0);
 
 #endif

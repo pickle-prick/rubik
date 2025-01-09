@@ -96,6 +96,9 @@ entry_point(CmdLine *cmd_line)
     RK_Scene *default_scene = rk_state->templates[0].fn();
     rk_state->active_scene = default_scene;
 
+    // Hot id
+    U64 hot_id = 0;
+
     /////////////////////////////////
     // Main game loop
 
@@ -113,7 +116,7 @@ entry_point(CmdLine *cmd_line)
         //- k: begin of frame
         ProfBegin("frame begin");
         r_begin_frame();
-        U64 id = r_window_begin_frame(window, wnd);
+        r_window_begin_frame(window, wnd);
         gpu_end_us = os_now_microseconds();
         gpu_dt_us = (gpu_end_us - gpu_start_us);
         cpu_start_us = os_now_microseconds();
@@ -128,7 +131,7 @@ entry_point(CmdLine *cmd_line)
         //~ Game frame
 
         // TODO(k): calculation of frame_dt_us may be not accurate
-        D_Bucket *d_bucket = rk_frame(rk_state->active_scene, events, frame_dt_us, id);
+        D_Bucket *d_bucket = rk_frame(rk_state->active_scene, events, frame_dt_us, hot_id);
 
         /////////////////////////////////
         //~ End of frame
@@ -137,8 +140,8 @@ entry_point(CmdLine *cmd_line)
         gpu_start_us = os_now_microseconds();
         ProfScope("submit")
         {
-            d_submit_bucket(window, wnd, d_bucket, rk_state->cursor);
-            r_window_end_frame(window, wnd);
+            d_submit_bucket(window, wnd, d_bucket);
+            hot_id = r_window_end_frame(window, wnd, rk_state->cursor);
             r_end_frame();
         }
         arena_clear(frame_arena);

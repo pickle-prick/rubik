@@ -63,9 +63,9 @@ d_begin_frame(void)
 }
 
 internal void
-d_submit_bucket(OS_Handle os_wnd, R_Handle r_window, D_Bucket *bucket, Vec2F32 ptr)
+d_submit_bucket(OS_Handle os_wnd, R_Handle r_window, D_Bucket *bucket)
 {
-    r_window_submit(os_wnd, r_window, &bucket->passes, ptr);
+    r_window_submit(os_wnd, r_window, &bucket->passes);
 }
 
 ////////////////////////////////
@@ -137,7 +137,7 @@ d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection, Vec3F32 gl
 //- k: meshes
 
 internal R_Mesh3DInst *
-d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags, R_Handle albedo_tex, Vec4F32 color_tex, Mat4x4F32 *joint_xforms, U64 joint_count, Mat4x4F32 inst_xform, U64 inst_key, B32 draw_edge)
+d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags, R_Handle albedo_tex, Vec4F32 color_tex, Mat4x4F32 *joint_xforms, U64 joint_count, Mat4x4F32 inst_xform, U64 inst_key, B32 draw_edge, B32 depth_test)
 {
     Arena *arena = d_thread_ctx->arena;
     D_Bucket *bucket = d_top_bucket();
@@ -207,6 +207,7 @@ d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo
     inst->joint_count   = joint_count;
     inst->color_texture = color_tex;
     inst->draw_edge     = draw_edge;
+    inst->depth_test    = depth_test;
     return inst;
 }
 
@@ -491,4 +492,3 @@ d_text(F_Tag font, F32 size, F32 base_align_px, F32 tab_size_px, F_RasterFlags f
     d_text_run(p, color, run);
     scratch_end(scratch);
 }
-

@@ -634,7 +634,7 @@ rk_resh_acquire_from_key(RK_Key key)
     return rk_handle_from_res(ret);
 }
 
-internal void
+internal RK_Handle
 rk_resh_acquire(RK_Handle handle)
 {
     RK_Resource *res = rk_res_from_handle(handle);
@@ -642,6 +642,7 @@ rk_resh_acquire(RK_Handle handle)
     {
         res->rc++;
     }
+    return handle;
 }
 
 internal void rk_resh_return(RK_Handle handle)
@@ -688,6 +689,23 @@ rk_handle_from_res(RK_Resource *res)
     RK_Handle ret = {0};
     ret.u64[0] = (U64)res;
     if(res) ret.u64[1] = res->generation;
+    return ret;
+}
+
+//- High-lelve Resource Allocation Functions
+
+internal RK_Handle
+rk_material_from_color(String8 name, Vec4F32 color)
+{
+    RK_Key res_key = rk_res_key_from_string(RK_ResourceKind_Material, rk_key_zero(), name);
+    RK_Handle ret = rk_resh_from_key(res_key);
+    if(rk_handle_is_zero(ret))
+    {
+        ret = rk_resh_alloc(res_key, RK_ResourceKind_Material, 0);
+        RK_Material *material = rk_res_data_from_handle(ret);
+        material->base_clr_factor = color;
+        material->name = push_str8_copy_static(name, material->name_buffer, ArrayCount(material->name_buffer));
+    }
     return ret;
 }
 
@@ -1139,10 +1157,10 @@ rk_node_equip_display_string(RK_Node* node, String8 string)
 // Node Type Functions
 
 internal RK_NodeRec
-rk_node_df(RK_Node *n, RK_Node* root, U64 sib_member_off, U64 child_member_off)
+rk_node_df(RK_Node *n, RK_Node* root, U64 sib_member_off, U64 child_member_off, B32 force_leaf)
 {
     RK_NodeRec result = {0};
-    if(*MemberFromOffset(RK_Node**, n, child_member_off) != 0)
+    if(!force_leaf && *MemberFromOffset(RK_Node**, n, child_member_off) != 0)
     {
         result.next = *MemberFromOffset(RK_Node **, n, child_member_off);
         result.push_count++;
@@ -1237,6 +1255,20 @@ rk_node_from_handle(RK_Handle handle)
     RK_Node *node = (RK_Node*)handle.u64[0];
     U64 generation = handle.u64[1];
     if(node != 0 && node->generation == generation) ret = node;
+    return ret;
+}
+
+internal B32
+rk_node_is_active(RK_Node *node)
+{
+    B32 ret = 0; 
+    RK_Scene *scene = rk_top_scene();
+    for(; node != 0 && !(node->flags & RK_NodeFlag_NavigationRoot); node = node->parent) {}
+
+    if(node && node == rk_node_from_handle(scene->active_node))
+    {
+        ret = 1;
+    }
     return ret;
 }
 
@@ -1692,7 +1724,7 @@ internal void rk_ui_inspector(void)
     Mat4x4F32 camera_xform = camera_node->fixed_xform;
 
     // unpack active node
-    RK_Node *active_node = rk_node_from_key(scene->active_key);
+    RK_Node *active_node = rk_node_from_handle(scene->active_node);
 
     typedef struct RK_Inspector_State RK_Inspector_State;
     struct RK_Inspector_State
@@ -1874,9 +1906,9 @@ internal void rk_ui_inspector(void)
                     Temp scratch = scratch_begin(0,0);
                     while(root != 0)
                     {
-                        RK_NodeRec rec = rk_node_df_pre(root, 0);
+                        RK_NodeRec rec = rk_node_df_pre(root, 0, 0);
 
-                        B32 is_active = rk_key_match(scene->active_key, root->key);
+                        B32 is_active = root == active_node;
 
                         if(row_idx >= visible_row_rng.min && row_idx <= visible_row_rng.max)
                         {
@@ -1894,7 +1926,7 @@ internal void rk_ui_inspector(void)
 
                             if(ui_clicked(label) && !is_active)
                             {
-                                rk_scene_active_key_set(scene, root->key, 0);
+                                rk_scene_active_node_set(scene, root->key, 0);
                                 inspector->last_active_row = row_idx;
                                 active_row = row_idx;
                             }
@@ -2450,17 +2482,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
     ui_set_next_rect(rk_state->window_rect);
     UI_Box *overlay = ui_build_box_from_string(UI_BoxFlag_MouseClickable|UI_BoxFlag_ClickToFocus|UI_BoxFlag_Scroll|UI_BoxFlag_DisableFocusOverlay, str8_lit("###game_overlay"));
 
-    /////////////////////////////////
-    // Update hot/active key
-    {
-        rk_scene_hot_key_set(scene, rk_key_make(hot_key), 1);
-        if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
-        {
-            rk_scene_active_key_set(scene, scene->hot_key, 0);
-        }
-    }
-
-    RK_Node *active_node = rk_node_from_key(scene->active_key);
+    RK_Node *active_node = rk_node_from_handle(scene->active_node);
 
     /////////////////////////////////
     //~ Start geo3d pass
@@ -2516,12 +2538,13 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
         RK_Node *node = rk_node_from_handle(scene->root);
         while(node != 0)
         {
-            RK_NodeRec rec = rk_node_df_pre(node, 0);
+            B32 force_leaf = !!(node->flags & RK_NodeFlag_Hidden);
+            RK_NodeRec rec = rk_node_df_pre(node, 0, force_leaf);
             RK_Node *parent = node->parent;
 
             for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
             {
-                fn->f(node, scene, os_events, rk_state->dt_sec);
+                fn->f(node, scene, os_events, rk_state->dt_sec, projection_m, view_m);
             }
 
             D_BucketScope(rk_state->bucket_geo3d)
@@ -2652,7 +2675,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 }
 
                 // Draw mesh(3d/2d)
-                if(node->type_flags & RK_NodeTypeFlag_MeshInstance3D)
+                if(node->type_flags & RK_NodeTypeFlag_MeshInstance3D && !(node->flags & RK_NodeFlag_Hidden))
                 {
                     RK_MeshInstance3D *mesh_inst3d = node->mesh_inst3d;
                     RK_Mesh *mesh = rk_res_data_from_handle(mesh_inst3d->mesh);
@@ -2704,11 +2727,11 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 
                     if(mesh != 0)
                     {
-                        B32 draw_border = hot_key == node->key.u64[0];
+                        B32 draw_edge = rk_node_is_active(node);
                         R_Mesh3DInst *inst = d_mesh(mesh->vertices, mesh->indices, mesh->topology,
                                                     polygon_mode, R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, albedo_tex, clr_tex,
                                                     joint_xforms, joint_count,
-                                                    node->fixed_xform, node->key.u64[0], draw_border);
+                                                    node->fixed_xform, node->key.u64[0], draw_edge, !mesh_inst3d->disable_depth);
                     }
                     else
                     {
@@ -2729,86 +2752,16 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
     // NOTE(k): there could be ui elements within node update
     rk_state->sig = ui_signal_from_box(overlay);
 
-    // Gizmos3D dragging
-    // if(active_node != 0 && (active_node->type_flags & RK_NodeTypeFlag_Node3D))
-    // {
-    //     if(rk_state->sig.f & UI_SignalFlag_LeftDragging && (rk_state->active_key.u64[0] == RK_SpecialKeyKind_GizmosIhat || rk_state->active_key.u64[0] == RK_SpecialKeyKind_GizmosJhat || scene->active_key.u64[0] == RK_SpecialKeyKind_GizmosKhat))
-    //     {
-    //         RK_Transform3D *transform = &active_node->node3d->transform;
-
-    //         typedef struct RK_Gizmos3DDraggingData RK_Gizmos3DDraggingData;
-    //         struct RK_Gizmos3DDraggingData
-    //         {
-    //             Vec3F32 start_direction;
-    //             RK_Transform3D start_transform;
-    //             Vec2F32 projected_direction; // for moving along ijk
-    //         };
-
-    //         if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
-    //         {
-    //             Vec3F32 i,j,k;
-    //             rk_ijk_from_matrix(gizmos_xform,&i,&j,&k);
-    //             Mat4x4F32 gizmos_xform = active_node->fixed_xform;
-    //             Vec4F32 gizmos_origin = v4f32(gizmos_xform.v[3][0], gizmos_xform.v[3][1], gizmos_xform.v[3][2], 1.0);
-
-    //             RK_Gizmos3DDraggingData drag_data = {0};
-    //             drag_data.start_transform = *transform;
-    //             switch(hot_key)
-    //             {
-    //                 default: {InvalidPath;}break;
-    //                 case RK_SpecialKeyKind_GizmosIhat: {drag_data.start_direction = i;}break;
-    //                 case RK_SpecialKeyKind_GizmosJhat: {drag_data.start_direction = j;}break;
-    //                 case RK_SpecialKeyKind_GizmosKhat: {drag_data.start_direction = k;}break;
-    //             }
-    //             Mat4x4F32 xform = mul_4x4f32(geo3d_pass->projection, geo3d_pass->view);
-    //             Vec4F32 dir = v4f32(drag_data.start_direction.x,
-    //                                 drag_data.start_direction.y,
-    //                                 drag_data.start_direction.z,
-    //                                 0.0);
-
-    //             Vec2F32 screen_dim = rk_state->window_dim;
-    //             Vec4F32 projected_start = mat_4x4f32_transform_4f32(xform, gizmos_origin);
-    //             if(projected_start.w != 0)
-    //             {
-    //                 projected_start.x /= projected_start.w;
-    //                 projected_start.y /= projected_start.w;
-    //             }
-    //             // vulkan ndc space to screen space
-    //             projected_start.x += 1.0;
-    //             projected_start.x *= (screen_dim.x/2.0f);
-    //             projected_start.y += 1.0;
-    //             projected_start.y *= (screen_dim.y/2.0f);
-    //             Vec4F32 projected_end = mat_4x4f32_transform_4f32(xform, add_4f32(gizmos_origin, dir));
-    //             if(projected_end.w != 0)
-    //             {
-    //                 projected_end.x /= projected_end.w;
-    //                 projected_end.y /= projected_end.w;
-    //             }
-    //             // vulkan ndc space to screen space
-    //             projected_end.x += 1.0;
-    //             projected_end.x *= (screen_dim.x/2.0f);
-    //             projected_end.y += 1.0;
-    //             projected_end.y *= (screen_dim.y/2.0f);
-
-    //             drag_data.projected_direction = sub_2f32(v2f32(projected_end.x, projected_end.y), v2f32(projected_start.x, projected_start.y));
-    //             ui_store_drag_struct(&drag_data);
-    //         }
-
-    //         // TODO(k): dragging still fell a bit weird
-
-    //         RK_Gizmos3DDraggingData *drag_data = ui_get_drag_struct(RK_Gizmos3DDraggingData);
-    //         Vec2F32 delta = ui_drag_delta();
-    //         // TODO: negating direction could cause rapid changes on the position, we would want to avoid that 
-    //         F32 scale = 0;
-    //         Vec2F32 projected_dir = drag_data->projected_direction;
-    //         if((delta.x+delta.y) != 0)
-    //         {
-    //             scale = dot_2f32(delta, normalize_2f32(projected_dir)) / length_2f32(projected_dir);
-    //         }
-    //         Vec3F32 position_delta = scale_3f32(drag_data->start_direction, scale);
-    //         transform->position = add_3f32(drag_data->start_transform.position, position_delta);
-    //     }
-    // }
+    /////////////////////////////////
+    // Update hot/active key
+    {
+        scene->hot_key = rk_key_make(hot_key);
+        if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
+        {
+            scene->active_key = scene->hot_key;
+            rk_scene_active_node_set(scene, scene->active_key, 1);
+        }
+    }
 
     /////////////////////////////////
     // handle cursors
@@ -3001,36 +2954,17 @@ rk_scene_active_camera_set(RK_Scene *s, RK_Node *camera_node)
 }
 
 internal void
-rk_scene_hot_key_set(RK_Scene *s, RK_Key key, B32 only_navigation_root)
+rk_scene_active_node_set(RK_Scene *s, RK_Key key, B32 only_navigation_root)
 {
-    RK_Key key_to_set = key;
+    RK_Node *node = 0;
     if(only_navigation_root)
     {
-        RK_Node *node = rk_node_from_key(key);
-        key_to_set = rk_key_zero();
+        node = rk_node_from_key(key);
         for(; node != 0 && !(node->flags & RK_NodeFlag_NavigationRoot); node = node->parent) {}
-        if(node)
-        {
-            key_to_set = node->key;
-        }
     }
-    s->hot_key = key_to_set;
-}
 
-internal void
-rk_scene_active_key_set(RK_Scene *s, RK_Key key, B32 only_navigation_root)
-{
-
-    RK_Key key_to_set = key;
-    if(only_navigation_root)
+    if(node == 0 || !(node->flags & RK_NodeFlag_Gizmos))
     {
-        RK_Node *node = rk_node_from_key(key);
-        key_to_set = rk_key_zero();
-        for(; node != 0 && !(node->flags & RK_NodeFlag_NavigationRoot); node = node->parent) {}
-        if(node)
-        {
-            key_to_set = node->key;
-        }
+        s->active_node = rk_handle_from_node(node);
     }
-    s->active_key = key_to_set;
 }

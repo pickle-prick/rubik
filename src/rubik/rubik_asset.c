@@ -1074,10 +1074,9 @@ rk_mesh_primitive_cylinder(Arena *arena, F32 radius, F32 height, U64 radial_segm
 internal void
 rk_mesh_primitive_capsule(Arena *arena, F32 radius, F32 height, U64 radial_segments, U64 rings, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
 {
-    U64 i,j,prevrow,thisrow,vertex_idx,indice_idx;
-    F32 x,y,z,u,v,w,vertex_count,indice_count;
+    U64 i,j,prevrow,thisrow,vertex_idx,indice_idx,vertex_count,indice_count;
+    F32 x,y,z,u,v,w;
 
-    // TODO: fix it
     vertex_count = (rings+2)*(radial_segments+1)*3;
     indice_count = (rings+1)*radial_segments*6*3;
 
@@ -1212,6 +1211,71 @@ rk_mesh_primitive_capsule(Arena *arena, F32 radius, F32 height, U64 radial_segme
 
         prevrow = thisrow;
         thisrow = vertex_idx;
+    }
+
+    Assert(vertex_count == vertex_idx);
+    Assert(indice_count == indice_idx);
+    *vertices_out = vertices;
+    *vertices_count_out = vertex_count;
+    *indices_out = indices;
+    *indices_count_out = indice_count;
+}
+
+internal void
+rk_mesh_primitive_torus(Arena *arena, F32 inner_radius, F32 outer_radius, U64 rings, U64 ring_segments, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
+{
+    U64 vertex_count,indice_count,vertex_idx,indice_idx;
+
+    vertex_count = (rings+1) * (ring_segments+1); 
+    indice_count = rings * ring_segments * 6;
+    vertex_idx = 0;
+    indice_idx = 0;
+    R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
+    U32 *indices       = push_array(arena, U32, indice_count);
+
+    F32 min_radius = inner_radius;
+    F32 max_radius = outer_radius;
+    if(min_radius > max_radius)
+    {
+        Swap(F32, min_radius, max_radius);
+    }
+    F32 radius = (max_radius-min_radius) * 0.5;
+
+    for(U64 i = 0; i < (rings+1); i++)
+    {
+        U64 prevrow = (i-1) * (ring_segments + 1);
+        U64 thisrow = i * (ring_segments+1);
+        F32 inci = (F32)i / rings;
+        F32 angi = inci * tau32;
+
+        Vec2F32 normali = (i == rings) ? v2f32(0.f, -1.f) : v2f32(-sinf(angi), -cosf(angi));
+
+        for(U64 j = 0; j < (ring_segments+1); j++)
+        {
+            F32 incj = (F32)j / ring_segments;
+            F32 angj = incj * tau32;
+
+            Vec2F32 normalj = (j == ring_segments) ? v2f32(-1.f,0.f) : v2f32(-cosf(angj), sinf(angj));
+            Vec2F32 normalk = add_2f32(scale_2f32(normalj,radius), v2f32(min_radius+radius, 0));
+
+            R_Vertex vertex = {0};
+            vertex.pos = v3f32(normali.x * normalk.x, normalk.y, normali.y * normalk.x);
+            vertex.nor = v3f32(normali.x * normalj.x, normalj.y, normali.y * normalj.x);
+            vertex.tan = v3f32(normali.y, 0.f, -normali.x);
+            vertex.tex = v2f32(inci, incj);
+            vertices[vertex_idx++] = vertex;
+
+            if(i > 0 && j > 0)
+            {
+                indices[indice_idx++] = thisrow + j - 1;
+                indices[indice_idx++] = prevrow + j - 1;
+                indices[indice_idx++] = prevrow + j;
+
+                indices[indice_idx++] = thisrow + j - 1;
+                indices[indice_idx++] = prevrow + j;
+                indices[indice_idx++] = thisrow + j;
+            }
+        }
     }
 
     Assert(vertex_count == vertex_idx);
@@ -1476,6 +1540,56 @@ rk_capsule_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64
             mesh->src.cylinder_primitive.height = height;
             mesh->src.cylinder_primitive.radial_segments = radial_segments;
             mesh->src.cylinder_primitive.rings = rings;
+            scratch_end(scratch);
+        }
+    }
+
+    RK_Node *ret = rk_build_mesh_inst3d_from_string(0, 0, string);
+    ret->mesh_inst3d->mesh = mesh_res;
+    return ret;
+}
+
+internal RK_Node *
+rk_torus_node(String8 string, F32 inner_radius, F32 outer_radius, U64 rings, U64 ring_segments)
+{
+    RK_Key res_key;
+    {
+        F64 inner_radius_f64 = inner_radius;
+        F64 outer_radius_f64 = outer_radius;
+        U64 hash_part[] =
+        {
+            (U64)RK_MeshSourceKind_CapsulePrimitive,
+            *(U64*)&inner_radius_f64,
+            *(U64*)&outer_radius_f64,
+            rings,
+            ring_segments,
+        };
+        res_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
+    }
+
+    RK_Handle mesh_res = rk_resh_acquire_from_key(res_key);
+    if(rk_handle_is_zero(mesh_res))
+    {
+        mesh_res = rk_resh_alloc(res_key, RK_ResourceKind_Mesh, 1);
+        RK_Mesh *mesh = rk_res_data_from_handle(mesh_res);
+        {
+            Temp scratch = scratch_begin(0,0);
+            R_Vertex *vertices;
+            U64 vertex_count;
+            U32 *indices;
+            U64 indice_count;
+            rk_mesh_primitive_torus(scratch.arena, inner_radius, outer_radius, rings, ring_segments, &vertices, &vertex_count, &indices, &indice_count);
+
+            mesh->topology = R_GeoTopologyKind_Triangles;
+            mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertex_count, vertices);
+            mesh->vertex_count = vertex_count;
+            mesh->indices = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, indices);
+            mesh->indice_count = indice_count;
+            mesh->src_kind = RK_MeshSourceKind_TorusPrimitive;
+            mesh->src.torus_primitive.inner_radius = inner_radius;
+            mesh->src.torus_primitive.outer_radius = outer_radius;
+            mesh->src.torus_primitive.rings = rings;
+            mesh->src.torus_primitive.ring_segments = ring_segments;
             scratch_end(scratch);
         }
     }
