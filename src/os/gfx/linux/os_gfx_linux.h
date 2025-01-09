@@ -28,6 +28,7 @@ struct OS_LNX_Window
     XID counter_xid;
     U64 counter_value;
     B32 focus_out;
+    Vec2F32 client_dim;
 };
 
 ////////////////////////////////

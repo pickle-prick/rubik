@@ -11,10 +11,10 @@
 // waiting a lot, adding frames of latency Generally extra latency isn't desired
 #define MAX_FRAMES_IN_FLIGHT 2
 
-#define VK_Assert(result, message) \
+#define VK_Assert(result) \
     do { \
-        if ((result) != VK_SUCCESS) { \
-            fprintf(stderr, "[VK_ERROR] in (%s)(%s:%d): %s\n", __FUNCTION__, __FILE__, __LINE__, message); \
+        if((result) != VK_SUCCESS) { \
+            fprintf(stderr, "[VK_ERROR] [CODE: %d] in (%s)(%s:%d)\n", result, __FUNCTION__, __FILE__, __LINE__); \
             __builtin_trap(); \
             exit(EXIT_FAILURE); \
         } \
@@ -74,7 +74,8 @@ struct R_Vulkan_Uniforms_Mesh
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ Enums
 
-typedef enum R_Vulkan_VShadKind {
+typedef enum R_Vulkan_VShadKind
+{
     R_Vulkan_VShadKind_Rect,
     // R_Vulkan_VShadKind_Blur,
     R_Vulkan_VShadKind_Geo3dDebug,
@@ -84,7 +85,8 @@ typedef enum R_Vulkan_VShadKind {
     R_Vulkan_VShadKind_COUNT,
 } R_Vulkan_VShadKind;
 
-typedef enum R_Vulkan_FShadKind {
+typedef enum R_Vulkan_FShadKind
+{
     R_Vulkan_FShadKind_Rect,
     // R_Vulkan_FShadKind_Blur,
     R_Vulkan_FShadKind_Geo3dDebug,
@@ -94,19 +96,22 @@ typedef enum R_Vulkan_FShadKind {
     R_Vulkan_FShadKind_COUNT,
 } R_Vulkan_FShadKind;
 
-typedef enum R_Vulkan_UniformTypeKind {
+typedef enum R_Vulkan_UniformTypeKind
+{
     R_Vulkan_UniformTypeKind_Rect,
     // R_Vulkan_UniformTypeKind_Blur,
     R_Vulkan_UniformTypeKind_Geo3d,
     R_Vulkan_UniformTypeKind_COUNT,
 } R_Vulkan_UniformTypeKind;
 
-typedef enum R_Vulkan_StorageTypeKind {
+typedef enum R_Vulkan_StorageTypeKind
+{
     R_Vulkan_StorageTypeKind_Geo3d,
     R_Vulkan_StorageTypeKind_COUNT,
 } R_Vulkan_StorageTypeKind;
 
-typedef enum R_Vulkan_DescriptorSetKind{
+typedef enum R_Vulkan_DescriptorSetKind
+{
     R_Vulkan_DescriptorSetKind_UBO_Rect,
     R_Vulkan_DescriptorSetKind_UBO_Geo3d,
     R_Vulkan_DescriptorSetKind_Storage_Geo3d,
@@ -114,7 +119,8 @@ typedef enum R_Vulkan_DescriptorSetKind{
     R_Vulkan_DescriptorSetKind_COUNT,
 } R_Vulkan_DescriptorSetKind;
 
-typedef enum R_Vulkan_PipelineKind {
+typedef enum R_Vulkan_PipelineKind
+{
     R_Vulkan_PipelineKind_Rect,
     // R_Vulkan_PipelineKind_Blur,
     R_Vulkan_PipelineKind_Geo3dDebug,
@@ -124,7 +130,8 @@ typedef enum R_Vulkan_PipelineKind {
     R_Vulkan_PipelineKind_COUNT,
 } R_Vulkan_PipelineKind;
 
-typedef enum R_Vulkan_RenderPassKind {
+typedef enum R_Vulkan_RenderPassKind
+{
     R_Vulkan_RenderPassKind_Rect,
     // R_Vulkan_RenderPassKind_Blur,
     R_Vulkan_RenderPassKind_Geo3d,
@@ -136,7 +143,8 @@ typedef enum R_Vulkan_RenderPassKind {
 // Vulkan
 #define MAX_SURFACE_FORMAT_COUNT 9
 #define MAX_SURFACE_PRESENT_MODE_COUNT 9
-typedef struct {
+typedef struct
+{
     VkSurfaceKHR             h;
     VkSurfaceCapabilitiesKHR caps;
 
@@ -157,7 +165,8 @@ typedef struct
 } R_Vulkan_Image;
 
 #define MAX_IMAGE_COUNT 6
-typedef struct {
+typedef struct
+{
     VkSwapchainKHR       h;
     VkExtent2D           extent;
     VkFormat             format;
@@ -168,7 +177,8 @@ typedef struct {
     VkImageView          image_views[MAX_IMAGE_COUNT];
 } R_Vulkan_Swapchain;
 
-typedef struct {
+typedef struct
+{
     VkPhysicalDevice                 h;
     VkPhysicalDeviceProperties       properties;
     VkPhysicalDeviceMemoryProperties mem_properties;
@@ -178,21 +188,24 @@ typedef struct {
     VkFormat                         depth_image_format;
 } R_Vulkan_GPU;
 
-typedef struct {
+typedef struct
+{
     VkDevice h;
     VkQueue  gfx_queue;
     VkQueue  prest_queue;
 } R_Vulkan_Device;
 
 typedef struct R_Vulkan_Pipeline R_Vulkan_Pipeline;
-struct R_Vulkan_Pipeline {
+struct R_Vulkan_Pipeline
+{
     R_Vulkan_PipelineKind kind;
     VkPipeline            h;
     VkPipelineLayout      layout;
 };
 
 typedef struct R_Vulkan_Buffer R_Vulkan_Buffer;
-struct R_Vulkan_Buffer {
+struct R_Vulkan_Buffer
+{
     R_Vulkan_Buffer *next;
     U64             generation;
 
@@ -206,14 +219,16 @@ struct R_Vulkan_Buffer {
 };
 
 typedef struct R_Vulkan_DescriptorSetLayout R_Vulkan_DescriptorSetLayout ;
-struct R_Vulkan_DescriptorSetLayout {
+struct R_Vulkan_DescriptorSetLayout
+{
     VkDescriptorSetLayoutBinding *bindings;
     U64                          binding_count;
     VkDescriptorSetLayout        h;
 };
 
 typedef struct R_Vulkan_DescriptorSetPool R_Vulkan_DescriptorSetPool;
-struct R_Vulkan_DescriptorSetPool {
+struct R_Vulkan_DescriptorSetPool
+{
     R_Vulkan_DescriptorSetPool *next;
     R_Vulkan_DescriptorSetKind kind;
 
@@ -223,11 +238,12 @@ struct R_Vulkan_DescriptorSetPool {
 };
 
 typedef struct R_Vulkan_RenderPass R_Vulkan_RenderPass;
-struct R_Vulkan_RenderPass {
+struct R_Vulkan_RenderPass
+{
     VkRenderPass h;
 
-    union {
-        R_Vulkan_Pipeline first;
+    union
+    {
         R_Vulkan_Pipeline rect;
         // NOTE(k): geo3d renderpass use multiple pipelines
         struct
@@ -237,24 +253,29 @@ struct R_Vulkan_RenderPass {
         } geo3d;
         R_Vulkan_Pipeline geo3d_composite;
         R_Vulkan_Pipeline finalize;
-    } pipeline;
+
+        R_Vulkan_Pipeline v[R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT * 2];
+    } pipelines;
+    U64 pipeline_count;
 };
 
 typedef struct R_Vulkan_RenderPassGroup R_Vulkan_RenderPassGroup;
-struct R_Vulkan_RenderPassGroup {
-    U64                      generation;
+struct R_Vulkan_RenderPassGroup
+{
     R_Vulkan_RenderPassGroup *next;
     R_Vulkan_RenderPass      passes[R_Vulkan_RenderPassKind_COUNT];
 };
 
 typedef struct R_Vulkan_DescriptorSet R_Vulkan_DescriptorSet;
-struct R_Vulkan_DescriptorSet {
+struct R_Vulkan_DescriptorSet
+{
     VkDescriptorSet  h;
     R_Vulkan_DescriptorSetPool *pool;
 };
 
 typedef struct R_Vulkan_UniformBuffer R_Vulkan_UniformBuffer;
-struct R_Vulkan_UniformBuffer {
+struct R_Vulkan_UniformBuffer
+{
     R_Vulkan_Buffer        buffer;
     R_Vulkan_DescriptorSet set;
     U64                    unit_count;
@@ -262,7 +283,8 @@ struct R_Vulkan_UniformBuffer {
 };
 
 typedef struct R_Vulkan_StorageBuffer R_Vulkan_StorageBuffer;
-struct R_Vulkan_StorageBuffer {
+struct R_Vulkan_StorageBuffer
+{
     R_Vulkan_Buffer        buffer;
     R_Vulkan_DescriptorSet set;
     U64                    unit_count;
@@ -270,7 +292,8 @@ struct R_Vulkan_StorageBuffer {
 };
 
 typedef struct R_Vulkan_Tex2D R_Vulkan_Tex2D;
-struct R_Vulkan_Tex2D {
+struct R_Vulkan_Tex2D
+{
     R_Vulkan_Tex2D         *next;
     U64                    generation;
 
@@ -280,32 +303,10 @@ struct R_Vulkan_Tex2D {
     R_Tex2DSampleKind      sample_kind;
 };
 
-typedef struct {
-    U64                    bag_gen;
-    U64                    rendpass_grp_gen;
-
-    VkSemaphore            img_acq_sem;
-    VkSemaphore            rend_comp_sem;
-    VkFence                inflt_fence;
-    U32                    img_idx;
-    VkCommandBuffer        cmd_buf;
-
-    // UBO buffer and descriptor set
-    R_Vulkan_UniformBuffer uniform_buffers[R_Vulkan_UniformTypeKind_COUNT];
-
-    // Storage buffer and descriptor set
-    R_Vulkan_StorageBuffer storage_buffers[R_Vulkan_StorageTypeKind_COUNT];
-
-    // Instance buffer
-    R_Vulkan_Buffer        inst_buffer_rect;
-    R_Vulkan_Buffer        inst_buffer_mesh;
-
-} R_Vulkan_Frame;
-
 // TODO(k): find a better name
 typedef struct R_Vulkan_Bag R_Vulkan_Bag;
-struct R_Vulkan_Bag {
-    U64                    generation;
+struct R_Vulkan_Bag
+{
     R_Vulkan_Bag           *next;
 
     // NOTE(k): If swapchain image format changed, we would need to recreate renderpass and pipeline
@@ -322,14 +323,44 @@ struct R_Vulkan_Bag {
     R_Vulkan_DescriptorSet geo3d_normal_depth_ds;
     R_Vulkan_Image         geo3d_depth_image;
 
+    // NOTE(k): last renderpass (finalize) contains mutiple framebuffer (count is equal to swapchain.image_count)
     VkFramebuffer          framebuffers[R_Vulkan_RenderPassKind_COUNT + MAX_IMAGE_COUNT - 1];
 };
 
+typedef struct
+{
+    VkSemaphore              img_acq_sem;
+    VkSemaphore              rend_comp_sem;
+    VkFence                  inflt_fence;
+    U32                      img_idx;
+    VkCommandBuffer          cmd_buf;
+
+    // ref
+    R_Vulkan_Bag             *bag_ref;
+    R_Vulkan_RenderPassGroup *rendpass_grp_ref;
+
+    // UBO buffer and descriptor set
+    R_Vulkan_UniformBuffer   uniform_buffers[R_Vulkan_UniformTypeKind_COUNT];
+
+    // Storage buffer and descriptor set
+    R_Vulkan_StorageBuffer   storage_buffers[R_Vulkan_StorageTypeKind_COUNT];
+
+    // Instance buffer
+    R_Vulkan_Buffer          inst_buffer_rect;
+    R_Vulkan_Buffer          inst_buffer_mesh;
+
+} R_Vulkan_Frame;
+
+
 typedef struct R_Vulkan_Window R_Vulkan_Window;
-struct R_Vulkan_Window {
+struct R_Vulkan_Window
+{
     Arena                    *arena;
-    R_Vulkan_Window          *next;
+
+    // allocation link
     U64                      generation;
+    R_Vulkan_Window          *next;
+
     OS_Handle                os_wnd;
 
     R_Vulkan_Surface         surface;
@@ -350,7 +381,8 @@ struct R_Vulkan_Window {
 };
 
 typedef struct R_Vulkan_State R_Vulkan_State;
-struct R_Vulkan_State {
+struct R_Vulkan_State
+{
     bool                                enable_validation_layer;
     VkDebugUtilsMessengerEXT            debug_messenger;
     // Dynamic loaded functions

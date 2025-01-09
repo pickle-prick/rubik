@@ -1,5 +1,3 @@
-// TODO: gpu memory leak when window resized
-
 internal void
 r_init(const char* app_name, OS_Handle window, bool debug)
 {
@@ -90,9 +88,9 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     {
         layer_count = 1;
         U32 count;
-        VK_Assert(vkEnumerateInstanceLayerProperties(&count, NULL), "failed to enumerate instance layer properties");
+        VK_Assert(vkEnumerateInstanceLayerProperties(&count, NULL));
         VkLayerProperties available_layers[count];
-        VK_Assert(vkEnumerateInstanceLayerProperties(&count, available_layers), "failed to enumerate instance layer properties");
+        VK_Assert(vkEnumerateInstanceLayerProperties(&count, available_layers));
 
         bool support_validation_layer;
         for(U64 i = 0; i < count; i++)
@@ -103,7 +101,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
                 break;
             }
         }
-        // TODO(@k): handle it later
+        // TODO(k): handle it later
         // Assert(support_validation_layer);
     }
 
@@ -152,7 +150,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             create_info.pNext               = &debug_messenger_create_info;
         }
 
-        VK_Assert(vkCreateInstance(&create_info, NULL, &r_vulkan_state->instance), "Failed to create instance");
+        VK_Assert(vkCreateInstance(&create_info, NULL, &r_vulkan_state->instance));
 
         // This struct should be passed to the vkCreateDebugUtilsMessengerEXT function to create the VkDebugUtilsMessengerEXT object
         // Unfortunately, because this function is an extension function, it is not automatically loaded, we have to load it ourself
@@ -163,7 +161,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         AssertAlways(r_vulkan_state->vkDestroyDebugUtilsMessengerEXT != NULL);
 
         /* VK_ERROR_EXTENSION_NOT_PRESENT */
-        VK_Assert(vkCreateDebugUtilsMessengerEXT(r_vulkan_state->instance, &debug_messenger_create_info, NULL, &r_vulkan_state->debug_messenger), "Failed to create debug_messenger");
+        VK_Assert(vkCreateDebugUtilsMessengerEXT(r_vulkan_state->instance, &debug_messenger_create_info, NULL, &r_vulkan_state->debug_messenger));
     }
 
     /////////////////////////////////////////////////////////////////////////////////
@@ -357,7 +355,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
 
             // Note that it's very likely that these end up being the same queue family after all
             //      but throughout the program we will treat them as if they were seprate queues for a uniform approach.
-            // TODO(@k): Nevertheless, we would prefer a physical device that supports drawing and presentation in the same queue for improved performance.
+            // TODO(k): Nevertheless, we would prefer a physical device that supports drawing and presentation in the same queue for improved performance.
             if(has_graphic_queue_family && has_present_queue_family) break;
 
         }
@@ -426,7 +424,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             create_info.enabledLayerCount   = layer_count;
             create_info.ppEnabledLayerNames = layers;
         }
-        VK_Assert(vkCreateDevice(r_vulkan_state->gpu.h, &create_info, NULL, &r_vulkan_state->device.h), "Failed to create logical device");
+        VK_Assert(vkCreateDevice(r_vulkan_state->gpu.h, &create_info, NULL, &r_vulkan_state->device.h));
 
         // Retrieving queue handles
         // The queues are automatically created along with the logical device, but we don't have a handle to itnerface with them yet
@@ -453,7 +451,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             // There are two possbile flags for command pools
             // 1. VK_COMMAND_POOL_CREATE_TRANSIENT_BIT: hint that command buffers are re-recorded with new commands very often (may change memory allocation behavior)
             // 2. VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT: allow command buffers to be re-recorded individually, without this flag they all have to be reset together
-            // TODO(@k): this part don't make too much sense to me
+            // TODO(k): this part don't make too much sense to me
             // We will be recording a command buffer every frame, so we want to be able to reset and re-record over it
             // Thus, we need to set the VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT flag bit for our command pool
             .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
@@ -462,7 +460,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         // Command buffers are executed by submitting them on one of the device queues, like the graphcis and presentation queues we retrieved
         // Each command pool can only allocate command buffers that are submitted on a single type of queue
         // We're going to record commands for drawing, which is why we've chosen the graphcis queue family
-        VK_Assert(vkCreateCommandPool(r_vulkan_state->device.h, &create_info, NULL, &r_vulkan_state->cmd_pool), "Failed to create command pool");
+        VK_Assert(vkCreateCommandPool(r_vulkan_state->device.h, &create_info, NULL, &r_vulkan_state->cmd_pool));
 
         VkCommandBufferAllocateInfo alloc_info = {
             .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -471,7 +469,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             .commandBufferCount = 1,
         };
 
-        VK_Assert(vkAllocateCommandBuffers(r_vulkan_state->device.h, &alloc_info, &r_vulkan_state->oneshot_cmd_buf), "Failed to allocate command buffer");
+        VK_Assert(vkAllocateCommandBuffers(r_vulkan_state->device.h, &alloc_info, &r_vulkan_state->oneshot_cmd_buf));
     }
 
     // Create samplers
@@ -511,7 +509,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             .codeSize = vshad_size,
             .pCode    = (U32 *)vshad_code,
         };
-        VK_Assert(vkCreateShaderModule(r_vulkan_state->device.h, &create_info, NULL, vshad_mo), "Failed to create shader module");
+        VK_Assert(vkCreateShaderModule(r_vulkan_state->device.h, &create_info, NULL, vshad_mo));
     }
 
     for(U64 kind = 0; kind < R_Vulkan_FShadKind_COUNT; kind++)
@@ -536,7 +534,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             .codeSize = fshad_size,
             .pCode    = (U32 *)fshad_code,
         };
-        VK_Assert(vkCreateShaderModule(r_vulkan_state->device.h, &create_info, NULL, fshad_mo), "Failed to create shader module");
+        VK_Assert(vkCreateShaderModule(r_vulkan_state->device.h, &create_info, NULL, fshad_mo));
     }
 
     // Create set layouts
@@ -566,7 +564,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
         create_info.bindingCount = 1;
         create_info.pBindings    = bindings;
-        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h), "Failed to create descriptor set layout");
+        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
 
     }
     // R_Vulkan_DescriptorSetKind_UBO_Mesh
@@ -585,7 +583,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
         create_info.bindingCount = 1;
         create_info.pBindings    = bindings;
-        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h), "Failed to create descriptor set layout");
+        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
     }
     // R_Vulkan_DescriptorSetKind_Storage_Mesh
     {
@@ -603,7 +601,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
         create_info.bindingCount = 1;
         create_info.pBindings    = bindings;
-        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h), "Failed to create descriptor set layout");
+        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
     }
     // R_Vulkan_DescriptorSetKind_Tex2D
     {
@@ -621,7 +619,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
         create_info.bindingCount = 1;
         create_info.pBindings    = bindings;
-        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h), "Failed to create descriptor set layout");
+        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
     }
 
     // Create backup/default texture
@@ -638,6 +636,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     scratch_end(temp);
 }
 
+// TODO(k): implement window_release
 internal R_Handle
 r_window_equip(OS_Handle wnd_handle)
 {
@@ -658,7 +657,6 @@ r_window_equip(OS_Handle wnd_handle)
     }
 
     // Fill the basic
-    window->generation++;
     window->os_wnd = wnd_handle;
 
     R_Vulkan_Surface *surface = &window->surface;
@@ -670,6 +668,7 @@ r_window_equip(OS_Handle wnd_handle)
 
     // Create renderpasses
     window->rendpass_grp = r_vulkan_rendpass_grp(window, window->bag->swapchain.format, NULL);
+    // create framebuffers for rendpass grp
     r_vulkan_rendpass_grp_submit(window->bag, window->rendpass_grp);
 
     // Command buffers for frames
@@ -685,7 +684,7 @@ r_window_equip(OS_Handle wnd_handle)
         // 2. VK_COMMAND_BUFFER_LEVEL_SECONDARY: cannot be submitted directly, but can be called from primary command buffers, useful to reuse common operations
         alloc_info.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         alloc_info.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
-        VK_Assert(vkAllocateCommandBuffers(r_vulkan_state->device.h, &alloc_info, command_buffers), "Failed to allocate command buffer");
+        VK_Assert(vkAllocateCommandBuffers(r_vulkan_state->device.h, &alloc_info, command_buffers));
 
         for(U64 i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
         {
@@ -728,7 +727,7 @@ r_window_equip(OS_Handle wnd_handle)
                 create_info.size        = MB(16);
                 create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
                 create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-                VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer->h), "Failed to create vulkan buffer");
+                VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer->h));
 
                 VkMemoryRequirements mem_requirements;
                 vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer->h, &mem_requirements);
@@ -739,10 +738,10 @@ r_window_equip(OS_Handle wnd_handle)
                 alloc_info.allocationSize = mem_requirements.size;
                 alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
                 
-                VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer->memory), "Failed to allocate buffer memory");
-                VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer->h, buffer->memory, 0), "Failed to bind buffer memory");
+                VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer->memory));
+                VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer->h, buffer->memory, 0));
                 Assert(buffer->size != 0);
-                VK_Assert(vkMapMemory(r_vulkan_state->device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped), "Failed to map buffer memory");
+                VK_Assert(vkMapMemory(r_vulkan_state->device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped));
             }
         }
     }
@@ -910,7 +909,8 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
     // *oldSwapchain*
     // With Vulkan it's possbile that your swapchain becomes invalid or unoptimized while your application is running, for example because the window
     // was resized. In that case the swapchain actually needs to be recreated from scratch and a reference to the old one must be specified in this field.
-    VkSwapchainCreateInfoKHR create_info = {
+    VkSwapchainCreateInfoKHR create_info =
+    {
         .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface          = surface->h,
         .minImageCount    = min_swapchain_image_count,
@@ -950,14 +950,14 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
         create_info.pQueueFamilyIndices   = NULL; // Optional
     }
 
-    VK_Assert(vkCreateSwapchainKHR(r_vulkan_state->device.h, &create_info, NULL, &swapchain.h), "Failed to create swapchain");
+    VK_Assert(vkCreateSwapchainKHR(r_vulkan_state->device.h, &create_info, NULL, &swapchain.h));
 
     // Retrieving the swap chain images
     // The swapchain has been created now, so all the remains is retrieving the handles of the [VkImage]s in it
     // We will reference these during rendering operations
-    VK_Assert(vkGetSwapchainImagesKHR(r_vulkan_state->device.h, swapchain.h, &swapchain.image_count, NULL), "Failed to get swapchain image");
+    VK_Assert(vkGetSwapchainImagesKHR(r_vulkan_state->device.h, swapchain.h, &swapchain.image_count, NULL));
     Assert(swapchain.image_count <= MAX_IMAGE_COUNT);
-    VK_Assert(vkGetSwapchainImagesKHR(r_vulkan_state->device.h, swapchain.h, &swapchain.image_count, swapchain.images), "Failed to get swapchain image");
+    VK_Assert(vkGetSwapchainImagesKHR(r_vulkan_state->device.h, swapchain.h, &swapchain.image_count, swapchain.images));
 
     // Create image views
     // To use any VkImage, including those in the swap chain, in the render pipeline we have to a VkImageView object
@@ -968,7 +968,8 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
     // VkImageView swapchain_image_views[swapchain_image_count];
     for(U64 i = 0; i < swapchain.image_count; i++)
     {
-        VkImageViewCreateInfo create_info = {
+        VkImageViewCreateInfo create_info =
+        {
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = swapchain.images[i],
             // The viewType and format fields specify how you the image data should be interpreted
@@ -993,7 +994,7 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
             .subresourceRange.layerCount     = 1,
         };
 
-        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &create_info, NULL, &swapchain.image_views[i]), "Failed to create image view");
+        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &create_info, NULL, &swapchain.image_views[i]));
         // Unlike images, the image views were explicitly created by us, so we need to add a similar loop to destroy them again at the end of the program
     }
     return swapchain;
@@ -1069,17 +1070,17 @@ r_vulkan_dep_format_optimal()
 internal R_Vulkan_RenderPassGroup *
 r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_RenderPassGroup *old)
 {
-    // TODO: we never freed the renderpass_grp
     R_Vulkan_RenderPassGroup *rendpass_grp = window->first_free_rendpass_grp;
-
-    U64 gen = 0;
-    if(old != 0) { gen = old->generation + 1; }
 
     if(rendpass_grp == 0)
     {
-        rendpass_grp = push_array(window->arena, R_Vulkan_RenderPassGroup, 1);
+        rendpass_grp = push_array_no_zero(window->arena, R_Vulkan_RenderPassGroup, 1);
     }
-    rendpass_grp->generation = gen;
+    else
+    {
+        SLLStackPop(window->first_free_rendpass_grp);
+    }
+    MemoryZeroStruct(rendpass_grp);
 
     for(U64 kind = 0; kind < R_Vulkan_RenderPassKind_COUNT; kind++)
     {
@@ -1207,12 +1208,13 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 create_info.pSubpasses      = subpasses;
                 create_info.dependencyCount = dep_count;
                 create_info.pDependencies   = deps;
-                VK_Assert(vkCreateRenderPass(r_vulkan_state->device.h, &create_info, NULL, &rendpass->h), "Failed to create render pass");
+                VK_Assert(vkCreateRenderPass(r_vulkan_state->device.h, &create_info, NULL, &rendpass->h));
 
                 // Create pipelines
                 R_Vulkan_Pipeline *old_p_rect = 0;
-                if(old_rendpass) {old_p_rect = &old_rendpass->pipeline.rect;};
-                rendpass->pipeline.rect = r_vulkan_pipeline(R_Vulkan_PipelineKind_Rect, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p_rect);
+                if(old_rendpass) {old_p_rect = &old_rendpass->pipelines.rect;};
+                rendpass->pipelines.rect = r_vulkan_pipeline(R_Vulkan_PipelineKind_Rect, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p_rect);
+                rendpass->pipeline_count = 1;
             }break;
             case R_Vulkan_RenderPassKind_Geo3d:
             {
@@ -1293,7 +1295,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 create_info.pSubpasses      = subpasses;
                 create_info.dependencyCount = dep_count;
                 create_info.pDependencies   = deps;
-                VK_Assert(vkCreateRenderPass(r_vulkan_state->device.h, &create_info, NULL, &rendpass->h), "Failed to create render pass");
+                VK_Assert(vkCreateRenderPass(r_vulkan_state->device.h, &create_info, NULL, &rendpass->h));
 
                 // Create pipelines (geo3d_debug + geo3d_forward)
                 // geo3d debug
@@ -1303,8 +1305,8 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                         for(U64 j = 0; j < R_GeoPolygonKind_COUNT; j++)
                         {
                             R_Vulkan_Pipeline *old_p = 0;
-                            if(old_rendpass) old_p = &old_rendpass->pipeline.geo3d.debug[i*R_GeoPolygonKind_COUNT + j];
-                            rendpass->pipeline.geo3d.debug[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_pipeline(R_Vulkan_PipelineKind_Geo3dDebug, i, j, rendpass->h, old_p);
+                            if(old_rendpass) old_p = &old_rendpass->pipelines.geo3d.debug[i*R_GeoPolygonKind_COUNT + j];
+                            rendpass->pipelines.geo3d.debug[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_pipeline(R_Vulkan_PipelineKind_Geo3dDebug, i, j, rendpass->h, old_p);
                         }
                     }
 
@@ -1316,11 +1318,12 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                         for(U64 j = 0; j < R_GeoPolygonKind_COUNT; j++)
                         {
                             R_Vulkan_Pipeline *old_p = 0;
-                            if(old_rendpass) old_p = &old_rendpass->pipeline.geo3d.forward[i*R_GeoPolygonKind_COUNT + j];
-                            rendpass->pipeline.geo3d.forward[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_pipeline(R_Vulkan_PipelineKind_Geo3dForward, i, j, rendpass->h, old_p);
+                            if(old_rendpass) old_p = &old_rendpass->pipelines.geo3d.forward[i*R_GeoPolygonKind_COUNT + j];
+                            rendpass->pipelines.geo3d.forward[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_pipeline(R_Vulkan_PipelineKind_Geo3dForward, i, j, rendpass->h, old_p);
                         }
                     }
                 }
+                rendpass->pipeline_count = R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT * 2;
             }break;
             case R_Vulkan_RenderPassKind_Geo3dComposite:
             {
@@ -1368,15 +1371,13 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 create_info.pSubpasses      = subpasses;
                 create_info.dependencyCount = dep_count;
                 create_info.pDependencies   = deps;
-                VK_Assert(vkCreateRenderPass(r_vulkan_state->device.h, &create_info, NULL, &rendpass->h), "Failed to create render pass");
+                VK_Assert(vkCreateRenderPass(r_vulkan_state->device.h, &create_info, NULL, &rendpass->h));
 
                 // Create pipelines (geo3d_composite)
-                {
-                    R_Vulkan_Pipeline *old_p = 0;
-                    if(old_rendpass) old_p = &old_rendpass->pipeline.geo3d_composite;
-                    rendpass->pipeline.geo3d_composite = r_vulkan_pipeline(R_Vulkan_PipelineKind_Geo3dComposite, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p);
-                }
-
+                R_Vulkan_Pipeline *old_p = 0;
+                if(old_rendpass) old_p = &old_rendpass->pipelines.geo3d_composite;
+                rendpass->pipelines.geo3d_composite = r_vulkan_pipeline(R_Vulkan_PipelineKind_Geo3dComposite, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p);
+                rendpass->pipeline_count = 1;
             }break;
             case R_Vulkan_RenderPassKind_Finalize:
             {
@@ -1422,12 +1423,13 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 create_info.pSubpasses      = subpasses;
                 create_info.dependencyCount = dep_count;
                 create_info.pDependencies   = deps;
-                VK_Assert(vkCreateRenderPass(r_vulkan_state->device.h, &create_info, NULL, &rendpass->h), "Failed to create render pass");
+                VK_Assert(vkCreateRenderPass(r_vulkan_state->device.h, &create_info, NULL, &rendpass->h));
 
                 // Create pipelines
                 R_Vulkan_Pipeline *old_p_finalize = 0;
-                if(old_rendpass) {old_p_finalize = &old_rendpass->pipeline.finalize;};
-                rendpass->pipeline.finalize = r_vulkan_pipeline(R_Vulkan_PipelineKind_Finalize, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p_finalize);
+                if(old_rendpass) {old_p_finalize = &old_rendpass->pipelines.finalize;};
+                rendpass->pipelines.finalize = r_vulkan_pipeline(R_Vulkan_PipelineKind_Finalize, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p_finalize);
+                rendpass->pipeline_count = 1;
             }break;
             default: {InvalidPath;}break;
         }
@@ -1441,7 +1443,7 @@ r_vulkan_semaphore(VkDevice device)
     // In current version of the VK API it doesn't actually have any required fields besides sType
     VkSemaphoreCreateInfo create_info = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     VkSemaphore sem;
-    VK_Assert(vkCreateSemaphore(device, &create_info, NULL, &sem), "Failed to create semaphore");
+    VK_Assert(vkCreateSemaphore(device, &create_info, NULL, &sem));
     return sem;
 }
 
@@ -1454,7 +1456,7 @@ r_vulkan_fence(VkDevice device)
             .flags = VK_FENCE_CREATE_SIGNALED_BIT,
     };
     VkFence fence;
-    VK_Assert(vkCreateFence(device, &create_info, NULL, &fence), "Failed to create fence");
+    VK_Assert(vkCreateFence(device, &create_info, NULL, &fence));
     return fence;
 }
 
@@ -1476,7 +1478,7 @@ r_vulkan_cmd_begin(VkCommandBuffer cmd_buf)
 
     // If the command buffer was already recorded once, then a call to vkBeginCommandBuffer will implicity reset it
     // It's not possbile to append commands to a buffer at a later time
-    VK_Assert(vkBeginCommandBuffer(cmd_buf, &begin_info), "Failed to begin command buffer");
+    VK_Assert(vkBeginCommandBuffer(cmd_buf, &begin_info));
 }
 
 internal void
@@ -1488,8 +1490,8 @@ r_vulkan_cmd_end(VkCommandBuffer cmd_buf)
         .commandBufferCount = 1,
         .pCommandBuffers = &cmd_buf,
     };
-    VK_Assert(vkEndCommandBuffer(cmd_buf), "Failed to end command buffer");
-    VK_Assert(vkQueueSubmit(r_vulkan_state->device.gfx_queue, 1, &submit_info, VK_NULL_HANDLE), "Failed to submit to queue");
+    VK_Assert(vkEndCommandBuffer(cmd_buf));
+    VK_Assert(vkQueueSubmit(r_vulkan_state->device.gfx_queue, 1, &submit_info, VK_NULL_HANDLE));
 }
 
 // Texture2D
@@ -1536,7 +1538,7 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
         create_info.size        = vk_image_size;
         create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &staging_buffer), "Failed to create vk buffer");
+        VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &staging_buffer));
 
         VkMemoryRequirements mem_requirements;
         vkGetBufferMemoryRequirements(r_vulkan_state->device.h, staging_buffer, &mem_requirements);
@@ -1546,11 +1548,11 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
         alloc_info.allocationSize = mem_requirements.size;
         alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
 
-        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &staging_memory), "Failed to allocate buffer memory");
-        VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, staging_buffer, staging_memory, 0), "Failed to bind buffer memory");
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &staging_memory));
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, staging_buffer, staging_memory, 0));
 
         void *mapped;
-        VK_Assert(vkMapMemory(r_vulkan_state->device.h, staging_memory, 0, mem_requirements.size, 0, &mapped), "Failed to map buffer memory");
+        VK_Assert(vkMapMemory(r_vulkan_state->device.h, staging_memory, 0, mem_requirements.size, 0, &mapped));
         MemoryCopy(mapped, data, vk_image_size);
     }
 
@@ -1608,7 +1610,7 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
         // Sparse images are images where only certain regions are actually backed by memory
         // If you were using a 3D texture for a voxel terrain, for example, then you could use this avoid allocating memory to storage large volumes of "air" values
         create_info.flags = 0; // Optional
-        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &texture->image.h), "Failed to create vk buffer");
+        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &texture->image.h));
 
         VkMemoryRequirements mem_requirements;
         vkGetImageMemoryRequirements(r_vulkan_state->device.h, texture->image.h, &mem_requirements);
@@ -1618,8 +1620,8 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
         alloc_info.allocationSize = mem_requirements.size;
         alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
 
-        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &texture->image.memory), "Failed to allocate buffer memory");
-        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, texture->image.h, texture->image.memory, 0), "Failed to bind buffer memory");
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &texture->image.memory));
+        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, texture->image.h, texture->image.memory, 0));
     }
 
     // Create image view
@@ -1635,7 +1637,7 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
             .subresourceRange.baseArrayLayer = 0,
             .subresourceRange.layerCount     = 1,
         };
-        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &create_info, NULL, &texture->image.view), "Failed to create image view");
+        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &create_info, NULL, &texture->image.view));
     }
 
     VkCommandBuffer cmd_buf = r_vulkan_state->oneshot_cmd_buf;
@@ -1679,7 +1681,7 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
 
     
     // Free staging buffer and memory
-    VK_Assert(vkQueueWaitIdle(r_vulkan_state->device.gfx_queue), "Failed to wait on gfx queue");
+    VK_Assert(vkQueueWaitIdle(r_vulkan_state->device.gfx_queue));
     vkDestroyBuffer(r_vulkan_state->device.h, staging_buffer, 0);
     vkUnmapMemory(r_vulkan_state->device.h, staging_memory);
     vkFreeMemory(r_vulkan_state->device.h, staging_memory, 0);
@@ -1758,7 +1760,7 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
             create_info.size        = size;
             create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
             create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &staging_buffer), "Failed to create vk buffer");
+            VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &staging_buffer));
 
             VkMemoryRequirements mem_requirements;
             vkGetBufferMemoryRequirements(r_vulkan_state->device.h, staging_buffer, &mem_requirements);
@@ -1768,11 +1770,11 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
             alloc_info.allocationSize = mem_requirements.size;
             alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
             
-            VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &staging_memory), "Failed to allocate buffer memory");
-            VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, staging_buffer, staging_memory, 0), "Failed to bind buffer memory");
+            VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &staging_memory));
+            VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, staging_buffer, staging_memory, 0));
 
             void *mapped;
-            VK_Assert(vkMapMemory(r_vulkan_state->device.h, staging_memory, 0, mem_requirements.size, 0, &mapped), "Failed to map buffer memory");
+            VK_Assert(vkMapMemory(r_vulkan_state->device.h, staging_memory, 0, mem_requirements.size, 0, &mapped));
             MemoryCopy(mapped, data, size);
             vkUnmapMemory(r_vulkan_state->device.h, staging_memory);
         }
@@ -1783,7 +1785,7 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
             create_info.size        = size;
             create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
             create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer->h), "Failed to create vk buffer");
+            VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer->h));
 
             VkMemoryRequirements mem_requirements;
             vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer->h, &mem_requirements);
@@ -1793,8 +1795,8 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
             alloc_info.allocationSize = mem_requirements.size;
             alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
 
-            VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer->memory), "Failed to allocate buffer memory");
-            VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer->h, buffer->memory, 0), "Failed to bind buffer memory");
+            VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer->memory));
+            VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer->h, buffer->memory, 0));
         }
 
         // Copy buffer
@@ -1812,8 +1814,10 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
 
             // TODO(k): we should bind a barrier here
         }
-        // TODO(k) once we have barrier, we won't need this anymore
-        VK_Assert(vkQueueWaitIdle(r_vulkan_state->device.gfx_queue), "Failed to wait on queue");
+
+        // TODO(k) it's not effecient to use vkQueueWaitIdle, maybe we could add a to_free queue, and use some sync primitive to do this
+        // index Semaphore could be a good idea
+        VK_Assert(vkQueueWaitIdle(r_vulkan_state->device.gfx_queue));
 
         // Free staging buffer and memory
         vkDestroyBuffer(r_vulkan_state->device.h, staging_buffer, NULL);
@@ -1823,11 +1827,10 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
     {
         VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         create_info.size        = size;
-        // TODO(@k): we may want to differiciate index and vertex buffer
         create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
         create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer->h), "Failed to create vk buffer");
+        VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer->h));
 
         VkMemoryRequirements mem_requirements;
         vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer->h, &mem_requirements);
@@ -1837,10 +1840,10 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
         alloc_info.allocationSize = mem_requirements.size;
         alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
 
-        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer->memory), "Failed to allocate buffer memory");
-        VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer->h, buffer->memory, 0), "Failed to bind buffer memory");
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer->memory));
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer->h, buffer->memory, 0));
         Assert(buffer->size != 0);
-        VK_Assert(vkMapMemory(r_vulkan_state->device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped), "Failed to map buffer memory");
+        VK_Assert(vkMapMemory(r_vulkan_state->device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped));
 
         if(data != 0) { MemoryCopy(buffer->mapped, data, size); }
     }
@@ -1997,7 +2000,7 @@ r_vulkan_sampler2d(R_Tex2DSampleKind kind)
     create_info.minLod     = 0.0f;
     create_info.maxLod     = 0.0f;
 
-    VK_Assert(vkCreateSampler(r_vulkan_state->device.h, &create_info, NULL, &sampler), "Failed to create sampler");
+    VK_Assert(vkCreateSampler(r_vulkan_state->device.h, &create_info, NULL, &sampler));
     // Note the sampler does not reference a VkImage anywhere
     // The sampler is a distinct object that provides an interface to extrat colors from a texture
     // It can be applied to any image you want, whether it is 1D, 2D or 3D
@@ -2685,7 +2688,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
         create_info.pPushConstantRanges    = NULL;             // Optional
 
         // The pipeline layout will be referenced throughout the program's lifetime, so we should destroy it at the end
-        VK_Assert(vkCreatePipelineLayout(r_vulkan_state->device.h, &create_info, NULL, &pipeline.layout), "Failed to create pipeline layout");
+        VK_Assert(vkCreatePipelineLayout(r_vulkan_state->device.h, &create_info, NULL, &pipeline.layout));
     }
 
     // Pipeline
@@ -2738,7 +2741,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
         // A pipeline cache can be used to store and reuse data relevant to pipeline creation across multiple calls to vkCreateGraphcisPipelines and even across program executions if the 
         // cache is stored to a file
         // This makes it possbile to significantly speed up pipeline creation at a later time
-        VK_Assert(vkCreateGraphicsPipelines(r_vulkan_state->device.h, VK_NULL_HANDLE, 1, &create_info, NULL, &pipeline.h), "Failed to create pipeline");
+        VK_Assert(vkCreateGraphicsPipelines(r_vulkan_state->device.h, VK_NULL_HANDLE, 1, &create_info, NULL, &pipeline.h));
     }
     return pipeline;
 }
@@ -2766,7 +2769,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
     // This function takes an array of fences and waits on the host for either any or all of the fences to be signaled before returning
     // The VK_TRUE we pass here indicates that we want to wait for all fences
     // This function also has a timeout parameter that we set to the maxium value of 64 bit unsigned integer, which effectively disables the timeout
-    VK_Assert(vkWaitForFences(r_vulkan_state->device.h, 1, &frame->inflt_fence, VK_TRUE, UINT64_MAX), "Failed to wait on fences");
+    VK_Assert(vkWaitForFences(r_vulkan_state->device.h, 1, &frame->inflt_fence, VK_TRUE, UINT64_MAX));
 
     // Vulkan will usually just tell us that the swapchain is no longer adequate during presentation
     // The vkAcquireNextImageKHR and vkQueuePresentKHR functions can return the following special values to indicate this
@@ -2787,43 +2790,63 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
         break;
     }
 
-    // Update generation
-    frame->bag_gen = wnd->bag->generation;
-    frame->rendpass_grp_gen = wnd->rendpass_grp->generation;
+    // TODO(k): there is one issue though, we are only keep the bag and rendpass_grp references, and it's not good enough
+    // if window is resizing, bag and rendpass_grp between frames won't be synced, the count of to_free_bag will keeping increasing, and the gpu memory will run out
+    // we could use some kind of generation or index to check if a bag or rendpass_grp could be cleared
+
+    // Update frame references
+    frame->bag_ref = wnd->bag;
+    frame->rendpass_grp_ref = wnd->rendpass_grp;
 
     // Cleanup swapchain and render pass group
     /////////////////////////////////////////////////////////////////////////////////
-    bool bag_gen_synced = true;
-    bool rendpass_grp_gen_synced = true;
-    for(U64 i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+
+    B32 frame_bags_synced = 0;
+    B32 frame_rendpass_grp_synced = 0;
+
+    if(wnd->first_to_free_bag || wnd->first_to_free_rendpass_grp)
     {
-        R_Vulkan_Frame *frame = &wnd->frames[i];
-        if(frame->bag_gen != wnd->bag->generation) bag_gen_synced = false;
-        if(frame->rendpass_grp_gen != wnd->rendpass_grp->generation) rendpass_grp_gen_synced = false;
+        frame_bags_synced = 1;
+        frame_rendpass_grp_synced = 1;
+        for(U64 i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+        {
+            R_Vulkan_Frame *frame = &wnd->frames[i];
+            if(frame->bag_ref != wnd->bag) frame_bags_synced = false;
+            if(frame->rendpass_grp_ref != wnd->rendpass_grp) frame_rendpass_grp_synced = false;
+            if(frame_bags_synced == 0 && frame_rendpass_grp_synced == 0) break;
+        }
     }
 
-    if(bag_gen_synced)
+    // all frames' bag is updated, it's safe to remove old bags now
+    if(frame_bags_synced)
     {
-        for(R_Vulkan_Bag *b = wnd->first_to_free_bag; b != 0; b = b->next)
+        for(R_Vulkan_Bag *b = wnd->first_to_free_bag; b != 0;)
         {
+            R_Vulkan_Bag *next = b->next;
             r_vulkan_bag_destroy(b);
+            SLLStackPush(wnd->first_free_bag, b);
+            b = next;
         }
         wnd->first_to_free_bag = 0;
     }
 
-    if(rendpass_grp_gen_synced)
+    // all frames' rendpass_grp is updated, it's safe to remove old one
+    if(frame_rendpass_grp_synced)
     {
-        for(R_Vulkan_RenderPassGroup *g = wnd->first_to_free_rendpass_grp; g != 0; g = g->next)
+        for(R_Vulkan_RenderPassGroup *g = wnd->first_to_free_rendpass_grp; g != 0;)
         {
+            R_Vulkan_RenderPassGroup *next = g->next;
             r_vulkan_rendpass_grp_destroy(g);
+            SLLStackPush(wnd->first_free_rendpass_grp, g);
+            g = next;
         }
         wnd->first_to_free_rendpass_grp = 0;
     }
 
     // Reset frame fence
-    VK_Assert(vkResetFences(device->h, 1, &frame->inflt_fence), "Failed to reset fence");
+    VK_Assert(vkResetFences(device->h, 1, &frame->inflt_fence));
     // Reset command buffers
-    VK_Assert(vkResetCommandBuffer(frame->cmd_buf, 0), "Failed to reset command buffer");
+    VK_Assert(vkResetCommandBuffer(frame->cmd_buf, 0));
 
     // Start command recrod
     r_vulkan_cmd_begin(frame->cmd_buf);
@@ -2950,7 +2973,7 @@ r_window_end_frame(OS_Handle os_wnd, R_Handle window_equip, Vec2F32 mouse_ptr)
     vkCmdBeginRenderPass(cmd_buf, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
     // Bind pipeline
-    vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.finalize.h);
+    vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipelines.finalize.h);
     // Viewport and scissor
     VkViewport viewport = {0};
     viewport.x        = 0.0f;
@@ -2966,13 +2989,13 @@ r_window_end_frame(OS_Handle os_wnd, R_Handle window_equip, Vec2F32 mouse_ptr)
     scissor.extent = swapchain->extent;
     vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
     // Bind stage color descriptor
-    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.finalize.layout, 0, 1, &wnd->bag->stage_color_ds.h, 0, NULL);
+    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipelines.finalize.layout, 0, 1, &wnd->bag->stage_color_ds.h, 0, NULL);
     // Draw the quad
     vkCmdDraw(cmd_buf, 4, 1, 0, 0);
     vkCmdEndRenderPass(cmd_buf);
 
     // End and submit command buffer
-    VK_Assert(vkEndCommandBuffer(cmd_buf), "Failed to end command buffer");
+    VK_Assert(vkEndCommandBuffer(cmd_buf));
     VkSemaphore wait_sems[1]            = { frame->img_acq_sem };
     VkPipelineStageFlags wait_stages[1] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
     VkSemaphore signal_sems[1]          = { frame->rend_comp_sem };
@@ -2986,7 +3009,7 @@ r_window_end_frame(OS_Handle os_wnd, R_Handle window_equip, Vec2F32 mouse_ptr)
     submit_info.pCommandBuffers      = &cmd_buf;
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores    = signal_sems;
-    VK_Assert(vkQueueSubmit(r_vulkan_state->device.gfx_queue, 1, &submit_info, frame->inflt_fence), "Failed to submit command buffer");
+    VK_Assert(vkQueueSubmit(r_vulkan_state->device.gfx_queue, 1, &submit_info, frame->inflt_fence));
 
     // Present
     // TODO(@k): should we move this to r_end_frame? we could submit to all swapchains at once
@@ -3083,7 +3106,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 // Bind pipeline
                 // The second parameter specifies if the pipeline object is a graphics or compute pipelinVK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BITe
                 // We've now told Vulkan which operations to execute in the graphcis pipeline and which attachment to use in the fragment shader
-                vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.rect.h);
+                vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipelines.rect.h);
 
                 // Draw each group
                 // Rects in the same group share some features
@@ -3112,7 +3135,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                         tex_handle = r_vulkan_state->backup_texture;
                     }
                     R_Vulkan_Tex2D *texture = r_vulkan_tex2d_from_handle(tex_handle);
-                    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.rect.layout, 1, 1, &texture->desc_set.h, 0, NULL);
+                    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipelines.rect.layout, 1, 1, &texture->desc_set.h, 0, NULL);
 
                     // Set up texture sample map matrix based on texture format
                     // Vulkan use col-major
@@ -3159,7 +3182,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 
                     U32 uniform_buffer_offset = ui_group_count * uniform_buffer->stride;
                     MemoryCopy((U8 *)uniform_buffer->buffer.mapped + uniform_buffer_offset, &uniforms, sizeof(R_Vulkan_Uniforms_Rect));
-                    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.rect.layout, 0, 1, &uniform_buffer->set.h, 1, &uniform_buffer_offset);
+                    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipelines.rect.layout, 0, 1, &uniform_buffer->set.h, 1, &uniform_buffer_offset);
 
                     VkViewport viewport = {0};
                     viewport.x        = 0.0f;
@@ -3207,8 +3230,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 // Unpack renderpass and pipelines
                 R_Vulkan_RenderPass *renderpass = &renderpasses[R_Vulkan_RenderPassKind_Geo3d];
 
-                R_Vulkan_Pipeline *geo3d_debug_pipelines = renderpass->pipeline.geo3d.debug;
-                R_Vulkan_Pipeline *geo3d_forward_pipelines = renderpass->pipeline.geo3d.forward;
+                R_Vulkan_Pipeline *geo3d_debug_pipelines = renderpass->pipelines.geo3d.debug;
+                R_Vulkan_Pipeline *geo3d_forward_pipelines = renderpass->pipelines.geo3d.forward;
 
                 // Start renderpass
                 VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
@@ -3416,7 +3439,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     begin_info.pClearValues      = 0;
                     vkCmdBeginRenderPass(cmd_buf, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-                    vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.geo3d_composite.h);
+                    vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipelines.geo3d_composite.h);
                     // Viewport and scissor
                     VkViewport viewport = {0};
                     viewport.x        = 0.0f;
@@ -3432,8 +3455,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     scissor.extent = wnd->bag->stage_color_image.extent;
                     vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
                     // Bind stage color descriptor
-                    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.geo3d_composite.layout, 0, 1, &wnd->bag->geo3d_color_ds.h, 0, NULL);
-                    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipeline.geo3d_composite.layout, 1, 1, &wnd->bag->geo3d_normal_depth_ds.h, 0, NULL);
+                    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipelines.geo3d_composite.layout, 0, 1, &wnd->bag->geo3d_color_ds.h, 0, NULL);
+                    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipelines.geo3d_composite.layout, 1, 1, &wnd->bag->geo3d_normal_depth_ds.h, 0, NULL);
                     vkCmdDraw(cmd_buf, 4, 1, 0, 0);
                     vkCmdEndRenderPass(cmd_buf);
                 }
@@ -3480,7 +3503,7 @@ r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count)
     // memory or that require efficient streaming of data in and out of GPU memory
     buf_ci.flags = 0;
 
-    VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &buf_ci, NULL, &uniform_buffer.buffer.h), "Failed to create vk buffer");
+    VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &buf_ci, NULL, &uniform_buffer.buffer.h));
     VkMemoryRequirements mem_requirements;
     vkGetBufferMemoryRequirements(r_vulkan_state->device.h, uniform_buffer.buffer.h, &mem_requirements);
 
@@ -3489,10 +3512,10 @@ r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count)
     alloc_info.allocationSize  = mem_requirements.size;
     alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
 
-    VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &uniform_buffer.buffer.memory), "Failed to allocate buffer memory");
-    VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, uniform_buffer.buffer.h, uniform_buffer.buffer.memory, 0), "Failed to bind buffer memory");
+    VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &uniform_buffer.buffer.memory));
+    VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, uniform_buffer.buffer.h, uniform_buffer.buffer.memory, 0));
     Assert(uniform_buffer.buffer.size != 0);
-    VK_Assert(vkMapMemory(r_vulkan_state->device.h, uniform_buffer.buffer.memory, 0, uniform_buffer.buffer.size, 0, &uniform_buffer.buffer.mapped), "Failed to map buffer memory");
+    VK_Assert(vkMapMemory(r_vulkan_state->device.h, uniform_buffer.buffer.memory, 0, uniform_buffer.buffer.size, 0, &uniform_buffer.buffer.mapped));
 
     // Create descriptor set
     R_Vulkan_DescriptorSetKind ds_type = 0;
@@ -3538,7 +3561,7 @@ r_vulkan_storage_buffer_alloc(R_Vulkan_StorageTypeKind kind, U64 unit_count)
     // memory or that require efficient streaming of data in and out of GPU memory
     buf_ci.flags = 0;
 
-    VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &buf_ci, NULL, &storage_buffer.buffer.h), "Failed to create vk buffer");
+    VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &buf_ci, NULL, &storage_buffer.buffer.h));
     VkMemoryRequirements mem_requirements;
     vkGetBufferMemoryRequirements(r_vulkan_state->device.h, storage_buffer.buffer.h, &mem_requirements);
 
@@ -3547,10 +3570,10 @@ r_vulkan_storage_buffer_alloc(R_Vulkan_StorageTypeKind kind, U64 unit_count)
     alloc_info.allocationSize  = mem_requirements.size;
     alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
 
-    VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &storage_buffer.buffer.memory), "Failed to allocate buffer memory");
-    VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, storage_buffer.buffer.h, storage_buffer.buffer.memory, 0), "Failed to bind buffer memory");
+    VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &storage_buffer.buffer.memory));
+    VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, storage_buffer.buffer.h, storage_buffer.buffer.memory, 0));
     Assert(storage_buffer.buffer.size != 0);
-    VK_Assert(vkMapMemory(r_vulkan_state->device.h, storage_buffer.buffer.memory, 0, storage_buffer.buffer.size, 0, &storage_buffer.buffer.mapped), "Failed to map buffer memory");
+    VK_Assert(vkMapMemory(r_vulkan_state->device.h, storage_buffer.buffer.memory, 0, storage_buffer.buffer.size, 0, &storage_buffer.buffer.mapped));
 
     // Create descriptor set
     R_Vulkan_DescriptorSetKind ds_type = 0;
@@ -3605,9 +3628,13 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                 // You can leave flags to 0
                 .flags         = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
             };
-            VK_Assert(vkCreateDescriptorPool(r_vulkan_state->device.h, &pool_create_info, NULL, &pool->h), "Failed to create descriptor pool");
+            VK_Assert(vkCreateDescriptorPool(r_vulkan_state->device.h, &pool_create_info, NULL, &pool->h));
 
-        } else { SLLStackPop(r_vulkan_state->first_avail_ds_pool[kind]); }
+        }
+        else
+        {
+            SLLStackPop(r_vulkan_state->first_avail_ds_pool[kind]);
+        }
 
         U64 alloc_count = (pool->cap - pool->cmt);
         Assert(alloc_count > 0);
@@ -3618,11 +3645,11 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         set_alloc_info.descriptorPool     = pool->h;
         set_alloc_info.descriptorSetCount = alloc_count;
         set_alloc_info.pSetLayouts        = &set_layout.h;
-        VK_Assert(vkAllocateDescriptorSets(r_vulkan_state->device.h, &set_alloc_info, temp_sets), "Failed to allcoate descriptor sets");
+        VK_Assert(vkAllocateDescriptorSets(r_vulkan_state->device.h, &set_alloc_info, temp_sets));
 
         for(U64 i = 0; i < alloc_count; i++) 
         {
-            U64 offset = set_count - remaining;
+            U64 offset = set_count-remaining;
             sets[i+offset].h = temp_sets[i];
             sets[i+offset].pool = pool;
         }
@@ -3630,7 +3657,10 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         pool->cmt += alloc_count;
         remaining -= alloc_count;
 
-        if(pool->cmt < pool->cap) { SLLStackPush(r_vulkan_state->first_avail_ds_pool[kind], pool); }
+        if(pool->cmt < pool->cap)
+        {
+            SLLStackPush(r_vulkan_state->first_avail_ds_pool[kind], pool);
+        }
     }
 
     // NOTE(k): set could have multiple writes due multiple bindings
@@ -3735,7 +3765,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
 
 void r_vulkan_descriptor_set_destroy(R_Vulkan_DescriptorSet *set)
 {
-    VK_Assert(vkFreeDescriptorSets(r_vulkan_state->device.h, set->pool->h, 1, &set->h), "Failed to free descriptor sets");
+    VK_Assert(vkFreeDescriptorSets(r_vulkan_state->device.h, set->pool->h, 1, &set->h));
     set->pool->cmt -= 1;
     if((set->pool->cmt+1) == set->pool->cap)
     {
@@ -3787,48 +3817,54 @@ void r_vulkan_window_resize(R_Vulkan_Window *window)
     R_Vulkan_Surface *surface     = &window->surface;
     R_Vulkan_Device *device       = &r_vulkan_state->device;
 
+    // NOTE(k): if the rate of resizing is too high, we could be lagged behind bag destruction, since we're not using generation/idx to track first_to_free_bag
+    // frames's bag could be out of synced constantly, and the count of to_free_bag will keep increasing, and resulting out of gpu memory 
+    // so we add some debounce here to avoid recreating swapchain unecessarly
+    Vec2F32 window_dim = dim_2f32(os_client_rect_from_window(window->os_wnd));
+    U64 last_window_dim_us = os_now_microseconds();
+
     // Handle minimization
     // There is another case where a swapchain may become out of date and that is a special kind of window resizing: window minimization
     // This case is special because it will result in a frame buffer size of 0
     // We will handle that by pausing until the window is in the foreground again int w = 0, h = 0;
-    U32 w = 0;
-    U32 h = 0;
-    Vec2F32 dim = dim_2f32(os_client_rect_from_window(window->os_wnd));
-    w = dim.x;
-    h = dim.y;
-
-    while(w == 0 || h == 0)
+    Temp temp = scratch_begin(0,0);
+    while(window_dim.x == 0.f || window_dim.y == 0.f || (os_now_microseconds()-last_window_dim_us) < 50000)
     {
-        Temp temp = scratch_begin(0,0);
         Vec2F32 dim = dim_2f32(os_client_rect_from_window(window->os_wnd));
-        w = dim.x;
-        h = dim.y;
+        if(dim.x != window_dim.x || dim.y != window_dim.y)
+        {
+            window_dim = dim;
+            last_window_dim_us = os_now_microseconds();
+        }
 
-        // NOTE(k): keep processing events
+        // NOTE(k): keep processing events, or else we would block the window
         os_get_events(temp.arena, 0);
-        scratch_end(temp);
     }
+    scratch_end(temp);
 
-    // TODO(@k): The disadvantage of this approach is that we need to stop all rendering before create the new swap chain
+    // NOTE(k): The disadvantage of this approach is that we need to stop all rendering before create the new swap chain
     // It is possible to create a new swapchain while drawing commands on an image from the old swap chain are still in-flight
     // You would need to pass the previous swapchain to the oldSwapChain field in the VkSwapchainCreateInfoKHR struct and destroy 
     // the old swap chain as soon as you're finished using it
     // vkDeviceWaitIdle(device->h);
 
-    // NOTE(@k): if format is changed, we would also need to recreate the render pass
     // In theory it can be possible for the swapchain image format to change during an applications'lifetime, e.g. when moving a window from an standard range to an high dynamic range monitor
     // This may require the application to recreate the renderpass to make sure the change between dynamic ranges is properly reflected
     VkFormat old_format = window->bag->swapchain.format;
     r_vulkan_surface_update(surface);
+
+    // we need to recreate the bag either size or format of swapchain is chagned
     SLLStackPush(window->first_to_free_bag, window->bag);
     window->bag = r_vulkan_bag(window, surface, window->bag);
 
+    // NOTE(@k): if format is changed, we would also need to recreate the render pass
     bool rendpass_outdated = window->bag->swapchain.format != old_format;
-    if(!rendpass_outdated)
+    if(rendpass_outdated)
     {
         SLLStackPush(window->first_to_free_rendpass_grp, window->rendpass_grp);
         window->rendpass_grp = r_vulkan_rendpass_grp(window, window->bag->swapchain.format, window->rendpass_grp);
     }
+    // create framebuffers for this bag
     r_vulkan_rendpass_grp_submit(window->bag, window->rendpass_grp);
 }
 
@@ -3836,19 +3872,22 @@ internal R_Vulkan_Bag *
 r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *old_bag)
 {
     R_Vulkan_Bag *bag = window->first_free_bag;
-    U64 gen = 0;
     R_Vulkan_Swapchain *old_swapchain = 0;
 
     if(old_bag != 0)
     {
-        gen = old_bag->generation + 1;
         old_swapchain = &old_bag->swapchain;
     }
-    if(bag == 0) { bag = push_array(window->arena, R_Vulkan_Bag, 1); }
 
-    // Fill basic
-    bag->generation = gen;
-    bag->next = NULL;
+    if(bag == 0)
+    {
+        bag = push_array_no_zero(window->arena, R_Vulkan_Bag, 1);
+    }
+    else
+    {
+        SLLStackPop(window->first_free_bag);
+    }
+    MemoryZeroStruct(bag);
 
     // Query format and color space
     VkFormat swp_format;
@@ -3869,7 +3908,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
     R_Vulkan_DescriptorSet *geo3d_normal_depth_ds = &bag->geo3d_normal_depth_ds;
     R_Vulkan_Image *geo3d_depth_image             = &bag->geo3d_depth_image;
 
-    // Create staging buffer and staging color sampler descriptor set
+    // Create stage color image and its sampler descriptor set
     {
         stage_color_image->format         = swapchain->format;
         stage_color_image->extent.width   = swapchain->extent.width;
@@ -3889,7 +3928,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         create_info.sharingMode       = VK_SHARING_MODE_EXCLUSIVE;
         create_info.samples           = VK_SAMPLE_COUNT_1_BIT;
         create_info.flags             = 0; // Optional
-        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &stage_color_image->h), "Failed to create vk image");
+        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &stage_color_image->h));
 
         VkMemoryRequirements mem_requirements;
         vkGetImageMemoryRequirements(r_vulkan_state->device.h, stage_color_image->h, &mem_requirements);
@@ -3898,8 +3937,8 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT; 
         alloc_info.allocationSize = mem_requirements.size;
         alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &stage_color_image->memory), "Failed to allocate buffer memory");
-        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, stage_color_image->h, stage_color_image->memory, 0), "Failed to map image memory");
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &stage_color_image->memory));
+        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, stage_color_image->h, stage_color_image->memory, 0));
 
         VkImageViewCreateInfo image_view_create_info = {
             .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -3912,9 +3951,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
             .subresourceRange.baseArrayLayer = 0,
             .subresourceRange.layerCount     = 1,
         };
-        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &stage_color_image->view), "Failed to create image view");
-
-        // TODO(k): we may need to transition the image layout here
+        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &stage_color_image->view));
 
         // Create staging color sampler descriptor set
         r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind_Tex2D,
@@ -3944,7 +3981,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         create_info.samples           = VK_SAMPLE_COUNT_1_BIT;
         create_info.flags             = 0; // Optional
 
-        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &stage_id_image->h), "Failed to create vk image");
+        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &stage_id_image->h));
 
         VkMemoryRequirements mem_requirements;
         vkGetImageMemoryRequirements(r_vulkan_state->device.h, stage_id_image->h, &mem_requirements);
@@ -3953,8 +3990,8 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         alloc_info.allocationSize = mem_requirements.size;
         alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &stage_id_image->memory), "Failed to allocate buffer memory");
-        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, stage_id_image->h, stage_id_image->memory, 0), "Failed to map image memory");
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &stage_id_image->memory));
+        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, stage_id_image->h, stage_id_image->memory, 0));
 
         VkImageViewCreateInfo image_view_create_info =
         {
@@ -3968,7 +4005,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
             .subresourceRange.baseArrayLayer = 0,
             .subresourceRange.layerCount     = 1,
         };
-        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &stage_id_image->view), "Failed to create image view");
+        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &stage_id_image->view));
     }
 
     // stage_id_cpu
@@ -3979,7 +4016,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         create_info.size = size;
         create_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &stage_id_cpu->h), "Failed to create vk buffer");
+        VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &stage_id_cpu->h));
         VkMemoryRequirements mem_requirements;
         vkGetBufferMemoryRequirements(r_vulkan_state->device.h, stage_id_cpu->h, &mem_requirements);
         stage_id_cpu->size = mem_requirements.size;
@@ -3989,13 +4026,13 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         alloc_info.allocationSize = mem_requirements.size;
         alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
 
-        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &stage_id_cpu->memory), "Failed to allocate buffer memory");
-        VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, stage_id_cpu->h, stage_id_cpu->memory, 0), "Failed to bind buffer memory");
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &stage_id_cpu->memory));
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, stage_id_cpu->h, stage_id_cpu->memory, 0));
         Assert(stage_id_cpu->size != 0);
-        VK_Assert(vkMapMemory(r_vulkan_state->device.h, stage_id_cpu->memory, 0, stage_id_cpu->size, 0, &stage_id_cpu->mapped), "Failed to map stage_id_cpu memory");
+        VK_Assert(vkMapMemory(r_vulkan_state->device.h, stage_id_cpu->memory, 0, stage_id_cpu->size, 0, &stage_id_cpu->mapped));
     }
 
-    // Create geo3d_color_att and its sampler descriptor set
+    // Create geo3d color image and its sampler descriptor set
     {
         geo3d_color_image->format        = swapchain->format;
         geo3d_color_image->extent.width  = swapchain->extent.width;
@@ -4015,7 +4052,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         create_info.sharingMode       = VK_SHARING_MODE_EXCLUSIVE;
         create_info.samples           = VK_SAMPLE_COUNT_1_BIT;
         create_info.flags             = 0; // Optional
-        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &geo3d_color_image->h), "Failed to create vk buffer");
+        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &geo3d_color_image->h));
 
         VkMemoryRequirements mem_requirements;
         vkGetImageMemoryRequirements(r_vulkan_state->device.h, geo3d_color_image->h, &mem_requirements);
@@ -4025,8 +4062,8 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         alloc_info.allocationSize = mem_requirements.size;
         alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
 
-        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &geo3d_color_image->memory), "Failed to allocate buffer memory");
-        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, geo3d_color_image->h, geo3d_color_image->memory, 0), "Failed to bind buffer memory");
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &geo3d_color_image->memory));
+        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, geo3d_color_image->h, geo3d_color_image->memory, 0));
 
         VkImageViewCreateInfo image_view_create_info = {
             .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -4039,7 +4076,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
             .subresourceRange.baseArrayLayer = 0,
             .subresourceRange.layerCount     = 1,
         };
-        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &geo3d_color_image->view), "Failed to create image view");
+        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &geo3d_color_image->view));
 
         // Create geo3d_color sampler descriptor set
         r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind_Tex2D,
@@ -4068,7 +4105,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         create_info.sharingMode       = VK_SHARING_MODE_EXCLUSIVE;
         create_info.samples           = VK_SAMPLE_COUNT_1_BIT;
         create_info.flags             = 0; // Optional
-        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &geo3d_normal_depth_image->h), "Failed to create vk buffer");
+        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &geo3d_normal_depth_image->h));
 
         VkMemoryRequirements mem_requirements;
         vkGetImageMemoryRequirements(r_vulkan_state->device.h, geo3d_normal_depth_image->h, &mem_requirements);
@@ -4078,8 +4115,8 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         alloc_info.allocationSize = mem_requirements.size;
         alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
 
-        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &geo3d_normal_depth_image->memory), "Failed to allocate buffer memory");
-        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, geo3d_normal_depth_image->h, geo3d_normal_depth_image->memory, 0), "Failed to bind buffer memory");
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &geo3d_normal_depth_image->memory));
+        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, geo3d_normal_depth_image->h, geo3d_normal_depth_image->memory, 0));
 
         VkImageViewCreateInfo image_view_create_info = {
             .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -4092,7 +4129,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
             .subresourceRange.baseArrayLayer = 0,
             .subresourceRange.layerCount     = 1,
         };
-        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &geo3d_normal_depth_image->view), "Failed to create image view");
+        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &geo3d_normal_depth_image->view));
 
         // Create geo3d_color sampler descriptor set
         r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind_Tex2D,
@@ -4157,7 +4194,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         // If you were using a 3D texture for a voxel terrain, for example
         //      then you could use this avoid allocating memory to storage large volumes of "air" values
         create_info.flags = 0; // Optional
-        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &geo3d_depth_image->h), "Failed to create vk buffer");
+        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &geo3d_depth_image->h));
 
         VkMemoryRequirements mem_requirements;
         vkGetImageMemoryRequirements(r_vulkan_state->device.h, geo3d_depth_image->h, &mem_requirements);
@@ -4167,8 +4204,8 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         alloc_info.allocationSize = mem_requirements.size;
         alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
 
-        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &geo3d_depth_image->memory), "Failed to allocate buffer memory");
-        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, geo3d_depth_image->h, geo3d_depth_image->memory, 0), "Failed to bind buffer memory");
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &geo3d_depth_image->memory));
+        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, geo3d_depth_image->h, geo3d_depth_image->memory, 0));
 
         VkImageViewCreateInfo image_view_create_info =
         {
@@ -4182,7 +4219,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
             .subresourceRange.baseArrayLayer = 0,
             .subresourceRange.layerCount     = 1,
         };
-        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &geo3d_depth_image->view), "Failed to create image view for depth image");
+        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &geo3d_depth_image->view));
     }
     return bag;
 }
@@ -4190,13 +4227,14 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
 internal void
 r_vulkan_surface_update(R_Vulkan_Surface *surface)
 {
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(r_vulkan_state->gpu.h, surface->h, &surface->caps);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(r_vulkan_state->gpu.h, surface->h, &surface->format_count, NULL);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(r_vulkan_state->gpu.h, surface->h, &surface->format_count, surface->formats);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(r_vulkan_state->gpu.h, surface->h, &surface->prest_mode_count, NULL);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(r_vulkan_state->gpu.h, surface->h, &surface->prest_mode_count, surface->prest_modes);
+    VK_Assert(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(r_vulkan_state->gpu.h, surface->h, &surface->caps));
+    VK_Assert(vkGetPhysicalDeviceSurfaceFormatsKHR(r_vulkan_state->gpu.h, surface->h, &surface->format_count, NULL));
+    VK_Assert(vkGetPhysicalDeviceSurfaceFormatsKHR(r_vulkan_state->gpu.h, surface->h, &surface->format_count, surface->formats));
+    VK_Assert(vkGetPhysicalDeviceSurfacePresentModesKHR(r_vulkan_state->gpu.h, surface->h, &surface->prest_mode_count, NULL));
+    VK_Assert(vkGetPhysicalDeviceSurfacePresentModesKHR(r_vulkan_state->gpu.h, surface->h, &surface->prest_mode_count, surface->prest_modes));
 }
 
+// TODO(XXX): change function name, what fuck is this, bro!!!
 internal void
 r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
 {
@@ -4231,7 +4269,7 @@ r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
                     .layers          = 1,
                 };
 
-                VK_Assert(vkCreateFramebuffer(r_vulkan_state->device.h, &frame_buffer_create_info, NULL, framebuffer), "Failed to create famebuffer");
+                VK_Assert(vkCreateFramebuffer(r_vulkan_state->device.h, &frame_buffer_create_info, NULL, framebuffer));
             }break;
             case R_Vulkan_RenderPassKind_Geo3d:
             {
@@ -4253,7 +4291,7 @@ r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
                     .height          = swapchain->extent.height,
                     .layers          = 1,
                 };
-                VK_Assert(vkCreateFramebuffer(r_vulkan_state->device.h, &frame_buffer_create_info, NULL, framebuffer), "Failed to create famebuffer");
+                VK_Assert(vkCreateFramebuffer(r_vulkan_state->device.h, &frame_buffer_create_info, NULL, framebuffer));
             }break;
             case R_Vulkan_RenderPassKind_Geo3dComposite:
             {
@@ -4270,7 +4308,7 @@ r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
                     .height          = swapchain->extent.height,
                     .layers          = 1,
                 };
-                VK_Assert(vkCreateFramebuffer(r_vulkan_state->device.h, &frame_buffer_create_info, NULL, framebuffer), "Failed to create famebuffer");
+                VK_Assert(vkCreateFramebuffer(r_vulkan_state->device.h, &frame_buffer_create_info, NULL, framebuffer));
             }break;
             case R_Vulkan_RenderPassKind_Finalize: 
             {
@@ -4287,7 +4325,7 @@ r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
                         .layers          = 1,
                     };
 
-                    VK_Assert(vkCreateFramebuffer(r_vulkan_state->device.h, &fb_create_info, NULL, framebuffer+i), "Failed to create famebuffer");
+                    VK_Assert(vkCreateFramebuffer(r_vulkan_state->device.h, &fb_create_info, NULL, framebuffer+i));
                 }
             }break;
             default: {InvalidPath;}break;
@@ -4301,6 +4339,19 @@ r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
 internal void
 r_vulkan_bag_destroy(R_Vulkan_Bag *bag)
 {
+    // destroy framebuffers
+    for(U64 i = 0; i < R_Vulkan_RenderPassKind_COUNT; i++)
+    {
+        VkFramebuffer *ptr = &bag->framebuffers[i];
+        U64 count = 1;
+        // NOTE(k): finalize renderpass (the last renderpass) would have multiple framebuffers (count is equal to swapchain.image_count)
+        if(i == R_Vulkan_RenderPassKind_COUNT-1) { count = bag->swapchain.image_count; }
+        for(U64 j = 0; j < count; j++)
+        {
+            vkDestroyFramebuffer(r_vulkan_state->device.h, *(ptr+j), NULL);
+        }
+    }
+
     // Destroy swapchain
     for(U64 i = 0; i < bag->swapchain.image_count; i++)
     {
@@ -4308,40 +4359,37 @@ r_vulkan_bag_destroy(R_Vulkan_Bag *bag)
     }
     vkDestroySwapchainKHR(r_vulkan_state->device.h, bag->swapchain.h, NULL);
 
-    for(U64 i = 0; i < R_Vulkan_RenderPassKind_COUNT; i++)
-    {
-        VkFramebuffer *ptr = &bag->framebuffers[i];
-        U64 count = 1;
-        if(i == R_Vulkan_RenderPassKind_COUNT) { count = MAX_FRAMES_IN_FLIGHT; }
-        for(U64 j = 0; j < count; j++)
-        {
-            vkDestroyFramebuffer(r_vulkan_state->device.h, *(ptr+j), NULL);
-        }
-    }
-
-    vkDestroyImage(r_vulkan_state->device.h, bag->stage_color_image.h, NULL);
+    // stage color image
     vkDestroyImageView(r_vulkan_state->device.h, bag->stage_color_image.view, NULL);
+    vkDestroyImage(r_vulkan_state->device.h, bag->stage_color_image.h, NULL);
     r_vulkan_descriptor_set_destroy(&bag->stage_color_ds);
     vkFreeMemory(r_vulkan_state->device.h, bag->stage_color_image.memory, NULL);
 
-    vkDestroyImage(r_vulkan_state->device.h, bag->stage_id_image.h, NULL);
+    // stage id image
     vkDestroyImageView(r_vulkan_state->device.h, bag->stage_id_image.view, NULL);
+    vkDestroyImage(r_vulkan_state->device.h, bag->stage_id_image.h, NULL);
+    vkFreeMemory(r_vulkan_state->device.h, bag->stage_id_image.memory, NULL);
+
+    // stage id buffer (cpu)
     vkUnmapMemory(r_vulkan_state->device.h, bag->stage_id_cpu.memory);
     vkDestroyBuffer(r_vulkan_state->device.h, bag->stage_id_cpu.h, NULL);
     vkFreeMemory(r_vulkan_state->device.h, bag->stage_id_cpu.memory, NULL);
 
-    vkDestroyImage(r_vulkan_state->device.h, bag->geo3d_color_image.h, NULL);
+    // geo3d color image
     vkDestroyImageView(r_vulkan_state->device.h, bag->geo3d_color_image.view, NULL);
+    vkDestroyImage(r_vulkan_state->device.h, bag->geo3d_color_image.h, NULL);
     r_vulkan_descriptor_set_destroy(&bag->geo3d_color_ds);
     vkFreeMemory(r_vulkan_state->device.h, bag->geo3d_color_image.memory, NULL);
 
-    vkDestroyImage(r_vulkan_state->device.h, bag->geo3d_normal_depth_image.h, NULL);
+    // geo3d normal depth image
     vkDestroyImageView(r_vulkan_state->device.h, bag->geo3d_normal_depth_image.view, NULL);
+    vkDestroyImage(r_vulkan_state->device.h, bag->geo3d_normal_depth_image.h, NULL);
     r_vulkan_descriptor_set_destroy(&bag->geo3d_normal_depth_ds);
     vkFreeMemory(r_vulkan_state->device.h, bag->geo3d_normal_depth_image.memory, NULL);
 
-    vkDestroyImage(r_vulkan_state->device.h, bag->geo3d_depth_image.h, NULL);
+    // geo3d depth image
     vkDestroyImageView(r_vulkan_state->device.h, bag->geo3d_depth_image.view, NULL);
+    vkDestroyImage(r_vulkan_state->device.h, bag->geo3d_depth_image.h, NULL);
     vkFreeMemory(r_vulkan_state->device.h, bag->geo3d_depth_image.memory, NULL);
 }
 
@@ -4354,8 +4402,11 @@ r_vulkan_rendpass_grp_destroy(R_Vulkan_RenderPassGroup *grp)
     for(U64 kind = 0; kind < R_Vulkan_RenderPassKind_COUNT; kind++)
     {
         R_Vulkan_RenderPass *rendpass = &grp->passes[kind];
-        vkDestroyPipelineLayout(r_vulkan_state->device.h, rendpass->pipeline.first.layout, NULL);
-        vkDestroyPipeline(r_vulkan_state->device.h, rendpass->pipeline.first.h, NULL);
+        for(U64 i = 0; i < rendpass->pipeline_count; i++)
+        {
+            vkDestroyPipelineLayout(r_vulkan_state->device.h, rendpass->pipelines.v[i].layout, NULL);
+            vkDestroyPipeline(r_vulkan_state->device.h, rendpass->pipelines.v[i].h, NULL);
+        }
         vkDestroyRenderPass(r_vulkan_state->device.h, rendpass->h, NULL);
     }
 }

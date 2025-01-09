@@ -99,22 +99,25 @@ os_window_open(Vec2F32 resolution, OS_WindowFlags flags, String8 title)
 
     //- rjf: create window & equip with x11 info
     w->window = XCreateWindow(os_lnx_gfx_state->display,
-            XDefaultRootWindow(os_lnx_gfx_state->display),
-            0, 0, resolution.x, resolution.y,
-            0,
-            CopyFromParent,
-            InputOutput,
-            CopyFromParent,
-            0,
-            0);
+                              XDefaultRootWindow(os_lnx_gfx_state->display),
+                              0, 0, resolution.x, resolution.y,
+                              0,
+                              CopyFromParent,
+                              InputOutput,
+                              CopyFromParent,
+                              0,
+                              0);
     XSelectInput(os_lnx_gfx_state->display, w->window,
-            ExposureMask|
-            PointerMotionMask|
-            ButtonPressMask|
-            ButtonReleaseMask|
-            KeyPressMask|
-            KeyReleaseMask|
-            FocusChangeMask);
+                 ExposureMask|
+                 PointerMotionMask|
+                 ButtonPressMask|
+                 ButtonReleaseMask|
+                 KeyPressMask|
+                 KeyReleaseMask|
+                 // NOTE(k): for detecting ConfigureNotify (window resizing)
+                 StructureNotifyMask|
+                 // NOTE(k): for detecting window focus in/out
+                 FocusChangeMask);
     Atom protocols[] =
     {
         os_lnx_gfx_state->wm_delete_window_atom,
@@ -250,22 +253,31 @@ os_rect_from_window(OS_Handle handle)
 internal Rng2F32
 os_client_rect_from_window(OS_Handle handle)
 {
+    ProfBeginFunction();
     Rng2F32 rect = {0};
     OS_LNX_Window *w = (OS_LNX_Window *)handle.u64[0];
 
+#if 0
+    // NOTE(k): this is a slow operation
     if (!os_handle_match(handle, os_handle_zero())) {
         Window root;
         int x_return,y_return;
         unsigned int width_return,height_return,border_width_return,depth_return;
         XGetGeometry(os_lnx_gfx_state->display, w->window,
-                &root, &x_return,&y_return, &width_return,&height_return,
-                &border_width_return, &depth_return);
+                     &root, &x_return,&y_return, &width_return,&height_return,
+                     &border_width_return, &depth_return);
         rect.p0.x = 0;
         rect.p0.y = 0;
         rect.p1.x = width_return;
         rect.p1.y = height_return;
     }
-
+#else
+    rect.p0.x = 0;
+    rect.p0.y = 0;
+    rect.p1.x = w->client_dim.x;
+    rect.p1.y = w->client_dim.y;
+#endif
+    ProfEnd();
     return rect;
 }
 
@@ -543,6 +555,16 @@ os_get_events(Arena *arena, B32 wait) {
                 window->focus_out = evt.type == FocusOut;
             }break;
 
+            //- k: window reszing
+            case ConfigureNotify:
+            {
+                // printf("width: %d\n", evt.xconfigure.width);
+                // printf("width: %d\n", evt.xconfigure.height);
+                OS_LNX_Window *window = os_lnx_window_from_x11window(evt.xclient.window);
+                window->client_dim.x = evt.xconfigure.width;
+                window->client_dim.y = evt.xconfigure.height;
+            }break;
+
             //- rjf: client messages
             case ClientMessage:
             {
@@ -638,7 +660,8 @@ os_set_cursor(OS_Cursor cursor)
     String8 cursor_name = {0};
     Cursor c;
     // = XcursorLibraryLoadCursor(dpy, "sb_v_double_arrow");
-    switch (cursor) {
+    switch(cursor)
+    {
         case OS_Cursor_Pointer:         {cursor_name = str8_lit("arrow");}break;
         case OS_Cursor_IBar:            {cursor_name = str8_lit("xterm");}break;
         case OS_Cursor_LeftRight:       {cursor_name = str8_lit("sb_h_double_arrow");}break;

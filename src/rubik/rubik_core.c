@@ -1698,6 +1698,12 @@ internal void rk_ui_stats(void)
             }
             UI_Row
             {
+                ui_labelf("window");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%.2f, %.2f", rk_state->window_dim.x, rk_state->window_dim.y);
+            }
+            UI_Row
+            {
                 ui_labelf("drag start mouse");
                 ui_spacer(ui_pct(1.0, 0.0));
                 ui_labelf("%.2f, %.2f", ui_state->drag_start_mouse.x, ui_state->drag_start_mouse.y);
