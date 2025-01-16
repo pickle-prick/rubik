@@ -61,7 +61,7 @@ typedef enum R_GeoPolygonKind
 typedef enum R_PassKind
 {
     R_PassKind_UI,
-    // R_PassKind_Blur,
+    R_PassKind_Blur,
     R_PassKind_Geo3D,
     R_PassKind_COUNT,
 } R_PassKind;
@@ -120,6 +120,7 @@ struct R_Mesh3DInst
     U32       joint_count;
     U32       first_joint;
     B32       depth_test;
+    B32       omit_light;
     // TODO(k): material idx, a primitive could have array of materials
 };
 
@@ -182,9 +183,13 @@ struct R_BatchGroup3DParams
 {
     R_Handle          mesh_vertices;
     R_Handle          mesh_indices;
+    U64               vertex_buffer_offset;
+    U64               indice_buffer_offset;
+    U64               indice_count;
     R_GeoTopologyKind mesh_geo_topology;
     R_GeoPolygonKind  mesh_geo_polygon;
     R_GeoVertexFlags  mesh_geo_vertex_flags;
+    F32               line_width;     
     R_Handle          albedo_tex;
     R_Tex2DSampleKind albedo_tex_sample_kind;
     // TODO: do we need this?
@@ -195,6 +200,8 @@ typedef struct R_BatchGroup3DMapNode R_BatchGroup3DMapNode;
 struct R_BatchGroup3DMapNode
 {
     R_BatchGroup3DMapNode *next;
+    R_BatchGroup3DMapNode *insert_next;
+    R_BatchGroup3DMapNode *insert_prev;
     U64 hash;
     R_BatchList batches;
     R_BatchGroup3DParams params;
@@ -204,6 +211,9 @@ typedef struct R_BatchGroup3DMap R_BatchGroup3DMap;
 struct R_BatchGroup3DMap
 {
     R_BatchGroup3DMapNode **slots;
+    // NOTE(k): in insertion order
+    R_BatchGroup3DMapNode *first;
+    R_BatchGroup3DMapNode *last;
     U64 slots_count;
 };
 
@@ -216,13 +226,14 @@ struct R_PassParams_UI
     R_BatchGroup2DList rects;
 };
 
-// typedef struct R_PassParams_Blur R_PassParams_Blur;
-// struct R_PassParams_Blur {
-//         Rng2F32 rect;
-//         Rng2F32 clip;
-//         F32 blur_size;
-//         F32 corner_radii[Corner_COUNT];
-// };
+typedef struct R_PassParams_Blur R_PassParams_Blur;
+struct R_PassParams_Blur
+{
+    Rng2F32 rect;
+    Rng2F32 clip;
+    F32 blur_size;
+    F32 corner_radii[Corner_COUNT];
+};
 
 typedef struct R_PassParams_Geo3D R_PassParams_Geo3D;
 struct R_PassParams_Geo3D
@@ -280,7 +291,7 @@ internal void *r_batch_list_push_inst(Arena *arena, R_BatchList *list, U64 batch
 ////////////////////////////////
 //~ rjf: Pass Type Functions
 
-internal R_Pass *r_pass_from_kind(Arena *arena, R_PassList *list, R_PassKind kind);
+internal R_Pass *r_pass_from_kind(Arena *arena, R_PassList *list, R_PassKind kind, B32 merge_pass);
 
 ////////////////////////////////
 //~ rjf: Backend Hooks
@@ -301,8 +312,10 @@ internal void r_tex2d_release(R_Handle texture);
 // internal void r_fill_tex2d_region(R_Handle texture, Rng2S32 subrect, void *data);
 
 //- rjf: buffers
-internal R_Handle r_buffer_alloc(R_ResourceKind kind, U64 size, void *data);
+internal R_Handle r_buffer_alloc(R_ResourceKind kind, U64 size, void *data, U64 data_size);
 internal void     r_buffer_release(R_Handle buffer);
+// NOTE(k): this function should be called within r_frame boundary
+internal void     r_buffer_copy(R_Handle buffer, void *data, U64 size);
 
 //- rjf: frame markers
 internal void r_begin_frame(void);

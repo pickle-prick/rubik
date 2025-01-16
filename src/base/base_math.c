@@ -252,6 +252,24 @@ internal Vec3F32 mix_3f32(Vec3F32 a, Vec3F32 b, F32 t) {
                  mix_1f32(a.z, b.z, t)};
     return c;
 }
+internal Vec3F32 slerp_3f32(Vec3F32 a, Vec3F32 b, F32 t)
+{
+    F32 dot = dot_3f32(a, b);
+    // Clamp dot to prevent numerical instability
+    dot = Clamp(-1.f, dot, 1.f);
+
+    // if vectors are almost the same, linear interpolation is enough
+    if(dot > 0.9995f)
+    {
+        return mix_3f32(a,b,t);
+    }
+
+    F32 theta = acosf(dot);
+    F32 sin_theta = sinf(theta);
+    F32 coeff0 = sinf((1.f-t) * theta) / sin_theta;
+    F32 coeff1 = sinf(t*theta) / sin_theta;
+    return add_3f32(scale_3f32(a, coeff0), scale_3f32(b, coeff1));
+}
 internal Vec3F32 cross_3f32(Vec3F32 a, Vec3F32 b) {
     Vec3F32 c = {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z,
                  a.x * b.y - a.y * b.x};

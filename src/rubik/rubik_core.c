@@ -239,7 +239,7 @@ rk_ui_draw()
             Mat3x3F32 xform = make_translate_3x3f32(box->position_delta);
             D_XForm2DScope(xform)
             {
-                d_sub_bucket(box->draw_bucket);
+                d_sub_bucket(box->draw_bucket, 1);
             }
         }
 
@@ -781,6 +781,11 @@ rk_init(OS_Handle os_wnd)
         rk_state->res_bucket      = rk_res_bucket_make(arena, 4096-1);
         rk_state->os_wnd          = os_wnd;
         rk_state->last_dpi        = os_dpi_from_window(os_wnd);
+        for(U64 i = 0; i < ArrayCount(rk_state->gizmo_drawlists); i++)
+        {
+            // TODO(k): some device offers 256MB memory which is both cpu visiable and device local
+            rk_state->gizmo_drawlists[i] = rk_drawlist_alloc(arena, MB(8), MB(8));
+        }
     }
 
     // Settings
@@ -882,6 +887,12 @@ rk_frame_arena()
     return rk_state->frame_arenas[rk_state->frame_counter % ArrayCount(rk_state->frame_arenas)];
 }
 
+internal RK_DrawList *
+rk_frame_gizmo_drawlist()
+{
+    return rk_state->gizmo_drawlists[rk_state->frame_counter % ArrayCount(rk_state->gizmo_drawlists)];
+}
+
 internal void 
 rk_register_function(String8 string, void *ptr)
 {
@@ -946,6 +957,11 @@ rk_node_alloc(RK_NodeTypeFlags type_flags)
     }
 
     ret->owner_bucket = node_bucket;
+
+    // some default values
+    {
+        ret->fixed_xform = mat_4x4f32(1.f);
+    }
 
     if(type_flags & RK_NodeTypeFlag_Node2D)
     {
@@ -1126,10 +1142,10 @@ rk_build_node_from_key(RK_NodeTypeFlags type_flags, RK_NodeFlags flags, RK_Key k
     RK_NodeBucket *node_bucket = rk_top_node_bucket();
 
     // fill base info
-    result->key             = key;
-    result->flags           = flags;
-    result->type_flags      = type_flags;
-    result->parent          = parent;
+    result->key        = key;
+    result->flags      = flags;
+    result->type_flags = type_flags;
+    result->parent     = parent;
 
     // Insert to the bucket
     U64 slot_idx = result->key.u64[0] % node_bucket->hash_table_size;
@@ -1674,6 +1690,12 @@ internal void rk_ui_stats(void)
             }
             UI_Row
             {
+                ui_labelf("geo_hot_key");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%I64u", scene->hot_key.u64[0]);
+            }
+            UI_Row
+            {
                 ui_labelf("ui_last_build_box_count");
                 ui_spacer(ui_pct(1.0, 0.0));
                 ui_labelf("%lu", ui_state->last_build_box_count);
@@ -1738,6 +1760,7 @@ internal void rk_ui_inspector(void)
         B32 show;
         B32 show_scene_cfg;
         B32 show_camera_cfg;
+        B32 show_gizmo_cfg;
         B32 show_light_cfg;
         B32 show_node_cfg;
 
@@ -1766,6 +1789,7 @@ internal void rk_ui_inspector(void)
         inspector->show  = 1;
         inspector->show_scene_cfg  = 1;
         inspector->show_camera_cfg = 1;
+        inspector->show_gizmo_cfg  = 1;
         inspector->show_light_cfg  = 1;
         inspector->show_node_cfg   = 1;
 
@@ -1995,15 +2019,6 @@ internal void rk_ui_inspector(void)
 
                 UI_Row
                 {
-                    ui_labelf("show_gizmos");
-                    ui_spacer(ui_pct(1.f,0.f));
-                    rk_ui_checkbox(&camera->show_gizmos);
-                }
-
-                ui_spacer(ui_em(0.2f, 0.f));
-
-                UI_Row
-                {
                     ui_labelf("shading");
                     ui_spacer(ui_pct(1.0, 0.0));
                     // TODO(k): radio button
@@ -2013,6 +2028,55 @@ internal void rk_ui_inspector(void)
                     ui_spacer(ui_em(0.5, 1.0));
                 }
             }
+        }
+
+        ui_spacer(ui_em(0.2f, 0.f));
+
+        // Gizmo
+        {
+            UI_Box *gizmo_cfg_box;
+            UI_PrefSize(Axis2_Y, ui_children_sum(1.0)) UI_ChildLayoutAxis(Axis2_Y)
+            {
+                gizmo_cfg_box = ui_build_box_from_key(0, ui_key_zero());
+            }
+            UI_Parent(gizmo_cfg_box)
+            {
+                ui_set_next_child_layout_axis(Axis2_X);
+                ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
+                UI_Box *header_box = ui_build_box_from_key(0, ui_key_zero());
+                UI_Parent(header_box)
+                {
+                    ui_set_next_pref_size(Axis2_X, ui_em(2.f, 0.f));
+                    if(ui_clicked(ui_expanderf(inspector->show_camera_cfg, "###show_gizmo_cfg")))
+                    {
+                        inspector->show_gizmo_cfg = !inspector->show_gizmo_cfg;
+                    }
+                    ui_labelf("Gizmo");
+                }
+
+                ui_spacer(ui_em(0.2f, 0.f));
+
+                UI_Row
+                {
+                    ui_labelf("hide_gizmo");
+                    ui_spacer(ui_pct(1.f,0.f));
+                    rk_ui_checkbox(&scene->gizmo3d_disabled);
+                }
+
+                ui_spacer(ui_em(0.2f, 0.f));
+
+                UI_Row
+                {
+                    ui_labelf("mode");
+                    ui_spacer(ui_pct(1.0, 0.0));
+                    // TODO(k): radio button
+                    if(ui_clicked(ui_buttonf("translate"))) {scene->gizmo3d_mode = RK_Gizmo3dMode_Translate;};
+                    if(ui_clicked(ui_buttonf("rotation")))  {scene->gizmo3d_mode = RK_Gizmo3dMode_Rotation;};
+                    if(ui_clicked(ui_buttonf("scale")))     {scene->gizmo3d_mode = RK_Gizmo3dMode_Scale;};
+                    ui_spacer(ui_em(0.5, 1.0));
+                }
+            }
+
         }
 
         ui_spacer(ui_em(0.2f, 0.f));
@@ -2296,6 +2360,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 {
     ProfBeginFunction();
 
+    /////////////////////////////////
     // Begin of the frame
     {
         rk_push_node_bucket(scene->node_bucket);
@@ -2309,11 +2374,95 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
         rk_state->window_dim = dim_2f32(rk_state->window_rect);
         rk_state->last_cursor = rk_state->cursor;
         rk_state->cursor = os_mouse_from_window(rk_state->os_wnd);
+
+        // clear frame gizmo drawlist
+        rk_drawlist_reset(rk_frame_gizmo_drawlist());
     }
 
-    // Remake drawing bucket every frame
+    /////////////////////////////////
+    // Unpack active camera
+
+    RK_Node *camera_node = rk_node_from_handle(scene->active_camera);
+    AssertAlways(camera_node != 0 && "No active camera was found");
+    RK_Camera3D *camera = camera_node->camera3d;
+    Mat4x4F32 camera_xform = camera_node->fixed_xform;
+
+    //- Unpack camera settings
+    B32 show_grid   = camera->show_grid;
+    B32 projection  = camera->projection;
+
+    // polygon mode
+    R_GeoPolygonKind polygon_mode;
+    switch(camera->viewport_shading)
+    {
+        case RK_ViewportShadingKind_Wireframe:       {polygon_mode = R_GeoPolygonKind_Line;}break;
+        case RK_ViewportShadingKind_Solid:           {polygon_mode = R_GeoPolygonKind_Fill;}break;
+        case RK_ViewportShadingKind_Material:        {polygon_mode = R_GeoPolygonKind_Fill;}break;
+        default:                                     {InvalidPath;}break;
+    }
+
+    //- view/projection (NOTE(k): behind by one frame)
+    Mat4x4F32 view_m = inverse_4x4f32(camera_xform);
+    Mat4x4F32 projection_m;
+    switch(camera->projection)
+    {
+        case RK_ProjectionKind_Perspective:
+        {
+            projection_m = make_perspective_vulkan_4x4f32(camera->perspective.fov, rk_state->window_dim.x/rk_state->window_dim.y, camera->zn, camera->zf);
+        }break;
+        case RK_ProjectionKind_Orthographic:
+        {
+            projection_m = make_orthographic_vulkan_4x4f32(camera->orthographic.left, camera->orthographic.right, camera->orthographic.bottom, camera->orthographic.top, camera->zn, camera->zf);
+        }break;
+        default:{InvalidPath;}break;
+    }
+
+    /////////////////////////////////
+    // Remake drawing buckets every frame
+
     rk_state->bucket_rect = d_bucket_make();
-    rk_state->bucket_geo3d = d_bucket_make();
+    for(U64 kind = 0; kind < RK_GeoBucketKind_COUNT; kind++)
+    {
+        D_Bucket **bucket = &rk_state->bucket_geo3d[kind];
+        *bucket = d_bucket_make();
+        d_push_bucket(*bucket);
+
+        Rng2F32 viewport;
+        Mat4x4F32 view;
+        Mat4x4F32 projection;
+        B32 grid;
+        Vec3F32 global_light;
+
+        switch(kind)
+        {
+            case RK_GeoBucketKind_Back:
+            {
+                grid = show_grid;
+                viewport = rk_state->window_rect;
+                view = view_m;
+                projection = projection_m;
+                Vec3F32 global_light = v3f32(1,0,0);
+            }break;
+            case RK_GeoBucketKind_Front:
+            {
+                grid = 0;
+                viewport = rk_state->window_rect;
+                view = view_m;
+                projection = projection_m;
+                Vec3F32 global_light = v3f32(1,0,0);
+            }break;
+            case RK_GeoBucketKind_Screen:
+            {
+                grid = 0;
+                viewport = rk_state->window_rect;
+                view = mat_4x4f32(1.f);
+                projection = make_orthographic_vulkan_4x4f32(viewport.x0, viewport.x1, viewport.y1, viewport.y0, 0.1, 100.f);
+            }break;
+            default:{InvalidPath;}break;
+        }
+        d_geo3d_begin(viewport, view, projection, v3f32(1,0,0), grid);
+        d_pop_bucket();
+    }
 
     /////////////////////////////////
     //~ Build ui
@@ -2491,56 +2640,15 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
     RK_Node *active_node = rk_node_from_handle(scene->active_node);
 
     /////////////////////////////////
-    //~ Start geo3d pass
-
-    // Unpack active camera
-    RK_Node *camera_node = rk_node_from_handle(scene->active_camera);
-    AssertAlways(camera_node != 0 && "No active camera was found");
-    RK_Camera3D *camera = camera_node->camera3d;
-    Mat4x4F32 camera_xform = camera_node->fixed_xform;
-
-    //- Unpack camera settings
-    B32 show_grid   = camera->show_grid;
-    B32 projection  = camera->projection;
-
-    // polygon mode
-    R_GeoPolygonKind polygon_mode;
-    switch(camera->viewport_shading)
-    {
-        case RK_ViewportShadingKind_Wireframe:       {polygon_mode = R_GeoPolygonKind_Line;}break;
-        case RK_ViewportShadingKind_Solid:           {polygon_mode = R_GeoPolygonKind_Fill;}break;
-        case RK_ViewportShadingKind_Material:        {polygon_mode = R_GeoPolygonKind_Fill;}break;
-        default:                                     {InvalidPath;}break;
-    }
-
-    //- view/projection (NOTE(k): behind by one frame)
-    Mat4x4F32 view_m = inverse_4x4f32(camera_xform);
-    Mat4x4F32 projection_m;
-    switch(camera->projection)
-    {
-        case RK_ProjectionKind_Perspective:
-        {
-            projection_m = make_perspective_vulkan_4x4f32(camera->perspective.fov, rk_state->window_dim.x/rk_state->window_dim.y, camera->perspective.zn, camera->perspective.zf);
-        }break;
-        case RK_ProjectionKind_Orthographic:
-        {
-            projection_m = make_orthographic_vulkan_4x4f32(camera->orthographic.left, camera->orthographic.right, camera->orthographic.bottom, camera->orthographic.top, camera->orthographic.zn, camera->orthographic.zf);
-        }break;
-        default:{InvalidPath;}break;
-    }
-
-    // start the geo3d pass
-    R_PassParams_Geo3D *geo3d_pass = 0;
-    {
-        d_push_bucket(rk_state->bucket_geo3d);
-        geo3d_pass = d_geo3d_begin(overlay->rect, view_m, projection_m, v3f32(1,0,0), show_grid);
-        d_pop_bucket();
-    }
-
-    /////////////////////////////////
     //~ Update/draw node in the scene tree
     ProfScope("update/draw game")
     {
+        // unpack geo back pass params
+        R_Pass *geo_back_pass = 0;
+        D_Bucket *geo_back_bucket = rk_state->bucket_geo3d[RK_GeoBucketKind_Back];
+        geo_back_pass = r_pass_from_kind(d_thread_ctx->arena, &geo_back_bucket->passes, R_PassKind_Geo3D, 1);
+        R_PassParams_Geo3D *geo_params = geo_back_pass->params_geo3d;
+
         RK_Node *node = rk_node_from_handle(scene->root);
         while(node != 0)
         {
@@ -2550,10 +2658,10 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 
             for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
             {
-                fn->f(node, scene, os_events, rk_state->dt_sec, projection_m, view_m);
+                fn->f(node, scene, os_events, rk_state->dt_sec, geo_params->projection, geo_params->view);
             }
 
-            D_BucketScope(rk_state->bucket_geo3d)
+            D_BucketScope(geo_back_bucket)
             {
                 B32 has_transform = 0;
                 // Update fixed_xform in DFS order
@@ -2716,7 +2824,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                         material = rk_res_data_from_handle(mesh->material);
                     }
 
-                    // TODO: PBR rendering
+                    // TODO(k): PBR rendering
                     if(material != 0)
                     {
                         RK_Texture2D *tex2d = rk_res_data_from_handle(material->base_clr_tex);
@@ -2734,10 +2842,10 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                     if(mesh != 0)
                     {
                         B32 draw_edge = rk_node_is_active(node);
-                        R_Mesh3DInst *inst = d_mesh(mesh->vertices, mesh->indices, mesh->topology,
-                                                    polygon_mode, R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, albedo_tex, clr_tex,
+                        R_Mesh3DInst *inst = d_mesh(mesh->vertices, mesh->indices, 0,0, mesh->indice_count,
+                                                    mesh->topology, polygon_mode, R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, albedo_tex, clr_tex, 1.f,
                                                     joint_xforms, joint_count,
-                                                    node->fixed_xform, node->key.u64[0], draw_edge, !mesh_inst3d->disable_depth);
+                                                    node->fixed_xform, node->key.u64[0], draw_edge, !mesh_inst3d->disable_depth, 0, 0);
                     }
                     else
                     {
@@ -2767,6 +2875,10 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
             scene->active_key = scene->hot_key;
             rk_scene_active_node_set(scene, scene->active_key, 1);
         }
+        if(rk_state->sig.f & UI_SignalFlag_LeftReleased)
+        {
+            scene->active_key = rk_key_zero();
+        }
     }
 
     /////////////////////////////////
@@ -2786,6 +2898,418 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
         Vec2F32 cursor = center_2f32(rk_state->window_rect);
         os_wrap_cursor(rk_state->os_wnd, cursor.x, cursor.y);
         rk_state->cursor = cursor;
+    }
+
+    // Draw gizmo3d
+    if(active_node && !scene->gizmo3d_disabled)
+    {
+        D_BucketScope(rk_state->bucket_geo3d[RK_GeoBucketKind_Front])
+        {
+            Mat4x4F32 gizmo_xform_trs = active_node->fixed_xform;
+            Mat4x4F32 gizmo_xform_tr = rk_xform_from_trs(active_node->position, active_node->rotation, v3f32(1,1,1));
+            Vec3F32 gizmo_origin = v3f32(gizmo_xform_trs.v[3][0], gizmo_xform_trs.v[3][1], gizmo_xform_trs.v[3][2]);
+
+            // make keys
+            RK_Key i_hat_key = rk_key_from_stringf(rk_key_zero(), "gizmo_i_hat");
+            RK_Key j_hat_key = rk_key_from_stringf(rk_key_zero(), "gizmo_j_hat");
+            RK_Key k_hat_key = rk_key_from_stringf(rk_key_zero(), "gizmo_k_hat");
+            RK_Key origin_key = rk_key_from_stringf(rk_key_zero(), "gizmo_origin");
+
+            Vec3F32 i_hat,j_hat,k_hat;
+            rk_ijk_from_matrix(gizmo_xform_tr, &i_hat, &j_hat, &k_hat);
+
+            Vec3F32 eye = camera_node->position;
+            Vec3F32 ray_eye_to_mouse_end;
+            Vec3F32 ray_eye_to_gizmo = normalize_3f32(sub_3f32(gizmo_origin, eye));
+            Vec3F32 ray_eye_to_center;
+            {
+                Mat4x4F32 view_proj_inv = inverse_4x4f32(mul_4x4f32(projection_m, view_m));
+
+                // ray_eye_to_mouse_end
+                {
+                    // mouse ndc pos
+                    F32 mox_ndc = (rk_state->cursor.x / rk_state->window_dim.x) * 2.f - 1.f;
+                    F32 moy_ndc = (rk_state->cursor.y / rk_state->window_dim.y) * 2.f - 1.f;
+                    // unproject
+                    Vec4F32 ray_end = mat_4x4f32_transform_4f32(view_proj_inv, v4f32(mox_ndc, moy_ndc, 1.f, 1.f));
+                    ray_end = scale_4f32(ray_end, 1.f/ray_end.w);
+                    ray_eye_to_mouse_end = v4f32_xyz(ray_end);
+                }
+
+                // ray_eye_center
+                {
+                    // unproject
+                    Vec4F32 ray_end = mat_4x4f32_transform_4f32(view_proj_inv, v4f32(0, 0, 1.f, 1.f));
+                    ray_end = scale_4f32(ray_end, 1.f/ray_end.w);
+                    ray_eye_to_center = normalize_3f32(v4f32_xyz(ray_end));
+                }
+            }
+
+            // NOTE(k): scale factor based on the distance between eye to gizmo origin
+            // TODO(k): not so sure about this, is this right?
+            F32 scale_t;
+            {
+                F32 base_scale = 1.0f;
+                F32 min_dist = 4.5f;
+                F32 projected_view_dist = dot_3f32(sub_3f32(gizmo_origin, eye), ray_eye_to_center);
+                // F32 view_dist = length_3f32(sub_3f32(gizmo_origin, eye));
+                scale_t = (projected_view_dist*base_scale) / min_dist;
+            }
+
+            Vec4F32 axis_clrs[3] = {rgba_from_u32(0x7D0A0AFF), rgba_from_u32(0x4E9F3DFF), rgba_from_u32(0x003161FF)};
+            Vec3F32 axises[3] = {i_hat,j_hat,k_hat};
+            RK_Key axis_keys[3] = {i_hat_key, j_hat_key, k_hat_key};
+            switch(scene->gizmo3d_mode)
+            {
+                case RK_Gizmo3dMode_Translate:
+                {
+                    // cfg
+                    F32 axis_length = 1.0 * scale_t;
+
+                    for(U64 i = 0; i < 3; i++)
+                    {
+                        Vec3F32 axis = axises[i];
+                        RK_Key axis_key = axis_keys[i];
+                        Vec4F32 axis_clr = axis_clrs[i];
+
+                        B32 draw_edge = 0;
+
+                        B32 is_hot = rk_key_match(scene->hot_key, axis_key);
+                        B32 is_active = rk_key_match(scene->active_key, axis_key);
+
+                        if(is_hot)
+                        {
+                            axis_clr.w = 0.8;
+                            draw_edge = 1;
+                        }
+                        if(is_active)
+                        {
+                            axis_clr.w = 0.6;
+                            draw_edge = 1;
+                        }
+
+                        if(is_active && rk_state->sig.f & UI_SignalFlag_LeftDragging)
+                        {
+                            typedef struct RK_Gizmo3dTranslateDragData RK_Gizmo3dTranslateDragData;
+                            struct RK_Gizmo3dTranslateDragData
+                            {
+                                Vec3F32 start_pos;
+                                Vec3F32 start_axis;
+                                F32 start_dist;
+                            };
+                            if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
+                            {
+                                RK_Gizmo3dTranslateDragData drag_data = {0};
+                                drag_data.start_pos = active_node->position;
+                                drag_data.start_axis = axis;
+                                Vec3F32 intersect;
+                                {
+                                    Vec3F32 next_axis = axises[(i+1)%3];
+                                    F32 t = rk_plane_intersect(eye, ray_eye_to_mouse_end, next_axis, gizmo_origin);
+                                    intersect = mix_3f32(eye, ray_eye_to_mouse_end, t);
+                                }
+                                drag_data.start_dist = dot_3f32(sub_3f32(intersect, active_node->position), axis);
+                                ui_store_drag_struct(&drag_data);
+                            }
+                            RK_Gizmo3dTranslateDragData *drag_data = ui_get_drag_struct(RK_Gizmo3dTranslateDragData);
+
+                            // choose axis other than current axis(don't care which one)
+                            Vec3F32 next_axis = axises[(i+1)%3];
+                            Vec3F32 intersect;
+                            {
+                                F32 t = rk_plane_intersect(eye, ray_eye_to_mouse_end, next_axis, gizmo_origin);
+                                intersect = mix_3f32(eye, ray_eye_to_mouse_end, t);
+                            }
+                            F32 dist = dot_3f32(sub_3f32(intersect, drag_data->start_pos), drag_data->start_axis);
+                            dist -= drag_data->start_dist;
+
+                            // move active_node along the axis
+                            if(dist != 0)
+                            {
+                                active_node->node3d->transform.position = add_3f32(drag_data->start_pos, scale_3f32(drag_data->start_axis, dist));
+                            }
+
+                            // draw axis to indicate direction
+                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), axis_clr, 6.f, 0);
+                        }
+
+                        // drag plane
+                        {
+                            Vec4F32 plane_clr = axis_clr;
+                            plane_clr.w = 0.6;
+                            RK_Key drag_plane_key = rk_key_from_stringf(rk_key_zero(), "gizmo_translate_drag_plane_%I64d", i);
+
+
+                            Vec2F32 size = scale_2f32(v2f32(axis_length, axis_length), 0.3);
+                            Vec3F32 origin = gizmo_origin;
+                            Vec3F32 dir = normalize_3f32(add_3f32(axises[(i+1)%3], axises[(i+2)%3]));
+                            Vec3F32 dist = scale_3f32(dir, size.x*0.9);
+                            origin = add_3f32(origin, dist);
+                            rk_drawlist_push_plane_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), drag_plane_key, size, 1, origin, axises[(i+2)%3], axis, plane_clr, 1, 1);
+                        }
+
+                        // curr axis
+                        rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, gizmo_origin, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis_clr, 19, draw_edge);
+                        // curr axis tip
+                        rk_drawlist_push_cone(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis, 0.1*scale_t, 0.3*scale_t, 39, axis_clr, 1, 1);
+                    }
+
+                    // draw a ball and circle in the middle
+                    rk_drawlist_push_sphere(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, axis_length*0.1, axis_length*0.2, 19, 19, 0, v4f32(0,0,0,0.9), 0, 1);
+                    rk_drawlist_push_circle(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*0.11, 69,v4f32(1,1,1,0.9), 3, 0); // billboard fashion
+
+                    // draw a outer circle
+                    rk_drawlist_push_circle(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*1.3, 69,v4f32(1,1,1,1), 3, 1);
+
+                }break;
+                case RK_Gizmo3dMode_Rotation:
+                {
+                    F32 ring_radius = 1*scale_t;
+                    U64 ring_segments = 69;
+                    F32 ring_line_width = 9;
+                    F32 axis_length = 1.f*scale_t;
+
+
+                    for(U64 i = 0; i < 3; i++)
+                    {
+                        Vec3F32 axis = axises[i];
+                        RK_Key axis_key = axis_keys[i];
+
+                        Vec4F32 axis_clr = axis_clrs[i];
+                        B32 draw_edge = 0;
+
+                        B32 is_hot = rk_key_match(scene->hot_key, axis_key);
+                        B32 is_active = rk_key_match(scene->active_key, axis_key);
+
+                        if(is_hot)
+                        {
+                            axis_clr.w = 0.8;
+                            draw_edge = 1;
+                        }
+                        if(is_active)
+                        {
+                            axis_clr.w = 0.6;
+                            draw_edge = 1;
+                        }
+
+                        if(is_active && rk_state->sig.f & UI_SignalFlag_LeftDragging)
+                        {
+                            typedef struct RK_Gizmo3dRotationDragData RK_Gizmo3dRotationDragData;
+                            struct RK_Gizmo3dRotationDragData
+                            {
+                                QuatF32 start_rot;
+                                Vec3F32 anchor;
+                                Vec3F32 start_axis;
+                            };
+                            if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
+                            {
+                                RK_Gizmo3dRotationDragData drag_data = {0};
+                                drag_data.start_rot = active_node->rotation;
+                                {
+                                    F32 t = rk_plane_intersect(eye, ray_eye_to_mouse_end, axis, gizmo_origin);
+                                    // normalize, get the point on the ring
+                                    Vec3F32 intersect = mix_3f32(eye, ray_eye_to_mouse_end, t);
+                                    Vec3F32 dir = normalize_3f32(sub_3f32(intersect, gizmo_origin));
+                                    intersect = add_3f32(gizmo_origin, scale_3f32(dir, ring_radius));
+                                    drag_data.anchor = intersect;
+                                    drag_data.start_axis = axis; // NOTE(k): store this to prevent numerical instability
+                                }
+                                ui_store_drag_struct(&drag_data);
+                            }
+                            RK_Gizmo3dRotationDragData *drag_data = ui_get_drag_struct(RK_Gizmo3dRotationDragData);
+
+                            axis = drag_data->start_axis;
+                            F32 t = rk_plane_intersect(eye, ray_eye_to_mouse_end, axis, gizmo_origin);
+                            // normalize intersection point
+                            Vec3F32 intersect = mix_3f32(eye, ray_eye_to_mouse_end, t);
+                            Vec3F32 dir = normalize_3f32(sub_3f32(intersect, gizmo_origin));
+                            intersect = add_3f32(gizmo_origin, scale_3f32(dir, ring_radius));
+
+                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_make(0), intersect, gizmo_origin, v4f32(1,0,0,1), 5.f, 1);
+                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_make(0), drag_data->anchor, gizmo_origin, v4f32(0,1,0,1), 5.f, 1);
+
+                            Vec3F32 start_dir = normalize_3f32(sub_3f32(drag_data->anchor, gizmo_origin));
+                            Vec3F32 curr_dir = normalize_3f32(sub_3f32(intersect, gizmo_origin));
+                            Vec3F32 cross = cross_3f32(start_dir, curr_dir);
+                            // clock wise if sign > 0
+                            F32 sign = dot_3f32(cross, axis) > 0 ? 1 : -1;
+                            F32 turn_abs = turns_from_radians_f32(acosf(Clamp(-1, dot_3f32(start_dir, curr_dir), 1)));
+                            F32 turn = sign * turn_abs;
+                            Assert((turn >= 0 && turn <= 1.f) || (turn <= 0 && turn >= -1));
+
+                            if(turn != 0)
+                            {
+                                // draw arc to indicate pct
+                                F32 turn_pct = fmod(abs_f32(turn), 1.f);
+                                Assert(turn_pct > 0 && turn_pct < 1);
+                                rk_drawlist_push_arc_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, drag_data->anchor, intersect, ring_segments*turn_pct, 1, v4f32(0,0,1,0.6), 3, 1, mat_4x4f32(1.f));
+
+                                // draw axis
+                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length)), axis_clr, 6.f, 0);
+                            }
+
+                            // change active node rotation
+                            if(turn != 0)
+                            {
+                                QuatF32 quat = make_rotate_quat_f32(axis, turn);
+                                active_node->node3d->transform.rotation = mul_quat_f32(quat, drag_data->start_rot);
+                            }
+                        }
+
+                        // draw rotation circle to indicate which axis is rotating
+                        rk_drawlist_push_circle(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, gizmo_origin, axis, ring_radius,ring_segments, axis_clr, ring_line_width, draw_edge);
+                    }
+
+                    // draw a cube in the inner middle
+                    // rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), scale_3f32(v3f32(1,1,1), axis_length*0.1), gizmo_origin, axises[1], v4f32(1,1,1,1), 1);
+                    // draw a white ball in the middle (NOTE(k): it's semi transparency, so we need draw it last)
+                    rk_drawlist_push_sphere(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, ring_radius*0.9, ring_radius*0.9*2, ring_segments, 19, 0, v4f32(0,0,0,0.6), 0, 1);
+
+                    // draw a outer circle
+                    // rk_drawlist_push_circle(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*1.3, 69,v4f32(0,0,0,0.1), 9, 0);
+                }break;
+                case RK_Gizmo3dMode_Scale:
+                {
+                    // cfg
+                    F32 axis_length = 1.0 * scale_t;
+
+                    typedef struct RK_Gizmo3dScaleDragData RK_Gizmo3dScaleDragData;
+                    struct RK_Gizmo3dScaleDragData
+                    {
+                        Vec3F32 start_pos;
+                        Vec3F32 start_scale;
+                        F32 start_dist;
+                    };
+
+                    for(U64 i = 0; i < 3; i++)
+                    {
+                        Vec3F32 axis = axises[i];
+                        RK_Key axis_key = axis_keys[i];
+                        Vec4F32 axis_clr = axis_clrs[i];
+
+                        B32 draw_edge = 0;
+
+                        B32 is_hot = rk_key_match(scene->hot_key, axis_key);
+                        B32 is_active = rk_key_match(scene->active_key, axis_key);
+
+                        if(is_hot)
+                        {
+                            axis_clr.w = 0.8;
+                            draw_edge = 1;
+                        }
+                        if(is_active)
+                        {
+                            axis_clr.w = 0.6;
+                            draw_edge = 1;
+                        }
+
+                        if(is_active && rk_state->sig.f & UI_SignalFlag_LeftDragging)
+                        {
+                            if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
+                            {
+                                RK_Gizmo3dScaleDragData drag_data = {0};
+                                drag_data.start_pos = active_node->position;
+                                drag_data.start_scale = active_node->scale;
+                                Vec3F32 intersect;
+                                {
+                                    Vec3F32 next_axis = axises[(i+1)%3];
+                                    F32 t = rk_plane_intersect(eye, ray_eye_to_mouse_end, next_axis, gizmo_origin);
+                                    intersect = mix_3f32(eye, ray_eye_to_mouse_end, t);
+                                }
+                                drag_data.start_dist = dot_3f32(sub_3f32(intersect, active_node->position), axis);
+                                ui_store_drag_struct(&drag_data);
+                            }
+
+                            RK_Gizmo3dScaleDragData *drag_data = ui_get_drag_struct(RK_Gizmo3dScaleDragData);
+
+                            // choose axis other than current axis(don't care which one)
+                            Vec3F32 next_axis = axises[(i+1)%3];
+                            Vec3F32 intersect;
+                            {
+                                F32 t = rk_plane_intersect(eye, ray_eye_to_mouse_end, next_axis, gizmo_origin);
+                                intersect = mix_3f32(eye, ray_eye_to_mouse_end, t);
+                            }
+                            F32 dist = dot_3f32(sub_3f32(intersect, drag_data->start_pos), axis);
+                            F32 scale = dist / drag_data->start_dist;
+
+                            // scale active_node along the axis
+                            if(scale != 0)
+                            {
+                                active_node->node3d->transform.scale.v[i] = drag_data->start_scale.v[i] * scale;
+                            }
+
+                            // draw axis to indicate direction
+                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), axis_clr, 6.f, 0);
+                            // draw a cube to indicate curr scale pos(projected)
+                            Vec4F32 box_clr = axis_clr;
+                            box_clr.w = 1.0f;
+                            rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, scale_3f32(v3f32(1,1,1), axis_length*0.1), add_3f32(gizmo_origin, scale_3f32(axis, dist)), i_hat, j_hat, box_clr, draw_edge, 1);
+                        }
+
+                        // curr axis
+                        rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, gizmo_origin, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis_clr, 19, draw_edge);
+                        // curr axis tip
+                        rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, scale_3f32(v3f32(1,1,1),axis_length*0.1), add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), i_hat, j_hat, axis_clr, draw_edge, 1);
+                    }
+
+                    // draw unit scale box in the middle
+                    {
+                        B32 is_hot = rk_key_match(scene->hot_key, origin_key);
+                        B32 is_active = rk_key_match(scene->active_key, origin_key);
+                        B32 draw_edge = 1;
+                        Vec4F32 clr = v4f32(0,0,0,1);
+
+                        if(is_hot || is_active)
+                        {
+                            clr.w = 0.9;
+                        }
+
+                        if(is_active && rk_state->sig.f & UI_SignalFlag_LeftDragging)
+                        {
+                            if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
+                            {
+                                RK_Gizmo3dScaleDragData drag_data = {0};
+                                drag_data.start_pos = active_node->position;
+                                drag_data.start_scale = active_node->scale;
+                                Vec3F32 intersect;
+                                {
+                                    // projected to front plane(facing camera)
+                                    F32 t = rk_plane_intersect(eye, ray_eye_to_mouse_end, ray_eye_to_center, gizmo_origin);
+                                    intersect = mix_3f32(eye, ray_eye_to_mouse_end, t);
+                                }
+                                drag_data.start_dist = length_3f32(sub_3f32(intersect, active_node->position));
+                                ui_store_drag_struct(&drag_data);
+                            }
+
+                            RK_Gizmo3dScaleDragData *drag_data = ui_get_drag_struct(RK_Gizmo3dScaleDragData);
+                            Vec3F32 intersect;
+                            {
+                                F32 t = rk_plane_intersect(eye, ray_eye_to_mouse_end, ray_eye_to_center, gizmo_origin);
+                                intersect = mix_3f32(eye, ray_eye_to_mouse_end, t);
+                            }
+                            F32 dist = length_3f32(sub_3f32(intersect, drag_data->start_pos));
+                            F32 scale = dist / drag_data->start_dist;
+
+                            // draw a line from gizmo_origin to intersect
+                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, intersect, v4f32(0,0,0,1), 3, draw_edge);
+
+                            // scale active_node along all axises
+                            if(scale != 0)
+                            {
+                                active_node->node3d->transform.scale = scale_3f32(drag_data->start_scale, scale);
+                            }
+                        }
+
+                        // draw middle cube
+                        rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), origin_key, scale_3f32(v3f32(1,1,1),axis_length*0.2), gizmo_origin, i_hat, j_hat, clr, draw_edge, 1);
+                    }
+                }break;
+                default:{InvalidPath;}break;
+            }
+        }
+
+        // build gizmo drawlists
+        rk_drawlist_build(rk_frame_gizmo_drawlist());
     }
 
     /////////////////////////////////
@@ -2812,13 +3336,116 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
     }
 
     /////////////////////////////////
-    // geo3d => rect in this order
-    d_push_bucket(rk_state->bucket_geo3d);
-    d_sub_bucket(rk_state->bucket_rect);
+    // concate draw buckets
+
+    D_Bucket *ret = d_bucket_make();
+    d_push_bucket(ret);
+    // TODO(XXX): we should check there is something in passes, we don't a empty geo pass (performance issue)
+    d_sub_bucket(rk_state->bucket_geo3d[RK_GeoBucketKind_Back], 0);
+    d_sub_bucket(rk_state->bucket_geo3d[RK_GeoBucketKind_Front], 0);
+    d_sub_bucket(rk_state->bucket_geo3d[RK_GeoBucketKind_Screen], 0);
+    d_sub_bucket(rk_state->bucket_rect, 0);
+    d_pop_bucket();
 
     ProfEnd();
     rk_state->frame_counter++;
-    return rk_state->bucket_geo3d;
+    return ret;
+}
+
+/////////////////////////////////
+// Dynamic drawing (in immediate mode fashion)
+
+internal RK_DrawList *
+rk_drawlist_alloc(Arena *arena, U64 vertex_buffer_cap, U64 indice_buffer_cap)
+{
+    RK_DrawList *ret = push_array(arena, RK_DrawList, 1);
+    ret->vertex_buffer_cap = vertex_buffer_cap;
+    ret->indice_buffer_cap = indice_buffer_cap;
+    ret->vertex_buffer = r_buffer_alloc(R_ResourceKind_Stream, vertex_buffer_cap, 0, 0);
+    ret->indice_buffer = r_buffer_alloc(R_ResourceKind_Stream, indice_buffer_cap, 0, 0);
+    return ret;
+}
+
+internal RK_DrawNode *
+rk_drawlist_push(Arena *arena, RK_DrawList *drawlist)
+{
+    RK_DrawNode *ret = push_array(arena, RK_DrawNode, 1);
+    DLLPushBack(drawlist->first, drawlist->last, ret);
+    drawlist->node_count++;
+    return ret;
+}
+
+internal void
+rk_drawlist_build(RK_DrawList *drawlist)
+{
+    U64 vertex_count = 0;
+    U64 indice_count = 0;
+    for(RK_DrawNode *n = drawlist->first; n != 0; n = n->next)
+    {
+        vertex_count += n->vertex_count;
+        indice_count += n->indice_count;
+    }
+    U64 vertex_buffer_size = vertex_count * sizeof(R_Vertex);
+    U64 indice_buffer_size = indice_count * sizeof(U32);
+
+    if(drawlist->vertex_buffer_cap < vertex_buffer_size)
+    {
+        r_buffer_release(drawlist->vertex_buffer);
+        drawlist->vertex_buffer = r_buffer_alloc(R_ResourceKind_Stream, vertex_buffer_size*2, 0, 0);
+    }
+    if(drawlist->indice_buffer_cap < indice_buffer_size)
+    {
+        r_buffer_release(drawlist->indice_buffer);
+        drawlist->indice_buffer = r_buffer_alloc(R_ResourceKind_Stream, indice_buffer_size*2, 0, 0);
+    }
+
+    R_Handle vertex_buffer = drawlist->vertex_buffer;
+    R_Handle indice_buffer = drawlist->indice_buffer;
+
+    Temp scratch = scratch_begin(0,0);
+    R_Vertex *vertices = push_array(scratch.arena, R_Vertex, vertex_count);
+    U64 vertex_idx = 0;
+    U32 *indices = push_array(scratch.arena, U32, indice_count);
+    U64 indice_idx = 0;
+
+    U64 count = 0;
+    for(RK_DrawNode *n = drawlist->first; n != 0; n = n->next)
+    {
+        // copy vertex
+        U64 vertex_copy_size = n->vertex_count * sizeof(R_Vertex);
+        U64 indice_copy_size = n->indice_count * sizeof(U32);
+        MemoryCopy(vertices+vertex_idx, n->vertices, vertex_copy_size);
+        MemoryCopy(indices+indice_idx, n->indices, indice_copy_size);
+
+        // NOTE(k): we would use multiple pass here (geo3d back, geo3d front, screen space)
+        D_BucketScope(n->draw_bucket)
+        {
+            // NOTE(k): mesh group stored as hash map which don't contain the order, that's why we get flicker (we may need a submit ordered group list)
+            d_mesh(vertex_buffer, indice_buffer, vertex_idx*sizeof(R_Vertex), indice_idx*sizeof(U32), n->indice_count,
+                   n->topology, n->polygon, R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB,
+                   n->albedo_tex, n->color, n->line_width, 0, 0, n->xform, n->key.u64[0], n->draw_edge, !n->disable_depth, 1, n->omit_light);
+        }
+
+        vertex_idx += n->vertex_count;
+        indice_idx += n->indice_count;
+        count++;
+    }
+    Assert(count == drawlist->node_count);
+
+    // upload buffer with new content
+    r_buffer_copy(vertex_buffer, vertices, vertex_buffer_size);
+    r_buffer_copy(indice_buffer, indices, indice_buffer_size);
+
+    scratch_end(scratch);
+}
+
+internal void
+rk_drawlist_reset(RK_DrawList *drawlist)
+{
+    // clear per-frame data
+    drawlist->first = 0;
+    drawlist->last = 0;
+    drawlist->node_count = 0;
 }
 
 /////////////////////////////////
@@ -2874,6 +3501,55 @@ rk_ijk_from_matrix(Mat4x4F32 m, Vec3F32 *i, Vec3F32 *j, Vec3F32 *k)
     *i = normalize_3f32(*i);
     *j = normalize_3f32(*j);
     *k = normalize_3f32(*k);
+}
+
+internal Mat4x4F32
+rk_xform_from_transform3d(RK_Transform3D *transform)
+{
+    Mat4x4F32 xform = mat_4x4f32(1.0);
+    Mat4x4F32 rotation_m = mat_4x4f32_from_quat_f32(transform->rotation);
+    Mat4x4F32 translate_m = make_translate_4x4f32(transform->position);
+    Mat4x4F32 scale_m = make_scale_4x4f32(transform->scale);
+    // TRS order
+    xform = mul_4x4f32(scale_m, xform);
+    xform = mul_4x4f32(rotation_m, xform);
+    xform = mul_4x4f32(translate_m, xform);
+    return xform;
+}
+
+internal Mat4x4F32
+rk_xform_from_trs(Vec3F32 translate, QuatF32 rotation, Vec3F32 scale)
+{
+
+    Mat4x4F32 xform = mat_4x4f32(1.0);
+    Mat4x4F32 rotation_m = mat_4x4f32_from_quat_f32(rotation);
+    Mat4x4F32 translate_m = make_translate_4x4f32(translate);
+    Mat4x4F32 scale_m = make_scale_4x4f32(scale);
+    // TRS order
+    xform = mul_4x4f32(scale_m, xform);
+    xform = mul_4x4f32(rotation_m, xform);
+    xform = mul_4x4f32(translate_m, xform);
+    return xform;
+}
+
+internal F32
+rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F32 plane_normal, Vec3F32 plane_point)
+{
+    F32 t;
+    Vec3F32 ray_dir = sub_3f32(ray_end, ray_start);
+    F32 denom = dot_3f32(plane_normal, ray_dir);
+
+    // avoid division by zero
+    if(abs_f32(denom) > 1e-6)
+    {
+        // NOTE(k): if t is not within [0,1], the intersection is outside of ray, but still intersect if we consider the ray infinite long
+        t = dot_3f32(plane_normal, sub_3f32(plane_point,ray_start)) / denom;
+    }
+    else
+    {
+        t = 0;
+    }
+    return t;
 }
 
 /////////////////////////////////
@@ -2969,7 +3645,7 @@ rk_scene_active_node_set(RK_Scene *s, RK_Key key, B32 only_navigation_root)
         for(; node != 0 && !(node->flags & RK_NodeFlag_NavigationRoot); node = node->parent) {}
     }
 
-    if(node == 0 || !(node->flags & RK_NodeFlag_Gizmos))
+    if(node != 0 || rk_key_match(key, rk_key_zero()))
     {
         s->active_node = rk_handle_from_node(node);
     }

@@ -27,6 +27,24 @@ typedef enum RK_TransformKind
     RK_TransformKind_COUNT
 } RK_TransformKind;
 
+typedef enum RK_Gizmo3dMode
+{
+    RK_Gizmo3dMode_Translate,
+    RK_Gizmo3dMode_Rotation,
+    RK_Gizmo3dMode_Scale,
+    RK_Gizmo3dMode_COUNT,
+} RK_Gizmo3dMode;
+
+/////////////////////////////////
+//- Render bucket
+typedef enum RK_GeoBucketKind
+{
+    RK_GeoBucketKind_Back,
+    RK_GeoBucketKind_Front,
+    RK_GeoBucketKind_Screen,
+    RK_GeoBucketKind_COUNT,
+} RK_GeoBucketKind;
+
 /////////////////////////////////
 //- Animation
 
@@ -94,7 +112,6 @@ typedef U64 RK_NodeFlags;
 #define RK_NodeFlag_NavigationRoot       (RK_NodeFlags)(1ull<<0)
 #define RK_NodeFlag_Float                (RK_NodeFlags)(1ull<<1)
 #define RK_NodeFlag_Hidden               (RK_NodeFlags)(1ull<<2)
-#define RK_NodeFlag_Gizmos               (RK_NodeFlags)(1ull<<3)
 
 typedef U64 RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_Node2D           (RK_NodeTypeFlags)(1ull<<0)
@@ -484,22 +501,20 @@ struct RK_Camera3D
     B32                    show_grid;
     B32                    show_gizmos;
     B32                    is_active;
+    F32                    zn;
+    F32                    zf;
 
     union
     {
         // Perspective
         struct
         {
-            F32 zn;
-            F32 zf;
             F32 fov;
         } perspective;
 
         // Orthographic
         struct
         {
-            F32 zn;
-            F32 zf;
             F32 left;
             F32 right;
             F32 bottom;
@@ -664,6 +679,10 @@ struct RK_Scene
 
     RK_Handle         active_node;
 
+    // gizmo
+    B32               gizmo3d_disabled;
+    RK_Gizmo3dMode    gizmo3d_mode;
+
     String8           name;
     String8           save_path;
 };
@@ -760,6 +779,54 @@ struct RK_SceneTemplate
     RK_Scene*(*fn)(void);
 };
 
+/////////////////////////////////
+// Dynamic drawing (in immediate mode fashion)
+
+typedef struct RK_DrawNode RK_DrawNode;
+struct RK_DrawNode
+{
+    RK_DrawNode *next;
+    RK_DrawNode *prev;
+
+    RK_Key key;
+    Mat4x4F32 xform;
+
+    D_Bucket *draw_bucket;
+    B32 draw_edge;
+    B32 omit_light;
+    B32 disable_depth;
+    F32 line_width;
+
+    R_Vertex *vertices;
+    U64 vertex_count;
+    U32 *indices;
+    U64 indice_count;
+
+    R_GeoTopologyKind topology;
+    R_GeoPolygonKind polygon;
+
+    Vec4F32 color;
+    R_Handle albedo_tex;
+};
+
+typedef struct RK_DrawList RK_DrawList;
+struct RK_DrawList
+{
+    // per-frame data
+    RK_DrawNode *first;
+    RK_DrawNode *last;
+    U64 node_count;
+
+    // persistent
+    R_Handle vertex_buffer;
+    R_Handle indice_buffer;
+    U64 vertex_buffer_cap;
+    U64 indice_buffer_cap;
+};
+
+/////////////////////////////////
+// State 
+
 typedef struct RK_State RK_State;
 struct RK_State
 {
@@ -786,7 +853,10 @@ struct RK_State
 
     //- Drawing buckets
     D_Bucket              *bucket_rect;
-    D_Bucket              *bucket_geo3d;
+    D_Bucket              *bucket_geo3d[RK_GeoBucketKind_COUNT];
+
+    //- Gizmos drawlists
+    RK_DrawList           *gizmo_drawlists[2];
 
     //- Window
     Rng2F32               window_rect;
@@ -800,6 +870,7 @@ struct RK_State
     Vec2F32               last_cursor;
     B32                   cursor_hidden;
 
+    // TODO(k): for serilization, kind weird, find a better way
     //- Functions
     RK_FunctionSlot       *function_hash_table;
     U64                   function_hash_table_size;
@@ -824,9 +895,9 @@ struct RK_State
 
     struct
     {
-    U64                   frame_dt_us;
-                          U64 cpu_dt_us;
-                          U64 gpu_dt_us;
+        U64 frame_dt_us;
+        U64 cpu_dt_us;
+        U64 gpu_dt_us;
     } debug;
 
     RK_Scene              *first_to_free_scene;
@@ -903,6 +974,7 @@ internal RK_TrackFrame* rk_track_frame_alloc();
 
 internal void             rk_init(OS_Handle os_wnd);
 internal Arena*           rk_frame_arena();
+internal RK_DrawList*     rk_frame_gizmo_drawlist();
 internal RK_FunctionNode* rk_function_from_string(String8 string);
 internal RK_View*         rk_view_from_kind(RK_ViewKind kind);
 
@@ -985,6 +1057,14 @@ internal void      rk_ui_draw(void);
 internal D_Bucket* rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key);
 
 /////////////////////////////////
+// Dynamic drawing (in immediate mode fashion)
+
+internal RK_DrawList* rk_drawlist_alloc(Arena *arena, U64 vertex_buffer_cap, U64 indice_buffer_cap);
+internal RK_DrawNode* rk_drawlist_push(Arena *arena, RK_DrawList *drawlist);
+internal void         rk_drawlist_build(RK_DrawList *drawlist);
+internal void         rk_drawlist_reset(RK_DrawList *drawlist);
+
+/////////////////////////////////
 //~ Helpers
 
 #define FileReadAll(arena, fp, return_data, return_size)                                 \
@@ -996,8 +1076,11 @@ internal D_Bucket* rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64
         *return_data = push_array(arena, U8, f_props.size);                              \
         os_file_read(f, rng_1u64(0,f_props.size), *return_data);                         \
     } while (0);
-internal void rk_trs_from_matrix(Mat4x4F32 *m, Vec3F32 *trans, QuatF32 *rot, Vec3F32 *scale);
-internal void rk_ijk_from_matrix(Mat4x4F32 m, Vec3F32 *i, Vec3F32 *j, Vec3F32 *k);
+internal void      rk_trs_from_matrix(Mat4x4F32 *m, Vec3F32 *trans, QuatF32 *rot, Vec3F32 *scale);
+internal void      rk_ijk_from_matrix(Mat4x4F32 m, Vec3F32 *i, Vec3F32 *j, Vec3F32 *k);
+internal Mat4x4F32 rk_xform_from_transform3d(RK_Transform3D *transform);
+internal Mat4x4F32 rk_xform_from_trs(Vec3F32 translate, QuatF32 rotation, Vec3F32 scale);
+internal F32       rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F32 plane_normal, Vec3F32 plane_point);
 
 /////////////////////////////////
 //~ Enum to string

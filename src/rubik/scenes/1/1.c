@@ -222,8 +222,8 @@ rk_scene_entry__1()
             main_camera->camera3d->show_grid = 1;
             main_camera->camera3d->show_gizmos = 1;
             main_camera->camera3d->is_active = 1;
-            main_camera->camera3d->perspective.zn = 0.1;
-            main_camera->camera3d->perspective.zf = 200.f;
+            main_camera->camera3d->zn = 0.1;
+            main_camera->camera3d->zf = 200.f;
             main_camera->camera3d->perspective.fov = 0.25f;
             rk_node_push_fn(main_camera, editor_camera_fn);
             main_camera->node3d->transform.position = v3f32(0,-3,0);

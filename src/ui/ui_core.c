@@ -1062,7 +1062,7 @@ ui_box_equip_draw_bucket(UI_Box *box, D_Bucket *bucket)
     box->flags |= UI_BoxFlag_DrawBucket;
     if(box->draw_bucket != 0)
     {
-        D_BucketScope(box->draw_bucket) d_sub_bucket(bucket);
+        D_BucketScope(box->draw_bucket) d_sub_bucket(bucket, 1);
     }
     else
     {

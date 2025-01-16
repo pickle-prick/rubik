@@ -17,11 +17,12 @@ layout(location = 13) in uint  draw_edge;
 layout(location = 14) in uint  joint_count;
 layout(location = 15) in uint  first_joint;
 layout(location = 16) in uint  depth_test;
+layout(location = 17) in uint  omit_light;
 
 // It is important to know that some types, like dvec3 64 bit vectors, use multiple slots
 // That means that the index after it must be at least 2 higher
 layout(location = 0)      out  vec2  frag_texcoord;
-layout(location = 1)      out  vec4  frag_color;
+layout(location = 1) flat out  vec4  frag_color;
 layout(location = 2) flat out  uvec2 frag_id;
 layout(location = 3) flat out  float frag_omit_texture;
 layout(location = 4) flat out  vec3  frag_normal;
@@ -90,7 +91,11 @@ void main() {
 
         float light_alignment = dot(-ubo.global_light.xyz, (model*normal).xyz);
         // float light_alignment = dot(-ubo.global_light.xyz, normal.xyz);
-        float intensity = 0.5*light_alignment + 0.5;
+        float intensity = 1.0;
+        if(omit_light == 0)
+        {
+            intensity = 0.5*light_alignment + 0.5;
+        }
         intensity = intensity < 0.3 ? 0.3 : intensity;
 
         vec4 color = color_texture.a > 0 ? color_texture : vec4(col.xyz, 1.0);

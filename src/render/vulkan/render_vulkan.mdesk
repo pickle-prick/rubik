@@ -1,0 +1,106 @@
+//- rjf: stack table
+
+@table(name, name_lower, type, default)
+R_Vulkan_StackTable:
+{
+  //- k: parents
+  { Cmd                             cmd                       `VkCommandBuffer`                0                                }
+}
+
+//- rjf: declaring stack node types
+
+@gen
+{
+  @expand(R_Vulkan_StackTable a) `typedef struct R_Vulkan_$(a.name)Node R_Vulkan_$(a.name)Node; struct R_Vulkan_$(a.name)Node{R_Vulkan_$(a.name)Node *next; $(a.type) v;};`
+}
+
+//- rjf: declaring all default stack tops
+
+@gen
+{
+  `#define R_Vulkan_DeclStackNils \\`;
+  `struct\\`;
+  `{\\`;
+    @expand(R_Vulkan_StackTable a) `R_Vulkan_$(a.name)Node $(a.name_lower)_nil_stack_top;\\`;
+    `}`;
+}
+
+//- rjf: initializing all default stack tops
+
+@gen
+{
+  `#define R_Vulkan_InitStackNils(state) \\`;
+  @expand(R_Vulkan_StackTable a) `state->$(a.name_lower)_nil_stack_top.v = $(a.default);\\`;
+  ``;
+}
+
+//- rjf: declaring all stack nodes & free lists
+
+@gen
+{
+  `#define R_Vulkan_DeclStacks \\`;
+  `struct\\`;
+  `{\\`;
+    @expand(R_Vulkan_StackTable a) `struct { R_Vulkan_$(a.name)Node *top; $(a.type) bottom_val; R_Vulkan_$(a.name)Node *free; B32 auto_pop; } $(a.name_lower)_stack;\\`;
+    `}`;
+}
+
+//- rjf: initing all stack nodes
+
+@gen
+{
+  `#define R_Vulkan_InitStacks(state) \\`;
+  @expand(R_Vulkan_StackTable a) `state->$(a.name_lower)_stack.top = &state->$(a.name_lower)_nil_stack_top; state->$(a.name_lower)_stack.bottom_val = $(a.default); state->$(a.name_lower)_stack.free = 0; state->$(a.name_lower)_stack.auto_pop = 0;\\`;
+  ``;
+}
+
+//- rjf: auto-popping all stacks
+
+@gen
+{
+  `#define R_Vulkan_AutoPopStacks(state) \\`
+  @expand(R_Vulkan_StackTable a)
+    `if(state->$(a.name_lower)_stack.auto_pop) { r_vulkan_pop_$(a.name_lower)(); state->$(a.name_lower)_stack.auto_pop = 0; }\\`;
+  ``; }
+
+//- rjf: decls for the stack function operation headers
+
+@gen
+{
+  @expand(R_Vulkan_StackTable a)
+    `internal $(a.type) $(=>35) r_vulkan_top_$(a.name_lower)(void);`
+    @expand(R_Vulkan_StackTable a)
+    `internal $(a.type) $(=>35) r_vulkan_bottom_$(a.name_lower)(void);`
+    @expand(R_Vulkan_StackTable a)
+    `internal $(a.type) $(=>35) r_vulkan_push_$(a.name_lower)($(a.type) v);`
+    @expand(R_Vulkan_StackTable a)
+    `internal $(a.type) $(=>35) r_vulkan_pop_$(a.name_lower)(void);`
+    @expand(R_Vulkan_StackTable a)
+    `internal $(a.type) $(=>35) r_vulkan_set_next_$(a.name_lower)($(a.type) v);`
+}
+
+//- rjf: defer-loop helpers
+
+@gen @c_file
+{
+  `#if 1`;
+  @expand(R_Vulkan_StackTable a)
+    `#define R_Vulkan_$(a.name)_Scope(v) DeferLoop(r_vulkan_push_$(a.name_lower)(v), r_vulkan_pop_$(a.name_lower)())`
+  `#endif`;
+}
+
+//- rjf: decls for the stack operation implementations
+
+@gen @c_file
+{
+  @expand(R_Vulkan_StackTable a)
+    `internal $(a.type) r_vulkan_top_$(a.name_lower)(void) { R_Vulkan_StackTopImpl(r_vulkan_state, $(a.name), $(a.name_lower)) }`;
+  @expand(R_Vulkan_StackTable a)
+    `internal $(a.type) r_vulkan_bottom_$(a.name_lower)(void) { R_Vulkan_StackBottomImpl(r_vulkan_state, $(a.name), $(a.name_lower)) }`;
+  @expand(R_Vulkan_StackTable a)
+    `internal $(a.type) r_vulkan_push_$(a.name_lower)($(a.type) v) { R_Vulkan_StackPushImpl(r_vulkan_state, $(a.name), $(a.name_lower), $(a.type), v) }`;
+  @expand(R_Vulkan_StackTable a)
+    `internal $(a.type) r_vulkan_pop_$(a.name_lower)(void) { R_Vulkan_StackPopImpl(r_vulkan_state, $(a.name), $(a.name_lower)) }`;
+  @expand(R_Vulkan_StackTable a)
+    `internal $(a.type) r_vulkan_set_next_$(a.name_lower)($(a.type) v) { R_Vulkan_StackSetNextImpl(r_vulkan_state, $(a.name), $(a.name_lower), $(a.type), v) }`;
+}

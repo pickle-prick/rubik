@@ -185,7 +185,7 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
                     U64 offset = accessor->offset+accessor->buffer_view->offset;
                     void *indices_src = (U8 *)accessor->buffer_view->buffer->data+offset;
                     U64 size = sizeof(U32) * accessor->count;
-                    R_Handle indices = r_buffer_alloc(R_ResourceKind_Static, size, indices_src);
+                    R_Handle indices = r_buffer_alloc(R_ResourceKind_Static, size, indices_src, size);
                     mesh->indices = indices;
                     mesh->indice_count = accessor->count;
                 }
@@ -250,7 +250,7 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
                             }
                         }
                     }
-                    mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, size, (void*)vertices_src);
+                    mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, size, (void*)vertices_src, size);
                     mesh->vertex_count = vertex_count;
                 }
 
@@ -781,7 +781,7 @@ rk_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide
 }
 
 internal void
-rk_mesh_primitive_plane(Arena *arena, Vec2F32 size, U64 subdivide_w, U64 subdivide_d, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
+rk_mesh_primitive_plane(Arena *arena, Vec2F32 size, U64 subdivide_w, U64 subdivide_d, B32 both_face, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
 {
     U64 i,j,prevrow,thisrow,vertex_idx, indice_idx;
     F32 x,z;
@@ -791,7 +791,7 @@ rk_mesh_primitive_plane(Arena *arena, Vec2F32 size, U64 subdivide_w, U64 subdivi
     Vec3F32 normal = {0.0f, -1.0f, 0.0f};
 
     U64 vertex_count   = (subdivide_d+2) * (subdivide_w+2);
-    U64 indice_count   = (subdivide_d+1) * (subdivide_w+1) * 6;
+    U64 indice_count   = (subdivide_d+1) * (subdivide_w+1) * 6 * both_face*2;
     R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
     U32 *indices       = push_array(arena, U32, indice_count);
 
@@ -825,9 +825,22 @@ rk_mesh_primitive_plane(Arena *arena, Vec2F32 size, U64 subdivide_w, U64 subdivi
                 indices[indice_idx++] = prevrow + i - 1;
                 indices[indice_idx++] = prevrow + i;
                 indices[indice_idx++] = thisrow + i - 1;
+
                 indices[indice_idx++] = prevrow + i;
                 indices[indice_idx++] = thisrow + i;
                 indices[indice_idx++] = thisrow + i - 1;
+
+                if(both_face)
+                {
+
+                    indices[indice_idx++] = prevrow + i - 1;
+                    indices[indice_idx++] = thisrow + i - 1;
+                    indices[indice_idx++] = prevrow + i;
+
+                    indices[indice_idx++] = prevrow + i;
+                    indices[indice_idx++] = thisrow + i - 1;
+                    indices[indice_idx++] = thisrow + i;
+                }
             }
             x += size.x / (subdivide_w+1.0);
         }
@@ -935,7 +948,6 @@ rk_mesh_primitive_sphere(Arena *arena, F32 radius, F32 height, U64 radial_segmen
 internal void
 rk_mesh_primitive_cylinder(Arena *arena, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
 {
-    Assert(rings >= 2);
     U64 i,j,prevrow,thisrow;
     F32 x,y,z,half_height;
 
@@ -1065,6 +1077,100 @@ rk_mesh_primitive_cylinder(Arena *arena, F32 radius, F32 height, U64 radial_segm
 
     Assert(vertex_count == vertex_idx);
     Assert(indice_count == indice_idx);
+    *vertices_out = vertices;
+    *vertices_count_out = vertex_count;
+    *indices_out = indices;
+    *indices_count_out = indice_count;
+}
+
+internal void
+rk_mesh_primitive_cone(Arena *arena, F32 radius, F32 height, U64 radial_segments, B32 cap_bottom, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
+{
+    U64 vertex_count = (radial_segments+2) + cap_bottom*(radial_segments+2);
+    U64 indice_count = radial_segments*3 + cap_bottom*(radial_segments*3);
+    R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
+    U32 *indices = push_array(arena, U32, indice_count);
+
+    U64 vertex_idx = 0;
+    U64 indice_idx = 0;
+
+    // push tip
+    {
+        R_Vertex vertex = {0};
+        vertex.pos = v3f32(0,-height,0);
+        vertex.nor = v3f32(0,-1,0);
+        vertex.tan = v3f32(0,-height,0);
+        vertices[vertex_idx++] = vertex;
+    }
+
+    U64 curr_vertex_idx = 0;
+    U64 prev_vertex_idx = 0;
+    F32 turn = tau32 / (F32)radial_segments;
+    for(U64 i = 0; i < (radial_segments+1); i++)
+    {
+        F32 rad = i*turn;
+        // on xz plane
+        F32 x = cosf(rad) * radius;
+        F32 z = sinf(rad) * radius;
+
+        R_Vertex vertex = {0};
+        vertex.pos = v3f32(x,0,z);
+        vertex.nor = v3f32(0,1,0);
+        vertex.tan = v3f32(0,0,0);
+
+        curr_vertex_idx = vertex_idx;
+        vertices[vertex_idx++] = vertex;
+
+        // counter-clock wise
+        if(i > 0)
+        {
+            indices[indice_idx++] = prev_vertex_idx;
+            indices[indice_idx++] = curr_vertex_idx;
+            indices[indice_idx++] = 0; // origin
+        }
+        prev_vertex_idx = curr_vertex_idx;
+    }
+
+    if(cap_bottom)
+    {
+        U64 origin_idx = vertex_idx;
+        // push_origin
+        {
+            R_Vertex vertex = {0};
+            vertex.pos = v3f32(0,0,0);
+            vertex.nor = v3f32(0,1,0);
+            vertex.tan = v3f32(1,0,0);
+            vertices[vertex_idx++] = vertex;
+        }
+
+        for(U64 i = 0; i < (radial_segments+1); i++)
+        {
+            F32 rad = i*turn;
+            // on xz plane
+            F32 x = cosf(rad) * radius;
+            F32 z = sinf(rad) * radius;
+
+            R_Vertex vertex = {0};
+            vertex.pos = v3f32(x,0,z);
+            vertex.nor = v3f32(0,1,0);
+            vertex.tan = v3f32(0,0,0);
+
+            curr_vertex_idx = vertex_idx;
+            vertices[vertex_idx++] = vertex;
+
+            // counter-clock wise
+            if(i > 0)
+            {
+                indices[indice_idx++] = prev_vertex_idx;
+                indices[indice_idx++] = origin_idx; // origin
+                indices[indice_idx++] = curr_vertex_idx;
+            }
+            prev_vertex_idx = curr_vertex_idx;
+        }
+    }
+
+    Assert(vertex_idx == vertex_count);
+    Assert(indice_idx == indice_count);
     *vertices_out = vertices;
     *vertices_count_out = vertex_count;
     *indices_out = indices;
@@ -1286,6 +1392,112 @@ rk_mesh_primitive_torus(Arena *arena, F32 inner_radius, F32 outer_radius, U64 ri
     *indices_count_out = indice_count;
 }
 
+internal void
+rk_mesh_primitive_circle_line(Arena *arena, F32 radius, U64 segments, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
+{
+    U64 vertex_count = segments+1;
+    U64 indice_count = segments*2;
+    R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
+    U32 *indices = push_array(arena, U32, indice_count);
+    F32 turn_rad = tau32 / (F32)segments;
+
+    U64 vertex_idx = 0;
+    U64 indice_idx = 0;
+
+    // default to xz plane, face to -z, counter clock wise
+    F32 x,z;
+    U64 prev_vertex_indice;
+    for(U64 i = 0; i < segments+1; i++)
+    {
+        F32 rad = turn_rad * i;
+        x = cosf(rad) * radius;
+        z = sinf(rad) * radius;
+        R_Vertex vertex = {0};
+        vertex.nor = v3f32(0,-1,0);
+        vertex.tan = v3f32(1,0,0);
+        vertex.pos = v3f32(x,0,z);
+        vertex.tex = v2f32(0,0);
+        vertices[vertex_idx++] = vertex;
+
+        U64 curr_vertex_indice = vertex_idx-1;
+        if(i > 0)
+        {
+            indices[indice_idx++] = prev_vertex_indice;
+            indices[indice_idx++] = curr_vertex_indice;
+        }
+        prev_vertex_indice = curr_vertex_indice;
+    }
+
+    Assert(vertex_idx == vertex_count);
+    Assert(indice_idx == indice_count);
+    *vertices_out = vertices;
+    *vertices_count_out = vertex_count;
+    *indices_out = indices;
+    *indices_count_out = indice_count;
+}
+
+internal void
+rk_mesh_primitive_arc_filled(Arena *arena, F32 radius, F32 pct, U64 segments, B32 both_face, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
+{
+    U64 vertex_count = segments+2;
+    U64 indice_count = segments*3*(2*both_face);
+    R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
+    U32 *indices = push_array(arena, U32, indice_count);
+    F32 turn_rad = (tau32*pct) / (F32)segments;
+
+    U64 vertex_idx = 0;
+    U64 indice_idx = 0;
+
+    // origin
+    {
+        R_Vertex vertex = {0};
+        vertex.nor = v3f32(0,-1,0);
+        vertex.tan = v3f32(1,0,0);
+        vertex.pos = v3f32(0,0,0);
+        vertex.tex = v2f32(0,0);
+        vertices[vertex_idx++] = vertex;
+    }
+
+    // default to xz plane, face to -z, counter clock wise
+    F32 x,z;
+    U64 prev_vertex_indice;
+    for(U64 i = 0; i < segments+1; i++)
+    {
+        F32 rad = turn_rad * i;
+        x = cosf(rad) * radius;
+        z = sinf(rad) * radius;
+        R_Vertex vertex = {0};
+        vertex.nor = v3f32(0,-1,0);
+        vertex.tan = v3f32(1,0,0);
+        vertex.pos = v3f32(x,0,z);
+        vertex.tex = v2f32(0,0);
+        vertices[vertex_idx++] = vertex;
+
+        U64 curr_vertex_indice = vertex_idx-1;
+        if(i > 0)
+        {
+            indices[indice_idx++] = 0; // origin
+            indices[indice_idx++] = prev_vertex_indice;
+            indices[indice_idx++] = curr_vertex_indice;
+
+            if(both_face)
+            {
+                indices[indice_idx++] = 0; // origin
+                indices[indice_idx++] = curr_vertex_indice;
+                indices[indice_idx++] = prev_vertex_indice;
+            }
+        }
+        prev_vertex_indice = curr_vertex_indice;
+    }
+
+    Assert(vertex_idx == vertex_count);
+    Assert(indice_idx == indice_count);
+    *vertices_out = vertices;
+    *vertices_count_out = vertex_count;
+    *indices_out = indices;
+    *indices_count_out = indice_count;
+}
+
 //~ Node building helper
 
 internal RK_Node *
@@ -1321,11 +1533,13 @@ rk_box_node(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 
             U32 *indices;
             U64 indice_count;
             rk_mesh_primitive_box(scratch.arena, size, subdivide_w,subdivide_h,subdivide_d, &vertices, &vertex_count, &indices, &indice_count);
+            U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
+            U64 indice_buffer_size = sizeof(U32) * indice_count;
 
             mesh->topology = R_GeoTopologyKind_Triangles;
-            mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertex_count, vertices);
+            mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
             mesh->vertex_count = vertex_count;
-            mesh->indices = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, indices);
+            mesh->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
             mesh->indice_count = indice_count;
             mesh->src_kind = RK_MeshSourceKind_BoxPrimitive;            
             mesh->src.box_primitive.subdivide_w = subdivide_w;
@@ -1370,12 +1584,14 @@ rk_plane_node(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
             U64 vertex_count;
             U32 *indices;
             U64 indice_count;
-            rk_mesh_primitive_plane(scratch.arena, size, subdivide_w,subdivide_d, &vertices, &vertex_count, &indices, &indice_count);
+            rk_mesh_primitive_plane(scratch.arena, size, subdivide_w,subdivide_d, 0, &vertices, &vertex_count, &indices, &indice_count);
+            U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
+            U64 indice_buffer_size = sizeof(U32) * indice_count;
 
             mesh->topology = R_GeoTopologyKind_Triangles;
-            mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertex_count, vertices);
+            mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
             mesh->vertex_count = vertex_count;
-            mesh->indices = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, indices);
+            mesh->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
             mesh->indice_count = indice_count;
             mesh->src_kind = RK_MeshSourceKind_BoxPrimitive;            
             mesh->src.plane_primitive.subdivide_w = subdivide_w;
@@ -1422,11 +1638,13 @@ rk_sphere_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 
             U32 *indices;
             U64 indice_count;
             rk_mesh_primitive_sphere(scratch.arena, radius, height, radial_segments, rings, is_hemisphere, &vertices, &vertex_count, &indices, &indice_count);
+            U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
+            U64 indice_buffer_size = sizeof(U32) * indice_count;
 
             mesh->topology = R_GeoTopologyKind_Triangles;
-            mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertex_count, vertices);
+            mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
             mesh->vertex_count = vertex_count;
-            mesh->indices = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, indices);
+            mesh->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
             mesh->indice_count = indice_count;
             mesh->src_kind = RK_MeshSourceKind_SpherePrimitive;
             mesh->src.sphere_primitive.radius = radius;
@@ -1477,11 +1695,13 @@ rk_cylinder_node(String8 string, F32 radius, F32 height, U64 radial_segments, U6
             U32 *indices;
             U64 indice_count;
             rk_mesh_primitive_cylinder(scratch.arena, radius, height, radial_segments, rings, cap_top, cap_bottom, &vertices, &vertex_count, &indices, &indice_count);
+            U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
+            U64 indice_buffer_size = sizeof(U32) * indice_count;
 
             mesh->topology = R_GeoTopologyKind_Triangles;
-            mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertex_count, vertices);
+            mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
             mesh->vertex_count = vertex_count;
-            mesh->indices = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, indices);
+            mesh->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
             mesh->indice_count = indice_count;
             mesh->src_kind = RK_MeshSourceKind_CylinderPrimitive;
             mesh->src.cylinder_primitive.radius = radius;
@@ -1529,11 +1749,13 @@ rk_capsule_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64
             U32 *indices;
             U64 indice_count;
             rk_mesh_primitive_capsule(scratch.arena, radius, height, radial_segments, rings, &vertices, &vertex_count, &indices, &indice_count);
+            U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
+            U64 indice_buffer_size = sizeof(U32) * indice_count;
 
             mesh->topology = R_GeoTopologyKind_Triangles;
-            mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertex_count, vertices);
+            mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
             mesh->vertex_count = vertex_count;
-            mesh->indices = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, indices);
+            mesh->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
             mesh->indice_count = indice_count;
             mesh->src_kind = RK_MeshSourceKind_CapsulePrimitive;
             mesh->src.cylinder_primitive.radius = radius;
@@ -1579,11 +1801,13 @@ rk_torus_node(String8 string, F32 inner_radius, F32 outer_radius, U64 rings, U64
             U32 *indices;
             U64 indice_count;
             rk_mesh_primitive_torus(scratch.arena, inner_radius, outer_radius, rings, ring_segments, &vertices, &vertex_count, &indices, &indice_count);
+            U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
+            U64 indice_buffer_size = sizeof(U32) * indice_count;
 
             mesh->topology = R_GeoTopologyKind_Triangles;
-            mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, sizeof(R_Vertex)*vertex_count, vertices);
+            mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
             mesh->vertex_count = vertex_count;
-            mesh->indices = r_buffer_alloc(R_ResourceKind_Static, sizeof(U32)*indice_count, indices);
+            mesh->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
             mesh->indice_count = indice_count;
             mesh->src_kind = RK_MeshSourceKind_TorusPrimitive;
             mesh->src.torus_primitive.inner_radius = inner_radius;
@@ -1596,5 +1820,347 @@ rk_torus_node(String8 string, F32 inner_radius, F32 outer_radius, U64 rings, U64
 
     RK_Node *ret = rk_build_mesh_inst3d_from_string(0, 0, string);
     ret->mesh_inst3d->mesh = mesh_res;
+    return ret;
+}
+
+internal RK_DrawNode *
+rk_drawlist_push_plane_filled(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec2F32 size, B32 both_face, Vec3F32 origin, Vec3F32 i_hat, Vec3F32 j_hat, Vec4F32 clr, B32 draw_edge, B32 omit_light)
+{
+    RK_DrawNode *ret = rk_drawlist_push(arena, drawlist);
+    D_Bucket *bucket = d_top_bucket();
+
+    R_Vertex *vertices;
+    U64 vertex_count;
+    U32 *indices;
+    U64 indice_count;
+    rk_mesh_primitive_plane(arena, size, 0,0, both_face, &vertices, &vertex_count, &indices, &indice_count);
+
+    Mat4x4F32 xform_t = make_translate_4x4f32(origin);
+    Mat4x4F32 xform_r = mat_4x4f32(1.0f);
+    {
+        Vec3F32 k_hat = cross_3f32(i_hat, j_hat);
+        xform_r.v[0][0] = i_hat.x;
+        xform_r.v[0][1] = i_hat.y;
+        xform_r.v[0][2] = i_hat.z;
+
+        xform_r.v[1][0] = j_hat.x;
+        xform_r.v[1][1] = j_hat.y;
+        xform_r.v[1][2] = j_hat.z;
+
+        xform_r.v[2][0] = k_hat.x;
+        xform_r.v[2][1] = k_hat.y;
+        xform_r.v[2][2] = k_hat.z;
+    }
+    Mat4x4F32 xform = mul_4x4f32(xform_t, xform_r);
+
+    ret->key = key;
+    ret->draw_bucket = bucket;
+    ret->draw_edge = draw_edge;
+    ret->omit_light = omit_light;
+    ret->vertices = vertices;
+    ret->vertex_count = vertex_count;
+    ret->indices = indices;
+    ret->indice_count = indice_count;
+    ret->topology = R_GeoTopologyKind_Triangles;
+    ret->polygon = R_GeoPolygonKind_Fill;
+    ret->color = clr;
+    ret->line_width = 1.f;
+    ret->xform = xform;
+    return ret;
+}
+
+internal RK_DrawNode *
+rk_drawlist_push_box_filled(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 size, Vec3F32 origin, Vec3F32 i_hat, Vec3F32 j_hat, Vec4F32 clr, B32 draw_edge, B32 omit_light)
+{
+    RK_DrawNode *ret = rk_drawlist_push(arena, drawlist);
+    D_Bucket *bucket = d_top_bucket();
+
+    R_Vertex *vertices;
+    U64 vertex_count;
+    U32 *indices;
+    U64 indice_count;
+    rk_mesh_primitive_box(arena, size, 0,0,0, &vertices, &vertex_count, &indices, &indice_count);
+    U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
+    U64 indice_buffer_size = sizeof(U32) * indice_count;
+
+    Mat4x4F32 xform_t = make_translate_4x4f32(origin);
+    Mat4x4F32 xform_r = mat_4x4f32(1.0f);
+    {
+        Vec3F32 k_hat = cross_3f32(i_hat, j_hat);
+        xform_r.v[0][0] = i_hat.x;
+        xform_r.v[0][1] = i_hat.y;
+        xform_r.v[0][2] = i_hat.z;
+
+        xform_r.v[1][0] = j_hat.x;
+        xform_r.v[1][1] = j_hat.y;
+        xform_r.v[1][2] = j_hat.z;
+
+        xform_r.v[2][0] = k_hat.x;
+        xform_r.v[2][1] = k_hat.y;
+        xform_r.v[2][2] = k_hat.z;
+    }
+    Mat4x4F32 xform = mul_4x4f32(xform_t, xform_r);
+
+    ret->key = key;
+    ret->draw_bucket = bucket;
+    ret->draw_edge = draw_edge;
+    ret->omit_light = omit_light;
+    ret->vertices = vertices;
+    ret->vertex_count = vertex_count;
+    ret->indices = indices;
+    ret->indice_count = indice_count;
+    ret->topology = R_GeoTopologyKind_Triangles;
+    ret->polygon = R_GeoPolygonKind_Fill;
+    ret->color = clr;
+    ret->line_width = 1.f;
+    ret->xform = xform;
+    return ret;
+}
+
+internal RK_DrawNode *
+rk_drawlist_push_sphere(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 origin, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere, Vec4F32 clr, B32 draw_edge, B32 omit_light)
+{
+    RK_DrawNode *ret = rk_drawlist_push(arena, drawlist);
+    D_Bucket *bucket = d_top_bucket();
+
+    R_Vertex *vertices;
+    U64 vertex_count;
+    U32 *indices;
+    U64 indice_count;
+    rk_mesh_primitive_sphere(arena, radius, height, radial_segments, rings, is_hemisphere, &vertices, &vertex_count, &indices, &indice_count);
+    U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
+    U64 indice_buffer_size = sizeof(U32) * indice_count;
+
+    Mat4x4F32 xform = make_translate_4x4f32(origin);
+    // NOTE(k): don't need to rotate, it's sphere
+
+    ret->key = key;
+    ret->draw_bucket = bucket;
+    ret->draw_edge = draw_edge;
+    ret->omit_light = omit_light;
+    ret->vertices = vertices;
+    ret->vertex_count = vertex_count;
+    ret->indices = indices;
+    ret->indice_count = indice_count;
+    ret->topology = R_GeoTopologyKind_Triangles;
+    ret->polygon = R_GeoPolygonKind_Fill;
+    ret->color = clr;
+    ret->line_width = 1.f;
+    ret->xform = xform;
+    return ret;
+}
+
+internal RK_DrawNode *
+rk_drawlist_push_cone(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 origin, Vec3F32 normal, F32 radius, F32 height, U64 radial_segments, Vec4F32 clr, B32 draw_edge, B32 omit_light)
+{
+    RK_DrawNode *ret = rk_drawlist_push(arena, drawlist);
+    D_Bucket *bucket = d_top_bucket();
+
+    R_Vertex *vertices;
+    U64 vertex_count;
+    U32 *indices;
+    U64 indice_count;
+    rk_mesh_primitive_cone(arena, radius, height, radial_segments, 1, &vertices, &vertex_count, &indices, &indice_count);
+    U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
+    U64 indice_buffer_size = sizeof(U32) * indice_count;
+
+    Mat4x4F32 xform_t = make_translate_4x4f32(origin);
+    Mat4x4F32 xform_r;
+    {
+        Vec3F32 j_hat = v3f32(0,-1,0);
+        F32 dot = dot_3f32(j_hat, normal);
+        // same direction
+        if(dot == 1)
+        {
+            xform_r = mat_4x4f32_from_quat_f32(make_indentity_quat_f32());
+        }
+        // reverse direction
+        else if(dot == -1)
+        {
+            xform_r = mat_4x4f32_from_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5));
+        }
+        else
+        {
+            Vec3F32 cross = cross_3f32(j_hat, normal);
+            F32 turn = turns_from_radians_f32(acosf(dot_3f32(normal, j_hat)));
+            xform_r = mat_4x4f32_from_quat_f32(make_rotate_quat_f32(cross, turn));
+        }
+    }
+    Mat4x4F32 xform = mul_4x4f32(xform_t, xform_r);
+
+    ret->key = key;
+    ret->draw_bucket = bucket;
+    ret->draw_edge = draw_edge;
+    ret->omit_light = omit_light;
+    ret->vertices = vertices;
+    ret->vertex_count = vertex_count;
+    ret->indices = indices;
+    ret->indice_count = indice_count;
+    ret->topology = R_GeoTopologyKind_Triangles;
+    ret->polygon = R_GeoPolygonKind_Fill;
+    ret->color = clr;
+    ret->line_width = 1.f;
+    ret->xform = xform;
+    return ret;
+}
+
+internal RK_DrawNode *
+rk_drawlist_push_line(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 start, Vec3F32 end, Vec4F32 clr, F32 line_width, B32 draw_edge)
+{
+    RK_DrawNode *ret = rk_drawlist_push(arena, drawlist);
+    D_Bucket *bucket = d_top_bucket();
+
+    R_Vertex *vertices = push_array(arena, R_Vertex, 2);
+    vertices[0].pos = start;
+    vertices[1].pos = end;
+    U32 *indices = push_array(arena, U32, 2);
+    indices[0] = 0;
+    indices[1] = 1;
+
+    ret->key = key;
+    ret->draw_bucket = bucket;
+    ret->vertices = vertices;
+    ret->vertex_count = 2;
+    ret->indices = indices;
+    ret->indice_count = 2;
+    ret->topology = R_GeoTopologyKind_Lines;
+    ret->polygon = R_GeoPolygonKind_Fill;
+    ret->draw_edge = 0;
+    ret->omit_light = 1;
+    ret->color = clr;
+    ret->line_width = line_width;
+    ret->xform = mat_4x4f32(1);
+    return ret;
+}
+
+internal RK_DrawNode *
+rk_drawlist_push_circle(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 origin, Vec3F32 normal, F32 radius, U64 segments, Vec4F32 clr, F32 line_width, B32 draw_edge)
+{
+    RK_DrawNode *ret = rk_drawlist_push(arena, drawlist);
+    D_Bucket *bucket = d_top_bucket();
+
+    R_Vertex *vertices;
+    U64 vertex_count;
+    U32 *indices;
+    U64 indice_count;
+    rk_mesh_primitive_circle_line(arena, radius, segments, &vertices, &vertex_count, &indices, &indice_count);
+    U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
+    U64 indice_buffer_size = sizeof(U32) * indice_count;
+
+    Mat4x4F32 xform_t = make_translate_4x4f32(origin);
+    Mat4x4F32 xform_r;
+    {
+        Vec3F32 j_hat = v3f32(0,-1,0);
+        Vec3F32 cross = cross_3f32(j_hat, normal);
+        F32 turn = turns_from_radians_f32(acosf(dot_3f32(normal, j_hat)));
+        xform_r = mat_4x4f32_from_quat_f32(make_rotate_quat_f32(cross, turn));
+    }
+    Mat4x4F32 xform = mul_4x4f32(xform_t, xform_r);
+
+    ret->key = key;
+    ret->draw_bucket = bucket;
+    ret->draw_edge = draw_edge;
+    ret->omit_light = 1;
+    ret->vertices = vertices;
+    ret->vertex_count = vertex_count;
+    ret->indices = indices;
+    ret->indice_count = indice_count;
+    ret->topology = R_GeoTopologyKind_Lines;
+    ret->polygon = R_GeoPolygonKind_Fill;
+    ret->color = clr;
+    ret->line_width = line_width;
+    ret->xform = xform;
+    return ret;
+}
+
+internal RK_DrawNode *
+rk_drawlist_push_arc_filled(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 origin, Vec3F32 a, Vec3F32 b, U64 segments, B32 both_face, Vec4F32 clr, F32 line_width, B32 draw_edge, Mat4x4F32 xform)
+{
+    RK_DrawNode *ret = rk_drawlist_push(arena, drawlist);
+    D_Bucket *bucket = d_top_bucket();
+
+    U64 vertex_count = segments+2;
+    U64 indice_count = segments*3*(2*both_face);
+    R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
+    U32 *indices = push_array(arena, U32, indice_count);
+
+    // create mesh primitives using slerp
+    {
+        // NOTE(k): assuming a and b has the same length
+        Vec3F32 a_norm = sub_3f32(a, origin);
+        F32 length = length_3f32(a_norm);
+        a_norm = normalize_3f32(a_norm);
+        Vec3F32 b_norm = normalize_3f32(sub_3f32(b, origin));
+        F32 pct = 1.f / (F32)segments;
+
+        U64 vertex_idx = 0;
+        U64 indice_idx = 0;
+
+        U64 prev_vertex_indice;
+
+        // push origin
+        {
+            R_Vertex vertex = {0};
+            // TODO(XXX): deal with normal later
+            vertex.nor = v3f32(0,0,0);
+            vertex.tan = v3f32(1,0,0);
+            vertex.pos = origin;
+            vertex.tex = v2f32(0,0);
+            vertices[vertex_idx++] = vertex;
+        }
+
+        for(U64 i = 0; i < (segments+1); i++)
+        {
+            F32 t = i*pct;
+            Vec3F32 pos = slerp_3f32(a_norm,b_norm,t);
+            pos = scale_3f32(pos, length);
+            pos = add_3f32(origin, pos);
+
+            R_Vertex vertex;
+            // TODO(XXX): deal with normal later
+            vertex.nor = v3f32(0,0,0);
+            vertex.tan = origin;
+            vertex.pos = pos;
+            vertex.tex = v2f32(0,0);
+
+            vertices[vertex_idx++] = vertex;
+            U64 curr_vertex_indice = vertex_idx-1;
+
+            if(i > 0)
+            {
+                indices[indice_idx++] = 0; // origin
+                indices[indice_idx++] = prev_vertex_indice;
+                indices[indice_idx++] = curr_vertex_indice;
+
+                if(both_face)
+                {
+                    indices[indice_idx++] = 0; // origin
+                    indices[indice_idx++] = curr_vertex_indice;
+                    indices[indice_idx++] = prev_vertex_indice;
+                }
+            }
+
+            prev_vertex_indice = curr_vertex_indice;
+        }
+        Assert(vertex_count == vertex_idx);
+        Assert(indice_count == indice_idx);
+    }
+
+    U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
+    U64 indice_buffer_size = sizeof(U32) * indice_count;
+
+    ret->key = key;
+    ret->draw_bucket = bucket;
+    ret->draw_edge = draw_edge;
+    ret->omit_light = 1;
+    ret->vertices = vertices;
+    ret->vertex_count = vertex_count;
+    ret->indices = indices;
+    ret->indice_count = indice_count;
+    ret->topology = R_GeoTopologyKind_Triangles;
+    ret->polygon = R_GeoPolygonKind_Fill;
+    ret->color = clr;
+    ret->line_width = line_width;
+    ret->xform = xform;
     return ret;
 }

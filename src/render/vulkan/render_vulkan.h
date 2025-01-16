@@ -1,6 +1,8 @@
 #ifndef RENDER_VULKAN_H
 #define RENDER_VULKAN_H
 
+#include "generated/render_vulkan.meta.h"
+
 // Syncronization
 // We choose the number 2 here because we don't want the CPU to get too far
 // ahead of the GPU With 2 frames in flight, the CPU and the GPU can be working
@@ -9,7 +11,7 @@
 // frames in flight, the CPU could get ahead of the GPU, because the work load
 // of the GPU could be too larger for it to handle, so the CPU would end up
 // waiting a lot, adding frames of latency Generally extra latency isn't desired
-#define MAX_FRAMES_IN_FLIGHT 2
+#define MAX_FRAMES_IN_FLIGHT 1
 
 #define VK_Assert(result) \
     do { \
@@ -140,7 +142,7 @@ typedef enum R_Vulkan_RenderPassKind
     R_Vulkan_RenderPassKind_COUNT,
 } R_Vulkan_RenderPassKind;
 
-// Vulkan
+// Vulkan types
 #define MAX_SURFACE_FORMAT_COUNT 9
 #define MAX_SURFACE_PRESENT_MODE_COUNT 9
 typedef struct
@@ -214,7 +216,11 @@ struct R_Vulkan_Buffer
 
     R_ResourceKind  kind;
     U64             size;
+    U64             cap;
 
+    VkBuffer        staging;
+    VkDeviceMemory  staging_memory;
+    // NOTE(k): refer to staging buffer if staging is present
     void            *mapped;
 };
 
@@ -412,6 +418,9 @@ struct R_Vulkan_State
     // TODO(k): we may want to keep track of filled ds_pool
 
     R_Handle                            backup_texture;
+
+    R_Vulkan_DeclStackNils;
+    R_Vulkan_DeclStacks;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////

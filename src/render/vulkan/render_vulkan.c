@@ -1,3 +1,45 @@
+#define R_Vulkan_StackTopImpl(state, name_upper, name_lower) \
+return state->name_lower##_stack.top->v;
+
+#define R_Vulkan_StackBottomImpl(state, name_upper, name_lower) \
+return state->name_lower##_stack.bottom_val;
+
+#define R_Vulkan_StackPushImpl(state, name_upper, name_lower, type, new_value) \
+R_Vulkan_##name_upper##Node *node = state->name_lower##_stack.free;\
+if(node != 0) {SLLStackPop(state->name_lower##_stack.free);}\
+else {node = push_array(r_vulkan_state->arena, R_Vulkan_##name_upper##Node, 1);}\
+type old_value = state->name_lower##_stack.top->v;\
+node->v = new_value;\
+SLLStackPush(state->name_lower##_stack.top, node);\
+if(node->next == &state->name_lower##_nil_stack_top)\
+{\
+state->name_lower##_stack.bottom_val = (new_value);\
+}\
+state->name_lower##_stack.auto_pop = 0;\
+return old_value;
+
+#define R_Vulkan_StackPopImpl(state, name_upper, name_lower) \
+R_Vulkan_##name_upper##Node *popped = state->name_lower##_stack.top;\
+if(popped != &state->name_lower##_nil_stack_top)\
+{\
+SLLStackPop(state->name_lower##_stack.top);\
+SLLStackPush(state->name_lower##_stack.free, popped);\
+state->name_lower##_stack.auto_pop = 0;\
+}\
+return popped->v;\
+
+#define R_Vulkan_StackSetNextImpl(state, name_upper, name_lower, type, new_value) \
+R_Vulkan_##name_upper##Node *node = state->name_lower##_stack.free;\
+if(node != 0) {SLLStackPop(state->name_lower##_stack.free);}\
+else {node = push_array(r_vulkan_state->arena, R_Vulkan_##name_upper##Node, 1);}\
+type old_value = state->name_lower##_stack.top->v;\
+node->v = new_value;\
+SLLStackPush(state->name_lower##_stack.top, node);\
+state->name_lower##_stack.auto_pop = 1;\
+return old_value;
+
+#include "generated/render_vulkan.meta.c"
+
 internal void
 r_init(const char* app_name, OS_Handle window, bool debug)
 {
@@ -198,7 +240,6 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         VkPhysicalDevice pdevices[pdevice_count];
         vkEnumeratePhysicalDevices(r_vulkan_state->instance, &pdevice_count, pdevices);
 
-
         int best_score = 0;
         r_vulkan_state->gpu.h = 0;
         for(U64 i = 0; i < pdevice_count; i++)
@@ -264,6 +305,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             if(features.samplerAnisotropy == VK_FALSE) continue;
             if(features.independentBlend == VK_FALSE)  continue;
             if(features.fillModeNonSolid == VK_FALSE)  continue;
+            // TODO(XXX): the score system is made up, we may want to revisit this
+            if(features.wideLines == VK_TRUE) score += 100;
 
             if(properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) score += 300;
             score += properties.limits.maxImageDimension2D;
@@ -398,17 +441,23 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         };
 
         // Specifying used device features, don't need anything special for now, leave everything to VK_FALSE
-        VkPhysicalDeviceFeatures required_device_features = { VK_FALSE };
-        required_device_features.samplerAnisotropy = VK_TRUE;
-        required_device_features.independentBlend  = VK_TRUE;
-        required_device_features.fillModeNonSolid  = VK_TRUE;
+        VkPhysicalDeviceFeatures device_features = { VK_FALSE };
+        // required
+        device_features.samplerAnisotropy = VK_TRUE;
+        device_features.independentBlend  = VK_TRUE;
+        device_features.fillModeNonSolid  = VK_TRUE;
+        // optional
+        if(r_vulkan_state->gpu.features.wideLines == VK_TRUE)
+        {
+            device_features.wideLines         = VK_TRUE;
+        }
 
         // Create the logical device
         VkDeviceCreateInfo create_info = {
             .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
             .pQueueCreateInfos       = queue_create_infos,
             .queueCreateInfoCount    = num_queues_to_create,
-            .pEnabledFeatures        = &required_device_features,
+            .pEnabledFeatures        = &device_features,
             .enabledLayerCount       = 0,
             .enabledExtensionCount   = REQUIRED_PHYSICAL_DEVICE_EXTENSIONS_COUNT,
             .ppEnabledExtensionNames = enabled_pdevice_ext_names,
@@ -575,7 +624,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         set_layout->binding_count = 1;
 
         bindings[0].binding            = 0;
-        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         bindings[0].descriptorCount    = 1;
         bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT;
         bindings[0].pImmutableSamplers = NULL;
@@ -634,6 +683,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     };
     r_vulkan_state->backup_texture = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Nearest, v2s32(2,2), R_Tex2DFormat_RGBA8, backup_texture_data);
     scratch_end(temp);
+    R_Vulkan_InitStacks(r_vulkan_state);
+    R_Vulkan_InitStackNils(r_vulkan_state);
 }
 
 // TODO(k): implement window_release
@@ -1279,12 +1330,13 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 subpasses[0].pColorAttachments       = &refs[0];
                 subpasses[0].pDepthStencilAttachment = &refs[3];
 
+                // TODO(k): the subpass dep seem to be global memory barrier, we may could use image/buffer barrier to gain some performance
                 // external -> subpass1
                 deps[0].srcSubpass    = VK_SUBPASS_EXTERNAL;
                 deps[0].dstSubpass    = 0; /* the first subpass */
                 // deps[0].srcStageMask  = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-                deps[0].srcStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-                deps[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                deps[0].srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                deps[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
                 deps[0].dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
                 deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT|VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
@@ -1720,28 +1772,27 @@ r_vulkan_tex2d_from_handle(R_Handle handle)
 //- rjf: buffers
 
 internal R_Handle
-r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
+r_buffer_alloc(R_ResourceKind kind, U64 size, void *data, U64 data_size)
 {
-    R_Vulkan_Buffer *buffer = 0;
-
-    buffer = r_vulkan_state->first_free_buffer;
-    if(buffer == 0)
+    AssertAlways(data_size <= size);
+    R_Vulkan_Buffer *ret = 0;
+    ret = r_vulkan_state->first_free_buffer;
+    if(ret == 0)
     {
-        buffer = push_array(r_vulkan_state->arena, R_Vulkan_Buffer, 1);
+        ret = push_array(r_vulkan_state->arena, R_Vulkan_Buffer, 1);
     }
     else
     {
-        U64 gen = buffer->generation;
+        U64 gen = ret->generation;
         SLLStackPop(r_vulkan_state->first_free_buffer);
-        MemoryZeroStruct(buffer);
-        buffer->generation = gen;
+        MemoryZeroStruct(ret);
+        ret->generation = gen;
     }
 
-    if(kind == R_ResourceKind_Static) Assert(data != 0);
-
     // Fill basics
-    buffer->kind = kind;
-    buffer->size = size;
+    ret->kind = kind;
+    ret->size = data_size;
+    ret->cap = size;
 
     // It should be noted that in a real world application, you're not supposed to actually call vkAllocateMemory for every individual buffer
     // The maximum number of simultaneous memory allocations is limited by the maxMemoryAllocationCount physical device limit
@@ -1750,59 +1801,372 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
     //      up a single allocation among many different objects by using the offset parameters that we've seen in many functions
     // We can either implement such an allocator ourself, or use the VulkanMemoryAllocator library provided by the GPUOpen initiative
 
-    // Create staging buffer
-    if(kind == R_ResourceKind_Static)
+    switch(kind)
     {
-        VkBuffer staging_buffer;
-        VkDeviceMemory staging_memory;
+        case R_ResourceKind_Static:
         {
-            VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-            create_info.size        = size;
-            create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-            create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &staging_buffer));
+            // Create staging buffer
+            VkBuffer staging_buffer;
+            VkDeviceMemory staging_memory;
+            {
+                VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+                create_info.size        = size;
+                create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+                create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &staging_buffer));
 
-            VkMemoryRequirements mem_requirements;
-            vkGetBufferMemoryRequirements(r_vulkan_state->device.h, staging_buffer, &mem_requirements);
+                VkMemoryRequirements mem_requirements;
+                vkGetBufferMemoryRequirements(r_vulkan_state->device.h, staging_buffer, &mem_requirements);
 
-            VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-            VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-            alloc_info.allocationSize = mem_requirements.size;
-            alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-            
-            VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &staging_memory));
-            VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, staging_buffer, staging_memory, 0));
+                VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+                VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+                alloc_info.allocationSize = mem_requirements.size;
+                alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+                
+                VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &staging_memory));
+                VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, staging_buffer, staging_memory, 0));
 
+                AssertAlways(data != 0 && data_size > 0);
+                void *mapped;
+                VK_Assert(vkMapMemory(r_vulkan_state->device.h, staging_memory, 0, mem_requirements.size, 0, &mapped));
+                MemoryCopy(mapped, data, data_size);
+                vkUnmapMemory(r_vulkan_state->device.h, staging_memory);
+            }
+
+            VkBuffer buffer;
+            VkDeviceMemory buffer_memory;
+            // Create buffer <GPU Device Local> 
+            {
+                VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+                create_info.size        = size;
+                create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+                create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer));
+
+                VkMemoryRequirements mem_requirements;
+                vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer, &mem_requirements);
+
+                VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+                VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+                alloc_info.allocationSize = mem_requirements.size;
+                alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+                VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer_memory));
+                VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer, buffer_memory, 0));
+            }
+
+            // Copy buffer
+            VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
+            CmdScope(cmd)
+            {
+                VkBufferCopy copy_region = {
+                    .srcOffset = 0, // Optional
+                    .dstOffset = 0, // Optional
+                    .size      = data_size,
+                };
+
+                // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
+                vkCmdCopyBuffer(cmd, staging_buffer, buffer, 1, &copy_region);
+
+                // TODO(k): we should bind a barrier here
+            }
+
+            // TODO(k) it's not effecient to use vkQueueWaitIdle, maybe we could add a to_free queue, and use some sync primitive to do this
+            // index Semaphore could be a good idea
+            VK_Assert(vkQueueWaitIdle(r_vulkan_state->device.gfx_queue));
+
+            // Free staging buffer and memory
+            vkDestroyBuffer(r_vulkan_state->device.h, staging_buffer, NULL);
+            vkFreeMemory(r_vulkan_state->device.h, staging_memory, NULL);
+
+            // fill result
+            ret->h = buffer; 
+            ret->memory = buffer_memory;
+        }break;
+        case R_ResourceKind_Dynamic:
+        {
+            // double buffer setup (host_visiable/staging+device_local)
+            VkBuffer staging_buffer;
+            VkDeviceMemory staging_memory;
             void *mapped;
-            VK_Assert(vkMapMemory(r_vulkan_state->device.h, staging_memory, 0, mem_requirements.size, 0, &mapped));
-            MemoryCopy(mapped, data, size);
-            vkUnmapMemory(r_vulkan_state->device.h, staging_memory);
-        }
+            {
+                VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+                create_info.size        = size;
+                create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+                create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &staging_buffer));
 
-        // Create buffer <GPU Device Local> 
+                VkMemoryRequirements mem_requirements;
+                vkGetBufferMemoryRequirements(r_vulkan_state->device.h, staging_buffer, &mem_requirements);
+
+                VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+                VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+                alloc_info.allocationSize = mem_requirements.size;
+                alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+                
+                VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &staging_memory));
+                VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, staging_buffer, staging_memory, 0));
+
+                VK_Assert(vkMapMemory(r_vulkan_state->device.h, staging_memory, 0, mem_requirements.size, 0, &mapped));
+                if(data != 0 && data_size >0)
+                {
+                    MemoryCopy(mapped, data, size);
+                }
+            }
+
+            // create buffer
+            VkBuffer buffer;
+            VkDeviceMemory buffer_memory;
+            // Create buffer <GPU Device Local> 
+            {
+                VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+                create_info.size        = size;
+                create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+                create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer));
+
+                VkMemoryRequirements mem_requirements;
+                vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer, &mem_requirements);
+
+                VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+                VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+                alloc_info.allocationSize = mem_requirements.size;
+                alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+                VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer_memory));
+                VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer, buffer_memory, 0));
+
+                // Copy buffer if data is provided
+                if(data != 0 && data_size > 0)
+                {
+                    VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
+                    CmdScope(cmd)
+                    {
+                        VkBufferCopy copy_region = {
+                            .srcOffset = 0, // Optional
+                            .dstOffset = 0, // Optional
+                            .size      = data_size,
+                        };
+
+                        // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
+                        vkCmdCopyBuffer(cmd, staging_buffer, buffer, 1, &copy_region);
+
+                        // create a buffer barrier
+                        VkBufferMemoryBarrier barrier = 
+                        {
+                            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+                            // If you are using the barrier to transfer queue family ownership, then these two fields should be the indices of the queue families
+                            // They must be set to VK_QUEUE_FAMILY_IGNORED if you don't want to do this (not the default value)
+                            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                            .srcAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+                            .dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+                            .buffer = buffer,
+                            .offset = 0,
+                            .size = data_size,
+                        };
+                        vkCmdPipelineBarrier(cmd,
+                                             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+                                             0,0, NULL, 1, &barrier, 0, 0);
+                    }
+                }
+            }
+
+            // fill result
+            ret->h = buffer; 
+            ret->memory = buffer_memory;
+            ret->staging = staging_buffer;
+            ret->staging_memory = staging_memory;
+            ret->mapped = mapped;
+        }break;
+        case R_ResourceKind_Stream:
         {
-            VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-            create_info.size        = size;
-            create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-            create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer->h));
+// NOTE(k): don't make too much difference in here after profling double buffer and single host visiable buffer
+#if 1
+            VkBuffer buffer;
+            VkDeviceMemory buffer_memory;
+            void *mapped;
+            {
+                VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+                create_info.size        = size;
+                create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+                create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-            VkMemoryRequirements mem_requirements;
-            vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer->h, &mem_requirements);
+                VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer));
 
-            VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-            VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-            alloc_info.allocationSize = mem_requirements.size;
-            alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+                VkMemoryRequirements mem_requirements;
+                vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer, &mem_requirements);
 
-            VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer->memory));
-            VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer->h, buffer->memory, 0));
-        }
+                VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+                // TODO(k): some device provide 256MB host_visiable and device local memory, find out if we can make use of that conditionally
+                // VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+                VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+                alloc_info.allocationSize = mem_requirements.size;
+                alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
 
-        // Copy buffer
-        VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
-        CmdScope(cmd)
+                VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer_memory));
+                VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer, buffer_memory, 0));
+                VK_Assert(vkMapMemory(r_vulkan_state->device.h, buffer_memory, 0, size, 0, &mapped));
+            }
+
+            if(data != 0 && data_size > 0)
+            {
+                MemoryCopy(mapped, data, data_size);
+            }
+
+            // fill result
+            ret->h = buffer;
+            ret->memory = buffer_memory;
+            ret->mapped = mapped;
+#else
+            // double buffer setup (host_visiable/staging+device_local)
+            VkBuffer staging_buffer;
+            VkDeviceMemory staging_memory;
+            void *mapped;
+            {
+                VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+                create_info.size        = size;
+                create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+                create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &staging_buffer));
+
+                VkMemoryRequirements mem_requirements;
+                vkGetBufferMemoryRequirements(r_vulkan_state->device.h, staging_buffer, &mem_requirements);
+
+                VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+                VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+                alloc_info.allocationSize = mem_requirements.size;
+                alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+                
+                VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &staging_memory));
+                VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, staging_buffer, staging_memory, 0));
+
+                VK_Assert(vkMapMemory(r_vulkan_state->device.h, staging_memory, 0, mem_requirements.size, 0, &mapped));
+                if(data != 0 && data_size >0)
+                {
+                    MemoryCopy(mapped, data, size);
+                }
+            }
+
+            // create buffer
+            VkBuffer buffer;
+            VkDeviceMemory buffer_memory;
+            // Create buffer <GPU Device Local> 
+            {
+                VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+                create_info.size        = size;
+                create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+                create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer));
+
+                VkMemoryRequirements mem_requirements;
+                vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer, &mem_requirements);
+
+                VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+                VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+                alloc_info.allocationSize = mem_requirements.size;
+                alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+                VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer_memory));
+                VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer, buffer_memory, 0));
+
+                // Copy buffer if data is provided
+                if(data != 0 && data_size > 0)
+                {
+                    VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
+                    CmdScope(cmd)
+                    {
+                        VkBufferCopy copy_region = {
+                            .srcOffset = 0, // Optional
+                            .dstOffset = 0, // Optional
+                            .size      = data_size,
+                        };
+
+                        // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
+                        vkCmdCopyBuffer(cmd, staging_buffer, buffer, 1, &copy_region);
+
+                        // create a buffer barrier
+                        VkBufferMemoryBarrier barrier = 
+                        {
+                            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+                            // If you are using the barrier to transfer queue family ownership, then these two fields should be the indices of the queue families
+                            // They must be set to VK_QUEUE_FAMILY_IGNORED if you don't want to do this (not the default value)
+                            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                            .srcAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+                            .dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+                            .buffer = buffer,
+                            .offset = 0,
+                            .size = data_size,
+                        };
+                        vkCmdPipelineBarrier(cmd,
+                                             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+                                             0,0, NULL, 1, &barrier, 0, 0);
+                    }
+                }
+            }
+
+            // fill result
+            ret->h = buffer; 
+            ret->memory = buffer_memory;
+            ret->staging = staging_buffer;
+            ret->stating_memory = staging_memory;
+            ret->mapped = mapped;
+#endif
+        }break;
+        default: {InvalidPath;}break;
+    }
+
+    return r_vulkan_handle_from_buffer(ret);
+}
+
+internal void
+r_buffer_release(R_Handle handle)
+{
+    R_Vulkan_Buffer *buffer = r_vulkan_buffer_from_handle(handle);
+
+    vkDestroyBuffer(r_vulkan_state->device.h, buffer->h, NULL);
+    vkFreeMemory(r_vulkan_state->device.h, buffer->memory, NULL);
+
+    switch(buffer->kind)
+    {
+        case R_ResourceKind_Dynamic:
         {
+            vkUnmapMemory(r_vulkan_state->device.h, buffer->memory);
+            vkDestroyBuffer(r_vulkan_state->device.h, buffer->staging, NULL);
+            vkFreeMemory(r_vulkan_state->device.h, buffer->staging_memory, NULL);
+        }break;
+        case R_ResourceKind_Static:
+        case R_ResourceKind_Stream:
+        {
+            // noop
+        }break;
+        default:{InvalidPath;}break;
+    }
+
+    SLLStackPush(r_vulkan_state->first_free_buffer, buffer);
+    // NOTE(k): we should increase generation in release instead of alloc
+    buffer->generation++;
+}
+
+// NOTE(k): this function can only be called within a frame boundary
+internal void
+r_buffer_copy(R_Handle handle, void *data, U64 size)
+{
+    R_Vulkan_Buffer *buffer = r_vulkan_buffer_from_handle(handle);
+    buffer->size = size;
+
+    VkCommandBuffer cmd = r_vulkan_top_cmd();
+    switch(buffer->kind)
+    {
+        case R_ResourceKind_Dynamic:
+        // case R_ResourceKind_Stream:
+        {
+            MemoryCopy(buffer->mapped, data, size);
+
+            // copy staging buffer to device local buffer
+            // NOTE(k): we can't use oneshot_cmd_buf, since we didn't wait for the oneshot cmd buffer, maybe we should use frame cmd buffer
+            // VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
             VkBufferCopy copy_region = {
                 .srcOffset = 0, // Optional
                 .dstOffset = 0, // Optional
@@ -1810,58 +2174,32 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data)
             };
 
             // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
-            vkCmdCopyBuffer(cmd, staging_buffer, buffer->h, 1, &copy_region);
+            vkCmdCopyBuffer(cmd, buffer->staging, buffer->h, 1, &copy_region);
 
-            // TODO(k): we should bind a barrier here
-        }
-
-        // TODO(k) it's not effecient to use vkQueueWaitIdle, maybe we could add a to_free queue, and use some sync primitive to do this
-        // index Semaphore could be a good idea
-        VK_Assert(vkQueueWaitIdle(r_vulkan_state->device.gfx_queue));
-
-        // Free staging buffer and memory
-        vkDestroyBuffer(r_vulkan_state->device.h, staging_buffer, NULL);
-        vkFreeMemory(r_vulkan_state->device.h, staging_memory, NULL);
-    } 
-    else
-    {
-        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        create_info.size        = size;
-        create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer->h));
-
-        VkMemoryRequirements mem_requirements;
-        vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer->h, &mem_requirements);
-
-        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        alloc_info.allocationSize = mem_requirements.size;
-        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer->memory));
-        VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer->h, buffer->memory, 0));
-        Assert(buffer->size != 0);
-        VK_Assert(vkMapMemory(r_vulkan_state->device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped));
-
-        if(data != 0) { MemoryCopy(buffer->mapped, data, size); }
+            // create a buffer barrier
+            VkBufferMemoryBarrier barrier = 
+            {
+                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+                // If you are using the barrier to transfer queue family ownership, then these two fields should be the indices of the queue families
+                // They must be set to VK_QUEUE_FAMILY_IGNORED if you don't want to do this (not the default value)
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+                .buffer = buffer->h,
+                .offset = 0,
+                .size = size,
+            };
+            vkCmdPipelineBarrier(cmd,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+                                 0,0, NULL, 1, &barrier, 0, 0);
+        }break;
+        case R_ResourceKind_Stream:
+        {
+            MemoryCopy(buffer->mapped, data, size);
+        }break;
+        default: {InvalidPath;}break;
     }
-
-    R_Handle ret = r_vulkan_handle_from_buffer(buffer);
-    return ret;
-}
-
-internal void
-r_buffer_release(R_Handle handle)
-{
-    R_Vulkan_Buffer *buffer = r_vulkan_buffer_from_handle(handle);
-    if(buffer->mapped != 0) vkUnmapMemory(r_vulkan_state->device.h, buffer->memory);
-    vkDestroyBuffer(r_vulkan_state->device.h, buffer->h, NULL);
-    vkFreeMemory(r_vulkan_state->device.h, buffer->memory, NULL);
-    SLLStackPush(r_vulkan_state->first_free_buffer, buffer);
-    // NOTE(k): we should increase generation in release instead of alloc
-    buffer->generation++;
 }
 
 /*
@@ -2110,13 +2448,14 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
     // This is very common and all implementations can handle this dynamic state without performance penalty
 
     // When opting for dynamic viewport(s) and scissor rectangle(s) you need to enable the respective dynamic states for the pipeline
-    VkDynamicState dynamic_states[2] = {
+    VkDynamicState dynamic_states[3] = {
         VK_DYNAMIC_STATE_VIEWPORT,
         VK_DYNAMIC_STATE_SCISSOR,
+        VK_DYNAMIC_STATE_LINE_WIDTH
     };
     VkPipelineDynamicStateCreateInfo dynamic_state_create_info = {
         .sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        .dynamicStateCount = 2,
+        .dynamicStateCount = 3,
         .pDynamicStates    = dynamic_states,
     };
     // And then you only need to specify their count at pipeline creation time
@@ -2153,7 +2492,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
     VkPipelineVertexInputStateCreateInfo vtx_input_state_create_info = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 
     VkVertexInputBindingDescription vtx_binding_desc[2] = {};
-#define MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT 17
+#define MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT 18
     VkVertexInputAttributeDescription vtx_attr_descs[MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT];
 
     U64 vtx_binding_desc_count = 0;
@@ -2168,7 +2507,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
         case R_Vulkan_PipelineKind_Geo3dForward:
         {
             vtx_binding_desc_count = 2;
-            vtx_attr_desc_cnt = 17;
+            vtx_attr_desc_cnt = 18;
 
             // All of our per-vertex data is packed together in one array, so we'are only going to have one binding for now
             // This specifies the index of the binding in the array of bindings
@@ -2291,6 +2630,11 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
             vtx_attr_descs[16].location = 16;
             vtx_attr_descs[16].format   = VK_FORMAT_R32_UINT;
             vtx_attr_descs[16].offset   = offsetof(R_Mesh3DInst, depth_test);
+
+            vtx_attr_descs[17].binding  = 1;
+            vtx_attr_descs[17].location = 17;
+            vtx_attr_descs[17].format   = VK_FORMAT_R32_UINT;
+            vtx_attr_descs[17].offset   = offsetof(R_Mesh3DInst, omit_light);
         }break;
         case(R_Vulkan_PipelineKind_Rect):
         {
@@ -2403,6 +2747,11 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
         default:                     {InvalidPath;}break;
     }
 
+    // VkPipelineRasterizationStateRasterizationOrderAMD order = 
+    // {
+    //     .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_RASTERIZATION_ORDER_AMD,
+    //     .rasterizationOrder = VK_RASTERIZATION_ORDER_STRICT_AMD,
+    // };
     VkPipelineRasterizationStateCreateInfo rasterization_state_create_info = {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         // If depthClampEnable is set to VK_TRUE, then fragments that are beyond the near and far planes are clamped to them as opposed to discarding them
@@ -2595,10 +2944,11 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
         case R_Vulkan_PipelineKind_Geo3dForward: {}break;
         case R_Vulkan_PipelineKind_Geo3dComposite:
         {
-            color_blend_attachment_state[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
-            color_blend_attachment_state[0].dstColorBlendFactor = VK_BLEND_FACTOR_DST_ALPHA;
-            color_blend_attachment_state[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-            color_blend_attachment_state[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+            // TODO(k): what is this, why we ever want to do this, it don't make sense, but I am too afraid to delete it
+            // color_blend_attachment_state[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+            // color_blend_attachment_state[0].dstColorBlendFactor = VK_BLEND_FACTOR_DST_ALPHA;
+            // color_blend_attachment_state[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+            // color_blend_attachment_state[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
         }break;
         case R_Vulkan_PipelineKind_Finalize: 
         {
@@ -2886,6 +3236,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
                                   VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
     }
 
+    r_vulkan_push_cmd(frame->cmd_buf);
     ProfEnd();
 }
 
@@ -3037,6 +3388,7 @@ r_window_end_frame(OS_Handle os_wnd, R_Handle window_equip, Vec2F32 mouse_ptr)
 
     // Update curr_frame_idx
     wnd->curr_frame_idx = (wnd->curr_frame_idx + 1) % MAX_FRAMES_IN_FLIGHT;
+    r_vulkan_pop_cmd();
     return id;
 }
 
@@ -3054,10 +3406,14 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
     //           to multiple command lists
     //           Recording commands is a CPU intensive operation and no driver threads come to reuse
 
-    U64 ui_inst_buffer_offset = 0;
-    U64 ui_group_count        = 0;
-
-    U64 mesh_inst_buffer_offset = 0;
+    // idx/offset for dynamic buffer
+    U64 ui_inst_idx = 0; // rect inst buffer
+    U64 ui_group_idx = 0; // rect ubo is per group
+    U64 geo3d_inst_idx = 0; // mesh inst buffer
+    // NOTE(k): geo3d ubo is per geo3d pass, rect ubo is per group
+    U64 geo3d_pass_idx = 0;
+    // NOTE(k): every geo3d pass contains joints (the number of joints can vary)
+    U32 geo3d_sbo_idx = 0;
 
     // Do passing
     for(R_PassNode *pass_n = passes->first; pass_n != 0; pass_n = pass_n->next)
@@ -3116,7 +3472,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     R_BatchGroup2DParams *group_params = &group_n->params;
 
                     // Get & fill instance bufer
-                    // TODO(@k): Dynamic allocaate instance buffer if needed
+                    // TODO(k): Dynamic allocate instance buffer if needed
+                    U64 ui_inst_buffer_offset = ui_inst_idx * sizeof(R_Rect2DInst);
                     U8 *dst_ptr = frame->inst_buffer_rect.mapped + ui_inst_buffer_offset;
                     U64 off = 0;
                     for(R_BatchNode *batch = batches->first; batch != 0; batch = batch->next)
@@ -3180,7 +3537,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     uniforms.xform_scale.x = length_2f32(xform_2x2_row0);
                     uniforms.xform_scale.y = length_2f32(xform_2x2_row1);
 
-                    U32 uniform_buffer_offset = ui_group_count * uniform_buffer->stride;
+                    U32 uniform_buffer_offset = ui_group_idx * uniform_buffer->stride;
                     MemoryCopy((U8 *)uniform_buffer->buffer.mapped + uniform_buffer_offset, &uniforms, sizeof(R_Vulkan_Uniforms_Rect));
                     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipelines.rect.layout, 0, 1, &uniform_buffer->set.h, 1, &uniform_buffer_offset);
 
@@ -3216,8 +3573,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     U64 inst_count = batches->byte_count / batches->bytes_per_inst;
                     vkCmdDraw(cmd_buf, 4, inst_count, 0, 0);
 
-                    ui_group_count++;
-                    ui_inst_buffer_offset += batches->byte_count;
+                    ui_group_idx++;
+                    ui_inst_idx += inst_count;
                 }
                 vkCmdEndRenderPass(cmd_buf);
             }break;
@@ -3256,33 +3613,34 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 vkCmdBeginRenderPass(cmd_buf, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
                 // Unpack uniform buffer
+                // NOTE(k): Geo3d uniform is per Geo3D pass unlike rect pass which is per group
                 R_Vulkan_UniformBuffer *uniform_buffer = &frame->uniform_buffers[R_Vulkan_UniformTypeKind_Geo3d];
-                // TODO(k): dynamic allocate uniform buffer if needed
+                U32 uniform_buffer_off = geo3d_pass_idx * uniform_buffer->stride;
 
                 // Setup uniforms buffer
                 R_Vulkan_Uniforms_Mesh uniforms = {0};
-                uniforms.proj          = params->projection;
-                uniforms.view          = params->view;
-                uniforms.global_light  = v4f32(params->global_light.x, params->global_light.y, params->global_light.z, 0.0);
-                uniforms.show_grid     = params->show_grid;
-                MemoryCopy((U8 *)uniform_buffer->buffer.mapped, &uniforms, sizeof(R_Vulkan_Uniforms_Mesh));
+                uniforms.proj         = params->projection;
+                uniforms.view         = params->view;
+                uniforms.global_light = v4f32(params->global_light.x, params->global_light.y, params->global_light.z, 0.0);
+                uniforms.show_grid    = params->show_grid;
+                MemoryCopy((U8 *)uniform_buffer->buffer.mapped + uniform_buffer_off, &uniforms, sizeof(R_Vulkan_Uniforms_Mesh));
                 // bind uniform descriptor set
-                vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, geo3d_debug_pipelines[0].layout, 0, 1, &uniform_buffer->set.h, 0, NULL);
+                vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, geo3d_debug_pipelines[0].layout, 0, 1, &uniform_buffer->set.h, 1, &uniform_buffer_off);
 
                 // Setup viewport and scissor 
                 VkViewport viewport = {0};
                 Vec2F32 viewport_dim = dim_2f32(params->viewport);
                 if(viewport_dim.x == 0 || viewport_dim.y == 0)
                 {
-                    viewport.width    = wnd->bag->stage_color_image.extent.width;
-                    viewport.height   = wnd->bag->stage_color_image.extent.height;
+                    viewport.width  = wnd->bag->stage_color_image.extent.width;
+                    viewport.height = wnd->bag->stage_color_image.extent.height;
                 }
                 else
                 {
-                    viewport.x        = params->viewport.p0.x;
-                    viewport.y        = params->viewport.p0.y;
-                    viewport.width    = params->viewport.p1.x;
-                    viewport.height   = params->viewport.p1.y;
+                    viewport.x      = params->viewport.p0.x;
+                    viewport.y      = params->viewport.p0.y;
+                    viewport.width  = params->viewport.p1.x;
+                    viewport.height = params->viewport.p1.y;
                 }
                 viewport.minDepth = 0.0f;
                 viewport.maxDepth = 1.0f;
@@ -3295,22 +3653,25 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 // scissor.extent = (VkExtent2D){viewport.width, viewport.height};
                 vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
 
-                // Bind geo3d debug pipeline
-                vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, geo3d_debug_pipelines[R_GeoPolygonKind_COUNT * R_GeoTopologyKind_Triangles + R_GeoPolygonKind_Fill].h);
+                if(params->show_grid)
+                {
+                    // Bind geo3d debug pipeline
+                    vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, geo3d_debug_pipelines[R_GeoPolygonKind_COUNT * R_GeoTopologyKind_Triangles + R_GeoPolygonKind_Fill].h);
 
-                // Draw mesh debug info (grid, gizmos e.g.)
-                vkCmdDraw(cmd_buf, 6, 1, 0, 0);
+                    // Draw mesh debug info (grid, gizmos e.g.)
+                    vkCmdDraw(cmd_buf, 6, 1, 0, 0);
+                }
 
                 // Unpack and bind storage buffer (Currently only for joints)
                 R_Vulkan_StorageBuffer *storage_buffer = &frame->storage_buffers[R_Vulkan_StorageTypeKind_Geo3d];
                 U8 *storage_buffer_dst = (U8 *)(storage_buffer->buffer.mapped);
-                U32 storage_buffer_offset = 0;
                 vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, geo3d_forward_pipelines[0].layout, 1, 1, &storage_buffer->set.h, 0, 0);
 
                 // geo3d forward pass
-                for(U64 slot_idx = 0; slot_idx < mesh_group_map->slots_count; slot_idx++)
+                // for(U64 slot_idx = 0; slot_idx < mesh_group_map->slots_count; slot_idx++)
                 {
-                    for(R_BatchGroup3DMapNode *n = mesh_group_map->slots[slot_idx]; n!=0; n = n->next) 
+                    for(R_BatchGroup3DMapNode *n = mesh_group_map->first; n!=0; n = n->insert_next) 
+                    // for(R_BatchGroup3DMapNode *n = mesh_group_map->slots[slot_idx]; n!=0; n = n->next) 
                     {
                         // Unpack group params
                         R_BatchList *batches = &n->batches;
@@ -3318,6 +3679,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                         R_Vulkan_Buffer *mesh_vertices = r_vulkan_buffer_from_handle(group_params->mesh_vertices);
                         R_Vulkan_Buffer *mesh_indices = r_vulkan_buffer_from_handle(group_params->mesh_indices);
                         U64 inst_count = batches->byte_count / batches->bytes_per_inst;
+                        U64 indice_count = group_params->indice_count;
+                        U64 line_width = group_params->line_width;
 
                         // Unpack specific pipeline for topology and polygon mode
                         R_GeoTopologyKind topology = group_params->mesh_geo_topology;
@@ -3326,7 +3689,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 
                         // Get & fill instance buffer
                         // TODO(k): Dynamic allocate instance buffer if needed
-                        U8 *dst_ptr = frame->inst_buffer_mesh.mapped + mesh_inst_buffer_offset;
+                        U64 geo3d_inst_buffer_offset = geo3d_inst_idx * sizeof(R_Mesh3DInst);
+                        U8 *dst_ptr = frame->inst_buffer_mesh.mapped + geo3d_inst_buffer_offset;
                         U64 off = 0;
                         for(R_BatchNode *batch = batches->first; batch != 0; batch = batch->next)
                         {
@@ -3339,10 +3703,10 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                                 if(inst->joint_count > 0)
                                 {
                                     U32 size = sizeof(Mat4x4F32) * inst->joint_count;
-                                    // TODO: we may need to consider the stride here
-                                    inst->first_joint = storage_buffer_offset / sizeof(Mat4x4F32);
-                                    MemoryCopy(storage_buffer_dst+storage_buffer_offset, inst->joint_xforms, size);
-                                    storage_buffer_offset += size;
+                                    // TODO(k): we may need to consider the stride here
+                                    inst->first_joint = geo3d_sbo_idx;
+                                    MemoryCopy(storage_buffer_dst+geo3d_sbo_idx*sizeof(R_Vulkan_Storage_Mesh), inst->joint_xforms, size);
+                                    geo3d_sbo_idx += inst->joint_count;
                                 }
                             }
 
@@ -3359,10 +3723,9 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                         }
                         R_Vulkan_Tex2D *texture = r_vulkan_tex2d_from_handle(tex_handle);
 
-                        vkCmdBindVertexBuffers(cmd_buf, 0, 1, &mesh_vertices->h, &(VkDeviceSize){0});
-                        vkCmdBindIndexBuffer(cmd_buf, mesh_indices->h, (VkDeviceSize){0}, VK_INDEX_TYPE_UINT32);
-                        VkDeviceSize inst_buffer_offset = { mesh_inst_buffer_offset };
-                        vkCmdBindVertexBuffers(cmd_buf, 1, 1, &frame->inst_buffer_mesh.h, &inst_buffer_offset);
+                        vkCmdBindVertexBuffers(cmd_buf, 0, 1, &mesh_vertices->h, &(VkDeviceSize){group_params->vertex_buffer_offset});
+                        vkCmdBindIndexBuffer(cmd_buf, mesh_indices->h, (VkDeviceSize){group_params->indice_buffer_offset}, VK_INDEX_TYPE_UINT32);
+                        vkCmdBindVertexBuffers(cmd_buf, 1, 1, &frame->inst_buffer_mesh.h, &(VkDeviceSize){geo3d_inst_buffer_offset});
 
                         // Bind geo3d forward pipeline
                         // The second parameter specifies if the pipeline object is a graphics or compute pipelinVK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BITe
@@ -3370,60 +3733,21 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                         vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->h);
                         vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->layout, 2, 1, &texture->desc_set.h, 0, NULL);
 
-                        // Draw mesh
-                        vkCmdDrawIndexed(cmd_buf, mesh_indices->size/sizeof(U32), inst_count, 0, 0, 0);
+                        // set line width if device supports widelines feature
+                        if(r_vulkan_state->gpu.features.wideLines == VK_TRUE)
+                        {
+                            vkCmdSetLineWidth(cmd_buf, line_width);
+                        }
 
-                        // increament group counter
-                        mesh_inst_buffer_offset += batches->byte_count;
+                        // Draw mesh
+                        Assert(mesh_indices->size > 0);
+                        vkCmdDrawIndexed(cmd_buf, indice_count, inst_count, 0, 0, 0);
+
+                        // increament counter/idx
+                        geo3d_inst_idx += inst_count;
                     }
                 }
                 vkCmdEndRenderPass(cmd_buf);
-
-                // TODO(k): this is a slow operation, fps is reduced by 100 maybe we could use a dedicated transfer queue to do it instead of block graphic queue
-                // Copy geo3d_image to geo3d_cpu(buffer)
-                // {
-                //     VkImageMemoryBarrier barrier = {};
-                //     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-                //     // NOTE(k): weird here, it's alreay in src optimal, but we need to wait for the writing
-                //     barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-                //     barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-                //     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // Not changing queue families
-                //     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-                //     barrier.image = wnd->bag->geo3d_id_image.h;
-                //     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                //     barrier.subresourceRange.baseMipLevel = 0;
-                //     barrier.subresourceRange.levelCount = 1;
-                //     barrier.subresourceRange.baseArrayLayer = 0;
-                //     barrier.subresourceRange.layerCount = 1;
-                //     barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT; // Prior access
-                //     barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT; // Next access
-
-                //     VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-                //     VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-
-                //     vkCmdPipelineBarrier(cmd_buf,
-                //                          srcStage, dstStage, // Source and destination pipeline stages
-                //                          0,                  // No dependency flags
-                //                          0, NULL,            // Memory barriers
-                //                          0, NULL,            // Buffer memory barriers
-                //                          1, &barrier);       // Image memory barriers
-
-                //     VkBufferImageCopy region = {0};
-                //     region.bufferOffset = 0;
-                //     region.bufferRowLength = 0; // Tightly packed
-                //     region.bufferImageHeight = 0;
-                //     region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-                //     region.imageSubresource.mipLevel = 0;
-                //     region.imageSubresource.baseArrayLayer = 0;
-                //     region.imageSubresource.layerCount = 1;
-                //     Vec2F32 range = {ptr.x, ptr.y};
-                //     range.x = Clamp(0,ptr.x,wnd->bag->geo3d_id_image.extent.width-1);
-                //     range.y = Clamp(0,ptr.y,wnd->bag->geo3d_id_image.extent.height-1);
-                //     region.imageOffset = (VkOffset3D){range.x,range.y,0};
-                //     // region.imageExtent = (VkExtent3D){wnd->bag->geo3d_id_image.extent.width, wnd->bag->geo3d_id_image.extent.height, 1};
-                //     region.imageExtent = (VkExtent3D){1, 1, 1};
-                //     vkCmdCopyImageToBuffer(cmd_buf, wnd->bag->geo3d_id_image.h, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, wnd->bag->geo3d_id_cpu.h, 1, &region);
-                // }
 
                 // Composite to the main staging buffer
                 {
@@ -3460,6 +3784,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     vkCmdDraw(cmd_buf, 4, 1, 0, 0);
                     vkCmdEndRenderPass(cmd_buf);
                 }
+                geo3d_pass_idx++;
             }break;
             default: {InvalidPath;}break;
         }

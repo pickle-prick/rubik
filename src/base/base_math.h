@@ -372,7 +372,7 @@ struct Rng1S64Array {
 #define round_f32(v) roundf(v)
 #define abs_f32(v) fabsf(v)
 #define radians_from_turns_f32(v) ((v) * 2 * 3.1415926535897f)
-#define turns_from_radians_f32(v) ((v) / 2 * 3.1415926535897f)
+#define turns_from_radians_f32(v) ((v) / (2 * 3.1415926535897f))
 #define degrees_from_turns_f32(v) ((v) * 360.f)
 #define turns_from_degrees_f32(v) ((v) / 360.f)
 #define degrees_from_radians_f32(v)                                            \
@@ -462,6 +462,7 @@ internal Vec2S16 normalize_2s16(Vec2S16 v);
 internal Vec2S16 mix_2s16(Vec2S16 a, Vec2S16 b, F32 t);
 
 #define v3f32(x, y, z) vec_3f32((x), (y), (z))
+#define v4f32_xyz(v) v3f32((v).x, (v).y, (v).z)
 internal Vec3F32 vec_3f32(F32 x, F32 y, F32 z);
 internal Vec3F32 add_3f32(Vec3F32 a, Vec3F32 b);
 internal Vec3F32 sub_3f32(Vec3F32 a, Vec3F32 b);
@@ -474,6 +475,7 @@ internal F32 length_squared_3f32(Vec3F32 v);
 internal F32 length_3f32(Vec3F32 v);
 internal Vec3F32 normalize_3f32(Vec3F32 v);
 internal Vec3F32 mix_3f32(Vec3F32 a, Vec3F32 b, F32 t);
+internal Vec3F32 slerp_3f32(Vec3F32 a, Vec3F32 b, F32 t);
 internal Vec3F32 cross_3f32(Vec3F32 a, Vec3F32 b);
 
 #define v3s32(x, y, z) vec_3s32((x), (y), (z))

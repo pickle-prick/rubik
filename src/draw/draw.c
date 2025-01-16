@@ -122,7 +122,7 @@ d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection, Vec3F32 gl
 {
     Arena *arena = d_thread_ctx->arena;
     D_Bucket *bucket = d_top_bucket();
-    R_Pass *pass = r_pass_from_kind(arena, &bucket->passes, R_PassKind_Geo3D);
+    R_Pass *pass = r_pass_from_kind(arena, &bucket->passes, R_PassKind_Geo3D, 0);
     R_PassParams_Geo3D *params = pass->params_geo3d;
     {
         params->viewport      = viewport;
@@ -137,11 +137,15 @@ d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection, Vec3F32 gl
 //- k: meshes
 
 internal R_Mesh3DInst *
-d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags, R_Handle albedo_tex, Vec4F32 color_tex, Mat4x4F32 *joint_xforms, U64 joint_count, Mat4x4F32 inst_xform, U64 inst_key, B32 draw_edge, B32 depth_test)
+d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices,
+       U64 vertex_buffer_offset, U64 indice_buffer_offset, U64 indice_count,
+       R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags,
+       R_Handle albedo_tex, Vec4F32 color_tex, F32 line_width,
+       Mat4x4F32 *joint_xforms, U64 joint_count, Mat4x4F32 inst_xform, U64 inst_key, B32 draw_edge, B32 depth_test, B32 retain_order, B32 omit_light)
 {
     Arena *arena = d_thread_ctx->arena;
     D_Bucket *bucket = d_top_bucket();
-    R_Pass *pass = r_pass_from_kind(arena, &bucket->passes, R_PassKind_Geo3D);
+    R_Pass *pass = r_pass_from_kind(arena, &bucket->passes, R_PassKind_Geo3D, 1);
     R_PassParams_Geo3D *params = pass->params_geo3d;
 
     if(params->mesh_batches.slots_count == 0)
@@ -154,16 +158,21 @@ d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo
     U64 hash = 0;
     U64 slot_idx = 0;
     {
+        U64 line_width_f64 = (F64)line_width;
         U64 buffer[] = {
             mesh_vertices.u64[0],
             mesh_vertices.u64[1],
             mesh_indices.u64[0],
             mesh_indices.u64[1],
+            vertex_buffer_offset,
+            indice_buffer_offset,
+            indice_count,
             (U64)mesh_geo_topology,
             (U64)mesh_geo_polygon,
             (U64)mesh_geo_vertex_flags,
             albedo_tex.u64[0],
             albedo_tex.u64[1],
+            *(U64 *)(&line_width_f64),
             (U64)d_top_tex2d_sample_kind(),
         };
         hash = d_hash_from_string(str8((U8 *)buffer, sizeof(buffer)));
@@ -171,14 +180,27 @@ d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo
     }
 
     // Map hash -> existing batch group node
+    B32 hash_existed = 0;
     R_BatchGroup3DMapNode *node = 0;
     {
         for(R_BatchGroup3DMapNode *n = params->mesh_batches.slots[slot_idx]; n != 0; n = n->next)
         {
             if(n->hash == hash) {
                 node = n;
+                hash_existed = 1;
                 break;
             }
+        }
+    }
+
+    if(retain_order)
+    {
+        node = 0;
+        // NOTE(k): if retain order is required, we only reuse group if last one has the same hash
+        R_BatchGroup3DMapNode *last = params->mesh_batches.last;
+        if(last && last->hash == hash)
+        {
+            node = last;
         }
     }
 
@@ -186,11 +208,16 @@ d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo
     if(node == 0) 
     {
         node = push_array(arena, R_BatchGroup3DMapNode, 1);
-        SLLStackPush(params->mesh_batches.slots[slot_idx], node);
+        if(!hash_existed) SLLStackPush(params->mesh_batches.slots[slot_idx], node);
+        DLLPushBack_NP(params->mesh_batches.first, params->mesh_batches.last, node, insert_next, insert_prev);
         node->hash = hash;
         node->batches = r_batch_list_make(sizeof(R_Mesh3DInst));
         node->params.mesh_vertices          = mesh_vertices;
+        node->params.vertex_buffer_offset   = vertex_buffer_offset;
         node->params.mesh_indices           = mesh_indices;
+        node->params.indice_buffer_offset   = indice_buffer_offset;
+        node->params.indice_count           = indice_count;
+        node->params.line_width             = line_width;
         node->params.mesh_geo_topology      = mesh_geo_topology;
         node->params.mesh_geo_polygon       = mesh_geo_polygon;
         node->params.mesh_geo_vertex_flags  = mesh_geo_vertex_flags;
@@ -208,13 +235,14 @@ d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, R_GeoTopologyKind mesh_geo
     inst->color_texture = color_tex;
     inst->draw_edge     = draw_edge;
     inst->depth_test    = depth_test;
+    inst->omit_light    = omit_light;
     return inst;
 }
 
 //- rjf: collating one pre-prepped bucket into parent bucket
 
 internal void
-d_sub_bucket(D_Bucket *bucket)
+d_sub_bucket(D_Bucket *bucket, B32 merge_pass)
 {
     ProfBeginFunction();
     Arena *arena = d_thread_ctx->arena;
@@ -225,17 +253,16 @@ d_sub_bucket(D_Bucket *bucket)
     for(R_PassNode *n = src->passes.first; n != 0; n = n->next)
     {
         R_Pass *src_pass = &n->v;
-        R_Pass *dst_pass = r_pass_from_kind(arena, &dst->passes, src_pass->kind);
+        R_Pass *dst_pass = r_pass_from_kind(arena, &dst->passes, src_pass->kind, merge_pass);
         switch(dst_pass->kind)
         {
+            // TODO(XXX): suss here, didn't handle geo3d batches concate
             default:{dst_pass->params = src_pass->params;}break;
             case R_PassKind_UI:
             {
                 R_PassParams_UI *src_ui = src_pass->params_ui;
                 R_PassParams_UI *dst_ui = dst_pass->params_ui;
-                for(R_BatchGroup2DNode *src_group_n = src_ui->rects.first;
-                        src_group_n != 0;
-                        src_group_n = src_group_n->next)
+                for(R_BatchGroup2DNode *src_group_n = src_ui->rects.first; src_group_n != 0; src_group_n = src_group_n->next)
                 {
                     R_BatchGroup2DNode *dst_group_n = push_array(arena, R_BatchGroup2DNode, 1);
                     SLLQueuePush(dst_ui->rects.first, dst_ui->rects.last, dst_group_n);
@@ -246,9 +273,9 @@ d_sub_bucket(D_Bucket *bucket)
                     if(dst_clip_is_set)
                     {
                         B32 clip_is_set = !(dst_group_n->params.clip.x0 == 0 &&
-                                dst_group_n->params.clip.y0 == 0 &&
-                                dst_group_n->params.clip.x1 == 0 &&
-                                dst_group_n->params.clip.y1 == 0);
+                                            dst_group_n->params.clip.y0 == 0 &&
+                                            dst_group_n->params.clip.x1 == 0 &&
+                                            dst_group_n->params.clip.y1 == 0);
                         dst_group_n->params.clip = clip_is_set ? intersect_2f32(dst_clip, dst_group_n->params.clip) : dst_clip;
                     }
                 }
@@ -377,7 +404,7 @@ d_rect(Rng2F32 dst, Vec4F32 color, F32 corner_radius, F32 border_thickness, F32 
     Arena *arena = d_thread_ctx->arena;
     D_Bucket *bucket = d_top_bucket();
     AssertAlways(bucket != 0);
-    R_Pass *pass = r_pass_from_kind(arena, &bucket->passes, R_PassKind_UI);
+    R_Pass *pass = r_pass_from_kind(arena, &bucket->passes, R_PassKind_UI, 1);
     R_PassParams_UI *params = pass->params_ui;
     R_BatchGroup2DList *rects = &params->rects;
     R_BatchGroup2DNode *node = rects->last;
@@ -420,7 +447,7 @@ d_img(Rng2F32 dst, Rng2F32 src, R_Handle texture, Vec4F32 color,
     Arena *arena = d_thread_ctx->arena;
     D_Bucket *bucket = d_top_bucket();
     AssertAlways(bucket);
-    R_Pass *pass = r_pass_from_kind(arena, &bucket->passes, R_PassKind_UI);
+    R_Pass *pass = r_pass_from_kind(arena, &bucket->passes, R_PassKind_UI, 1);
     R_PassParams_UI *params = pass->params_ui;
     R_BatchGroup2DList *rects = &params->rects;
     R_BatchGroup2DNode *node = rects->last;

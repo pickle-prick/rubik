@@ -4,11 +4,11 @@
 ////////////////////////////////
 //~ rjf: Generated Code
 
-U8 r_pass_kind_batch_table[3] = {1, 1};
+U8 r_pass_kind_batch_table[3] = {1, 0, 1};
 
-U64 r_pass_kind_params_size_table[2] = {
+U64 r_pass_kind_params_size_table[3] = {
     sizeof(R_PassParams_UI),
-    // sizeof(R_PassParams_Blur),
+    sizeof(R_PassParams_Blur),
     sizeof(R_PassParams_Geo3D),
 };
 
@@ -59,10 +59,10 @@ r_batch_list_push_inst(Arena *arena, R_BatchList *list, U64 batch_inst_cap)
 //~ rjf: Pass Type Functions
 
 internal R_Pass *
-r_pass_from_kind(Arena *arena, R_PassList *list, R_PassKind kind)
+r_pass_from_kind(Arena *arena, R_PassList *list, R_PassKind kind, B32 merge_pass)
 {
     R_PassNode *n = list->last;
-    if(!r_pass_kind_batch_table[kind])
+    if(!r_pass_kind_batch_table[kind] || !merge_pass)
     {
         n = 0;
     }
