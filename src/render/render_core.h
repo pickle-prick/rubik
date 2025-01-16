@@ -210,11 +210,14 @@ struct R_BatchGroup3DMapNode
 typedef struct R_BatchGroup3DMap R_BatchGroup3DMap;
 struct R_BatchGroup3DMap
 {
+    // hashmap
     R_BatchGroup3DMapNode **slots;
-    // NOTE(k): in insertion order
+    U64 slots_count;
+
+    // NOTE(k): list in insertion order
     R_BatchGroup3DMapNode *first;
     R_BatchGroup3DMapNode *last;
-    U64 slots_count;
+    U64 array_size;
 };
 
 ////////////////////////////////

@@ -128,6 +128,7 @@ internal void d_submit_bucket(OS_Handle os_window, R_Handle r_window, D_Bucket *
 // (Bucket: Handle to sequence of many render passes, constructed by this layer)
 
 internal D_Bucket *d_bucket_make(void);
+internal B32 d_bucket_is_empty(D_Bucket *bucket);
 internal void d_push_bucket(D_Bucket *bucket);
 internal void d_pop_bucket(void);
 internal D_Bucket *d_top_bucket(void);

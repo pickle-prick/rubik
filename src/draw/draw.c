@@ -81,6 +81,33 @@ d_bucket_make(void)
     return bucket;
 }
 
+internal B32
+d_bucket_is_empty(D_Bucket *bucket)
+{
+    B32 ret = 1;
+    for(R_PassNode *pass = bucket->passes.first; pass != 0; pass = pass->next)
+    {
+        switch(pass->v.kind)
+        {
+            case R_PassKind_UI:
+            {
+                ret = pass->v.params_ui->rects.count == 0;
+            }break;
+            case R_PassKind_Blur:
+            {
+                NotImplemented;
+            }break;
+            case R_PassKind_Geo3D:
+            {
+                ret = pass->v.params_geo3d->mesh_batches.array_size == 0;
+            }break;
+            default:{InvalidPath;}break;
+        }
+        if(ret == 0) break;
+    }
+    return ret;
+}
+
 internal void
 d_push_bucket(D_Bucket *bucket)
 {
@@ -208,8 +235,13 @@ d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices,
     if(node == 0) 
     {
         node = push_array(arena, R_BatchGroup3DMapNode, 1);
+
+        // insert into hash table
         if(!hash_existed) SLLStackPush(params->mesh_batches.slots[slot_idx], node);
+        // push back to array 
         DLLPushBack_NP(params->mesh_batches.first, params->mesh_batches.last, node, insert_next, insert_prev);
+        params->mesh_batches.array_size++;
+
         node->hash = hash;
         node->batches = r_batch_list_make(sizeof(R_Mesh3DInst));
         node->params.mesh_vertices          = mesh_vertices;
