@@ -2441,7 +2441,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 viewport = rk_state->window_rect;
                 view = view_m;
                 projection = projection_m;
-                Vec3F32 global_light = v3f32(1,0,0);
+                global_light = v3f32(0,1,0);
             }break;
             case RK_GeoBucketKind_Front:
             {
@@ -2449,7 +2449,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 viewport = rk_state->window_rect;
                 view = view_m;
                 projection = projection_m;
-                Vec3F32 global_light = v3f32(1,0,0);
+                global_light = v3f32(1,0,0);
             }break;
             case RK_GeoBucketKind_Screen:
             {
@@ -2460,7 +2460,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
             }break;
             default:{InvalidPath;}break;
         }
-        d_geo3d_begin(viewport, view, projection, v3f32(1,0,0), grid);
+        d_geo3d_begin(viewport, view, projection, global_light, grid);
         d_pop_bucket();
     }
 

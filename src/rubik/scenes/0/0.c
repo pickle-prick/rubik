@@ -191,7 +191,7 @@ rk_scene_entry__0()
         rk_push_node_bucket(ret->res_node_bucket);
         rk_push_parent(0);
         RK_Handle dancing_stormtrooper = rk_packed_scene_from_gltf(str8_lit("./models/dancing_stormtrooper/scene.gltf"));
-        // RK_Handle blackguard = rk_packed_scene_from_gltf(str8_lit("./models/blackguard/scene.gltf"));
+        RK_Handle blackguard = rk_packed_scene_from_gltf(str8_lit("./models/blackguard/scene.gltf"));
         // RK_Handle droide = rk_packed_scene_from_gltf(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
 
         rk_pop_parent();
@@ -203,12 +203,13 @@ rk_scene_entry__0()
         //     n1->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n1->node3d->transform.rotation);
         // }
 
-        // RK_Node *n2 = rk_node_from_packed_scene(str8_lit("2"), blackguard);
-        // {
-        //     // flip y
-        //     n2->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n2->node3d->transform.rotation);
-        //     n2->node3d->transform.position = v3f32(3,0,0);
-        // }
+        RK_Node *n2 = rk_node_from_packed_scene(str8_lit("2"), blackguard);
+        {
+            // flip y
+            n2->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n2->node3d->transform.rotation);
+            n2->node3d->transform.position = v3f32(3,0,0);
+            n2->flags |= RK_NodeFlag_NavigationRoot;
+        }
 
         RK_Node *n3 = rk_node_from_packed_scene(str8_lit("3"), dancing_stormtrooper);
         {

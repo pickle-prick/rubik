@@ -81,7 +81,8 @@ void main()
     float depth_edge = edge_from_depth(texel);
     float edge = max(normal_edge, depth_edge);
 
-    vec4 edge_clr = vec4(1,1,1,edge);
+    vec4 edge_clr = vec4(0.18039, 0.313725, 0.46666, edge);
+    // vec4 edge_clr = vec4(0, 0, 0, edge);
 
     out_color = texture(geo3d_sampler, tex);
     out_color = alpha_blend(edge_clr, out_color);

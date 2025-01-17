@@ -626,7 +626,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         bindings[0].binding            = 0;
         bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         bindings[0].descriptorCount    = 1;
-        bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT;
+        bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
         bindings[0].pImmutableSamplers = NULL;
 
         VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
