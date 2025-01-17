@@ -2846,6 +2846,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                                                     mesh->topology, polygon_mode, R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, albedo_tex, clr_tex, 1.f,
                                                     joint_xforms, joint_count,
                                                     node->fixed_xform, node->key.u64[0], draw_edge, !mesh_inst3d->disable_depth, 0, 0);
+                        inst->xform_inv = inverse_4x4f32(node->fixed_xform);
                     }
                     else
                     {

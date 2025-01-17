@@ -106,21 +106,23 @@ vec4 grid(vec3 pos, float scale) {
     // minimumx *= 89;
 
     // vec4 color = vec4(0.0, 0.0, 0.0, 1.0-min(line, 1.0));
-    vec3 base_color = vec3(0.102,0.102,0.098);
+    // vec3 base_color = vec3(0.102,0.102,0.098);
+    vec3 base_color = vec3(0,0,0);
     vec3 line_color = vec3(0.965,0.988,0.875);
+    line_color *= 0.1;
 
     vec4 color = vec4(mix(base_color, line_color, 1.0-min(line, 1.0)).xyz, 1.0);
 
     // z axis
     // if(pos.x > -0.01 && pos.x < 0.01) {
-    if(pos.x > -4 * minimumx && pos.x < 4 * minimumx)
+    if(pos.x > -1 * minimumx && pos.x < 1 * minimumx)
     {
         color.b = 1.0;
     }
 
     // x axis
     // if(pos.z > -0.1 * minimumz && pos.z < 0.1 * minimumz) {
-    if(pos.z > -4 * minimumz && pos.z < 4 * minimumz)
+    if(pos.z > -1 * minimumz && pos.z < 1 * minimumz)
     {
         color.r = 1.0;
     }

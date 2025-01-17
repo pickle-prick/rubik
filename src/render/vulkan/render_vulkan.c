@@ -2492,7 +2492,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
     VkPipelineVertexInputStateCreateInfo vtx_input_state_create_info = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 
     VkVertexInputBindingDescription vtx_binding_desc[2] = {};
-#define MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT 18
+#define MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT 22
     VkVertexInputAttributeDescription vtx_attr_descs[MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT];
 
     U64 vtx_binding_desc_count = 0;
@@ -2507,7 +2507,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
         case R_Vulkan_PipelineKind_Geo3dForward:
         {
             vtx_binding_desc_count = 2;
-            vtx_attr_desc_cnt = 18;
+            vtx_attr_desc_cnt = 22;
 
             // All of our per-vertex data is packed together in one array, so we'are only going to have one binding for now
             // This specifies the index of the binding in the array of bindings
@@ -2581,6 +2581,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
             vtx_binding_desc[1].stride    = sizeof(R_Mesh3DInst);
             vtx_binding_desc[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
 
+            // xform
             vtx_attr_descs[7].binding  = 1;
             vtx_attr_descs[7].location = 7;
             vtx_attr_descs[7].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
@@ -2601,40 +2602,68 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
             vtx_attr_descs[10].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
             vtx_attr_descs[10].offset   = offsetof(R_Mesh3DInst, xform) + sizeof(Vec4F32) * 3;
 
+            // xform_inv
             vtx_attr_descs[11].binding  = 1;
             vtx_attr_descs[11].location = 11;
-            vtx_attr_descs[11].format   = VK_FORMAT_R32G32_UINT;
-            vtx_attr_descs[11].offset   = offsetof(R_Mesh3DInst, key);
+            vtx_attr_descs[11].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
+            vtx_attr_descs[11].offset   = offsetof(R_Mesh3DInst, xform_inv) + sizeof(Vec4F32) * 0;
 
             vtx_attr_descs[12].binding  = 1;
             vtx_attr_descs[12].location = 12;
             vtx_attr_descs[12].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[12].offset   = offsetof(R_Mesh3DInst, color_texture);
+            vtx_attr_descs[12].offset   = offsetof(R_Mesh3DInst, xform_inv) + sizeof(Vec4F32) * 1;
 
             vtx_attr_descs[13].binding  = 1;
             vtx_attr_descs[13].location = 13;
-            vtx_attr_descs[13].format   = VK_FORMAT_R32_UINT;
-            vtx_attr_descs[13].offset   = offsetof(R_Mesh3DInst, draw_edge);
+            vtx_attr_descs[13].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
+            vtx_attr_descs[13].offset   = offsetof(R_Mesh3DInst, xform_inv) + sizeof(Vec4F32) * 2;
 
             vtx_attr_descs[14].binding  = 1;
             vtx_attr_descs[14].location = 14;
-            vtx_attr_descs[14].format   = VK_FORMAT_R32_UINT;
-            vtx_attr_descs[14].offset   = offsetof(R_Mesh3DInst, joint_count);
+            vtx_attr_descs[14].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
+            vtx_attr_descs[14].offset   = offsetof(R_Mesh3DInst, xform_inv) + sizeof(Vec4F32) * 3;
 
+            // key
             vtx_attr_descs[15].binding  = 1;
             vtx_attr_descs[15].location = 15;
-            vtx_attr_descs[15].format   = VK_FORMAT_R32_UINT;
-            vtx_attr_descs[15].offset   = offsetof(R_Mesh3DInst, first_joint);
+            vtx_attr_descs[15].format   = VK_FORMAT_R32G32_UINT;
+            vtx_attr_descs[15].offset   = offsetof(R_Mesh3DInst, key);
 
+            // color texture
             vtx_attr_descs[16].binding  = 1;
             vtx_attr_descs[16].location = 16;
-            vtx_attr_descs[16].format   = VK_FORMAT_R32_UINT;
-            vtx_attr_descs[16].offset   = offsetof(R_Mesh3DInst, depth_test);
+            vtx_attr_descs[16].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
+            vtx_attr_descs[16].offset   = offsetof(R_Mesh3DInst, color_texture);
 
+            // draw_edge
             vtx_attr_descs[17].binding  = 1;
             vtx_attr_descs[17].location = 17;
             vtx_attr_descs[17].format   = VK_FORMAT_R32_UINT;
-            vtx_attr_descs[17].offset   = offsetof(R_Mesh3DInst, omit_light);
+            vtx_attr_descs[17].offset   = offsetof(R_Mesh3DInst, draw_edge);
+
+            // joint_count
+            vtx_attr_descs[18].binding  = 1;
+            vtx_attr_descs[18].location = 18;
+            vtx_attr_descs[18].format   = VK_FORMAT_R32_UINT;
+            vtx_attr_descs[18].offset   = offsetof(R_Mesh3DInst, joint_count);
+
+            // first joint
+            vtx_attr_descs[19].binding  = 1;
+            vtx_attr_descs[19].location = 19;
+            vtx_attr_descs[19].format   = VK_FORMAT_R32_UINT;
+            vtx_attr_descs[19].offset   = offsetof(R_Mesh3DInst, first_joint);
+
+            // depth test
+            vtx_attr_descs[20].binding  = 1;
+            vtx_attr_descs[20].location = 20;
+            vtx_attr_descs[20].format   = VK_FORMAT_R32_UINT;
+            vtx_attr_descs[20].offset   = offsetof(R_Mesh3DInst, depth_test);
+
+            // omit light
+            vtx_attr_descs[21].binding  = 1;
+            vtx_attr_descs[21].location = 21;
+            vtx_attr_descs[21].format   = VK_FORMAT_R32_UINT;
+            vtx_attr_descs[21].offset   = offsetof(R_Mesh3DInst, omit_light);
         }break;
         case(R_Vulkan_PipelineKind_Rect):
         {
@@ -3620,7 +3649,9 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 // Setup uniforms buffer
                 R_Vulkan_Uniforms_Mesh uniforms = {0};
                 uniforms.proj         = params->projection;
+                uniforms.proj_inv     = inverse_4x4f32(params->projection);
                 uniforms.view         = params->view;
+                uniforms.view_inv     = inverse_4x4f32(params->view);
                 uniforms.global_light = v4f32(params->global_light.x, params->global_light.y, params->global_light.z, 0.0);
                 uniforms.show_grid    = params->show_grid;
                 MemoryCopy((U8 *)uniform_buffer->buffer.mapped + uniform_buffer_off, &uniforms, sizeof(R_Vulkan_Uniforms_Mesh));

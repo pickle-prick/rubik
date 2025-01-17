@@ -12,7 +12,9 @@ layout(location = 10) flat out uint frag_show_grid;
 
 layout(set = 0, binding = 0) uniform UniformBufferObject {
     mat4  view;
+    mat4  view_inv;
     mat4  proj;
+    mat4  proj_inv;
     vec4  global_light;
     uint  show_grid;
 } ubo;
@@ -104,7 +106,7 @@ void main()
 {
     vec3 p = grid_plane[gl_VertexIndex].xyz;
     mat4 xform = ubo.proj * ubo.view;
-    mat4 xform_inv = inverse(xform);
+    mat4 xform_inv = ubo.view_inv * ubo.proj_inv;
     gl_Position = vec4(p, 1.0);
 
     // Fragment output

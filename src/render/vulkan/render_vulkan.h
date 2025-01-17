@@ -11,7 +11,7 @@
 // frames in flight, the CPU could get ahead of the GPU, because the work load
 // of the GPU could be too larger for it to handle, so the CPU would end up
 // waiting a lot, adding frames of latency Generally extra latency isn't desired
-#define MAX_FRAMES_IN_FLIGHT 1
+#define MAX_FRAMES_IN_FLIGHT 2
 
 #define VK_Assert(result) \
     do { \
@@ -62,7 +62,9 @@ typedef struct R_Vulkan_Uniforms_Mesh R_Vulkan_Uniforms_Mesh;
 struct R_Vulkan_Uniforms_Mesh
 {
     Mat4x4F32 view;
+    Mat4x4F32 view_inv;
     Mat4x4F32 proj;
+    Mat4x4F32 proj_inv;
 
     Vec4F32   global_light;
 

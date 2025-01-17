@@ -112,6 +112,7 @@ struct R_Mesh3DInst
 {
     // TODO(k): kind a mess here, some attributes were sent to instance buffer, some were copied to storage buffer 
     Mat4x4F32 xform;
+    Mat4x4F32 xform_inv;
     U64       key;
     Vec4F32   color_texture;
     B32       draw_edge;
