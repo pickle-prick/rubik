@@ -1109,8 +1109,8 @@ RK_SettingVal rk_setting_code_default_val_table[9] =
 {1, 1},
 {1, 1},
 {1, 4},
-{1, 13},
-{1, 13},
+{1, 23},
+{1, 23},
 };
 
 Rng1S32 rk_setting_code_s32_range_table[9] =

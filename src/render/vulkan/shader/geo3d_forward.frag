@@ -33,6 +33,8 @@ void main()
     float intensity = 1.0;
     if(omit_light == 0)
     {
+        // REF: Physically Based Rendering: The Light Transport Equation
+
         // TODO(k): forget how these two lines work
         // float light_alignment = dot(-ubo.global_light.xyz, (model*normal).xyz);
         // intensity = 0.5*light_alignment + 0.5;
@@ -48,7 +50,7 @@ void main()
         // to furthur optimize this computation, we can ignore the translate part of matrix, since normal shouldn't be affected by translation
         // mat4 normal_mat = transpose(model_inv);
 
-        // Diffuse light model for direction light
+        // (Diffuse and Lambertian Shading model) for direction light (just like the son)
         vec3 nor = normalize(mat3(nor_mat) * nor_world);
         intensity = ambient + max(dot(-ubo.global_light.xyz, nor), 0);
     }

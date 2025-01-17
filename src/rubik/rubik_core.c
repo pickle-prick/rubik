@@ -780,7 +780,8 @@ rk_init(OS_Handle os_wnd)
         rk_state->res_node_bucket = rk_node_bucket_make(arena, 4096-1);
         rk_state->res_bucket      = rk_res_bucket_make(arena, 4096-1);
         rk_state->os_wnd          = os_wnd;
-        rk_state->last_dpi        = os_dpi_from_window(os_wnd);
+        rk_state->dpi             = os_dpi_from_window(os_wnd);
+        rk_state->last_dpi        = rk_state->last_dpi;
         for(U64 i = 0; i < ArrayCount(rk_state->gizmo_drawlists); i++)
         {
             // TODO(k): some device offers 256MB memory which is both cpu visiable and device local
@@ -1575,7 +1576,7 @@ internal F32
 rk_font_size_from_slot(RK_FontSlot slot)
 {
     F32 result = 0;
-    F32 dpi = os_dpi_from_window(rk_state->os_wnd);
+    F32 dpi = rk_state->dpi;
     if(dpi != rk_state->last_dpi)
     {
         F32 old_dpi = rk_state->last_dpi;
@@ -2374,6 +2375,8 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
         rk_state->window_dim = dim_2f32(rk_state->window_rect);
         rk_state->last_cursor = rk_state->cursor;
         rk_state->cursor = os_mouse_from_window(rk_state->os_wnd);
+        rk_state->last_dpi = rk_state->dpi;
+        rk_state->dpi = os_dpi_from_window(rk_state->os_wnd);
 
         // clear frame gizmo drawlist
         rk_drawlist_reset(rk_frame_gizmo_drawlist());
@@ -2948,9 +2951,10 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 
             // NOTE(k): scale factor based on the distance between eye to gizmo origin
             // TODO(k): not so sure about this, is this right?
+            F32 linew_scale = 1.f * (rk_state->dpi/96.f);
             F32 scale_t;
             {
-                F32 base_scale = 1.0f;
+                F32 base_scale = 1.f;
                 F32 min_dist = 4.5f;
                 F32 projected_view_dist = dot_3f32(sub_3f32(gizmo_origin, eye), ray_eye_to_center);
                 // F32 view_dist = length_3f32(sub_3f32(gizmo_origin, eye));
@@ -3031,7 +3035,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                             }
 
                             // draw axis to indicate direction
-                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), axis_clr, 6.f, 0);
+                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), axis_clr, 3*linew_scale, 0);
                         }
 
                         // drag plane
@@ -3050,7 +3054,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                         }
 
                         // curr axis
-                        rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, gizmo_origin, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis_clr, 19, draw_edge);
+                        rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, gizmo_origin, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis_clr, 6*linew_scale, draw_edge);
                         // curr axis tip
                         rk_drawlist_push_cone(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis, 0.1*scale_t, 0.3*scale_t, 39, axis_clr, 1, 1);
                     }
@@ -3126,8 +3130,8 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                             Vec3F32 dir = normalize_3f32(sub_3f32(intersect, gizmo_origin));
                             intersect = add_3f32(gizmo_origin, scale_3f32(dir, ring_radius));
 
-                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_make(0), intersect, gizmo_origin, v4f32(1,0,0,1), 5.f, 1);
-                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_make(0), drag_data->anchor, gizmo_origin, v4f32(0,1,0,1), 5.f, 1);
+                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_make(0), intersect, gizmo_origin, v4f32(1,0,0,1), 5.f*linew_scale, 1);
+                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_make(0), drag_data->anchor, gizmo_origin, v4f32(0,1,0,1), 5.f*linew_scale, 1);
 
                             Vec3F32 start_dir = normalize_3f32(sub_3f32(drag_data->anchor, gizmo_origin));
                             Vec3F32 curr_dir = normalize_3f32(sub_3f32(intersect, gizmo_origin));
@@ -3146,7 +3150,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                                 rk_drawlist_push_arc_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, drag_data->anchor, intersect, ring_segments*turn_pct, 1, v4f32(0,0,1,0.6), 3, 1, mat_4x4f32(1.f));
 
                                 // draw axis
-                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length)), axis_clr, 6.f, 0);
+                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length)), axis_clr, 6.f*linew_scale, 0);
                             }
 
                             // change active node rotation
@@ -3240,7 +3244,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                             }
 
                             // draw axis to indicate direction
-                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), axis_clr, 6.f, 0);
+                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), axis_clr, 6.f*linew_scale, 0);
                             // draw a cube to indicate curr scale pos(projected)
                             Vec4F32 box_clr = axis_clr;
                             box_clr.w = 1.0f;
@@ -3248,9 +3252,9 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                         }
 
                         // curr axis
-                        rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, gizmo_origin, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis_clr, 19, draw_edge);
+                        rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, gizmo_origin, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis_clr, 19*linew_scale, draw_edge);
                         // curr axis tip
-                        rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, scale_3f32(v3f32(1,1,1),axis_length*0.1), add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), i_hat, j_hat, axis_clr, draw_edge, 1);
+                        rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, scale_3f32(v3f32(1,1,1),axis_length*0.15), add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), i_hat, j_hat, scale_4f32(axis_clr,0.9), draw_edge, 1);
                     }
 
                     // draw unit scale box in the middle
@@ -3258,11 +3262,11 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                         B32 is_hot = rk_key_match(scene->hot_key, origin_key);
                         B32 is_active = rk_key_match(scene->active_key, origin_key);
                         B32 draw_edge = 1;
-                        Vec4F32 clr = v4f32(0,0,0,1);
+                        Vec4F32 clr = v4f32(0,0,0,0.9);
 
                         if(is_hot || is_active)
                         {
-                            clr.w = 0.9;
+                            clr.w = 0.6;
                         }
 
                         if(is_active && rk_state->sig.f & UI_SignalFlag_LeftDragging)
@@ -3292,7 +3296,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                             F32 scale = dist / drag_data->start_dist;
 
                             // draw a line from gizmo_origin to intersect
-                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, intersect, v4f32(0,0,0,1), 3, draw_edge);
+                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, intersect, v4f32(1,1,1,0.9), 3*linew_scale, draw_edge);
 
                             // scale active_node along all axises
                             if(scale != 0)
