@@ -74,5 +74,6 @@ void main()
 
     // NOTE(k): https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_FragDepth.xhtml
     // If a shader statically assigns to gl_FragDepth, then the value of the fragment's depth may be undefined for executions of the shader that don't take that path
+    // NOTE(k): this will disblae EARLY_FRAGMENT_TEST
     gl_FragDepth = depth_test == 1 ? gl_FragCoord.z : 0.0f;
 }

@@ -3254,7 +3254,9 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                         // curr axis
                         rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, gizmo_origin, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis_clr, 19*linew_scale, draw_edge);
                         // curr axis tip
-                        rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, scale_3f32(v3f32(1,1,1),axis_length*0.15), add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), i_hat, j_hat, scale_4f32(axis_clr,0.9), draw_edge, 1);
+                        Vec4F32 tip_clr = scale_4f32(axis_clr,0.5);
+                        tip_clr.w = axis_clr.w;
+                        rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, scale_3f32(v3f32(1,1,1),axis_length*0.19), add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), i_hat, j_hat, tip_clr, draw_edge, 1);
                     }
 
                     // draw unit scale box in the middle

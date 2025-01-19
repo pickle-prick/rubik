@@ -121,7 +121,9 @@ typedef U64 RK_NodeTypeFlags;
 // #define RK_NodeTypeFlag_Joint3D          (RK_NodeTypeFlags)(1ull<<3)
 #define RK_NodeTypeFlag_MeshInstance3D   (RK_NodeTypeFlags)(1ull<<4)
 #define RK_NodeTypeFlag_SceneInstance    (RK_NodeTypeFlags)(1ull<<5) /* instance from another scene */
-#define RK_NodeTypeFlag_AnimationPlayer  (RK_NodeTypeFlags)(1ull<<6) /* instance from another scene */
+#define RK_NodeTypeFlag_AnimationPlayer  (RK_NodeTypeFlags)(1ull<<6)
+#define RK_NodeTypeFlag_PointLight       (RK_NodeTypeFlags)(1ull<<7)
+#define RK_NodeTypeFlag_DirectionLight   (RK_NodeTypeFlags)(1ull<<8)
 
 /////////////////////////////////
 //~ Key
@@ -229,6 +231,23 @@ struct RK_AnimationPlayback
     F32 pos;
     F32 start_time;
     F32 end_time;
+};
+
+typedef struct RK_PointLight RK_PointLight;
+struct RK_PointLight
+{
+    Vec3F32 direction;
+    F32 radius; // radint
+    Vec3F32 color;
+    F32 intensity;
+};
+
+typedef struct RK_DirectionLight RK_DirectionLight;
+struct RK_DirectionLight
+{
+    Vec3F32 direction;
+    Vec3F32 color;
+    F32 intensity;
 };
 
 /////////////////////////////////
@@ -584,6 +603,8 @@ struct RK_Node
     RK_Camera3D                   *camera3d;
     RK_MeshInstance3D             *mesh_inst3d;
     RK_AnimationPlayer            *animation_player;
+    RK_PointLight                 *point_light;
+    RK_DirectionLight             *direction_light;
 
     //~ Custom update/draw functions
     // TODO(k): reuse custom_data memory block based on its size
