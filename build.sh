@@ -29,7 +29,7 @@ gcc_out="-o"
 
 # --- Per-Build Settings ------------------------------------------------------
 link_dll="-fPIC"
-link_os_gfx="-lglfw -lvulkan -lX11 -lXext -lXxf86vm -lXrandr -lXi -lXcursor -lXfixes"
+link_os_gfx="-lvulkan -lX11 -lXext -lXxf86vm -lXrandr -lXi -lXcursor -lXfixes"
 
 # --- Choose Compile/Link Lines -----------------------------------------------
 if [ -v gcc ];     then compile_debug="$gcc_debug"; fi
