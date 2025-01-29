@@ -62,7 +62,7 @@ if [ -v no_shader ]; then echo "[skipping no_shader]"; fi
 if [ ! -v no_shader ]; then
     shader_in_dir="./src/render/vulkan/shader"
     shader_out_dir="./src/render/vulkan/shader"
-    for shader in "${shader_in_dir}"/*.{vert,frag}; do
+    for shader in "${shader_in_dir}"/*.{vert,frag,comp}; do
       if [[ -f "$shader" ]]; then
         filename=$(basename -- "$shader")
         extension="${filename##*.}"

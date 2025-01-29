@@ -172,7 +172,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         //      there is a way to create a separate debug utils messenger specifically for those two function calls.
         // It requires you to simply pass a pointer to a VkDebugUtilsMessengerCreateInfoEXT     
         //      struct in the pNext extension field of VkInstanceCreateInfo.
-        VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info = {
+        VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info =
+        {
             .sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
             .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
                                VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT    |
@@ -365,8 +366,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     //      both the graphics and transfer queue families, since we would copy resources from transfer queue to graphics queue
     // 5. Submit any transfer commands like vkCmdCopyBuffer to the transfer queue instead of the graphcis queue
     {
-
-        bool has_graphic_queue_family = false;
+        // NOTE(k): don't need to use dedicated compute family for now
+        bool has_graphic_and_compute_queue_family = false;
 
         // Since the presentation is a queue-specific feature, we would need to find a queue
         //      family that supports presenting to the surface we created
@@ -382,10 +383,12 @@ r_init(const char* app_name, OS_Handle window, bool debug)
 
         for(U64 i = 0; i < queue_family_count; i++)
         {
-            if(queue_family_properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
+            if(queue_family_properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT &&
+               queue_family_properties[i].queueFlags & VK_QUEUE_COMPUTE_BIT)
             {
                 r_vulkan_state->gpu.gfx_queue_family_index = i;
-                has_graphic_queue_family = true;
+                r_vulkan_state->gpu.cmp_queue_family_index = i;
+                has_graphic_and_compute_queue_family = true;
             }
 
             VkBool32 present_supported = VK_FALSE;
@@ -399,10 +402,10 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             // Note that it's very likely that these end up being the same queue family after all
             //      but throughout the program we will treat them as if they were seprate queues for a uniform approach.
             // TODO(k): Nevertheless, we would prefer a physical device that supports drawing and presentation in the same queue for improved performance.
-            if(has_graphic_queue_family && has_present_queue_family) break;
+            if(has_graphic_and_compute_queue_family && has_present_queue_family) break;
 
         }
-        Assert(has_graphic_queue_family == true);
+        Assert(has_graphic_and_compute_queue_family == true);
         Assert(has_present_queue_family == true);
     }
 
@@ -449,7 +452,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         // optional
         if(r_vulkan_state->gpu.features.wideLines == VK_TRUE)
         {
-            device_features.wideLines         = VK_TRUE;
+            device_features.wideLines = VK_TRUE;
         }
 
         // Create the logical device
@@ -537,53 +540,75 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     // You also need to ensure that the data satisfies the alignment requirements of uin32_t 
     for(U64 kind = 0; kind < R_Vulkan_VShadKind_COUNT; kind++)
     {
-        VkShaderModule *vshad_mo = &r_vulkan_state->vshad_modules[kind];
-        String8 vshad_path;
+        VkShaderModule *shad_mo = &r_vulkan_state->vshad_modules[kind];
+        String8 shad_path;
         switch(kind)
         {
-            case R_Vulkan_VShadKind_Rect:           {vshad_path = str8_lit("src/render/vulkan/shader/rect_vert.spv");}break;
-            case R_Vulkan_VShadKind_Geo3dDebug:     {vshad_path = str8_lit("src/render/vulkan/shader/geo3d_debug_vert.spv");}break;
-            case R_Vulkan_VShadKind_Geo3dForward:   {vshad_path = str8_lit("src/render/vulkan/shader/geo3d_forward_vert.spv");}break;
-            case R_Vulkan_VShadKind_Geo3dComposite: {vshad_path = str8_lit("src/render/vulkan/shader/geo3d_composite_vert.spv");}break;
-            case R_Vulkan_VShadKind_Finalize:       {vshad_path = str8_lit("src/render/vulkan/shader/finalize_vert.spv");}break;
+            case R_Vulkan_VShadKind_Rect:           {shad_path = str8_lit("src/render/vulkan/shader/rect_vert.spv");}break;
+            case R_Vulkan_VShadKind_Geo3dDebug:     {shad_path = str8_lit("src/render/vulkan/shader/geo3d_debug_vert.spv");}break;
+            case R_Vulkan_VShadKind_Geo3dForward:   {shad_path = str8_lit("src/render/vulkan/shader/geo3d_forward_vert.spv");}break;
+            case R_Vulkan_VShadKind_Geo3dComposite: {shad_path = str8_lit("src/render/vulkan/shader/geo3d_composite_vert.spv");}break;
+            case R_Vulkan_VShadKind_Finalize:       {shad_path = str8_lit("src/render/vulkan/shader/finalize_vert.spv");}break;
             default:                                {InvalidPath;}break;
         }
-        long vshad_size = 0;
-        U8 *vshad_code  = 0;
-        FileReadAll(temp.arena, vshad_path, &vshad_code, &vshad_size);
+        long shad_size = 0;
+        U8 *shad_code  = 0;
+        FileReadAll(temp.arena, shad_path, &shad_code, &shad_size);
 
-        Assert(vshad_size != 0); Assert(vshad_code != NULL);
+        Assert(shad_size != 0); Assert(shad_code != NULL);
         VkShaderModuleCreateInfo create_info = {
             .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-            .codeSize = vshad_size,
-            .pCode    = (U32 *)vshad_code,
+            .codeSize = shad_size,
+            .pCode    = (U32 *)shad_code,
         };
-        VK_Assert(vkCreateShaderModule(r_vulkan_state->device.h, &create_info, NULL, vshad_mo));
+        VK_Assert(vkCreateShaderModule(r_vulkan_state->device.h, &create_info, NULL, shad_mo));
     }
 
     for(U64 kind = 0; kind < R_Vulkan_FShadKind_COUNT; kind++)
     {
-        VkShaderModule *fshad_mo = &r_vulkan_state->fshad_modules[kind];
-        String8 fshad_path;
+        VkShaderModule *shad_mo = &r_vulkan_state->fshad_modules[kind];
+        String8 shad_path;
         switch(kind)
         {
-            case R_Vulkan_FShadKind_Rect:           {fshad_path = str8_lit("src/render/vulkan/shader/rect_frag.spv");}break;
-            case R_Vulkan_FShadKind_Geo3dDebug:     {fshad_path = str8_lit("src/render/vulkan/shader/geo3d_debug_frag.spv");}break;
-            case R_Vulkan_FShadKind_Geo3dForward:   {fshad_path = str8_lit("src/render/vulkan/shader/geo3d_forward_frag.spv");}break;
-            case R_Vulkan_FShadKind_Geo3dComposite: {fshad_path = str8_lit("src/render/vulkan/shader/geo3d_composite_frag.spv");}break;
-            case R_Vulkan_FShadKind_Finalize:       {fshad_path = str8_lit("src/render/vulkan/shader/finalize_frag.spv");}break;
+            case R_Vulkan_FShadKind_Rect:           {shad_path = str8_lit("src/render/vulkan/shader/rect_frag.spv");}break;
+            case R_Vulkan_FShadKind_Geo3dDebug:     {shad_path = str8_lit("src/render/vulkan/shader/geo3d_debug_frag.spv");}break;
+            case R_Vulkan_FShadKind_Geo3dForward:   {shad_path = str8_lit("src/render/vulkan/shader/geo3d_forward_frag.spv");}break;
+            case R_Vulkan_FShadKind_Geo3dComposite: {shad_path = str8_lit("src/render/vulkan/shader/geo3d_composite_frag.spv");}break;
+            case R_Vulkan_FShadKind_Finalize:       {shad_path = str8_lit("src/render/vulkan/shader/finalize_frag.spv");}break;
             default:                                {InvalidPath;}break;
         }
-        long fshad_size = 0;
-        U8 *fshad_code  = 0;
-        FileReadAll(temp.arena, fshad_path, &fshad_code, &fshad_size);
-        Assert(fshad_size != 0); Assert(fshad_code != NULL);
+        long shad_size = 0;
+        U8 *shad_code  = 0;
+        FileReadAll(temp.arena, shad_path, &shad_code, &shad_size);
+        Assert(shad_size != 0); Assert(shad_code != NULL);
         VkShaderModuleCreateInfo create_info = {
             .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-            .codeSize = fshad_size,
-            .pCode    = (U32 *)fshad_code,
+            .codeSize = shad_size,
+            .pCode    = (U32 *)shad_code,
         };
-        VK_Assert(vkCreateShaderModule(r_vulkan_state->device.h, &create_info, NULL, fshad_mo));
+        VK_Assert(vkCreateShaderModule(r_vulkan_state->device.h, &create_info, NULL, shad_mo));
+    }
+
+    for(U64 kind = 0; kind < R_Vulkan_CShadKind_COUNT; kind++)
+    {
+        VkShaderModule *shad_mo = &r_vulkan_state->cshad_modules[kind];
+        String8 shad_path;
+        switch(kind)
+        {
+            case R_Vulkan_CShadKind_TileFrustum:  {shad_path = str8_lit("src/render/vulkan/shader/tile_frustum_comp.spv");}break;
+            case R_Vulkan_CShadKind_LightCulling: {shad_path = str8_lit("src/render/vulkan/shader/light_culling_comp.spv");}break;
+            default:                              {InvalidPath;}break;
+        }
+        long shad_size = 0;
+        U8 *shad_code  = 0;
+        FileReadAll(temp.arena, shad_path, &shad_code, &shad_size);
+        Assert(shad_size != 0); Assert(shad_code != NULL);
+        VkShaderModuleCreateInfo create_info = {
+            .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .codeSize = shad_size,
+            .pCode    = (U32 *)shad_code,
+        };
+        VK_Assert(vkCreateShaderModule(r_vulkan_state->device.h, &create_info, NULL, shad_mo));
     }
 
     // Create set layouts
@@ -614,7 +639,6 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         create_info.bindingCount = 1;
         create_info.pBindings    = bindings;
         VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
-
     }
     // R_Vulkan_DescriptorSetKind_UBO_Mesh
     {
@@ -636,7 +660,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     }
     // R_Vulkan_DescriptorSetKind_Storage_Mesh
     {
-        R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Storage_Geo3d];
+        R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Joints];
         VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
         set_layout->bindings = bindings;
         set_layout->binding_count = 1;
@@ -666,6 +690,63 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         bindings[0].pImmutableSamplers = NULL;
 
         VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+        create_info.bindingCount = 1;
+        create_info.pBindings    = bindings;
+        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
+    }
+    // R_Vulkan_DescriptorSetKind_UBO_TileFrustum
+    {
+        R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_TileFrustum];
+        VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+        set_layout->bindings = bindings;
+        set_layout->binding_count = 1;
+
+        bindings[0].binding            = 0;
+        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        bindings[0].descriptorCount    = 1;
+        bindings[0].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
+        bindings[0].pImmutableSamplers = NULL;
+
+        VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+        create_info.bindingCount = 1;
+        create_info.pBindings    = bindings;
+        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
+    }
+    // R_Vulkan_DescriptorSetKind_SBO_TileFrustum
+    {
+        R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_TileFrustum];
+        VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+        set_layout->bindings = bindings;
+        set_layout->binding_count = 1;
+
+        bindings[0].binding            = 0;
+        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[0].descriptorCount    = 1;
+        bindings[0].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
+        bindings[0].pImmutableSamplers = NULL;
+
+        VkDescriptorSetLayoutCreateInfo create_info = {0};
+        create_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        create_info.bindingCount = 1;
+        create_info.pBindings    = bindings;
+        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
+
+    }
+    // R_Vulkan_DescriptorSetKind_SBO_LightCulling
+    {
+        R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Lights];
+        VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+        set_layout->bindings = bindings;
+        set_layout->binding_count = 1;
+
+        bindings[0].binding            = 0;
+        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[0].descriptorCount    = 1;
+        bindings[0].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
+        bindings[0].pImmutableSamplers = NULL;
+
+        VkDescriptorSetLayoutCreateInfo create_info = {0};
+        create_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         create_info.bindingCount = 1;
         create_info.pBindings    = bindings;
         VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
@@ -750,14 +831,14 @@ r_window_equip(OS_Handle wnd_handle)
             window->frames[i].inflt_fence   = r_vulkan_fence(r_vulkan_state->device.h);
 
             // Create uniform buffers
-            for(U64 kind = 0; kind < R_Vulkan_UniformTypeKind_COUNT; kind++)
+            for(U64 kind = 0; kind < R_Vulkan_UBOTypeKind_COUNT; kind++)
             {
                 // TODO(@k): not ideal, since mesh uniform wouldn't grow
                 window->frames[i].uniform_buffers[kind] = r_vulkan_uniform_buffer_alloc(kind, 900);
             }
 
             // Create storage buffers
-            for(U64 kind = 0; kind < R_Vulkan_StorageTypeKind_COUNT; kind++)
+            for(U64 kind = 0; kind < R_Vulkan_SBOTypeKind_COUNT; kind++)
             {
                 window->frames[i].storage_buffers[kind] = r_vulkan_storage_buffer_alloc(kind, 3000);
             }
@@ -1264,7 +1345,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 // Create pipelines
                 R_Vulkan_Pipeline *old_p_rect = 0;
                 if(old_rendpass) {old_p_rect = &old_rendpass->pipelines.rect;};
-                rendpass->pipelines.rect = r_vulkan_pipeline(R_Vulkan_PipelineKind_Rect, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p_rect);
+                rendpass->pipelines.rect = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_Rect, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p_rect);
                 rendpass->pipeline_count = 1;
             }break;
             case R_Vulkan_RenderPassKind_Geo3d:
@@ -1348,7 +1429,12 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 create_info.pDependencies   = deps;
                 VK_Assert(vkCreateRenderPass(r_vulkan_state->device.h, &create_info, NULL, &rendpass->h));
 
-                // Create pipelines (geo3d_debug + geo3d_forward)
+                // Create pipelines (tile_frustum + light_culling_comp + geo3d_debug + geo3d_forward)
+                // light culling computing
+
+                rendpass->pipelines.geo3d.tile_frustum = r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind_TileFrustum);
+                rendpass->pipelines.geo3d.light_culling = r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind_LightCulling);
+
                 // geo3d debug
                 {
                     for(U64 i = 0; i < R_GeoTopologyKind_COUNT; i++)
@@ -1357,11 +1443,12 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                         {
                             R_Vulkan_Pipeline *old_p = 0;
                             if(old_rendpass) old_p = &old_rendpass->pipelines.geo3d.debug[i*R_GeoPolygonKind_COUNT + j];
-                            rendpass->pipelines.geo3d.debug[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_pipeline(R_Vulkan_PipelineKind_Geo3dDebug, i, j, rendpass->h, old_p);
+                            rendpass->pipelines.geo3d.debug[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_Geo3dDebug, i, j, rendpass->h, old_p);
                         }
                     }
 
                 }
+
                 // geo3d forward
                 {
                     for(U64 i = 0; i < R_GeoTopologyKind_COUNT; i++)
@@ -1370,11 +1457,11 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                         {
                             R_Vulkan_Pipeline *old_p = 0;
                             if(old_rendpass) old_p = &old_rendpass->pipelines.geo3d.forward[i*R_GeoPolygonKind_COUNT + j];
-                            rendpass->pipelines.geo3d.forward[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_pipeline(R_Vulkan_PipelineKind_Geo3dForward, i, j, rendpass->h, old_p);
+                            rendpass->pipelines.geo3d.forward[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_Geo3dForward, i, j, rendpass->h, old_p);
                         }
                     }
                 }
-                rendpass->pipeline_count = R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT * 2;
+                rendpass->pipeline_count = R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT * 2 + 2;
             }break;
             case R_Vulkan_RenderPassKind_Geo3dComposite:
             {
@@ -1426,7 +1513,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 // Create pipelines (geo3d_composite)
                 R_Vulkan_Pipeline *old_p = 0;
                 if(old_rendpass) old_p = &old_rendpass->pipelines.geo3d_composite;
-                rendpass->pipelines.geo3d_composite = r_vulkan_pipeline(R_Vulkan_PipelineKind_Geo3dComposite, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p);
+                rendpass->pipelines.geo3d_composite = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_Geo3dComposite, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p);
                 rendpass->pipeline_count = 1;
             }break;
             case R_Vulkan_RenderPassKind_Finalize:
@@ -1478,7 +1565,7 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 // Create pipelines
                 R_Vulkan_Pipeline *old_p_finalize = 0;
                 if(old_rendpass) {old_p_finalize = &old_rendpass->pipelines.finalize;};
-                rendpass->pipelines.finalize = r_vulkan_pipeline(R_Vulkan_PipelineKind_Finalize, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p_finalize);
+                rendpass->pipelines.finalize = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_Finalize, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p_finalize);
                 rendpass->pipeline_count = 1;
             }break;
             default: {InvalidPath;}break;
@@ -2346,7 +2433,7 @@ r_vulkan_sampler2d(R_Tex2DSampleKind kind)
 }
 
 internal R_Vulkan_Pipeline
-r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoPolygonKind polygon, VkRenderPass renderpass, R_Vulkan_Pipeline *old)
+r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoPolygonKind polygon, VkRenderPass renderpass, R_Vulkan_Pipeline *old)
 {
     R_Vulkan_Pipeline pipeline;
     pipeline.kind = kind;
@@ -2819,8 +2906,8 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
         case R_Vulkan_PipelineKind_Geo3dDebug:
         case R_Vulkan_PipelineKind_Rect:
         case R_Vulkan_PipelineKind_Geo3dComposite:
-        case R_Vulkan_PipelineKind_Finalize:
-        default: {}break;
+        case R_Vulkan_PipelineKind_Finalize: {}break;
+        default: {InvalidPath;}break;
     }
 
     // Multisampling
@@ -2965,7 +3052,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
     };
     switch(kind)
     {
-        default:{}break;
+        default:{InvalidPath;}break;
         case R_Vulkan_PipelineKind_Rect: {}break;
         case R_Vulkan_PipelineKind_Geo3dDebug: {}break;
         case R_Vulkan_PipelineKind_Geo3dForward: {}break;
@@ -3041,7 +3128,7 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
             {
                 set_layout_count = 3;
                 set_layouts[0]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Geo3d].h;
-                set_layouts[1]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Storage_Geo3d].h;
+                set_layouts[1]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Joints].h;
                 set_layouts[2]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D].h;
             }break;
             case R_Vulkan_PipelineKind_Geo3dComposite:
@@ -3123,10 +3210,86 @@ r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoP
     return pipeline;
 }
 
+internal R_Vulkan_Pipeline
+r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind)
+{
+    R_Vulkan_Pipeline ret;
+    ret.kind = kind;
+
+    Temp scratch = scratch_begin(0,0);
+
+    // shader stage
+    ////////////////////////////////////////////
+
+    VkShaderModule compute_shader_mo;
+    switch(kind)
+    {
+        case(R_Vulkan_PipelineKind_TileFrustum):
+        {
+            compute_shader_mo = r_vulkan_state->cshad_modules[R_Vulkan_CShadKind_TileFrustum];
+        }break;
+        case(R_Vulkan_PipelineKind_LightCulling):
+        {
+            compute_shader_mo = r_vulkan_state->cshad_modules[R_Vulkan_CShadKind_LightCulling];
+        }break;
+        default: {InvalidPath;}break;
+    }
+
+    VkPipelineShaderStageCreateInfo shad_stage = {0};
+    shad_stage.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shad_stage.stage  = VK_SHADER_STAGE_COMPUTE_BIT;
+    shad_stage.module = compute_shader_mo;
+    shad_stage.pName  = "main";
+
+    // pipeline layout
+    ////////////////////////////////////////////
+
+    VkPipelineLayoutCreateInfo layout_info = {0};
+    VkDescriptorSetLayout *set_layouts;
+    U64 set_layout_count = 0;
+    switch(kind)
+    {
+        case(R_Vulkan_PipelineKind_TileFrustum):
+        {
+            set_layout_count = 2;
+            set_layouts = push_array(scratch.arena, VkDescriptorSetLayout, set_layout_count);
+            set_layouts[0] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_TileFrustum].h;
+            set_layouts[1] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_TileFrustum].h;
+        }break;
+        case(R_Vulkan_PipelineKind_LightCulling):
+        {
+            set_layout_count = 1;
+            set_layouts = push_array(scratch.arena, VkDescriptorSetLayout, set_layout_count);
+            set_layouts[0] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Lights].h;
+        }break;
+        default: {InvalidPath;}break;
+    }
+    layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layout_info.setLayoutCount = set_layout_count;
+    layout_info.pSetLayouts = set_layouts;
+    layout_info.pushConstantRangeCount = 0;
+    layout_info.pPushConstantRanges = NULL;
+
+    VkPipelineLayout layout;
+    VK_Assert(vkCreatePipelineLayout(r_vulkan_state->device.h, &layout_info, NULL, &layout));
+
+    // create pipeline
+    ////////////////////////////////////////////
+
+    VkComputePipelineCreateInfo pipeline_info = {0};
+    pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipeline_info.layout = layout;
+    pipeline_info.stage = shad_stage;
+
+    VK_Assert(vkCreateComputePipelines(r_vulkan_state->device.h, VK_NULL_HANDLE, 1, &pipeline_info, NULL, &ret.h));
+    scratch_end(scratch);
+    return ret;
+}
+
 // Frame markers
 /////////////////////////////////////////////////////////////////////////////////////////
-internal void
-r_begin_frame(void) {}
+
+internal void r_begin_frame(void) {}
 
 internal void
 r_end_frame(void)
@@ -3482,7 +3645,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 R_BatchGroup2DList *rect_batch_groups = &params->rects;
 
                 // Unpack uniform buffer
-                R_Vulkan_UniformBuffer *uniform_buffer = &frame->uniform_buffers[R_Vulkan_UniformTypeKind_Rect];
+                R_Vulkan_UniformBuffer *uniform_buffer = &frame->uniform_buffers[R_Vulkan_UBOTypeKind_Rect];
                 // TODO(@k): dynamic allocate uniform buffer if needed
                 AssertAlways(rect_batch_groups->count <= 900);
 
@@ -3549,7 +3712,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     /////////////////////////////////////////////////
 
                     // Upload uniforms
-                    R_Vulkan_Uniforms_Rect uniforms = {0};
+                    R_Vulkan_UBO_Rect uniforms = {0};
                     uniforms.viewport_size = v2f32(wnd->bag->stage_color_image.extent.width, wnd->bag->stage_color_image.extent.height);
                     uniforms.opacity = 1-group_params->transparency;
                     MemoryCopyArray(uniforms.texture_sample_channel_map, &texture_sample_channel_map);
@@ -3565,7 +3728,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     uniforms.xform_scale.y = length_2f32(xform_2x2_row1);
 
                     U32 uniform_buffer_offset = ui_group_idx * uniform_buffer->stride;
-                    MemoryCopy((U8 *)uniform_buffer->buffer.mapped + uniform_buffer_offset, &uniforms, sizeof(R_Vulkan_Uniforms_Rect));
+                    MemoryCopy((U8 *)uniform_buffer->buffer.mapped + uniform_buffer_offset, &uniforms, sizeof(R_Vulkan_UBO_Rect));
                     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipelines.rect.layout, 0, 1, &uniform_buffer->set.h, 1, &uniform_buffer_offset);
 
                     VkViewport viewport = {0};
@@ -3641,18 +3804,18 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 
                 // Unpack uniform buffer
                 // NOTE(k): Geo3d uniform is per Geo3D pass unlike rect pass which is per group
-                R_Vulkan_UniformBuffer *uniform_buffer = &frame->uniform_buffers[R_Vulkan_UniformTypeKind_Geo3d];
+                R_Vulkan_UniformBuffer *uniform_buffer = &frame->uniform_buffers[R_Vulkan_UBOTypeKind_Geo3d];
                 U32 uniform_buffer_off = geo3d_pass_idx * uniform_buffer->stride;
 
                 // Setup uniforms buffer
-                R_Vulkan_Uniforms_Mesh uniforms = {0};
+                R_Vulkan_UBO_Mesh uniforms = {0};
                 uniforms.proj         = params->projection;
                 uniforms.proj_inv     = inverse_4x4f32(params->projection);
                 uniforms.view         = params->view;
                 uniforms.view_inv     = inverse_4x4f32(params->view);
                 uniforms.global_light = v4f32(params->global_light.x, params->global_light.y, params->global_light.z, 0.0);
                 uniforms.show_grid    = params->show_grid;
-                MemoryCopy((U8 *)uniform_buffer->buffer.mapped + uniform_buffer_off, &uniforms, sizeof(R_Vulkan_Uniforms_Mesh));
+                MemoryCopy((U8 *)uniform_buffer->buffer.mapped + uniform_buffer_off, &uniforms, sizeof(R_Vulkan_UBO_Mesh));
                 // bind uniform descriptor set
                 vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, geo3d_debug_pipelines[0].layout, 0, 1, &uniform_buffer->set.h, 1, &uniform_buffer_off);
 
@@ -3682,6 +3845,13 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 // scissor.extent = (VkExtent2D){viewport.width, viewport.height};
                 vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
 
+                // lighting
+                // TODO(XXX)
+                // if(!params->disable_light)
+                // {
+
+                // }
+
                 if(params->show_grid)
                 {
                     // Bind geo3d debug pipeline
@@ -3692,7 +3862,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 }
 
                 // Unpack and bind storage buffer (Currently only for joints)
-                R_Vulkan_StorageBuffer *storage_buffer = &frame->storage_buffers[R_Vulkan_StorageTypeKind_Geo3d];
+                R_Vulkan_StorageBuffer *storage_buffer = &frame->storage_buffers[R_Vulkan_SBOTypeKind_Joints];
                 U8 *storage_buffer_dst = (U8 *)(storage_buffer->buffer.mapped);
                 vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, geo3d_forward_pipelines[0].layout, 1, 1, &storage_buffer->set.h, 0, 0);
 
@@ -3734,7 +3904,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                                     U32 size = sizeof(Mat4x4F32) * inst->joint_count;
                                     // TODO(k): we may need to consider the stride here
                                     inst->first_joint = geo3d_sbo_idx;
-                                    MemoryCopy(storage_buffer_dst+geo3d_sbo_idx*sizeof(R_Vulkan_Storage_Mesh), inst->joint_xforms, size);
+                                    MemoryCopy(storage_buffer_dst+geo3d_sbo_idx*sizeof(R_Vulkan_SBO_Mesh), inst->joint_xforms, size);
                                     geo3d_sbo_idx += inst->joint_count;
                                 }
                             }
@@ -3821,7 +3991,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 }
 
 internal R_Vulkan_UniformBuffer
-r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count)
+r_vulkan_uniform_buffer_alloc(R_Vulkan_UBOTypeKind kind, U64 unit_count)
 {
     R_Vulkan_UniformBuffer uniform_buffer = {0};
 
@@ -3829,9 +3999,10 @@ r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count)
 
     switch(kind)
     {
-        case R_Vulkan_UniformTypeKind_Rect:  {stride = AlignPow2(sizeof(R_Vulkan_Uniforms_Rect), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
-        case R_Vulkan_UniformTypeKind_Geo3d: {stride = AlignPow2(sizeof(R_Vulkan_Uniforms_Mesh), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
-        default:                             {InvalidPath;}break;
+        case R_Vulkan_UBOTypeKind_Rect:        {stride = AlignPow2(sizeof(R_Vulkan_UBO_Rect), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
+        case R_Vulkan_UBOTypeKind_Geo3d:       {stride = AlignPow2(sizeof(R_Vulkan_UBO_Mesh), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
+        case R_Vulkan_UBOTypeKind_TileFrustum: {stride = AlignPow2(sizeof(R_Vulkan_UBO_TileFrustum), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
+        default:                               {InvalidPath;}break;
     }
     U64 buf_size = stride * unit_count;
 
@@ -3875,9 +4046,10 @@ r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count)
     R_Vulkan_DescriptorSetKind ds_type = 0;
     switch(kind)
     {
-        case R_Vulkan_UniformTypeKind_Rect:  {ds_type = R_Vulkan_DescriptorSetKind_UBO_Rect;}break;
-        case R_Vulkan_UniformTypeKind_Geo3d: {ds_type = R_Vulkan_DescriptorSetKind_UBO_Geo3d;}break;
-        default:                             {InvalidPath;}break;
+        case R_Vulkan_UBOTypeKind_Rect:        {ds_type = R_Vulkan_DescriptorSetKind_UBO_Rect;}break;
+        case R_Vulkan_UBOTypeKind_Geo3d:       {ds_type = R_Vulkan_DescriptorSetKind_UBO_Geo3d;}break;
+        case R_Vulkan_UBOTypeKind_TileFrustum: {ds_type = R_Vulkan_DescriptorSetKind_UBO_TileFrustum;}break;
+        default:                               {InvalidPath;}break;
     }
 
     r_vulkan_descriptor_set_alloc(ds_type, 1, 3, &uniform_buffer.buffer.h, NULL, NULL, &uniform_buffer.set);
@@ -3885,15 +4057,17 @@ r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count)
 }
 
 internal R_Vulkan_StorageBuffer
-r_vulkan_storage_buffer_alloc(R_Vulkan_StorageTypeKind kind, U64 unit_count)
+r_vulkan_storage_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
 {
     R_Vulkan_StorageBuffer storage_buffer = {0};
     U64 stride = 0;
 
     switch(kind)
     {
-        case R_Vulkan_StorageTypeKind_Geo3d: {stride = AlignPow2(sizeof(R_Vulkan_Storage_Mesh), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);}break;
-        default:                             {InvalidPath;}break;
+        case R_Vulkan_SBOTypeKind_Joints:      {stride = AlignPow2(sizeof(R_Vulkan_SBO_Mesh), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);}break;
+        case R_Vulkan_SBOTypeKind_TileFrustum: {stride = AlignPow2(sizeof(R_Vulkan_SBO_TileFrustum), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);}break;
+        case R_Vulkan_SBOTypeKind_Lights:      {stride = AlignPow2(sizeof(R_Vulkan_SBO_Light), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);}break;
+        default:                               {InvalidPath;}break;
     }
 
     U64 buf_size = stride * unit_count;
@@ -3933,15 +4107,17 @@ r_vulkan_storage_buffer_alloc(R_Vulkan_StorageTypeKind kind, U64 unit_count)
     R_Vulkan_DescriptorSetKind ds_type = 0;
     switch(kind)
     {
-        case R_Vulkan_StorageTypeKind_Geo3d: {ds_type = R_Vulkan_DescriptorSetKind_Storage_Geo3d;}break;
-        default:                             {InvalidPath;}break;
+        case R_Vulkan_SBOTypeKind_Joints:      {ds_type = R_Vulkan_DescriptorSetKind_SBO_Joints;}break;
+        case R_Vulkan_SBOTypeKind_TileFrustum: {ds_type = R_Vulkan_DescriptorSetKind_SBO_TileFrustum;}break;
+        case R_Vulkan_SBOTypeKind_Lights:      {ds_type = R_Vulkan_DescriptorSetKind_SBO_Lights;}break;
+        default:                               {InvalidPath;}break;
     }
 
     r_vulkan_descriptor_set_alloc(ds_type, 1, 3, &storage_buffer.buffer.h, NULL, NULL, &storage_buffer.set);
     return storage_buffer;
 }
 
-// TODO(@k): ugly, split into alloc and update
+// TODO(k): ugly, split into alloc and update
 internal void
 r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                               U64 set_count, U64 cap, VkBuffer *buffers,
@@ -4035,7 +4211,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
                     buffer_info->buffer = buffers[i];
                     buffer_info->offset = 0;
-                    buffer_info->range  = sizeof(R_Vulkan_Uniforms_Rect);
+                    buffer_info->range  = sizeof(R_Vulkan_UBO_Rect);
 
                     writes[set_idx].sType  = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[set_idx].dstSet = sets[i].h;
@@ -4058,7 +4234,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
                     buffer_info->buffer = buffers[i];
                     buffer_info->offset = 0;
-                    buffer_info->range  = sizeof(R_Vulkan_Uniforms_Mesh);
+                    buffer_info->range  = sizeof(R_Vulkan_UBO_Mesh);
 
                     writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[set_idx].dstSet           = sets[i].h;
@@ -4070,7 +4246,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     writes[set_idx].pImageInfo       = NULL; // Optional
                     writes[set_idx].pTexelBufferView = NULL; // Optional
                 }break;
-                case R_Vulkan_DescriptorSetKind_Storage_Geo3d:
+                case R_Vulkan_DescriptorSetKind_SBO_Joints:
                 {
                     VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
                     buffer_info->buffer = buffers[i];
@@ -4104,6 +4280,59 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     writes[set_idx].pBufferInfo      = NULL;
                     writes[set_idx].pImageInfo       = image_info; // Optional
                     writes[set_idx].pTexelBufferView = NULL; // Optional
+                }break;
+                case R_Vulkan_DescriptorSetKind_UBO_TileFrustum:
+                {
+                    VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+                    buffer_info->buffer = buffers[i];
+                    buffer_info->offset = 0;
+                    buffer_info->range  = sizeof(R_Vulkan_UBO_TileFrustum);
+
+                    writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    writes[set_idx].dstSet           = sets[i].h;
+                    writes[set_idx].dstBinding       = j;
+                    writes[set_idx].dstArrayElement  = 0; // start updating from the first element
+                    writes[set_idx].descriptorCount  = set_layout.bindings[j].descriptorCount;
+                    writes[set_idx].descriptorType   = set_layout.bindings[j].descriptorType;
+                    writes[set_idx].pBufferInfo      = buffer_info;
+                    writes[set_idx].pImageInfo       = NULL; // Optional
+                    writes[set_idx].pTexelBufferView = NULL; // Optional
+
+                }break;
+                case R_Vulkan_DescriptorSetKind_SBO_TileFrustum:
+                {
+                    VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+                    buffer_info->buffer = buffers[i];
+                    buffer_info->offset = 0;
+                    buffer_info->range  = VK_WHOLE_SIZE;
+
+                    writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    writes[set_idx].dstSet           = sets[i].h;
+                    writes[set_idx].dstBinding       = j;
+                    writes[set_idx].dstArrayElement  = 0; // start updating from the first element
+                    writes[set_idx].descriptorCount  = set_layout.bindings[j].descriptorCount;
+                    writes[set_idx].descriptorType   = set_layout.bindings[j].descriptorType;
+                    writes[set_idx].pBufferInfo      = buffer_info;
+                    writes[set_idx].pImageInfo       = NULL;
+                    writes[set_idx].pTexelBufferView = NULL;
+                }break;
+                case R_Vulkan_DescriptorSetKind_SBO_Lights:
+                {
+                    VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+                    buffer_info->buffer = buffers[i];
+                    buffer_info->offset = 0;
+                    // NOTE: we want to access it as an array of R_Vulkan_SBO_Lights
+                    buffer_info->range  = VK_WHOLE_SIZE;
+
+                    writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    writes[set_idx].dstSet           = sets[i].h;
+                    writes[set_idx].dstBinding       = j;
+                    writes[set_idx].dstArrayElement  = 0; // start updating from the first element
+                    writes[set_idx].descriptorCount  = set_layout.bindings[j].descriptorCount;
+                    writes[set_idx].descriptorType   = set_layout.bindings[j].descriptorType;
+                    writes[set_idx].pBufferInfo      = buffer_info;
+                    writes[set_idx].pImageInfo       = NULL;
+                    writes[set_idx].pTexelBufferView = NULL;
                 }break;
                 default: {InvalidPath;}break;
             }

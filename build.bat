@@ -99,7 +99,7 @@ set shader_in_dir=%~dp0\src\render\vulkan\shader
 set shader_out_dir=%~dp0\src\render\vulkan\shader
 if "%no_shader%"=="1" echo [skipping shader compiling]
 if not "%no_shader%"=="1" (
-    for %%G in ("%shader_in_dir%\*.vert" "%shader_in_dir%\*.frag") do (
+    for %%G in ("%shader_in_dir%\*.vert" "%shader_in_dir%\*.frag" "%shader_in_dir%\*.comp") do (
         if exist "%%G" (
             set "shader=%%G"
             for %%A in ("%%~nxG") do (

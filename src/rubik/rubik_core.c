@@ -3071,7 +3071,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 {
                     F32 ring_radius = 1*scale_t;
                     U64 ring_segments = 69;
-                    F32 ring_line_width = 9;
+                    F32 ring_line_width = 19*linew_scale;
                     F32 axis_length = 1.f*scale_t;
 
 

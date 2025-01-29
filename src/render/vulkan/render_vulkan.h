@@ -25,8 +25,9 @@
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ C-side Shader Types
 
-typedef struct R_Vulkan_Uniforms_Rect R_Vulkan_Uniforms_Rect;
-struct R_Vulkan_Uniforms_Rect
+// ubo
+typedef struct R_Vulkan_UBO_Rect R_Vulkan_UBO_Rect;
+struct R_Vulkan_UBO_Rect
 {
     Vec2F32 viewport_size;
     F32 opacity;
@@ -58,8 +59,8 @@ struct R_Vulkan_Uniforms_Rect
 //   Vec4F32 kernel[32];
 // };
 
-typedef struct R_Vulkan_Uniforms_Mesh R_Vulkan_Uniforms_Mesh;
-struct R_Vulkan_Uniforms_Mesh
+typedef struct R_Vulkan_UBO_Mesh R_Vulkan_UBO_Mesh;
+struct R_Vulkan_UBO_Mesh
 {
     Mat4x4F32 view;
     Mat4x4F32 view_inv;
@@ -73,7 +74,31 @@ struct R_Vulkan_Uniforms_Mesh
     U32       _padding1_[3];
 };
 
-#define R_Vulkan_Storage_Mesh Mat4x4F32
+typedef struct R_Vulkan_UBO_TileFrustum R_Vulkan_UBO_TileFrustum;
+struct R_Vulkan_UBO_TileFrustum
+{
+    Mat4x4F32 view_inv;
+};
+
+// sbo
+
+#define R_Vulkan_SBO_Mesh Mat4x4F32
+
+typedef struct R_Vulkan_SBO_TileFrustum R_Vulkan_SBO_TileFrustum;
+struct R_Vulkan_SBO_TileFrustum
+{
+    U32 light_count;
+};
+
+typedef struct R_Vulkan_SBO_Light R_Vulkan_SBO_Light;
+struct R_Vulkan_SBO_Light
+{
+    // TODO(XXX)
+    Vec3F32 direction;
+    F32 radius;
+    F32 falloff;
+};
+
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ Enums
@@ -100,37 +125,54 @@ typedef enum R_Vulkan_FShadKind
     R_Vulkan_FShadKind_COUNT,
 } R_Vulkan_FShadKind;
 
-typedef enum R_Vulkan_UniformTypeKind
+typedef enum R_Vulkan_CShadKind
 {
-    R_Vulkan_UniformTypeKind_Rect,
-    // R_Vulkan_UniformTypeKind_Blur,
-    R_Vulkan_UniformTypeKind_Geo3d,
-    R_Vulkan_UniformTypeKind_COUNT,
-} R_Vulkan_UniformTypeKind;
+    R_Vulkan_CShadKind_TileFrustum,
+    R_Vulkan_CShadKind_LightCulling,
+    R_Vulkan_CShadKind_COUNT,
+} R_Vulkan_CShadKind;
 
-typedef enum R_Vulkan_StorageTypeKind
+typedef enum R_Vulkan_UBOTypeKind
 {
-    R_Vulkan_StorageTypeKind_Geo3d,
-    R_Vulkan_StorageTypeKind_COUNT,
-} R_Vulkan_StorageTypeKind;
+    R_Vulkan_UBOTypeKind_Rect,
+    // R_Vulkan_UBOTypeKind_Blur,
+    R_Vulkan_UBOTypeKind_Geo3d,
+    R_Vulkan_UBOTypeKind_TileFrustum,
+    R_Vulkan_UBOTypeKind_COUNT,
+} R_Vulkan_UBOTypeKind;
+
+typedef enum R_Vulkan_SBOTypeKind
+{
+    R_Vulkan_SBOTypeKind_Joints,
+    R_Vulkan_SBOTypeKind_TileFrustum,
+    R_Vulkan_SBOTypeKind_Lights,
+    R_Vulkan_SBOTypeKind_COUNT,
+} R_Vulkan_SBOTypeKind;
 
 typedef enum R_Vulkan_DescriptorSetKind
 {
     R_Vulkan_DescriptorSetKind_UBO_Rect,
     R_Vulkan_DescriptorSetKind_UBO_Geo3d,
-    R_Vulkan_DescriptorSetKind_Storage_Geo3d,
+    R_Vulkan_DescriptorSetKind_UBO_TileFrustum,
     R_Vulkan_DescriptorSetKind_Tex2D,
+    R_Vulkan_DescriptorSetKind_SBO_Joints,
+    R_Vulkan_DescriptorSetKind_SBO_TileFrustum,
+    R_Vulkan_DescriptorSetKind_SBO_Lights,
     R_Vulkan_DescriptorSetKind_COUNT,
 } R_Vulkan_DescriptorSetKind;
 
 typedef enum R_Vulkan_PipelineKind
 {
+    // gfx pipeline
     R_Vulkan_PipelineKind_Rect,
     // R_Vulkan_PipelineKind_Blur,
     R_Vulkan_PipelineKind_Geo3dDebug,
     R_Vulkan_PipelineKind_Geo3dForward,
     R_Vulkan_PipelineKind_Geo3dComposite,
     R_Vulkan_PipelineKind_Finalize,
+    // compute pipeline
+    R_Vulkan_PipelineKind_TileFrustum,
+    R_Vulkan_PipelineKind_LightCulling,
     R_Vulkan_PipelineKind_COUNT,
 } R_Vulkan_PipelineKind;
 
@@ -188,6 +230,7 @@ typedef struct
     VkPhysicalDeviceMemoryProperties mem_properties;
     VkPhysicalDeviceFeatures         features;
     U32                              gfx_queue_family_index;
+    U32                              cmp_queue_family_index;
     U32                              prest_queue_family_index;
     VkFormat                         depth_image_format;
 } R_Vulkan_GPU;
@@ -256,6 +299,8 @@ struct R_Vulkan_RenderPass
         // NOTE(k): geo3d renderpass use multiple pipelines
         struct
         {
+            R_Vulkan_Pipeline tile_frustum;
+            R_Vulkan_Pipeline light_culling;
             R_Vulkan_Pipeline debug[R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT];
             R_Vulkan_Pipeline forward[R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT];
         } geo3d;
@@ -348,10 +393,10 @@ typedef struct
     R_Vulkan_RenderPassGroup *rendpass_grp_ref;
 
     // UBO buffer and descriptor set
-    R_Vulkan_UniformBuffer   uniform_buffers[R_Vulkan_UniformTypeKind_COUNT];
+    R_Vulkan_UniformBuffer   uniform_buffers[R_Vulkan_UBOTypeKind_COUNT];
 
     // Storage buffer and descriptor set
-    R_Vulkan_StorageBuffer   storage_buffers[R_Vulkan_StorageTypeKind_COUNT];
+    R_Vulkan_StorageBuffer   storage_buffers[R_Vulkan_SBOTypeKind_COUNT];
 
     // Instance buffer
     R_Vulkan_Buffer          inst_buffer_rect;
@@ -410,6 +455,7 @@ struct R_Vulkan_State
 
     VkShaderModule                      vshad_modules[R_Vulkan_VShadKind_COUNT];
     VkShaderModule                      fshad_modules[R_Vulkan_FShadKind_COUNT];
+    VkShaderModule                      cshad_modules[R_Vulkan_CShadKind_COUNT];
 
     VkCommandPool                       cmd_pool;
     // For copying staging buffer or transition image layout
@@ -451,11 +497,12 @@ internal R_Vulkan_Swapchain       r_vulkan_swapchain(R_Vulkan_Surface *surface, 
 internal void                     r_vulkan_bag_destroy(R_Vulkan_Bag *bag);
 internal R_Vulkan_RenderPassGroup *r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_RenderPassGroup *old);
 internal void                     r_vulkan_rendpass_grp_destroy(R_Vulkan_RenderPassGroup *grp);
-internal R_Vulkan_Pipeline        r_vulkan_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoPolygonKind polygon, VkRenderPass renderpass, R_Vulkan_Pipeline *old);
+internal R_Vulkan_Pipeline        r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoPolygonKind polygon, VkRenderPass renderpass, R_Vulkan_Pipeline *old);
+internal R_Vulkan_Pipeline        r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind);
 internal void                     r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind, U64 set_count, U64 cap, VkBuffer *buffers, VkImageView *image_views, VkSampler *sampler, R_Vulkan_DescriptorSet *sets);
 internal void                     r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp);
-internal R_Vulkan_UniformBuffer   r_vulkan_uniform_buffer_alloc(R_Vulkan_UniformTypeKind kind, U64 unit_count);
-internal R_Vulkan_StorageBuffer   r_vulkan_storage_buffer_alloc(R_Vulkan_StorageTypeKind kind, U64 unit_count);
+internal R_Vulkan_UniformBuffer   r_vulkan_uniform_buffer_alloc(R_Vulkan_UBOTypeKind kind, U64 unit_count);
+internal R_Vulkan_StorageBuffer   r_vulkan_storage_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count);
 internal VKAPI_ATTR               VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity, VkDebugUtilsMessageTypeFlagsEXT message_type, const VkDebugUtilsMessengerCallbackDataEXT *p_callback_data, void *p_userdata);
 internal VkFence                  r_vulkan_fence(VkDevice device);
 internal VkSemaphore              r_vulkan_semaphore(VkDevice device);
