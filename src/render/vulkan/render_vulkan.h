@@ -3,16 +3,6 @@
 
 #include "generated/render_vulkan.meta.h"
 
-// Syncronization
-// We choose the number 2 here because we don't want the CPU to get too far
-// ahead of the GPU With 2 frames in flight, the CPU and the GPU can be working
-// on their own tasks at the same time If the CPU finishes early, it will wait
-// till the GPU finishes rendering before submitting more work With 3 or more
-// frames in flight, the CPU could get ahead of the GPU, because the work load
-// of the GPU could be too larger for it to handle, so the CPU would end up
-// waiting a lot, adding frames of latency Generally extra latency isn't desired
-#define MAX_FRAMES_IN_FLIGHT 2
-
 #define VK_Assert(result) \
     do { \
         if((result) != VK_SUCCESS) { \
@@ -23,82 +13,30 @@
     } while (0)
 
 /////////////////////////////////////////////////////////////////////////////////////////
-//~ C-side Shader Types
+//~ Some limits
 
-// ubo
-typedef struct R_Vulkan_UBO_Rect R_Vulkan_UBO_Rect;
-struct R_Vulkan_UBO_Rect
-{
-    Vec2F32 viewport_size;
-    F32 opacity;
-    F32 _padding0_;
-    Vec4F32 texture_sample_channel_map[4];
-    Vec2F32 texture_t2d_size;
-    Vec2F32 translate;
-    Vec4F32 xform[3];
-    Vec2F32 xform_scale;
-    F32 _padding1_[2];
-};
-
-// typedef struct R_D3D11_Uniforms_BlurPass R_D3D11_Uniforms_BlurPass;
-// struct R_D3D11_Uniforms_BlurPass
-// {
-//   Rng2F32 rect;
-//   Vec4F32 corner_radii;
-//   Vec2F32 direction;
-//   Vec2F32 viewport_size;
-//   U32 blur_count;
-//   U8 _padding0_[204];
-// };
-// StaticAssert(sizeof(R_D3D11_Uniforms_BlurPass) % 256 == 0, NotAligned); // constant count/offset must be aligned to 256 bytes
-
-// typedef struct R_D3D11_Uniforms_Blur R_D3D11_Uniforms_Blur;
-// struct R_D3D11_Uniforms_Blur
-// {
-//   R_D3D11_Uniforms_BlurPass passes[Axis2_COUNT];
-//   Vec4F32 kernel[32];
-// };
-
-typedef struct R_Vulkan_UBO_Mesh R_Vulkan_UBO_Mesh;
-struct R_Vulkan_UBO_Mesh
-{
-    Mat4x4F32 view;
-    Mat4x4F32 view_inv;
-    Mat4x4F32 proj;
-    Mat4x4F32 proj_inv;
-
-    Vec4F32   global_light;
-
-    // Debug
-    U32       show_grid;
-    U32       _padding1_[3];
-};
-
-typedef struct R_Vulkan_UBO_TileFrustum R_Vulkan_UBO_TileFrustum;
-struct R_Vulkan_UBO_TileFrustum
-{
-    Mat4x4F32 view_inv;
-};
-
-// sbo
-
-#define R_Vulkan_SBO_Mesh Mat4x4F32
-
-typedef struct R_Vulkan_SBO_TileFrustum R_Vulkan_SBO_TileFrustum;
-struct R_Vulkan_SBO_TileFrustum
-{
-    U32 light_count;
-};
-
-typedef struct R_Vulkan_SBO_Light R_Vulkan_SBO_Light;
-struct R_Vulkan_SBO_Light
-{
-    // TODO(XXX)
-    Vec3F32 direction;
-    F32 radius;
-    F32 falloff;
-};
-
+// Syncronization
+// We choose the number 2 here because we don't want the CPU to get too far
+// ahead of the GPU With 2 frames in flight, the CPU and the GPU can be working
+// on their own tasks at the same time If the CPU finishes early, it will wait
+// till the GPU finishes rendering before submitting more work With 3 or more
+// frames in flight, the CPU could get ahead of the GPU, because the work load
+// of the GPU could be too larger for it to handle, so the CPU would end up
+// waiting a lot, adding frames of latency Generally extra latency isn't desired
+#define MAX_FRAMES_IN_FLIGHT 2
+// support max 1 rect pass per frame
+#define MAX_RECT_PASS 1
+#define MAX_RECT_GROUPS 3000
+// support max 3 geo3d pass per frame
+#define MAX_GEO3D_PASS 3
+// support max 3000 joints per geo3d pass
+#define MAX_JOINTS_PER_PASS 3000
+// support max 3000 lights per geo3d pass
+#define MAX_LIGHTS_PER_PASS 3000
+// support max 8K with 16x16 sized tile
+#define MAX_TILE_FRUSTUMS_PER_PASS ((7680*4320)/(16*16))
+#define MAX_RECT_INSTANCES 10000
+#define MAX_MESH_INSTANCES 10000
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ Enums
@@ -107,6 +45,7 @@ typedef enum R_Vulkan_VShadKind
 {
     R_Vulkan_VShadKind_Rect,
     // R_Vulkan_VShadKind_Blur,
+    R_Vulkan_VShadKind_Geo3dZPre,
     R_Vulkan_VShadKind_Geo3dDebug,
     R_Vulkan_VShadKind_Geo3dForward,
     R_Vulkan_VShadKind_Geo3dComposite,
@@ -118,6 +57,7 @@ typedef enum R_Vulkan_FShadKind
 {
     R_Vulkan_FShadKind_Rect,
     // R_Vulkan_FShadKind_Blur,
+    R_Vulkan_FShadKind_Geo3dZPre,
     R_Vulkan_FShadKind_Geo3dDebug,
     R_Vulkan_FShadKind_Geo3dForward,
     R_Vulkan_FShadKind_Geo3dComposite,
@@ -166,6 +106,7 @@ typedef enum R_Vulkan_PipelineKind
     // gfx pipeline
     R_Vulkan_PipelineKind_Rect,
     // R_Vulkan_PipelineKind_Blur,
+    R_Vulkan_PipelineKind_Geo3dZPre,
     R_Vulkan_PipelineKind_Geo3dDebug,
     R_Vulkan_PipelineKind_Geo3dForward,
     R_Vulkan_PipelineKind_Geo3dComposite,
@@ -180,13 +121,112 @@ typedef enum R_Vulkan_RenderPassKind
 {
     R_Vulkan_RenderPassKind_Rect,
     // R_Vulkan_RenderPassKind_Blur,
+    R_Vulkan_RenderPassKind_Geo3dZPre,
     R_Vulkan_RenderPassKind_Geo3d,
     R_Vulkan_RenderPassKind_Geo3dComposite,
     R_Vulkan_RenderPassKind_Finalize,
     R_Vulkan_RenderPassKind_COUNT,
 } R_Vulkan_RenderPassKind;
 
+/////////////////////////////////////////////////////////////////////////////////////////
+//~ Some basic types
+
+typedef struct R_Vulkan_Plane R_Vulkan_Plane;
+struct R_Vulkan_Plane
+{
+    Vec3F32 N; // plane normal
+    F32 d; // distance to the origin
+};
+
+typedef struct R_Vulkan_Frustum R_Vulkan_Frustum;
+struct R_Vulkan_Frustum
+{
+    R_Vulkan_Plane planes[6];
+};
+
+/////////////////////////////////////////////////////////////////////////////////////////
+//~ C-side Shader Types
+
+// ubo
+typedef struct R_Vulkan_UBO_Rect R_Vulkan_UBO_Rect;
+struct R_Vulkan_UBO_Rect
+{
+    Vec2F32 viewport_size;
+    F32 opacity;
+    F32 _padding0_;
+    Vec4F32 texture_sample_channel_map[4];
+    Vec2F32 texture_t2d_size;
+    Vec2F32 translate;
+    Vec4F32 xform[3];
+    Vec2F32 xform_scale;
+    F32 _padding1_[2];
+};
+
+// typedef struct R_D3D11_Uniforms_BlurPass R_D3D11_Uniforms_BlurPass;
+// struct R_D3D11_Uniforms_BlurPass
+// {
+//   Rng2F32 rect;
+//   Vec4F32 corner_radii;
+//   Vec2F32 direction;
+//   Vec2F32 viewport_size;
+//   U32 blur_count;
+//   U8 _padding0_[204];
+// };
+// StaticAssert(sizeof(R_D3D11_Uniforms_BlurPass) % 256 == 0, NotAligned); // constant count/offset must be aligned to 256 bytes
+
+// typedef struct R_D3D11_Uniforms_Blur R_D3D11_Uniforms_Blur;
+// struct R_D3D11_Uniforms_Blur
+// {
+//   R_D3D11_Uniforms_BlurPass passes[Axis2_COUNT];
+//   Vec4F32 kernel[32];
+// };
+
+typedef struct R_Vulkan_UBO_Geo3d R_Vulkan_UBO_Geo3d;
+struct R_Vulkan_UBO_Geo3d
+{
+    Mat4x4F32 view;
+    Mat4x4F32 view_inv;
+    Mat4x4F32 proj;
+    Mat4x4F32 proj_inv;
+
+    Vec4F32   global_light;
+
+    // Debug
+    U32       show_grid;
+    U32       _padding1_[3];
+};
+
+typedef struct R_Vulkan_UBO_TileFrustum R_Vulkan_UBO_TileFrustum;
+struct R_Vulkan_UBO_TileFrustum
+{
+    Mat4x4F32 proj_inv;
+    Vec2F32 grid_size;
+    // TODO(k): not quite sure if we need this padding
+    U32 _padding1_[2];
+};
+
+// sbo
+
+#define R_Vulkan_SBO_Joint Mat4x4F32
+
+typedef struct R_Vulkan_SBO_TileFrustum R_Vulkan_SBO_TileFrustum;
+struct R_Vulkan_SBO_TileFrustum
+{
+    R_Vulkan_Frustum frustum;
+};
+
+typedef struct R_Vulkan_SBO_Light R_Vulkan_SBO_Light;
+struct R_Vulkan_SBO_Light
+{
+    // TODO(XXX): to be implemented
+    Vec3F32 direction;
+    F32 radius;
+    F32 falloff;
+};
+
+/////////////////////////////////////////////////////////////////////////////////////////
 // Vulkan types
+
 #define MAX_SURFACE_FORMAT_COUNT 9
 #define MAX_SURFACE_PRESENT_MODE_COUNT 9
 typedef struct
@@ -296,6 +336,9 @@ struct R_Vulkan_RenderPass
     union
     {
         R_Vulkan_Pipeline rect;
+        // NOTE(k): we are forced to use a dedicated renderpass for z pre
+        //          since compute shader can only run outside of the renderpass
+        R_Vulkan_Pipeline z_pre[R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT];
         // NOTE(k): geo3d renderpass use multiple pipelines
         struct
         {
@@ -307,7 +350,7 @@ struct R_Vulkan_RenderPass
         R_Vulkan_Pipeline geo3d_composite;
         R_Vulkan_Pipeline finalize;
 
-        R_Vulkan_Pipeline v[R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT * 2];
+        R_Vulkan_Pipeline v[R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT * 2 + 2];
     } pipelines;
     U64 pipeline_count;
 };
@@ -326,8 +369,8 @@ struct R_Vulkan_DescriptorSet
     R_Vulkan_DescriptorSetPool *pool;
 };
 
-typedef struct R_Vulkan_UniformBuffer R_Vulkan_UniformBuffer;
-struct R_Vulkan_UniformBuffer
+typedef struct R_Vulkan_UBOBuffer R_Vulkan_UBOBuffer;
+struct R_Vulkan_UBOBuffer
 {
     R_Vulkan_Buffer        buffer;
     R_Vulkan_DescriptorSet set;
@@ -335,8 +378,8 @@ struct R_Vulkan_UniformBuffer
     U64                    stride;
 };
 
-typedef struct R_Vulkan_StorageBuffer R_Vulkan_StorageBuffer;
-struct R_Vulkan_StorageBuffer
+typedef struct R_Vulkan_SBOBuffer R_Vulkan_SBOBuffer;
+struct R_Vulkan_SBOBuffer
 {
     R_Vulkan_Buffer        buffer;
     R_Vulkan_DescriptorSet set;
@@ -375,6 +418,7 @@ struct R_Vulkan_Bag
     R_Vulkan_Image         geo3d_normal_depth_image;
     R_Vulkan_DescriptorSet geo3d_normal_depth_ds;
     R_Vulkan_Image         geo3d_depth_image;
+    R_Vulkan_Image         geo3d_pre_depth_image;
 
     // NOTE(k): last renderpass (finalize) contains mutiple framebuffer (count is equal to swapchain.image_count)
     VkFramebuffer          framebuffers[R_Vulkan_RenderPassKind_COUNT + MAX_IMAGE_COUNT - 1];
@@ -393,14 +437,14 @@ typedef struct
     R_Vulkan_RenderPassGroup *rendpass_grp_ref;
 
     // UBO buffer and descriptor set
-    R_Vulkan_UniformBuffer   uniform_buffers[R_Vulkan_UBOTypeKind_COUNT];
+    R_Vulkan_UBOBuffer       ubo_buffers[R_Vulkan_UBOTypeKind_COUNT];
 
     // Storage buffer and descriptor set
-    R_Vulkan_StorageBuffer   storage_buffers[R_Vulkan_SBOTypeKind_COUNT];
+    R_Vulkan_SBOBuffer       sbo_buffers[R_Vulkan_SBOTypeKind_COUNT];
 
     // Instance buffer
-    R_Vulkan_Buffer          inst_buffer_rect;
-    R_Vulkan_Buffer          inst_buffer_mesh;
+    R_Vulkan_Buffer          inst_buffer_rect[MAX_RECT_PASS];
+    R_Vulkan_Buffer          inst_buffer_mesh[MAX_GEO3D_PASS];
 
 } R_Vulkan_Frame;
 
@@ -501,8 +545,8 @@ internal R_Vulkan_Pipeline        r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind ki
 internal R_Vulkan_Pipeline        r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind);
 internal void                     r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind, U64 set_count, U64 cap, VkBuffer *buffers, VkImageView *image_views, VkSampler *sampler, R_Vulkan_DescriptorSet *sets);
 internal void                     r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp);
-internal R_Vulkan_UniformBuffer   r_vulkan_uniform_buffer_alloc(R_Vulkan_UBOTypeKind kind, U64 unit_count);
-internal R_Vulkan_StorageBuffer   r_vulkan_storage_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count);
+internal R_Vulkan_UBOBuffer       r_vulkan_ubo_buffer_alloc(R_Vulkan_UBOTypeKind kind, U64 unit_count);
+internal R_Vulkan_SBOBuffer       r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count);
 internal VKAPI_ATTR               VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity, VkDebugUtilsMessageTypeFlagsEXT message_type, const VkDebugUtilsMessengerCallbackDataEXT *p_callback_data, void *p_userdata);
 internal VkFence                  r_vulkan_fence(VkDevice device);
 internal VkSemaphore              r_vulkan_semaphore(VkDevice device);

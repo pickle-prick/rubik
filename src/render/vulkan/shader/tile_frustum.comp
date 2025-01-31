@@ -1,6 +1,9 @@
 #version 450
 
-layout(local_size_x=4, local_size_y=4, local_size_z=1) in;
+layout(local_size_x=8, local_size_y=8, local_size_z=1) in;
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// basic types
 
 struct Plane
 {
@@ -8,6 +11,31 @@ struct Plane
     float d; // Distance to origin
 };
 
+// the back and/or front planes can be computed from min/max depth values from fragments within this group 
+struct Frustum
+{
+    Plane planes[6]; // left,right,top,bottom frustum planes
+};
+
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// input/output
+
+layout(std140, set=0, binding=0) uniform UBO
+{
+    mat4 proj_inv;
+    // TODO(XXX):
+    vec2 grid_size; 
+    
+} ubo;
+
+// output sbo
+layout(std140, set=1, binding=0) buffer TileFrustums
+{
+    Frustum frustums[];
+} sbo;
+
+// p is in view space
 Plane plane_from_p(vec3 p0, vec3 p1, vec3 p2)
 {
     Plane ret;
@@ -22,13 +50,38 @@ Plane plane_from_p(vec3 p0, vec3 p1, vec3 p2)
     return ret;
 }
 
-// the back and/or front planes can be computed from min/max depth values from fragments within this group 
-struct Frustum
+vec3 unproject_point(vec3 p, mat4 xform_inv)
 {
-    Plane planes[4]; // left,right,top,bottom frustum planes
-};
+    vec4 unproject_point = xform_inv * vec4(p.xyz, 1.0);
+    return unproject_point.xyz / unproject_point.w;
+}
 
 void main()
 {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
 
+    vec3 eye = vec3(0,0,0);
+
+    float x_step = 1.f / ubo.grid_size.x;
+    float y_step = 1.f / ubo.grid_size.y;
+    float x_pct = float(x) / x_step;
+    float y_pct = float(y) / y_step;
+
+    vec3 tl = vec3(mix(-1,1,x_pct), mix(-1,1,y_pct), 0); // top-left
+    vec3 tr = vec3(mix(-1,1,x_pct+x_step), mix(-1,1,y_pct), 0); // top-right
+    vec3 bl = vec3(mix(-1,1,x_pct), mix(-1,1,y_pct+y_step), 0); // bottom-left
+    vec3 br = vec3(mix(-1,1,x_pct+x_step), mix(-1,1,y_pct+y_step), 0); // bottom-right
+
+    // ndc to view space
+    tl = unproject_point(tl, ubo.proj_inv);
+    tr = unproject_point(tr, ubo.proj_inv);
+    bl = unproject_point(bl, ubo.proj_inv);
+    br = unproject_point(br, ubo.proj_inv);
+    
+    uint tile_idx = uint(y * ubo.grid_size.x) + x;
+    sbo.frustums[tile_idx].planes[0] = plane_from_p(eye, tr, tl);
+    sbo.frustums[tile_idx].planes[1] = plane_from_p(eye, bl, br);
+    sbo.frustums[tile_idx].planes[2] = plane_from_p(eye, br, tr);
+    sbo.frustums[tile_idx].planes[3] = plane_from_p(eye, tl, bl);
 }

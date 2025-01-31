@@ -193,7 +193,7 @@ struct R_BatchGroup3DParams
     F32               line_width;     
     R_Handle          albedo_tex;
     R_Tex2DSampleKind albedo_tex_sample_kind;
-    // TODO: do we need this?
+    // TODO(k): do we need this?
     Mat4x4F32         xform;
 };
 
@@ -247,9 +247,11 @@ struct R_PassParams_Geo3D
     Mat4x4F32         view;
     Mat4x4F32         projection;
     R_BatchGroup3DMap mesh_batches;
+    // TODO(XXX): remove this
     Vec3F32           global_light;
+    B32               light_disabled;
 
-    // Debug usage
+    // Debug purpose
     B32               show_grid;
 };
 

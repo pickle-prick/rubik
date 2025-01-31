@@ -545,6 +545,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         switch(kind)
         {
             case R_Vulkan_VShadKind_Rect:           {shad_path = str8_lit("src/render/vulkan/shader/rect_vert.spv");}break;
+            case R_Vulkan_VShadKind_Geo3dZPre:      {shad_path = str8_lit("src/render/vulkan/shader/geo3d_zpre_vert.spv");}break;
             case R_Vulkan_VShadKind_Geo3dDebug:     {shad_path = str8_lit("src/render/vulkan/shader/geo3d_debug_vert.spv");}break;
             case R_Vulkan_VShadKind_Geo3dForward:   {shad_path = str8_lit("src/render/vulkan/shader/geo3d_forward_vert.spv");}break;
             case R_Vulkan_VShadKind_Geo3dComposite: {shad_path = str8_lit("src/render/vulkan/shader/geo3d_composite_vert.spv");}break;
@@ -571,6 +572,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         switch(kind)
         {
             case R_Vulkan_FShadKind_Rect:           {shad_path = str8_lit("src/render/vulkan/shader/rect_frag.spv");}break;
+            case R_Vulkan_FShadKind_Geo3dZPre:      {shad_path = str8_lit("src/render/vulkan/shader/geo3d_zpre_frag.spv");}break;
             case R_Vulkan_FShadKind_Geo3dDebug:     {shad_path = str8_lit("src/render/vulkan/shader/geo3d_debug_frag.spv");}break;
             case R_Vulkan_FShadKind_Geo3dForward:   {shad_path = str8_lit("src/render/vulkan/shader/geo3d_forward_frag.spv");}break;
             case R_Vulkan_FShadKind_Geo3dComposite: {shad_path = str8_lit("src/render/vulkan/shader/geo3d_composite_frag.spv");}break;
@@ -658,7 +660,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         create_info.pBindings    = bindings;
         VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
     }
-    // R_Vulkan_DescriptorSetKind_Storage_Mesh
+    // R_Vulkan_DescriptorSetKind_SBO_Mesh
     {
         R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Joints];
         VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
@@ -666,7 +668,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         set_layout->binding_count = 1;
 
         bindings[0].binding            = 0;
-        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
         bindings[0].descriptorCount    = 1;
         bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT;
         bindings[0].pImmutableSamplers = NULL;
@@ -720,7 +722,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         set_layout->binding_count = 1;
 
         bindings[0].binding            = 0;
-        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
         bindings[0].descriptorCount    = 1;
         bindings[0].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
         bindings[0].pImmutableSamplers = NULL;
@@ -730,7 +732,6 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         create_info.bindingCount = 1;
         create_info.pBindings    = bindings;
         VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
-
     }
     // R_Vulkan_DescriptorSetKind_SBO_LightCulling
     {
@@ -740,7 +741,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         set_layout->binding_count = 1;
 
         bindings[0].binding            = 0;
-        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
         bindings[0].descriptorCount    = 1;
         bindings[0].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
         bindings[0].pImmutableSamplers = NULL;
@@ -833,46 +834,89 @@ r_window_equip(OS_Handle wnd_handle)
             // Create uniform buffers
             for(U64 kind = 0; kind < R_Vulkan_UBOTypeKind_COUNT; kind++)
             {
-                // TODO(@k): not ideal, since mesh uniform wouldn't grow
-                window->frames[i].uniform_buffers[kind] = r_vulkan_uniform_buffer_alloc(kind, 900);
+                U64 unit_count;
+                switch(kind)
+                {
+                    default:                               {InvalidPath;}break;
+                    case R_Vulkan_UBOTypeKind_Rect:        {unit_count=MAX_RECT_PASS*MAX_RECT_GROUPS;}break;
+                    case R_Vulkan_UBOTypeKind_Geo3d:       {unit_count=MAX_GEO3D_PASS;}break;
+                    case R_Vulkan_UBOTypeKind_TileFrustum: {unit_count=MAX_GEO3D_PASS;}break;
+                }
+                window->frames[i].ubo_buffers[kind] = r_vulkan_ubo_buffer_alloc(kind, unit_count);
             }
 
             // Create storage buffers
             for(U64 kind = 0; kind < R_Vulkan_SBOTypeKind_COUNT; kind++)
             {
-                window->frames[i].storage_buffers[kind] = r_vulkan_storage_buffer_alloc(kind, 3000);
+                U64 unit_count;
+                switch(kind)
+                {
+                    default:                               {InvalidPath;}break;
+                    case R_Vulkan_SBOTypeKind_Joints:      {unit_count = MAX_GEO3D_PASS*MAX_JOINTS_PER_PASS;}break;
+                    case R_Vulkan_SBOTypeKind_Lights:      {unit_count = MAX_GEO3D_PASS*MAX_LIGHTS_PER_PASS;}break;
+                    case R_Vulkan_SBOTypeKind_TileFrustum: {unit_count = MAX_GEO3D_PASS*MAX_TILE_FRUSTUMS_PER_PASS;}break;
+                }
+                window->frames[i].sbo_buffers[kind] = r_vulkan_sbo_buffer_alloc(kind, unit_count);
             }
 
-            // Create instance buffers
+            // Create instance buffers for rect and geo3d
             /////////////////////////////////////////////////////////////////
 
-            R_Vulkan_Buffer *buffers[2] = {
-                &window->frames[i].inst_buffer_rect,
-                &window->frames[i].inst_buffer_mesh,
-            };
-
-            // create inst buffer for rect and mesh pass
-            for(U64 j = 0; j < 2; j++)
+            // TODO(k): just remember to free this
+            // create inst buffer for rect
+            for(U64 j = 0; j < MAX_RECT_PASS; j++)
             {
-                R_Vulkan_Buffer *buffer = buffers[j];
+                R_Vulkan_Buffer *buffer = &window->frames[i].inst_buffer_rect[j];
                 VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-                create_info.size        = MB(16);
+                create_info.size        = sizeof(R_Rect2DInst)*MAX_RECT_INSTANCES;
                 create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
                 create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
                 VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer->h));
 
                 VkMemoryRequirements mem_requirements;
                 vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer->h, &mem_requirements);
-                buffer->size = mem_requirements.size;
 
-                VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+                buffer->kind = R_ResourceKind_Static;
+                buffer->size = mem_requirements.size;
+                buffer->cap  = mem_requirements.size;
+
+                VkMemoryAllocateInfo alloc_info = {0};
                 VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+                alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
                 alloc_info.allocationSize = mem_requirements.size;
                 alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
                 
                 VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer->memory));
                 VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer->h, buffer->memory, 0));
-                Assert(buffer->size != 0);
+                VK_Assert(vkMapMemory(r_vulkan_state->device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped));
+            }
+
+            // TODO(k): just remember to free this
+            // create inst buffer for rect
+            for(U64 j = 0; j < MAX_GEO3D_PASS; j++)
+            {
+                R_Vulkan_Buffer *buffer = &window->frames[i].inst_buffer_mesh[j];
+                VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+                create_info.size        = sizeof(R_Mesh3DInst)*MAX_MESH_INSTANCES;
+                create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+                create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer->h));
+
+                VkMemoryRequirements mem_requirements;
+                vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer->h, &mem_requirements);
+
+                buffer->kind = R_ResourceKind_Static;
+                buffer->size = mem_requirements.size;
+                buffer->cap  = mem_requirements.size;
+
+                VkMemoryAllocateInfo alloc_info = {0};
+                VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+                alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+                alloc_info.allocationSize = mem_requirements.size;
+                alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+                
+                VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer->memory));
+                VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer->h, buffer->memory, 0));
                 VK_Assert(vkMapMemory(r_vulkan_state->device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped));
             }
         }
@@ -1348,6 +1392,67 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                 rendpass->pipelines.rect = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_Rect, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p_rect);
                 rendpass->pipeline_count = 1;
             }break;
+            case R_Vulkan_RenderPassKind_Geo3dZPre:
+            {
+                U64 attachment_count = 1;
+                U64 subpass_count = 1;
+                U64 dep_count = 1;
+                VkAttachmentDescription att_descs[attachment_count] = {};
+                VkSubpassDescription subpasses[subpass_count] = {};
+                VkSubpassDependency deps[dep_count] = {};
+
+                VkRenderPassCreateInfo create_info = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
+
+                // Geo3d Depth attachment
+                att_descs[0].format         = r_vulkan_state->gpu.depth_image_format;
+                att_descs[0].samples        = VK_SAMPLE_COUNT_1_BIT;
+                att_descs[0].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                att_descs[0].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+                att_descs[0].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+                att_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                att_descs[0].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+                att_descs[0].finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+                // references
+                VkAttachmentReference refs[attachment_count];
+                refs[0].attachment = 0;
+                refs[0].layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+                subpasses[0].pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
+                subpasses[0].colorAttachmentCount    = 0;
+                subpasses[0].pColorAttachments       = 0;
+                subpasses[0].pDepthStencilAttachment = &refs[0];
+
+                // external -> subpass1
+                deps[0].srcSubpass    = VK_SUBPASS_EXTERNAL;
+                deps[0].dstSubpass    = 0; /* the first subpass */
+                deps[0].srcStageMask  = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+                deps[0].srcAccessMask = 0;
+                deps[0].dstStageMask  = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+                deps[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+                // Creat render pass
+                create_info.attachmentCount = attachment_count;
+                create_info.pAttachments    = att_descs;
+                create_info.subpassCount    = subpass_count;
+                create_info.pSubpasses      = subpasses;
+                create_info.dependencyCount = dep_count;
+                create_info.pDependencies   = deps;
+                VK_Assert(vkCreateRenderPass(r_vulkan_state->device.h, &create_info, NULL, &rendpass->h));
+
+                // Create pipelines
+                // geo3d z pre
+                for(U64 i = 0; i < R_GeoTopologyKind_COUNT; i++)
+                {
+                    for(U64 j = 0; j < R_GeoPolygonKind_COUNT; j++)
+                    {
+                        R_Vulkan_Pipeline *old_p = 0;
+                        if(old_rendpass) old_p = &old_rendpass->pipelines.z_pre[i*R_GeoPolygonKind_COUNT + j];
+                        rendpass->pipelines.z_pre[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_Geo3dZPre, i, j, rendpass->h, old_p);
+                    }
+                }
+                rendpass->pipeline_count = R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT;
+            }break;
             case R_Vulkan_RenderPassKind_Geo3d:
             {
                 // Output to geo3d_color buffer, using ge3d_depth
@@ -1446,7 +1551,6 @@ r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_R
                             rendpass->pipelines.geo3d.debug[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_Geo3dDebug, i, j, rendpass->h, old_p);
                         }
                     }
-
                 }
 
                 // geo3d forward
@@ -1587,14 +1691,15 @@ r_vulkan_semaphore(VkDevice device)
 internal VkFence
 r_vulkan_fence(VkDevice device)
 {
-    VkFenceCreateInfo create_info = {
-            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-            // Create the fence in the signaled state, so that the first call to vkWaitForFences() returns immediately
-            .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+    VkFence ret;
+    VkFenceCreateInfo create_info =
+    {
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        // Create the fence in the signaled state, so that the first call to vkWaitForFences() returns immediately
+        .flags = VK_FENCE_CREATE_SIGNALED_BIT,
     };
-    VkFence fence;
-    VK_Assert(vkCreateFence(device, &create_info, NULL, &fence));
-    return fence;
+    VK_Assert(vkCreateFence(device, &create_info, NULL, &ret));
+    return ret;
 }
 
 internal void
@@ -1763,7 +1868,8 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
 
     // Create image view
     {
-        VkImageViewCreateInfo create_info = {
+        VkImageViewCreateInfo create_info =
+        {
             .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image                           = texture->image.h,
             .viewType                        = VK_IMAGE_VIEW_TYPE_2D,
@@ -1790,7 +1896,8 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
                                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
 
         // Copy buffer to image
-        VkBufferImageCopy region = {
+        VkBufferImageCopy region =
+        {
             // Specify the byte offset in the buffer at which the pixel values start
             .bufferOffset                    = 0,
             // These two fields specify how the pixels are laid out in memory
@@ -2447,6 +2554,11 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
             vshad_mo = r_vulkan_state->vshad_modules[R_Vulkan_VShadKind_Rect];
             fshad_mo = r_vulkan_state->fshad_modules[R_Vulkan_FShadKind_Rect];
         }break;
+        case(R_Vulkan_PipelineKind_Geo3dZPre):
+        {
+            vshad_mo = r_vulkan_state->vshad_modules[R_Vulkan_VShadKind_Geo3dZPre];
+            fshad_mo = r_vulkan_state->fshad_modules[R_Vulkan_FShadKind_Geo3dZPre];
+        }break;
         case(R_Vulkan_PipelineKind_Geo3dDebug):
         {
             vshad_mo = r_vulkan_state->vshad_modules[R_Vulkan_VShadKind_Geo3dDebug];
@@ -2589,6 +2701,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
             vtx_binding_desc_count = 0;
             vtx_attr_desc_cnt = 0;
         }break;
+        case R_Vulkan_PipelineKind_Geo3dZPre:
         case R_Vulkan_PipelineKind_Geo3dForward:
         {
             vtx_binding_desc_count = 2;
@@ -2898,6 +3011,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
 
     switch(kind)
     {
+        case R_Vulkan_PipelineKind_Geo3dZPre:
         case R_Vulkan_PipelineKind_Geo3dForward:
         {
             // rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_LINE;
@@ -2935,7 +3049,8 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
     switch(kind)
     {
         case R_Vulkan_PipelineKind_Geo3dDebug:
-        case R_Vulkan_PipelineKind_Geo3dForward: 
+        case R_Vulkan_PipelineKind_Geo3dZPre:
+        case R_Vulkan_PipelineKind_Geo3dForward:
         {
             // The depthTestEnable field specifies if the depth of new fragments should be compared to the depth buffer to see if they should be discarded
             // The depthWriteEnable field specifies if the new depth of fragments that pass the depth test should actually be written to the depth buffer
@@ -3064,6 +3179,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
             // color_blend_attachment_state[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
             // color_blend_attachment_state[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
         }break;
+        case R_Vulkan_PipelineKind_Geo3dZPre: 
         case R_Vulkan_PipelineKind_Finalize: 
         {
             color_blend_attachment_state[0].blendEnable = VK_FALSE;
@@ -3091,7 +3207,17 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
     };
     switch(kind)
     {
-        default:{}break;
+        default:{InvalidPath;}break;
+        case R_Vulkan_PipelineKind_Rect:
+        case R_Vulkan_PipelineKind_Geo3dComposite:
+        case R_Vulkan_PipelineKind_Finalize:
+        {
+            color_blend_state_create_info.attachmentCount = 1;
+        }break;
+        case R_Vulkan_PipelineKind_Geo3dZPre:
+        {
+            color_blend_state_create_info.attachmentCount = 0;
+        }break;
         case R_Vulkan_PipelineKind_Geo3dDebug:
         case R_Vulkan_PipelineKind_Geo3dForward:
         {
@@ -3118,6 +3244,12 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
                 set_layout_count = 2;
                 set_layouts[0]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Rect].h;
                 set_layouts[1]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D].h;
+            }break;
+            case R_Vulkan_PipelineKind_Geo3dZPre:
+            {
+                set_layout_count = 2;
+                set_layouts[0]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Geo3d].h;
+                set_layouts[1]   = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Joints].h;
             }break;
             case R_Vulkan_PipelineKind_Geo3dDebug:
             {
@@ -3147,7 +3279,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
 
         create_info.setLayoutCount         = set_layout_count; // Optional
         create_info.pSetLayouts            = set_layouts;      // Optional
-                                                               // The structure also specifies push constants, which are another way of passing dynamic values to shaders that we may get into in future
+        // The structure also specifies push constants, which are another way of passing dynamic values to shaders that we may get into in future
         create_info.pushConstantRangeCount = 0;                // Optional
         create_info.pPushConstantRanges    = NULL;             // Optional
 
@@ -3178,6 +3310,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
         switch(kind)
         {
             case R_Vulkan_PipelineKind_Rect:           {create_info.subpass = 0;}break;
+            case R_Vulkan_PipelineKind_Geo3dZPre:      {create_info.subpass = 0;}break;
             case R_Vulkan_PipelineKind_Geo3dDebug:     {create_info.subpass = 0;}break;
             case R_Vulkan_PipelineKind_Geo3dForward:   {create_info.subpass = 0;}break;
             case R_Vulkan_PipelineKind_Geo3dComposite: {create_info.subpass = 0;}break;
@@ -3191,7 +3324,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
         // These values are only used if the VK_PIPELINE_CREATE_DERIVATIVE_BIT flag is also specified in the flags field of VkGraphicsPipelineCreateInfo
         create_info.basePipelineHandle  = VK_NULL_HANDLE; // Optional
         create_info.basePipelineIndex   = -1; // Optional
-        // TODO(@k): not sure if we should do it
+        // TODO(k): not sure if we should do it
         create_info.flags = VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT;
         if(old != NULL)
         {
@@ -3264,6 +3397,7 @@ r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind)
         }break;
         default: {InvalidPath;}break;
     }
+
     layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layout_info.setLayoutCount = set_layout_count;
     layout_info.pSetLayouts = set_layouts;
@@ -3283,6 +3417,8 @@ r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind)
 
     VK_Assert(vkCreateComputePipelines(r_vulkan_state->device.h, VK_NULL_HANDLE, 1, &pipeline_info, NULL, &ret.h));
     scratch_end(scratch);
+
+    ret.layout = layout;
     return ret;
 }
 
@@ -3585,25 +3721,22 @@ r_window_end_frame(OS_Handle os_wnd, R_Handle window_equip, Vec2F32 mouse_ptr)
 internal void
 r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 {
-    R_Vulkan_Window *wnd              = r_vulkan_window_from_handle(window_equip);
+    R_Vulkan_Window *wnd = r_vulkan_window_from_handle(window_equip);
     R_Vulkan_RenderPass *renderpasses = wnd->rendpass_grp->passes;
-    VkFramebuffer *framebuffers       = wnd->bag->framebuffers;
+    VkFramebuffer *framebuffers = wnd->bag->framebuffers;
 
     R_Vulkan_Frame *frame = &wnd->frames[wnd->curr_frame_idx];
     VkCommandBuffer cmd_buf = frame->cmd_buf;
 
-    // TODO(@k): Build command buffers in parallel and evenly across several threads/cores
-    //           to multiple command lists
-    //           Recording commands is a CPU intensive operation and no driver threads come to reuse
+    // TODO(k): Build command buffers in parallel and evenly across several threads/cores
+    //          to multiple command lists
+    //          Recording commands is a CPU intensive operation and no driver threads come to reuse
 
     // idx/offset for dynamic buffer
-    U64 ui_inst_idx = 0; // rect inst buffer
     U64 ui_group_idx = 0; // rect ubo is per group
-    U64 geo3d_inst_idx = 0; // mesh inst buffer
+    U64 ui_pass_idx = 0;
     // NOTE(k): geo3d ubo is per geo3d pass, rect ubo is per group
     U64 geo3d_pass_idx = 0;
-    // NOTE(k): every geo3d pass contains joints (the number of joints can vary)
-    U32 geo3d_sbo_idx = 0;
 
     // Do passing
     for(R_PassNode *pass_n = passes->first; pass_n != 0; pass_n = pass_n->next)
@@ -3645,7 +3778,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 R_BatchGroup2DList *rect_batch_groups = &params->rects;
 
                 // Unpack uniform buffer
-                R_Vulkan_UniformBuffer *uniform_buffer = &frame->uniform_buffers[R_Vulkan_UBOTypeKind_Rect];
+                R_Vulkan_UBOBuffer *uniform_buffer = &frame->ubo_buffers[R_Vulkan_UBOTypeKind_Rect];
                 // TODO(@k): dynamic allocate uniform buffer if needed
                 AssertAlways(rect_batch_groups->count <= 900);
 
@@ -3654,26 +3787,27 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 // We've now told Vulkan which operations to execute in the graphcis pipeline and which attachment to use in the fragment shader
                 vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipelines.rect.h);
 
+                // unpack inst buffer
+                R_Vulkan_Buffer *inst_buffer = &frame->inst_buffer_rect[ui_pass_idx];
+
                 // Draw each group
                 // Rects in the same group share some features
+                U64 inst_idx = 0;
                 for(R_BatchGroup2DNode *group_n = rect_batch_groups->first; group_n != 0; group_n = group_n->next)
                 {
-                    R_BatchList *batches               = &group_n->batches;
+                    R_BatchList *batches = &group_n->batches;
                     R_BatchGroup2DParams *group_params = &group_n->params;
 
                     // Get & fill instance bufer
-                    // TODO(k): Dynamic allocate instance buffer if needed
-                    U64 ui_inst_buffer_offset = ui_inst_idx * sizeof(R_Rect2DInst);
-                    U8 *dst_ptr = frame->inst_buffer_rect.mapped + ui_inst_buffer_offset;
-                    U64 off = 0;
+                    U64 inst_buffer_off = inst_idx*sizeof(R_Rect2DInst);
                     for(R_BatchNode *batch = batches->first; batch != 0; batch = batch->next)
                     {
-                        MemoryCopy(dst_ptr+off, batch->v.v, batch->v.byte_count);
-                        off += batch->v.byte_count;
+                        U8 *dst_ptr = inst_buffer->mapped + inst_idx*sizeof(R_Rect2DInst);
+                        MemoryCopy(dst_ptr, batch->v.v, batch->v.byte_count);
+                        inst_idx += batch->v.byte_count / sizeof(R_Rect2DInst);
                     }
                     // Bind instance buffer
-                    VkDeviceSize inst_buffer_offset = {ui_inst_buffer_offset};
-                    vkCmdBindVertexBuffers(cmd_buf, 0, 1, &frame->inst_buffer_rect.h, &inst_buffer_offset);
+                    vkCmdBindVertexBuffers(cmd_buf, 0, 1, &inst_buffer->h, &(VkDeviceSize){inst_buffer_off});
 
                     // Get texture
                     R_Handle tex_handle = group_params->tex;
@@ -3764,7 +3898,6 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     vkCmdDraw(cmd_buf, 4, inst_count, 0, 0);
 
                     ui_group_idx++;
-                    ui_inst_idx += inst_count;
                 }
                 vkCmdEndRenderPass(cmd_buf);
             }break;
@@ -3774,52 +3907,90 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 R_PassParams_Geo3D *params = pass->params_geo3d;
                 R_BatchGroup3DMap *mesh_group_map = &params->mesh_batches;
 
-                // Unpack renderpass and pipelines
+                // Unpack pipelines
                 R_Vulkan_RenderPass *renderpass = &renderpasses[R_Vulkan_RenderPassKind_Geo3d];
 
+                R_Vulkan_Pipeline *geo3d_zpre_pipelines = renderpass->pipelines.z_pre;
                 R_Vulkan_Pipeline *geo3d_debug_pipelines = renderpass->pipelines.geo3d.debug;
                 R_Vulkan_Pipeline *geo3d_forward_pipelines = renderpass->pipelines.geo3d.forward;
+                R_Vulkan_Pipeline *geo3d_tile_frustum_pipeline = &renderpass->pipelines.geo3d.tile_frustum;
 
-                // Start renderpass
-                VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
-                begin_info.renderPass        = renderpass->h;
-                begin_info.framebuffer       = framebuffers[R_Vulkan_RenderPassKind_Geo3d];
-                begin_info.renderArea.offset = (VkOffset2D){0, 0};
-                begin_info.renderArea.extent = wnd->bag->stage_color_image.extent;
-                
-                // Note that the order of clear_values should be identical to the order of your attachments
-                VkClearValue clear_colors[3];
-                // geo3d color image
-                clear_colors[0].color        = (VkClearColorValue){{ 0.0f, 0.0f, 0.0f, 0.0f }}; /* black with 100% opacity */
-                // The range of depths in the depth buffer is 0.0 to 1.0 in Vulkan, where 1.0 lies at the far view plane and 0.0 at the near view plane. The initial value at each point in the depth buffer should be the furthest possible depth, which is 1.0
-                // geo3d normal depth image
-                clear_colors[1].color        = (VkClearColorValue){0.f, 0.f, 0.f, 1.f};
-                // geo3d depth
-                clear_colors[2].depthStencil = (VkClearDepthStencilValue){1.0f, 0};
+                /////////////////////////////////////////////////////////////////////////
+                // unpack and upload geo3d ubo buffer
 
-                // Those two parameters define the clear values to use for VK_ATTACHMENT_LOAD_OP_CLEAR, which we used as load operations for the color attachment
-                begin_info.clearValueCount = 3;
-                begin_info.pClearValues    = clear_colors;
-                vkCmdBeginRenderPass(cmd_buf, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
-                // Unpack uniform buffer
                 // NOTE(k): Geo3d uniform is per Geo3D pass unlike rect pass which is per group
-                R_Vulkan_UniformBuffer *uniform_buffer = &frame->uniform_buffers[R_Vulkan_UBOTypeKind_Geo3d];
-                U32 uniform_buffer_off = geo3d_pass_idx * uniform_buffer->stride;
+                R_Vulkan_UBOBuffer *geo3d_ubo_buffer = &frame->ubo_buffers[R_Vulkan_UBOTypeKind_Geo3d];
+                // NOTE(k): one for z_pre, one for geo3d pass
+                U32 geo3d_ubo_buffer_off = geo3d_pass_idx * 2 * geo3d_ubo_buffer->stride;
 
-                // Setup uniforms buffer
-                R_Vulkan_UBO_Mesh uniforms = {0};
-                uniforms.proj         = params->projection;
-                uniforms.proj_inv     = inverse_4x4f32(params->projection);
-                uniforms.view         = params->view;
-                uniforms.view_inv     = inverse_4x4f32(params->view);
-                uniforms.global_light = v4f32(params->global_light.x, params->global_light.y, params->global_light.z, 0.0);
-                uniforms.show_grid    = params->show_grid;
-                MemoryCopy((U8 *)uniform_buffer->buffer.mapped + uniform_buffer_off, &uniforms, sizeof(R_Vulkan_UBO_Mesh));
+                R_Vulkan_UBO_Geo3d geo3d_ubo = {0};
+                geo3d_ubo.proj         = params->projection;
+                geo3d_ubo.proj_inv     = inverse_4x4f32(params->projection);
+                geo3d_ubo.view         = params->view;
+                geo3d_ubo.view_inv     = inverse_4x4f32(params->view);
+                geo3d_ubo.global_light = v4f32(params->global_light.x, params->global_light.y, params->global_light.z, 0.0);
+                geo3d_ubo.show_grid    = params->show_grid;
+                MemoryCopy((U8 *)geo3d_ubo_buffer->buffer.mapped + geo3d_ubo_buffer_off, &geo3d_ubo, sizeof(R_Vulkan_UBO_Geo3d));
                 // bind uniform descriptor set
-                vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, geo3d_debug_pipelines[0].layout, 0, 1, &uniform_buffer->set.h, 1, &uniform_buffer_off);
+                vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        geo3d_debug_pipelines[0].layout, 0, 1,
+                                        &geo3d_ubo_buffer->set.h, 1, &geo3d_ubo_buffer_off);
 
-                // Setup viewport and scissor 
+                /////////////////////////////////////////////////////////////////////////
+                // unpack and upload sbo joint buffer
+
+                R_Vulkan_SBOBuffer *sbo_joints_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Joints];
+                // TODO(XXX): we should use stride here
+                U32 sbo_joints_buffer_off = geo3d_pass_idx*MAX_JOINTS_PER_PASS*sizeof(R_Vulkan_SBO_Joint);
+                U8 *joints_ptr = (U8 *)(sbo_joints_buffer->buffer.mapped+sbo_joints_buffer_off);
+                vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, geo3d_forward_pipelines[0].layout, 1, 1, &sbo_joints_buffer->set.h, 1, &sbo_joints_buffer_off);
+
+                /////////////////////////////////////////////////////////////////////////
+                // unpack inst buffer
+                R_Vulkan_Buffer *inst_buffer = &frame->inst_buffer_mesh[geo3d_pass_idx];
+
+                /////////////////////////////////////////////////////////////////////////
+                // walk through all mesh node to fill up buffers(sbo_joints, inst_buffer)
+
+                {
+                    U64 joint_idx = 0;
+                    U64 inst_idx = 0;
+                    for(R_BatchGroup3DMapNode *n = mesh_group_map->first; n != 0; n = n->insert_next)
+                    {
+                        R_BatchList *batches = &n->batches;
+                        R_BatchGroup3DParams *group_params = &n->params;
+                        U64 indice_count = group_params->indice_count;
+                        U64 line_width = group_params->line_width;
+
+                        // get & fill inst buffer
+                        for(R_BatchNode *batch = batches->first; batch != 0; batch = batch->next)
+                        {
+                            // Copy instance skinning data to sbo joints buffer
+                            U64 batch_inst_count = batch->v.byte_count / sizeof(R_Mesh3DInst);
+                            U8 *dst_ptr = inst_buffer->mapped + inst_idx*sizeof(R_Mesh3DInst);
+                            for(U64 i = 0; i < batch_inst_count; i++)
+                            {
+                                R_Mesh3DInst *inst = ((R_Mesh3DInst *)batch->v.v)+i;
+                                if(inst->joint_count > 0)
+                                {
+                                    U32 size = sizeof(Mat4x4F32) * inst->joint_count;
+                                    // TODO(XXX): we should consider stride here
+                                    inst->first_joint = joint_idx;
+                                    MemoryCopy(joints_ptr+joint_idx*sizeof(R_Vulkan_SBO_Joint), inst->joint_xforms, size);
+                                    joint_idx += inst->joint_count;
+                                }
+                            }
+                            inst_idx += batch_inst_count;
+
+                            // Copy to instance buffer
+                            MemoryCopy(dst_ptr, batch->v.v, batch->v.byte_count);
+                        }
+                    }
+                }
+
+                /////////////////////////////////////////////////////////////////////////
+                // viewport and scissor
+
                 VkViewport viewport = {0};
                 Vec2F32 viewport_dim = dim_2f32(params->viewport);
                 if(viewport_dim.x == 0 || viewport_dim.y == 0)
@@ -3841,110 +4012,199 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 VkRect2D scissor = {0};
                 scissor.offset = (VkOffset2D){0, 0};
                 scissor.extent = wnd->bag->stage_color_image.extent;
-                // scissor.offset = (VkOffset2D){viewport.x, viewport.y};
-                // scissor.extent = (VkExtent2D){viewport.width, viewport.height};
                 vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
 
+                /////////////////////////////////////////////////////////////////////////
                 // lighting
-                // TODO(XXX)
-                // if(!params->disable_light)
-                // {
+                // NOTE(k): we can only do compute pass outside of vulkan renderpass
 
-                // }
+                if(!params->light_disabled)
+                {
+                    /////////////////////////////////////////////////////////////////////
+                    // pre depth pass
+                    {
+                        R_Vulkan_RenderPass *renderpass = &renderpasses[R_Vulkan_RenderPassKind_Geo3dZPre];
+                        R_Vulkan_Pipeline *pipelines = renderpass->pipelines.z_pre;
+
+                        // start the renderpass
+                        VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+                        begin_info.renderPass = renderpass->h;
+                        begin_info.framebuffer = framebuffers[R_Vulkan_RenderPassKind_Geo3dZPre];
+                        begin_info.renderArea.offset = (VkOffset2D){0, 0};
+                        begin_info.renderArea.extent = wnd->bag->stage_color_image.extent;
+                        VkClearValue clear_colors[1];
+                        clear_colors[0].depthStencil = (VkClearDepthStencilValue){1.0f, 0};
+                        begin_info.clearValueCount = 1;
+                        begin_info.pClearValues = clear_colors;
+                        vkCmdBeginRenderPass(cmd_buf, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+                        U64 inst_idx = 0;
+                        for(R_BatchGroup3DMapNode *n = mesh_group_map->first; n!=0; n = n->insert_next) 
+                        {
+                            // Unpack group params
+                            R_BatchList *batches = &n->batches;
+                            R_BatchGroup3DParams *group_params = &n->params;
+                            R_Vulkan_Buffer *mesh_vertices = r_vulkan_buffer_from_handle(group_params->mesh_vertices);
+                            R_Vulkan_Buffer *mesh_indices = r_vulkan_buffer_from_handle(group_params->mesh_indices);
+                            U64 inst_count = batches->byte_count / batches->bytes_per_inst;
+                            U64 indice_count = group_params->indice_count;
+                            U64 line_width = group_params->line_width;
+
+                            // Unpack specific pipeline for topology and polygon mode
+                            R_GeoTopologyKind topology = group_params->mesh_geo_topology;
+                            R_GeoPolygonKind polygon = group_params->mesh_geo_polygon;
+
+                            R_Vulkan_Pipeline *pipeline = &renderpass->pipelines.z_pre[R_GeoPolygonKind_COUNT*topology + polygon];
+                            // Bind pipeline
+                            // The second parameter specifies if the pipeline object is a graphics or compute pipelinVK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BITe
+                            // We've now told Vulkan which operations to execute in the graphcis pipeline and which attachment to use in the fragment shader
+                            vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->h);
+
+                            vkCmdBindVertexBuffers(cmd_buf, 0, 1, &mesh_vertices->h, &(VkDeviceSize){group_params->vertex_buffer_offset});
+                            vkCmdBindIndexBuffer(cmd_buf, mesh_indices->h, (VkDeviceSize){group_params->indice_buffer_offset}, VK_INDEX_TYPE_UINT32);
+                            vkCmdBindVertexBuffers(cmd_buf, 1, 1, &inst_buffer->h, &(VkDeviceSize){inst_idx*sizeof(R_Mesh3DInst)});
+
+                            // set line width if device supports widelines feature
+                            if(r_vulkan_state->gpu.features.wideLines == VK_TRUE)
+                            {
+                                vkCmdSetLineWidth(cmd_buf, line_width);
+                            }
+
+                            // draw mesh
+                            vkCmdDrawIndexed(cmd_buf, indice_count, inst_count, 0, 0, 0);
+                            inst_idx += inst_count;
+                        }
+
+                        vkCmdEndRenderPass(cmd_buf);
+                    }
+
+                    /////////////////////////////////////////////////////////////////////
+                    // calculate grid size based on the size of viewport
+
+                    Vec2F32 viewport_dim = dim_2f32(params->viewport);
+                    if(viewport_dim.x == 0 || viewport_dim.y == 0)
+                    {
+                        viewport_dim.x  = wnd->bag->stage_color_image.extent.width;
+                        viewport_dim.y = wnd->bag->stage_color_image.extent.height;
+                    }
+                    viewport_dim.x = AlignPow2((U64)ceil_f32(viewport_dim.x), 4);
+                    viewport_dim.y = AlignPow2((U64)ceil_f32(viewport_dim.y), 4);
+
+                    F32 tile_size = 16;
+                    U32 tile_count = (viewport_dim.x*viewport_dim.y)/(tile_size*tile_size);
+                    Vec2F32 grid_size;
+                    grid_size.x = grid_size.y = sqrt_f32(tile_count);
+
+                    /////////////////////////////////////////////////////////////////////
+                    // unpack ubo buffer for tile frustum 
+
+                    R_Vulkan_UBOBuffer *ubo_buffer = &frame->ubo_buffers[R_Vulkan_UBOTypeKind_TileFrustum];
+                    U32 ubo_buffer_off = geo3d_pass_idx*ubo_buffer->stride;
+                    // upload buffer
+                    R_Vulkan_UBO_TileFrustum ubo = {0};
+                    ubo.proj_inv = inverse_4x4f32(params->projection);
+                    ubo.grid_size = grid_size;
+                    // bind ubo
+                    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                            geo3d_tile_frustum_pipeline->layout, 0, 1,
+                                            &ubo_buffer->set.h, 1, &ubo_buffer_off);
+
+                    /////////////////////////////////////////////////////////////////////
+                    // unpack sbo buffer for tile frustum
+                    // array of objects per geo3d pass
+
+                    R_Vulkan_SBOBuffer *sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_TileFrustum];
+                    U32 sbo_buffer_off = geo3d_pass_idx*MAX_TILE_FRUSTUMS_PER_PASS*sbo_buffer->stride;
+                    // bind sbo
+                    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                            geo3d_tile_frustum_pipeline->layout, 1, 1,
+                                            &sbo_buffer->set.h, 1, &sbo_buffer_off);
+
+                    // TODO(k): we want set this dynamicly based on the hardware we are running
+                    Vec2F32 thread_group_size = v2f32(8,8);
+                    vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, geo3d_tile_frustum_pipeline->h);
+                    vkCmdDispatch(cmd_buf, grid_size.x/thread_group_size.x, grid_size.y/thread_group_size.y, 1);
+
+                    // TODO(XXX): light culling
+                }
+
+                // Start geo3d renderpass
+                VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+                begin_info.renderPass        = renderpass->h;
+                begin_info.framebuffer       = framebuffers[R_Vulkan_RenderPassKind_Geo3d];
+                begin_info.renderArea.offset = (VkOffset2D){0, 0};
+                begin_info.renderArea.extent = wnd->bag->stage_color_image.extent;
+                
+                // Note that the order of clear_values should be identical to the order of your attachments
+                VkClearValue clear_colors[3];
+                // geo3d color image
+                clear_colors[0].color        = (VkClearColorValue){{ 0.0f, 0.0f, 0.0f, 0.0f }}; /* black with 100% opacity */
+                // The range of depths in the depth buffer is 0.0 to 1.0 in Vulkan, where 1.0 lies at the far view plane and 0.0 at the near view plane. The initial value at each point in the depth buffer should be the furthest possible depth, which is 1.0
+                // geo3d normal depth image
+                clear_colors[1].color        = (VkClearColorValue){0.f, 0.f, 0.f, 1.f};
+                // geo3d depth
+                clear_colors[2].depthStencil = (VkClearDepthStencilValue){1.0f, 0};
+
+                // Those two parameters define the clear values to use for VK_ATTACHMENT_LOAD_OP_CLEAR, which we used as load operations for the color attachment
+                begin_info.clearValueCount = 3;
+                begin_info.pClearValues    = clear_colors;
+                vkCmdBeginRenderPass(cmd_buf, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
                 if(params->show_grid)
                 {
                     // Bind geo3d debug pipeline
-                    vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, geo3d_debug_pipelines[R_GeoPolygonKind_COUNT * R_GeoTopologyKind_Triangles + R_GeoPolygonKind_Fill].h);
+                    vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                      geo3d_debug_pipelines[R_GeoPolygonKind_COUNT * R_GeoTopologyKind_Triangles + R_GeoPolygonKind_Fill].h);
 
                     // Draw mesh debug info (grid, gizmos e.g.)
                     vkCmdDraw(cmd_buf, 6, 1, 0, 0);
                 }
 
-                // Unpack and bind storage buffer (Currently only for joints)
-                R_Vulkan_StorageBuffer *storage_buffer = &frame->storage_buffers[R_Vulkan_SBOTypeKind_Joints];
-                U8 *storage_buffer_dst = (U8 *)(storage_buffer->buffer.mapped);
-                vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, geo3d_forward_pipelines[0].layout, 1, 1, &storage_buffer->set.h, 0, 0);
-
                 // geo3d forward pass
-                // for(U64 slot_idx = 0; slot_idx < mesh_group_map->slots_count; slot_idx++)
+                U64 inst_idx = 0;
+                for(R_BatchGroup3DMapNode *n = mesh_group_map->first; n!=0; n = n->insert_next) 
                 {
-                    for(R_BatchGroup3DMapNode *n = mesh_group_map->first; n!=0; n = n->insert_next) 
-                    // for(R_BatchGroup3DMapNode *n = mesh_group_map->slots[slot_idx]; n!=0; n = n->next) 
+                    // Unpack group params
+                    R_BatchList *batches = &n->batches;
+                    R_BatchGroup3DParams *group_params = &n->params;
+                    R_Vulkan_Buffer *mesh_vertices = r_vulkan_buffer_from_handle(group_params->mesh_vertices);
+                    R_Vulkan_Buffer *mesh_indices = r_vulkan_buffer_from_handle(group_params->mesh_indices);
+                    U64 inst_count = batches->byte_count / batches->bytes_per_inst;
+                    U64 indice_count = group_params->indice_count;
+                    U64 line_width = group_params->line_width;
+
+                    // Unpack specific pipeline for topology and polygon mode
+                    R_GeoTopologyKind topology = group_params->mesh_geo_topology;
+                    R_GeoPolygonKind polygon = group_params->mesh_geo_polygon;
+                    R_Vulkan_Pipeline *pipeline = &geo3d_forward_pipelines[R_GeoPolygonKind_COUNT*topology + polygon];
+
+                    // Bind texture
+                    R_Handle tex_handle = group_params->albedo_tex;
+                    if(r_handle_match(tex_handle, r_handle_zero()))
                     {
-                        // Unpack group params
-                        R_BatchList *batches = &n->batches;
-                        R_BatchGroup3DParams *group_params = &n->params;
-                        R_Vulkan_Buffer *mesh_vertices = r_vulkan_buffer_from_handle(group_params->mesh_vertices);
-                        R_Vulkan_Buffer *mesh_indices = r_vulkan_buffer_from_handle(group_params->mesh_indices);
-                        U64 inst_count = batches->byte_count / batches->bytes_per_inst;
-                        U64 indice_count = group_params->indice_count;
-                        U64 line_width = group_params->line_width;
-
-                        // Unpack specific pipeline for topology and polygon mode
-                        R_GeoTopologyKind topology = group_params->mesh_geo_topology;
-                        R_GeoPolygonKind polygon = group_params->mesh_geo_polygon;
-                        R_Vulkan_Pipeline *pipeline = &geo3d_forward_pipelines[R_GeoPolygonKind_COUNT*topology + polygon];
-
-                        // Get & fill instance buffer
-                        // TODO(k): Dynamic allocate instance buffer if needed
-                        U64 geo3d_inst_buffer_offset = geo3d_inst_idx * sizeof(R_Mesh3DInst);
-                        U8 *dst_ptr = frame->inst_buffer_mesh.mapped + geo3d_inst_buffer_offset;
-                        U64 off = 0;
-                        for(R_BatchNode *batch = batches->first; batch != 0; batch = batch->next)
-                        {
-                            // Copy instance skinning data to storage buffer
-                            U64 batch_inst_count = batch->v.byte_count / sizeof(R_Mesh3DInst);
-                            R_Mesh3DInst *inst = 0; 
-                            for(U64 inst_idx = 0; inst_idx < batch_inst_count; inst_idx++)
-                            {
-                                inst = ((R_Mesh3DInst *)batch->v.v)+inst_idx;
-                                if(inst->joint_count > 0)
-                                {
-                                    U32 size = sizeof(Mat4x4F32) * inst->joint_count;
-                                    // TODO(k): we may need to consider the stride here
-                                    inst->first_joint = geo3d_sbo_idx;
-                                    MemoryCopy(storage_buffer_dst+geo3d_sbo_idx*sizeof(R_Vulkan_SBO_Mesh), inst->joint_xforms, size);
-                                    geo3d_sbo_idx += inst->joint_count;
-                                }
-                            }
-
-                            // Copy to instance buffer
-                            MemoryCopy(dst_ptr+off, batch->v.v, batch->v.byte_count);
-                            off += batch->v.byte_count;
-                        }
-
-                        // Bind texture
-                        R_Handle tex_handle = group_params->albedo_tex;
-                        if(r_handle_match(tex_handle, r_handle_zero()))
-                        {
-                            tex_handle = r_vulkan_state->backup_texture;
-                        }
-                        R_Vulkan_Tex2D *texture = r_vulkan_tex2d_from_handle(tex_handle);
-
-                        vkCmdBindVertexBuffers(cmd_buf, 0, 1, &mesh_vertices->h, &(VkDeviceSize){group_params->vertex_buffer_offset});
-                        vkCmdBindIndexBuffer(cmd_buf, mesh_indices->h, (VkDeviceSize){group_params->indice_buffer_offset}, VK_INDEX_TYPE_UINT32);
-                        vkCmdBindVertexBuffers(cmd_buf, 1, 1, &frame->inst_buffer_mesh.h, &(VkDeviceSize){geo3d_inst_buffer_offset});
-
-                        // Bind geo3d forward pipeline
-                        // The second parameter specifies if the pipeline object is a graphics or compute pipelinVK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BITe
-                        // We've now told Vulkan which operations to execute in the graphcis pipeline and which attachment to use in the fragment shader
-                        vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->h);
-                        vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->layout, 2, 1, &texture->desc_set.h, 0, NULL);
-
-                        // set line width if device supports widelines feature
-                        if(r_vulkan_state->gpu.features.wideLines == VK_TRUE)
-                        {
-                            vkCmdSetLineWidth(cmd_buf, line_width);
-                        }
-
-                        // Draw mesh
-                        Assert(mesh_indices->size > 0);
-                        vkCmdDrawIndexed(cmd_buf, indice_count, inst_count, 0, 0, 0);
-
-                        // increament counter/idx
-                        geo3d_inst_idx += inst_count;
+                        tex_handle = r_vulkan_state->backup_texture;
                     }
+                    R_Vulkan_Tex2D *texture = r_vulkan_tex2d_from_handle(tex_handle);
+
+                    vkCmdBindVertexBuffers(cmd_buf, 0, 1, &mesh_vertices->h, &(VkDeviceSize){group_params->vertex_buffer_offset});
+                    vkCmdBindIndexBuffer(cmd_buf, mesh_indices->h, (VkDeviceSize){group_params->indice_buffer_offset}, VK_INDEX_TYPE_UINT32);
+                    vkCmdBindVertexBuffers(cmd_buf, 1, 1, &inst_buffer->h, &(VkDeviceSize){inst_idx*sizeof(R_Mesh3DInst)});
+
+                    // Bind pipeline
+                    // The second parameter specifies if the pipeline object is a graphics or compute pipelinVK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BITe
+                    // We've now told Vulkan which operations to execute in the graphcis pipeline and which attachment to use in the fragment shader
+                    vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->h);
+                    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->layout, 2, 1, &texture->desc_set.h, 0, NULL);
+
+                    // set line width if device supports widelines feature
+                    if(r_vulkan_state->gpu.features.wideLines == VK_TRUE)
+                    {
+                        vkCmdSetLineWidth(cmd_buf, line_width);
+                    }
+
+                    // draw mesh
+                    vkCmdDrawIndexed(cmd_buf, indice_count, inst_count, 0, 0, 0);
+                    inst_idx += inst_count;
                 }
                 vkCmdEndRenderPass(cmd_buf);
 
@@ -3990,25 +4250,26 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
     }
 }
 
-internal R_Vulkan_UniformBuffer
-r_vulkan_uniform_buffer_alloc(R_Vulkan_UBOTypeKind kind, U64 unit_count)
+internal R_Vulkan_UBOBuffer
+r_vulkan_ubo_buffer_alloc(R_Vulkan_UBOTypeKind kind, U64 unit_count)
 {
-    R_Vulkan_UniformBuffer uniform_buffer = {0};
+    R_Vulkan_UBOBuffer ubo_buffer = {0};
 
     U64 stride = 0;
 
     switch(kind)
     {
         case R_Vulkan_UBOTypeKind_Rect:        {stride = AlignPow2(sizeof(R_Vulkan_UBO_Rect), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
-        case R_Vulkan_UBOTypeKind_Geo3d:       {stride = AlignPow2(sizeof(R_Vulkan_UBO_Mesh), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
+        case R_Vulkan_UBOTypeKind_Geo3d:       {stride = AlignPow2(sizeof(R_Vulkan_UBO_Geo3d), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
         case R_Vulkan_UBOTypeKind_TileFrustum: {stride = AlignPow2(sizeof(R_Vulkan_UBO_TileFrustum), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
         default:                               {InvalidPath;}break;
     }
     U64 buf_size = stride * unit_count;
 
-    uniform_buffer.unit_count  = unit_count;
-    uniform_buffer.stride      = stride;
-    uniform_buffer.buffer.size = buf_size;
+    ubo_buffer.unit_count  = unit_count;
+    ubo_buffer.stride      = stride;
+    ubo_buffer.buffer.size = buf_size;
+    ubo_buffer.buffer.cap  = buf_size;
 
     VkBufferCreateInfo buf_ci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     // Specifies the size of the buffer in bytes
@@ -4028,19 +4289,19 @@ r_vulkan_uniform_buffer_alloc(R_Vulkan_UBOTypeKind kind, U64 unit_count)
     // memory or that require efficient streaming of data in and out of GPU memory
     buf_ci.flags = 0;
 
-    VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &buf_ci, NULL, &uniform_buffer.buffer.h));
+    VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &buf_ci, NULL, &ubo_buffer.buffer.h));
     VkMemoryRequirements mem_requirements;
-    vkGetBufferMemoryRequirements(r_vulkan_state->device.h, uniform_buffer.buffer.h, &mem_requirements);
+    vkGetBufferMemoryRequirements(r_vulkan_state->device.h, ubo_buffer.buffer.h, &mem_requirements);
 
     VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
     VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     alloc_info.allocationSize  = mem_requirements.size;
     alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
 
-    VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &uniform_buffer.buffer.memory));
-    VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, uniform_buffer.buffer.h, uniform_buffer.buffer.memory, 0));
-    Assert(uniform_buffer.buffer.size != 0);
-    VK_Assert(vkMapMemory(r_vulkan_state->device.h, uniform_buffer.buffer.memory, 0, uniform_buffer.buffer.size, 0, &uniform_buffer.buffer.mapped));
+    VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &ubo_buffer.buffer.memory));
+    VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, ubo_buffer.buffer.h, ubo_buffer.buffer.memory, 0));
+    Assert(ubo_buffer.buffer.size != 0);
+    VK_Assert(vkMapMemory(r_vulkan_state->device.h, ubo_buffer.buffer.memory, 0, ubo_buffer.buffer.size, 0, &ubo_buffer.buffer.mapped));
 
     // Create descriptor set
     R_Vulkan_DescriptorSetKind ds_type = 0;
@@ -4052,19 +4313,19 @@ r_vulkan_uniform_buffer_alloc(R_Vulkan_UBOTypeKind kind, U64 unit_count)
         default:                               {InvalidPath;}break;
     }
 
-    r_vulkan_descriptor_set_alloc(ds_type, 1, 3, &uniform_buffer.buffer.h, NULL, NULL, &uniform_buffer.set);
-    return uniform_buffer;
+    r_vulkan_descriptor_set_alloc(ds_type, 1, 3, &ubo_buffer.buffer.h, NULL, NULL, &ubo_buffer.set);
+    return ubo_buffer;
 }
 
-internal R_Vulkan_StorageBuffer
-r_vulkan_storage_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
+internal R_Vulkan_SBOBuffer
+r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
 {
-    R_Vulkan_StorageBuffer storage_buffer = {0};
+    R_Vulkan_SBOBuffer ret = {0};
     U64 stride = 0;
 
     switch(kind)
     {
-        case R_Vulkan_SBOTypeKind_Joints:      {stride = AlignPow2(sizeof(R_Vulkan_SBO_Mesh), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);}break;
+        case R_Vulkan_SBOTypeKind_Joints:      {stride = AlignPow2(sizeof(R_Vulkan_SBO_Joint), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);}break;
         case R_Vulkan_SBOTypeKind_TileFrustum: {stride = AlignPow2(sizeof(R_Vulkan_SBO_TileFrustum), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);}break;
         case R_Vulkan_SBOTypeKind_Lights:      {stride = AlignPow2(sizeof(R_Vulkan_SBO_Light), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);}break;
         default:                               {InvalidPath;}break;
@@ -4072,9 +4333,10 @@ r_vulkan_storage_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
 
     U64 buf_size = stride * unit_count;
 
-    storage_buffer.unit_count  = unit_count;
-    storage_buffer.stride      = stride;
-    storage_buffer.buffer.size = buf_size;
+    ret.unit_count  = unit_count;
+    ret.stride      = stride;
+    ret.buffer.size = buf_size;
+    ret.buffer.cap  = buf_size;
 
     VkBufferCreateInfo buf_ci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     buf_ci.size = buf_size;
@@ -4089,19 +4351,19 @@ r_vulkan_storage_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
     // memory or that require efficient streaming of data in and out of GPU memory
     buf_ci.flags = 0;
 
-    VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &buf_ci, NULL, &storage_buffer.buffer.h));
+    VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &buf_ci, NULL, &ret.buffer.h));
     VkMemoryRequirements mem_requirements;
-    vkGetBufferMemoryRequirements(r_vulkan_state->device.h, storage_buffer.buffer.h, &mem_requirements);
+    vkGetBufferMemoryRequirements(r_vulkan_state->device.h, ret.buffer.h, &mem_requirements);
 
     VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
     VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     alloc_info.allocationSize  = mem_requirements.size;
     alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
 
-    VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &storage_buffer.buffer.memory));
-    VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, storage_buffer.buffer.h, storage_buffer.buffer.memory, 0));
-    Assert(storage_buffer.buffer.size != 0);
-    VK_Assert(vkMapMemory(r_vulkan_state->device.h, storage_buffer.buffer.memory, 0, storage_buffer.buffer.size, 0, &storage_buffer.buffer.mapped));
+    VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &ret.buffer.memory));
+    VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, ret.buffer.h, ret.buffer.memory, 0));
+    Assert(ret.buffer.size != 0);
+    VK_Assert(vkMapMemory(r_vulkan_state->device.h, ret.buffer.memory, 0, ret.buffer.size, 0, &ret.buffer.mapped));
 
     // Create descriptor set
     R_Vulkan_DescriptorSetKind ds_type = 0;
@@ -4113,8 +4375,8 @@ r_vulkan_storage_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
         default:                               {InvalidPath;}break;
     }
 
-    r_vulkan_descriptor_set_alloc(ds_type, 1, 3, &storage_buffer.buffer.h, NULL, NULL, &storage_buffer.set);
-    return storage_buffer;
+    r_vulkan_descriptor_set_alloc(ds_type, 1, 3, &ret.buffer.h, NULL, NULL, &ret.set);
+    return ret;
 }
 
 // TODO(k): ugly, split into alloc and update
@@ -4125,7 +4387,6 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                               R_Vulkan_DescriptorSet *sets)
 {
     R_Vulkan_DescriptorSetLayout set_layout = r_vulkan_state->set_layouts[kind];
-    Assert(set_count <= cap);
 
     U64 remaining = set_count;
     R_Vulkan_DescriptorSetPool *pool;
@@ -4234,7 +4495,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
                     buffer_info->buffer = buffers[i];
                     buffer_info->offset = 0;
-                    buffer_info->range  = sizeof(R_Vulkan_UBO_Mesh);
+                    buffer_info->range  = sizeof(R_Vulkan_UBO_Geo3d);
 
                     writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[set_idx].dstSet           = sets[i].h;
@@ -4252,7 +4513,8 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     buffer_info->buffer = buffers[i];
                     buffer_info->offset = 0;
                     // NOTE: we want to access it as an array of R_Vulkan_Storage_Mesh 
-                    buffer_info->range  = VK_WHOLE_SIZE;
+                    // TODO(XXX): we should use stride here
+                    buffer_info->range  = MAX_JOINTS_PER_PASS*sizeof(R_Vulkan_SBO_Joint);
 
                     writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[set_idx].dstSet           = sets[i].h;
@@ -4304,7 +4566,8 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
                     buffer_info->buffer = buffers[i];
                     buffer_info->offset = 0;
-                    buffer_info->range  = VK_WHOLE_SIZE;
+                    // TODO(XXX): we should use stride here
+                    buffer_info->range  = MAX_TILE_FRUSTUMS_PER_PASS*sizeof(R_Vulkan_SBO_TileFrustum);
 
                     writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[set_idx].dstSet           = sets[i].h;
@@ -4322,7 +4585,8 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     buffer_info->buffer = buffers[i];
                     buffer_info->offset = 0;
                     // NOTE: we want to access it as an array of R_Vulkan_SBO_Lights
-                    buffer_info->range  = VK_WHOLE_SIZE;
+                    // TODO(XXX): we should use stride here
+                    buffer_info->range  = MAX_LIGHTS_PER_PASS*sizeof(R_Vulkan_SBO_Light);
 
                     writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[set_idx].dstSet           = sets[i].h;
@@ -4490,6 +4754,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
     R_Vulkan_Image *geo3d_normal_depth_image      = &bag->geo3d_normal_depth_image;
     R_Vulkan_DescriptorSet *geo3d_normal_depth_ds = &bag->geo3d_normal_depth_ds;
     R_Vulkan_Image *geo3d_depth_image             = &bag->geo3d_depth_image;
+    R_Vulkan_Image *geo3d_pre_depth_image         = &bag->geo3d_pre_depth_image;
 
     // Create stage color image and its sampler descriptor set
     {
@@ -4804,6 +5069,54 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         };
         VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &geo3d_depth_image->view));
     }
+
+    // Create geo3d_pre_depth_image (for z pre pass)
+    {
+        geo3d_pre_depth_image->format        = r_vulkan_state->gpu.depth_image_format;
+        geo3d_pre_depth_image->extent.width  = swapchain->extent.width;
+        geo3d_pre_depth_image->extent.height = swapchain->extent.height;
+
+        VkImageCreateInfo create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+        create_info.imageType     = VK_IMAGE_TYPE_2D;
+        create_info.extent.width  = geo3d_pre_depth_image->extent.width;
+        create_info.extent.height = geo3d_pre_depth_image->extent.height;
+        create_info.extent.depth  = 1;
+        create_info.mipLevels     = 1;
+        create_info.arrayLayers   = 1;
+        create_info.format        = r_vulkan_state->gpu.depth_image_format;
+        create_info.tiling        = VK_IMAGE_TILING_OPTIMAL;
+        create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        create_info.usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_IMAGE_USAGE_SAMPLED_BIT;
+        create_info.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+        create_info.samples       = VK_SAMPLE_COUNT_1_BIT;
+        create_info.flags         = 0; // Optional
+        VK_Assert(vkCreateImage(r_vulkan_state->device.h, &create_info, NULL, &geo3d_pre_depth_image->h));
+
+        VkMemoryRequirements mem_requirements;
+        vkGetImageMemoryRequirements(r_vulkan_state->device.h, geo3d_pre_depth_image->h, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &geo3d_pre_depth_image->memory));
+        VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, geo3d_pre_depth_image->h, geo3d_pre_depth_image->memory, 0));
+
+        VkImageViewCreateInfo image_view_create_info =
+        {
+            .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image                           = geo3d_pre_depth_image->h,
+            .viewType                        = VK_IMAGE_VIEW_TYPE_2D,
+            .format                          = geo3d_pre_depth_image->format,
+            .subresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
+            .subresourceRange.baseMipLevel   = 0,
+            .subresourceRange.levelCount     = 1,
+            .subresourceRange.baseArrayLayer = 0,
+            .subresourceRange.layerCount     = 1,
+        };
+        VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &geo3d_pre_depth_image->view));
+    }
     return bag;
 }
 
@@ -4830,6 +5143,7 @@ r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
         R_Vulkan_Image *geo3d_color_image        = &bag->geo3d_color_image;
         R_Vulkan_Image *geo3d_normal_depth_image = &bag->geo3d_normal_depth_image;
         R_Vulkan_Image *geo3d_depth_image        = &bag->geo3d_depth_image;
+        R_Vulkan_Image *geo3d_pre_depth_image   = &bag->geo3d_pre_depth_image;
         R_Vulkan_RenderPass *renderpass          = &grp->passes[kind];
 
         switch(kind)
@@ -4852,6 +5166,23 @@ r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
                     .layers          = 1,
                 };
 
+                VK_Assert(vkCreateFramebuffer(r_vulkan_state->device.h, &frame_buffer_create_info, NULL, framebuffer));
+            }break;
+            case R_Vulkan_RenderPassKind_Geo3dZPre:
+            {
+                VkImageView attachments[] =
+                { 
+                    geo3d_pre_depth_image->view,
+                };
+                VkFramebufferCreateInfo frame_buffer_create_info = {
+                    .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+                    .renderPass      = renderpass->h,
+                    .attachmentCount = 1,
+                    .pAttachments    = attachments,
+                    .width           = swapchain->extent.width,
+                    .height          = swapchain->extent.height,
+                    .layers          = 1,
+                };
                 VK_Assert(vkCreateFramebuffer(r_vulkan_state->device.h, &frame_buffer_create_info, NULL, framebuffer));
             }break;
             case R_Vulkan_RenderPassKind_Geo3d:
