@@ -714,9 +714,9 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         create_info.pBindings    = bindings;
         VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
     }
-    // R_Vulkan_DescriptorSetKind_SBO_TileFrustum
+    // R_Vulkan_DescriptorSetKind_SBO_Tile
     {
-        R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_TileFrustum];
+        R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Tiles];
         VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
         set_layout->bindings = bindings;
         set_layout->binding_count = 1;
@@ -733,7 +733,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         create_info.pBindings    = bindings;
         VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
     }
-    // R_Vulkan_DescriptorSetKind_SBO_LightCulling
+    // R_Vulkan_DescriptorSetKind_SBO_Lights
     {
         R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Lights];
         VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
@@ -743,7 +743,45 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         bindings[0].binding            = 0;
         bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
         bindings[0].descriptorCount    = 1;
-        bindings[0].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
+        bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT|VK_SHADER_STAGE_COMPUTE_BIT;
+        bindings[0].pImmutableSamplers = NULL;
+
+        VkDescriptorSetLayoutCreateInfo create_info = {0};
+        create_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        create_info.bindingCount = 1;
+        create_info.pBindings    = bindings;
+        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
+    }
+    // R_Vulkan_DescriptorSetKind_SBO_LightIndices
+    {
+        R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_LightIndices];
+        VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+        set_layout->bindings = bindings;
+        set_layout->binding_count = 1;
+
+        bindings[0].binding            = 0;
+        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+        bindings[0].descriptorCount    = 1;
+        bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT|VK_SHADER_STAGE_COMPUTE_BIT;
+        bindings[0].pImmutableSamplers = NULL;
+
+        VkDescriptorSetLayoutCreateInfo create_info = {0};
+        create_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        create_info.bindingCount = 1;
+        create_info.pBindings    = bindings;
+        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
+    }
+    // R_Vulkan_DescriptorSetKind_SBO_TileLights
+    {
+        R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_TileLights];
+        VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+        set_layout->bindings = bindings;
+        set_layout->binding_count = 1;
+
+        bindings[0].binding            = 0;
+        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+        bindings[0].descriptorCount    = 1;
+        bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT|VK_SHADER_STAGE_COMPUTE_BIT;
         bindings[0].pImmutableSamplers = NULL;
 
         VkDescriptorSetLayoutCreateInfo create_info = {0};
@@ -831,30 +869,33 @@ r_window_equip(OS_Handle wnd_handle)
             window->frames[i].rend_comp_sem = r_vulkan_semaphore(r_vulkan_state->device.h);
             window->frames[i].inflt_fence   = r_vulkan_fence(r_vulkan_state->device.h);
 
-            // Create uniform buffers
+            // Create all uniform buffers
             for(U64 kind = 0; kind < R_Vulkan_UBOTypeKind_COUNT; kind++)
             {
                 U64 unit_count;
                 switch(kind)
                 {
-                    default:                               {InvalidPath;}break;
-                    case R_Vulkan_UBOTypeKind_Rect:        {unit_count=MAX_RECT_PASS*MAX_RECT_GROUPS;}break;
-                    case R_Vulkan_UBOTypeKind_Geo3d:       {unit_count=MAX_GEO3D_PASS;}break;
-                    case R_Vulkan_UBOTypeKind_TileFrustum: {unit_count=MAX_GEO3D_PASS;}break;
+                    default:                                {InvalidPath;}break;
+                    case R_Vulkan_UBOTypeKind_Rect:         {unit_count = MAX_RECT_PASS*MAX_RECT_GROUPS;}break;
+                    case R_Vulkan_UBOTypeKind_Geo3d:        {unit_count = MAX_GEO3D_PASS;}break;
+                    case R_Vulkan_UBOTypeKind_TileFrustum:  {unit_count = MAX_GEO3D_PASS;}break;
+                    case R_Vulkan_UBOTypeKind_LightCulling: {unit_count = MAX_GEO3D_PASS;}break;
                 }
                 window->frames[i].ubo_buffers[kind] = r_vulkan_ubo_buffer_alloc(kind, unit_count);
             }
 
-            // Create storage buffers
+            // Create all storage buffers
             for(U64 kind = 0; kind < R_Vulkan_SBOTypeKind_COUNT; kind++)
             {
                 U64 unit_count;
                 switch(kind)
                 {
-                    default:                               {InvalidPath;}break;
-                    case R_Vulkan_SBOTypeKind_Joints:      {unit_count = MAX_GEO3D_PASS*MAX_JOINTS_PER_PASS;}break;
-                    case R_Vulkan_SBOTypeKind_Lights:      {unit_count = MAX_GEO3D_PASS*MAX_LIGHTS_PER_PASS;}break;
-                    case R_Vulkan_SBOTypeKind_TileFrustum: {unit_count = MAX_GEO3D_PASS*MAX_TILE_FRUSTUMS_PER_PASS;}break;
+                    default:                                {InvalidPath;}break;
+                    case R_Vulkan_SBOTypeKind_Joints:       {unit_count = MAX_GEO3D_PASS;}break;
+                    case R_Vulkan_SBOTypeKind_Lights:       {unit_count = MAX_GEO3D_PASS;}break;
+                    case R_Vulkan_SBOTypeKind_Tiles:        {unit_count = MAX_GEO3D_PASS;}break;
+                    case R_Vulkan_SBOTypeKind_LightIndices: {unit_count = MAX_GEO3D_PASS;}break;
+                    case R_Vulkan_SBOTypeKind_TileLights:   {unit_count = MAX_GEO3D_PASS;}break;
                 }
                 window->frames[i].sbo_buffers[kind] = r_vulkan_sbo_buffer_alloc(kind, unit_count);
             }
@@ -3387,13 +3428,18 @@ r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind)
             set_layout_count = 2;
             set_layouts = push_array(scratch.arena, VkDescriptorSetLayout, set_layout_count);
             set_layouts[0] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_TileFrustum].h;
-            set_layouts[1] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_TileFrustum].h;
+            set_layouts[1] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Tiles].h;
         }break;
         case(R_Vulkan_PipelineKind_LightCulling):
         {
-            set_layout_count = 1;
+            set_layout_count = 6;
             set_layouts = push_array(scratch.arena, VkDescriptorSetLayout, set_layout_count);
-            set_layouts[0] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Lights].h;
+            set_layouts[0] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_LightCulling].h;
+            set_layouts[1] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Lights].h;
+            set_layouts[2] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D].h;
+            set_layouts[3] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Tiles].h;
+            set_layouts[4] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_LightIndices].h;
+            set_layouts[5] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_TileLights].h;
         }break;
         default: {InvalidPath;}break;
     }
@@ -3914,6 +3960,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 R_Vulkan_Pipeline *geo3d_debug_pipelines = renderpass->pipelines.geo3d.debug;
                 R_Vulkan_Pipeline *geo3d_forward_pipelines = renderpass->pipelines.geo3d.forward;
                 R_Vulkan_Pipeline *geo3d_tile_frustum_pipeline = &renderpass->pipelines.geo3d.tile_frustum;
+                R_Vulkan_Pipeline *geo3d_light_culling_pipeline = &renderpass->pipelines.geo3d.light_culling;
 
                 /////////////////////////////////////////////////////////////////////////
                 // unpack and upload geo3d ubo buffer
@@ -4113,19 +4160,27 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     // unpack sbo buffer for tile frustum
                     // array of objects per geo3d pass
 
-                    R_Vulkan_SBOBuffer *sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_TileFrustum];
-                    U32 sbo_buffer_off = geo3d_pass_idx*MAX_TILE_FRUSTUMS_PER_PASS*sbo_buffer->stride;
+                    R_Vulkan_SBOBuffer *sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Tiles];
+                    U32 sbo_buffer_off = geo3d_pass_idx*MAX_TILES_PER_PASS*sbo_buffer->stride;
                     // bind sbo
                     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
                                             geo3d_tile_frustum_pipeline->layout, 1, 1,
                                             &sbo_buffer->set.h, 1, &sbo_buffer_off);
+
+                    /////////////////////////////////////////////////////////////////////
+                    // tile frustum compute pass
 
                     // TODO(k): we want set this dynamicly based on the hardware we are running
                     Vec2F32 thread_group_size = v2f32(8,8);
                     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, geo3d_tile_frustum_pipeline->h);
                     vkCmdDispatch(cmd_buf, grid_size.x/thread_group_size.x, grid_size.y/thread_group_size.y, 1);
 
+                    /////////////////////////////////////////////////////////////////////
+                    // light culling compute pass
                     // TODO(XXX): light culling
+
+                    vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, geo3d_light_culling_pipeline->h);
+                    vkCmdDispatch(cmd_buf, grid_size.x/thread_group_size.x, grid_size.y/thread_group_size.y, 1);
                 }
 
                 // Start geo3d renderpass
@@ -4256,14 +4311,28 @@ r_vulkan_ubo_buffer_alloc(R_Vulkan_UBOTypeKind kind, U64 unit_count)
     R_Vulkan_UBOBuffer ubo_buffer = {0};
 
     U64 stride = 0;
-
     switch(kind)
     {
-        case R_Vulkan_UBOTypeKind_Rect:        {stride = AlignPow2(sizeof(R_Vulkan_UBO_Rect), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
-        case R_Vulkan_UBOTypeKind_Geo3d:       {stride = AlignPow2(sizeof(R_Vulkan_UBO_Geo3d), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
-        case R_Vulkan_UBOTypeKind_TileFrustum: {stride = AlignPow2(sizeof(R_Vulkan_UBO_TileFrustum), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);}break;
-        default:                               {InvalidPath;}break;
+        case R_Vulkan_UBOTypeKind_Rect:
+        {
+            Assert(AlignPow2(sizeof(R_Vulkan_UBO_Rect), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment) == sizeof(R_Vulkan_UBO_Rect));
+            stride = ;
+        }break;
+        case R_Vulkan_UBOTypeKind_Geo3d:
+        {
+            stride = AlignPow2(sizeof(R_Vulkan_UBO_Geo3d), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);
+        }break;
+        case R_Vulkan_UBOTypeKind_TileFrustum:
+        {
+            stride = AlignPow2(sizeof(R_Vulkan_UBO_TileFrustum), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);
+        }break;
+        case R_Vulkan_UBOTypeKind_LightCulling:
+        {
+            stride = AlignPow2(sizeof(R_Vulkan_UBO_LightCulling), r_vulkan_state->gpu.properties.limits.minUniformBufferOffsetAlignment);
+        }break;
+        default:{InvalidPath;}break;
     }
+
     U64 buf_size = stride * unit_count;
 
     ubo_buffer.unit_count  = unit_count;
@@ -4307,10 +4376,11 @@ r_vulkan_ubo_buffer_alloc(R_Vulkan_UBOTypeKind kind, U64 unit_count)
     R_Vulkan_DescriptorSetKind ds_type = 0;
     switch(kind)
     {
-        case R_Vulkan_UBOTypeKind_Rect:        {ds_type = R_Vulkan_DescriptorSetKind_UBO_Rect;}break;
-        case R_Vulkan_UBOTypeKind_Geo3d:       {ds_type = R_Vulkan_DescriptorSetKind_UBO_Geo3d;}break;
-        case R_Vulkan_UBOTypeKind_TileFrustum: {ds_type = R_Vulkan_DescriptorSetKind_UBO_TileFrustum;}break;
-        default:                               {InvalidPath;}break;
+        case R_Vulkan_UBOTypeKind_Rect:         {ds_type = R_Vulkan_DescriptorSetKind_UBO_Rect;}break;
+        case R_Vulkan_UBOTypeKind_Geo3d:        {ds_type = R_Vulkan_DescriptorSetKind_UBO_Geo3d;}break;
+        case R_Vulkan_UBOTypeKind_TileFrustum:  {ds_type = R_Vulkan_DescriptorSetKind_UBO_TileFrustum;}break;
+        case R_Vulkan_UBOTypeKind_LightCulling: {ds_type = R_Vulkan_DescriptorSetKind_UBO_LightCulling;}break;
+        default:                                {InvalidPath;}break;
     }
 
     r_vulkan_descriptor_set_alloc(ds_type, 1, 3, &ubo_buffer.buffer.h, NULL, NULL, &ubo_buffer.set);
@@ -4323,15 +4393,38 @@ r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
     R_Vulkan_SBOBuffer ret = {0};
     U64 stride = 0;
 
+    // NOTE(k): we are expecting stride is equal to the size of the struct
     switch(kind)
     {
-        case R_Vulkan_SBOTypeKind_Joints:      {stride = AlignPow2(sizeof(R_Vulkan_SBO_Joint), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);}break;
-        case R_Vulkan_SBOTypeKind_TileFrustum: {stride = AlignPow2(sizeof(R_Vulkan_SBO_TileFrustum), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);}break;
-        case R_Vulkan_SBOTypeKind_Lights:      {stride = AlignPow2(sizeof(R_Vulkan_SBO_Light), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);}break;
-        default:                               {InvalidPath;}break;
+        case R_Vulkan_SBOTypeKind_Joints:
+        {
+            Assert(AlignPow2(sizeof(R_Vulkan_SBO_Joint), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment) == sizeof(R_Vulkan_SBO_Joint));
+            stride = sizeof(R_Vulkan_SBO_Joint) * MAX_JOINTS_PER_PASS;
+        }break;
+        case R_Vulkan_SBOTypeKind_Tiles:
+        {
+            Assert(AlignPow2(sizeof(R_Vulkan_SBO_Tile), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment) == sizeof(R_Vulkan_SBO_Tile));
+            stride = sizeof(R_Vulkan_SBO_Joint) * MAX_TILES_PER_PASS;
+        }break;
+        case R_Vulkan_SBOTypeKind_Lights:
+        {
+            Assert(AlignPow2(sizeof(R_Vulkan_SBO_Light), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment) == sizeof(R_Vulkan_SBO_Light));
+            stride = sizeof(R_Vulkan_SBO_Light) * MAX_LIGHTS_PER_PASS;
+        }break;
+        case R_Vulkan_SBOTypeKind_LightIndices:
+        {
+            Assert(AlignPow2(sizeof(R_Vulkan_SBO_LightIndice), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment) == sizeof(R_Vulkan_SBO_LightIndice));
+            stride = sizeof(R_Vulkan_SBO_LightIndice) * MAX_LIGHTS_PER_TILE * MAX_TILES_PER_PASS;
+        }break;
+        case R_Vulkan_SBOTypeKind_TileLights:
+        {
+            Assert(AlignPow2(sizeof(R_Vulkan_SBO_TileLights), r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment) == sizeof(R_Vulkan_SBO_TileLights));
+            stride = sizeof(R_Vulkan_SBO_TileLights) * MAX_TILES_PER_PASS;
+        }break;
+        default:{InvalidPath;}break;
     }
 
-    U64 buf_size = stride * unit_count;
+    U64 buf_size = stride*unit_count;
 
     ret.unit_count  = unit_count;
     ret.stride      = stride;
@@ -4369,10 +4462,12 @@ r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
     R_Vulkan_DescriptorSetKind ds_type = 0;
     switch(kind)
     {
-        case R_Vulkan_SBOTypeKind_Joints:      {ds_type = R_Vulkan_DescriptorSetKind_SBO_Joints;}break;
-        case R_Vulkan_SBOTypeKind_TileFrustum: {ds_type = R_Vulkan_DescriptorSetKind_SBO_TileFrustum;}break;
-        case R_Vulkan_SBOTypeKind_Lights:      {ds_type = R_Vulkan_DescriptorSetKind_SBO_Lights;}break;
-        default:                               {InvalidPath;}break;
+        case R_Vulkan_SBOTypeKind_Joints:       {ds_type = R_Vulkan_DescriptorSetKind_SBO_Joints;}break;
+        case R_Vulkan_SBOTypeKind_Tiles:        {ds_type = R_Vulkan_DescriptorSetKind_SBO_Tiles;}break;
+        case R_Vulkan_SBOTypeKind_Lights:       {ds_type = R_Vulkan_DescriptorSetKind_SBO_Lights;}break;
+        case R_Vulkan_SBOTypeKind_LightIndices: {ds_type = R_Vulkan_DescriptorSetKind_SBO_LightIndices;}break;
+        case R_Vulkan_SBOTypeKind_TileLights:   {ds_type = R_Vulkan_DescriptorSetKind_SBO_TileLights;}break;
+        default:                                {InvalidPath;}break;
     }
 
     r_vulkan_descriptor_set_alloc(ds_type, 1, 3, &ret.buffer.h, NULL, NULL, &ret.set);
@@ -4465,6 +4560,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         for(U64 j = 0; j < set_layout.binding_count; j++)
         {
             U64 set_idx = i + j;
+            // TODO(XXX): revisit is needed
             switch(kind)
             {
                 case R_Vulkan_DescriptorSetKind_UBO_Rect:
@@ -4561,13 +4657,12 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     writes[set_idx].pTexelBufferView = NULL; // Optional
 
                 }break;
-                case R_Vulkan_DescriptorSetKind_SBO_TileFrustum:
+                case R_Vulkan_DescriptorSetKind_SBO_Tiles:
                 {
                     VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
                     buffer_info->buffer = buffers[i];
                     buffer_info->offset = 0;
-                    // TODO(XXX): we should use stride here
-                    buffer_info->range  = MAX_TILE_FRUSTUMS_PER_PASS*sizeof(R_Vulkan_SBO_TileFrustum);
+                    buffer_info->range  = MAX_TILES_PER_PASS*sizeof(R_Vulkan_SBO_Tile);
 
                     writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[set_idx].dstSet           = sets[i].h;
@@ -4587,6 +4682,41 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     // NOTE: we want to access it as an array of R_Vulkan_SBO_Lights
                     // TODO(XXX): we should use stride here
                     buffer_info->range  = MAX_LIGHTS_PER_PASS*sizeof(R_Vulkan_SBO_Light);
+
+                    writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    writes[set_idx].dstSet           = sets[i].h;
+                    writes[set_idx].dstBinding       = j;
+                    writes[set_idx].dstArrayElement  = 0; // start updating from the first element
+                    writes[set_idx].descriptorCount  = set_layout.bindings[j].descriptorCount;
+                    writes[set_idx].descriptorType   = set_layout.bindings[j].descriptorType;
+                    writes[set_idx].pBufferInfo      = buffer_info;
+                    writes[set_idx].pImageInfo       = NULL;
+                    writes[set_idx].pTexelBufferView = NULL;
+                }break;
+                case R_Vulkan_DescriptorSetKind_SBO_LightIndices:
+                {
+                    VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+                    buffer_info->buffer = buffers[i];
+                    buffer_info->offset = 0;
+                    // NOTE: we want to access it as an array of U32
+                    buffer_info->range  = MAX_LIGHTS_PER_TILE*MAX_TILES_PER_PASS*sizeof(R_Vulkan_SBO_LightIndice);
+
+                    writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    writes[set_idx].dstSet           = sets[i].h;
+                    writes[set_idx].dstBinding       = j;
+                    writes[set_idx].dstArrayElement  = 0; // start updating from the first element
+                    writes[set_idx].descriptorCount  = set_layout.bindings[j].descriptorCount;
+                    writes[set_idx].descriptorType   = set_layout.bindings[j].descriptorType;
+                    writes[set_idx].pBufferInfo      = buffer_info;
+                    writes[set_idx].pImageInfo       = NULL;
+                    writes[set_idx].pTexelBufferView = NULL;
+                }break;
+                case R_Vulkan_DescriptorSetKind_SBO_TileLights:
+                {
+                    VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+                    buffer_info->buffer = buffers[i];
+                    buffer_info->offset = 0;
+                    buffer_info->range  = MAX_TILES_PER_PASS*sizeof(R_Vulkan_SBO_TileLights);
 
                     writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[set_idx].dstSet           = sets[i].h;
@@ -4755,6 +4885,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
     R_Vulkan_DescriptorSet *geo3d_normal_depth_ds = &bag->geo3d_normal_depth_ds;
     R_Vulkan_Image *geo3d_depth_image             = &bag->geo3d_depth_image;
     R_Vulkan_Image *geo3d_pre_depth_image         = &bag->geo3d_pre_depth_image;
+    R_Vulkan_DescriptorSet *geo3d_pre_depth_ds    = &bag->geo3d_pre_depth_ds;
 
     // Create stage color image and its sampler descriptor set
     {
@@ -4966,7 +5097,8 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &geo3d_normal_depth_image->memory));
         VK_Assert(vkBindImageMemory(r_vulkan_state->device.h, geo3d_normal_depth_image->h, geo3d_normal_depth_image->memory, 0));
 
-        VkImageViewCreateInfo image_view_create_info = {
+        VkImageViewCreateInfo image_view_create_info =
+        {
             .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image                           = geo3d_normal_depth_image->h,
             .viewType                        = VK_IMAGE_VIEW_TYPE_2D,
@@ -4979,7 +5111,7 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
         };
         VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &geo3d_normal_depth_image->view));
 
-        // Create geo3d_color sampler descriptor set
+        // Create sampler descriptor set
         r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind_Tex2D,
                                       1, 16, NULL, &geo3d_normal_depth_image->view,
                                       &r_vulkan_state->samplers[R_Tex2DSampleKind_Nearest],
@@ -5116,6 +5248,12 @@ r_vulkan_bag(R_Vulkan_Window *window, R_Vulkan_Surface *surface, R_Vulkan_Bag *o
             .subresourceRange.layerCount     = 1,
         };
         VK_Assert(vkCreateImageView(r_vulkan_state->device.h, &image_view_create_info, NULL, &geo3d_pre_depth_image->view));
+
+        // create sampler descriptor set
+        r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind_Tex2D,
+                                      1,16,NULL,&geo3d_pre_depth_image->view,
+                                      &r_vulkan_state->samplers[R_Tex2DSampleKind_Nearest],
+                                      geo3d_pre_depth_ds);
     }
     return bag;
 }
@@ -5156,7 +5294,8 @@ r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
                 // You can only use a framebuffer with the render passes that it is compatible width
                 //      which roughly means that they use the same number and type of attachments 
                 VkImageView attachments[] = { stage_color_image->view };
-                VkFramebufferCreateInfo frame_buffer_create_info = {
+                VkFramebufferCreateInfo frame_buffer_create_info =
+                {
                     .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                     .renderPass      = renderpass->h,
                     .attachmentCount = 1,
@@ -5174,7 +5313,8 @@ r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp)
                 { 
                     geo3d_pre_depth_image->view,
                 };
-                VkFramebufferCreateInfo frame_buffer_create_info = {
+                VkFramebufferCreateInfo frame_buffer_create_info =
+                {
                     .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                     .renderPass      = renderpass->h,
                     .attachmentCount = 1,

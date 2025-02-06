@@ -34,9 +34,10 @@
 // support max 3000 lights per geo3d pass
 #define MAX_LIGHTS_PER_PASS 3000
 // support max 8K with 16x16 sized tile
-#define MAX_TILE_FRUSTUMS_PER_PASS ((7680*4320)/(16*16))
+#define MAX_TILES_PER_PASS ((7680*4320)/(16*16))
 #define MAX_RECT_INSTANCES 10000
 #define MAX_MESH_INSTANCES 10000
+#define MAX_LIGHTS_PER_TILE 200
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ Enums
@@ -78,14 +79,17 @@ typedef enum R_Vulkan_UBOTypeKind
     // R_Vulkan_UBOTypeKind_Blur,
     R_Vulkan_UBOTypeKind_Geo3d,
     R_Vulkan_UBOTypeKind_TileFrustum,
+    R_Vulkan_UBOTypeKind_LightCulling,
     R_Vulkan_UBOTypeKind_COUNT,
 } R_Vulkan_UBOTypeKind;
 
 typedef enum R_Vulkan_SBOTypeKind
 {
     R_Vulkan_SBOTypeKind_Joints,
-    R_Vulkan_SBOTypeKind_TileFrustum,
+    R_Vulkan_SBOTypeKind_Tiles,
     R_Vulkan_SBOTypeKind_Lights,
+    R_Vulkan_SBOTypeKind_LightIndices,
+    R_Vulkan_SBOTypeKind_TileLights,
     R_Vulkan_SBOTypeKind_COUNT,
 } R_Vulkan_SBOTypeKind;
 
@@ -94,10 +98,13 @@ typedef enum R_Vulkan_DescriptorSetKind
     R_Vulkan_DescriptorSetKind_UBO_Rect,
     R_Vulkan_DescriptorSetKind_UBO_Geo3d,
     R_Vulkan_DescriptorSetKind_UBO_TileFrustum,
+    R_Vulkan_DescriptorSetKind_UBO_LightCulling,
     R_Vulkan_DescriptorSetKind_Tex2D,
     R_Vulkan_DescriptorSetKind_SBO_Joints,
-    R_Vulkan_DescriptorSetKind_SBO_TileFrustum,
+    R_Vulkan_DescriptorSetKind_SBO_Tiles,
     R_Vulkan_DescriptorSetKind_SBO_Lights,
+    R_Vulkan_DescriptorSetKind_SBO_LightIndices,
+    R_Vulkan_DescriptorSetKind_SBO_TileLights,
     R_Vulkan_DescriptorSetKind_COUNT,
 } R_Vulkan_DescriptorSetKind;
 
@@ -205,12 +212,20 @@ struct R_Vulkan_UBO_TileFrustum
     U32 _padding1_[2];
 };
 
+typedef struct R_Vulkan_UBO_LightCulling R_Vulkan_UBO_LightCulling;
+struct R_Vulkan_UBO_LightCulling
+{
+    Mat4x4F32 proj_inv;
+    U32 light_count;
+    U32 __padding1_[3];
+};
+
 // sbo
 
 #define R_Vulkan_SBO_Joint Mat4x4F32
 
-typedef struct R_Vulkan_SBO_TileFrustum R_Vulkan_SBO_TileFrustum;
-struct R_Vulkan_SBO_TileFrustum
+typedef struct R_Vulkan_SBO_Tile R_Vulkan_SBO_Tile;
+struct R_Vulkan_SBO_Tile
 {
     R_Vulkan_Frustum frustum;
 };
@@ -222,6 +237,15 @@ struct R_Vulkan_SBO_Light
     Vec3F32 direction;
     F32 radius;
     F32 falloff;
+};
+
+#define R_Vulkan_SBO_LightIndice U32
+
+typedef struct R_Vulkan_SBO_TileLights R_Vulkan_SBO_TileLights;
+struct R_Vulkan_SBO_TileLights
+{
+    U32 offset;  
+    U32 light_count;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -419,6 +443,7 @@ struct R_Vulkan_Bag
     R_Vulkan_DescriptorSet geo3d_normal_depth_ds;
     R_Vulkan_Image         geo3d_depth_image;
     R_Vulkan_Image         geo3d_pre_depth_image;
+    R_Vulkan_DescriptorSet geo3d_pre_depth_ds;
 
     // NOTE(k): last renderpass (finalize) contains mutiple framebuffer (count is equal to swapchain.image_count)
     VkFramebuffer          framebuffers[R_Vulkan_RenderPassKind_COUNT + MAX_IMAGE_COUNT - 1];
