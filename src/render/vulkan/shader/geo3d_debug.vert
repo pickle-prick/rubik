@@ -10,13 +10,13 @@ layout(location = 10) flat out uint frag_show_grid;
 // It is important to know that some types, like dvec3 64 bit vectors, use multiple slots
 // That means that the index after it must be at least 2 higher
 
-layout(set = 0, binding = 0) uniform UniformBufferObject {
+layout(std140, set=0, binding=0) uniform UniformBufferObject {
     mat4  view;
     mat4  view_inv;
     mat4  proj;
     mat4  proj_inv;
-    vec4  global_light;
     uint  show_grid;
+    vec3  _padding_0;
 } ubo;
 
 // For debug only

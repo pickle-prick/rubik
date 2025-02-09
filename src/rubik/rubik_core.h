@@ -236,10 +236,27 @@ struct RK_AnimationPlayback
 typedef struct RK_PointLight RK_PointLight;
 struct RK_PointLight
 {
-    Vec3F32 direction;
-    F32 radius; // radint
-    Vec3F32 color;
+    // sphere shape
+    F32 radius;
+
+    // light
     F32 intensity;
+    Vec4F32 color;
+    Vec4F32 attenuation; // x: constant, y: linear, z: quadratic
+};
+
+typedef struct RK_SpotLight RK_SpotLight;
+struct RK_SpotLight
+{
+    // cone shape
+    Vec4F32 direction;
+    F32 range;
+    F32 angle;
+
+    // light
+    F32 intensity;
+    Vec4F32 color;
+    Vec4F32 attenuation; // x: constant, y: linear, z: quadratic
 };
 
 typedef struct RK_DirectionLight RK_DirectionLight;
@@ -604,6 +621,7 @@ struct RK_Node
     RK_MeshInstance3D             *mesh_inst3d;
     RK_AnimationPlayer            *animation_player;
     RK_PointLight                 *point_light;
+    RK_SpotLight                  *spot_light;
     RK_DirectionLight             *direction_light;
 
     //~ Custom update/draw functions

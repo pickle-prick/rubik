@@ -21,15 +21,16 @@ layout(location = 19) in uint  first_joint;
 layout(location = 20) in uint  depth_test;
 layout(location = 21) in uint  omit_light;
 
-layout(set = 0, binding = 0) uniform UniformBufferObject {
+layout(std140, set=0, binding=0) uniform UniformBufferObject {
     mat4 view;
     mat4 view_inv;
     mat4 proj;
     mat4 proj_inv;
-    vec4 global_light;
+    uint show_grid;
+    vec3 _padding_0;
 } ubo;
 
-layout(std430, set = 1, binding = 0) readonly buffer Joints {
+layout(std140, set = 1, binding = 0) readonly buffer Joints {
     mat4 xforms[];
 } global_joints;
 
@@ -37,7 +38,6 @@ void main()
 {
     vec4 pos_local = vec4(pos, 1.0);
 
-    // Method 1
     if(joint_count > 0)
     {
         mat4 skin_mat = 

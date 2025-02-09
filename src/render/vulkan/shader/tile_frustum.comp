@@ -1,6 +1,6 @@
 #version 450
 
-layout(local_size_x=8, local_size_y=8, local_size_z=1) in;
+layout(local_size_x=16, local_size_y=16, local_size_z=1) in;
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // basic types
@@ -23,8 +23,7 @@ struct Frustum
 layout(std140, set=0, binding=0) uniform UBO
 {
     mat4 proj_inv;
-    vec2 grid_size; 
-    
+    uvec2 grid_size; 
 } ubo;
 
 // output sbo
@@ -33,7 +32,7 @@ layout(std140, set=1, binding=0) buffer TileFrustums
     Frustum frustums[];
 } sbo;
 
-// p is in view space
+// p is in view space (counter-clock wise)
 //            p2
 //           /|\ 
 //         /  | |
@@ -59,38 +58,40 @@ Plane plane_from_p(vec3 p0, vec3 p1, vec3 p2)
     return ret;
 }
 
-vec3 unproject_point(vec3 p, mat4 xform_inv)
+vec3 view_from_ndc(vec3 p, mat4 proj_inv)
 {
-    vec4 unproject_point = xform_inv * vec4(p.xyz, 1.0);
-    return unproject_point.xyz / unproject_point.w;
+    vec4 ret = proj_inv * vec4(p.xyz, 1.0);
+    return ret.xyz / ret.w;
 }
 
 void main()
 {
-    uint x = gl_GlobalInvocationID.x;
-    uint y = gl_GlobalInvocationID.y;
+    uvec2 xy = gl_GlobalInvocationID.xy;
+    uint tile_count = ubo.grid_size.x * ubo.grid_size.y;
+    uint tile_idx = uint(xy.y * ubo.grid_size.x) + xy.x;
 
-    vec3 eye = vec3(0,0,0);
+    if(tile_idx < tile_count)
+    {
+        // view space eye position is always at the origin
+        vec3 eye = vec3(0,0,0);
 
-    float x_step = 1.f / ubo.grid_size.x;
-    float y_step = 1.f / ubo.grid_size.y;
-    float x_pct = float(x) / x_step;
-    float y_pct = float(y) / y_step;
+        vec2 step = 1.f / ubo.grid_size;
+        vec2 pct = xy * step;
 
-    vec3 tl = vec3(mix(-1,1,x_pct), mix(-1,1,y_pct), 0); // top-left
-    vec3 tr = vec3(mix(-1,1,x_pct+x_step), mix(-1,1,y_pct), 0); // top-right
-    vec3 bl = vec3(mix(-1,1,x_pct), mix(-1,1,y_pct+y_step), 0); // bottom-left
-    vec3 br = vec3(mix(-1,1,x_pct+x_step), mix(-1,1,y_pct+y_step), 0); // bottom-right
+        vec3 tl = vec3(mix(-1,1,pct.x), mix(-1,1,pct.y), 0); // top-left
+        vec3 tr = vec3(mix(-1,1,pct.x+step.x), mix(-1,1,pct.y), 0); // top-right
+        vec3 bl = vec3(mix(-1,1,pct.x), mix(-1,1,pct.y+step.y), 0); // bottom-left
+        vec3 br = vec3(mix(-1,1,pct.x+step.x), mix(-1,1,pct.y+step.y), 0); // bottom-right
 
-    // ndc to view space
-    tl = unproject_point(tl, ubo.proj_inv);
-    tr = unproject_point(tr, ubo.proj_inv);
-    bl = unproject_point(bl, ubo.proj_inv);
-    br = unproject_point(br, ubo.proj_inv);
-    
-    uint tile_idx = uint(y * ubo.grid_size.x) + x;
-    sbo.frustums[tile_idx].planes[0] = plane_from_p(eye, tr, tl);
-    sbo.frustums[tile_idx].planes[1] = plane_from_p(eye, bl, br);
-    sbo.frustums[tile_idx].planes[2] = plane_from_p(eye, br, tr);
-    sbo.frustums[tile_idx].planes[3] = plane_from_p(eye, tl, bl);
+        // ndc to view space
+        tl = view_from_ndc(tl, ubo.proj_inv);
+        tr = view_from_ndc(tr, ubo.proj_inv);
+        bl = view_from_ndc(bl, ubo.proj_inv);
+        br = view_from_ndc(br, ubo.proj_inv);
+        
+        sbo.frustums[tile_idx].planes[0] = plane_from_p(eye, tl, bl); // left plane
+        sbo.frustums[tile_idx].planes[1] = plane_from_p(eye, br, tr); // right plane
+        sbo.frustums[tile_idx].planes[2] = plane_from_p(eye, tr, tl); // top plane
+        sbo.frustums[tile_idx].planes[3] = plane_from_p(eye, bl, br); // bottom plane
+    }
 }

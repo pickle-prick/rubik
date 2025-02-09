@@ -2434,8 +2434,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
         Mat4x4F32 view;
         Mat4x4F32 projection;
         B32 grid;
-        Vec3F32 global_light;
-        B32 light_disabled;
+        B32 omit_light;
 
         switch(kind)
         {
@@ -2445,8 +2444,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 viewport = rk_state->window_rect;
                 view = view_m;
                 projection = projection_m;
-                global_light = v3f32(0,1,0);
-                light_disabled = 0;
+                omit_light = 0;
             }break;
             case RK_GeoBucketKind_Front:
             {
@@ -2454,8 +2452,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 viewport = rk_state->window_rect;
                 view = view_m;
                 projection = projection_m;
-                global_light = v3f32(1,0,0);
-                light_disabled = 1;
+                omit_light = 1;
             }break;
             case RK_GeoBucketKind_Screen:
             {
@@ -2463,11 +2460,11 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 viewport = rk_state->window_rect;
                 view = mat_4x4f32(1.f);
                 projection = make_orthographic_vulkan_4x4f32(viewport.x0, viewport.x1, viewport.y1, viewport.y0, 0.1, 100.f);
-                light_disabled = 1;
+                omit_light = 1;
             }break;
             default:{InvalidPath;}break;
         }
-        d_geo3d_begin(viewport, view, projection, global_light, grid, light_disabled);
+        d_geo3d_begin(viewport, view, projection, grid, omit_light);
         d_pop_bucket();
     }
 

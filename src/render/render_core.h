@@ -67,6 +67,64 @@ typedef enum R_PassKind
 } R_PassKind;
 
 ////////////////////////////////
+//~ rjf: Some basic types
+
+typedef struct R_Light R_Light;
+struct R_Light
+{
+    // position for point and spot lights (world space)
+    Vec4F32 position_ws;
+    // direction for spot and directional lights (world space)
+    Vec4F32 direction_ws;
+    // position for point and spot lights (view space)
+    Vec4F32 position_vs;
+    // direction for spot and directional lights (view space)
+    Vec4F32 direction_vs;
+    // color of the light, diffuse and specular colors are not seperated
+    Vec4F32 color;
+    // x: constant y: linear z: quadratic
+    Vec4F32 attenuation;
+    // the half angle of the spotlight cone
+    F32 spot_angle;
+    // the range of the light
+    F32 range;
+    F32 intensity;
+    U32 kind;
+};
+
+typedef struct R_Material R_Material;
+struct R_Material
+{
+    Vec4F32 global_ambient;
+    Vec4F32 ambient_color;
+    Vec4F32 emissive_color;
+    Vec4F32 diffuse_color;
+    Vec4F32 specular_color;
+    // reflective value
+    Vec4F32 reflectance;
+
+    F32 opacity;
+    F32 specular_power;
+    // for transparent materials, IOR > 0
+    F32 index_of_refraction;
+    B32 has_ambient_texture;
+
+    B32 has_emissive_texture;
+    B32 has_diffuse_texture;
+    B32 has_specular_texture;
+    B32 has_specular_power_texture;
+
+    B32 has_normal_texture;
+    B32 has_bump_texture;
+    B32 has_opacity_texture;
+    F32 bump_intensity;
+
+    F32 specular_scale;
+    F32 alpha_threshold;
+    F32 _padding_0[2];
+};
+
+////////////////////////////////
 //~ rjf: Handle Type
 
 typedef union R_Handle R_Handle;
@@ -247,9 +305,7 @@ struct R_PassParams_Geo3D
     Mat4x4F32         view;
     Mat4x4F32         projection;
     R_BatchGroup3DMap mesh_batches;
-    // TODO(XXX): remove this
-    Vec3F32           global_light;
-    B32               light_disabled;
+    B32               omit_light;
 
     // Debug purpose
     B32               show_grid;

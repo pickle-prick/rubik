@@ -2,6 +2,7 @@ build/
 .cache/
 debug/
 *.spv
+rd.cap
 .gdb_history
 .gdbinit
 .vscode/

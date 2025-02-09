@@ -13,7 +13,7 @@
     } while (0)
 
 /////////////////////////////////////////////////////////////////////////////////////////
-//~ Some limits
+//~ Some limits/constants
 
 // Syncronization
 // We choose the number 2 here because we don't want the CPU to get too far
@@ -34,7 +34,9 @@
 // support max 3000 lights per geo3d pass
 #define MAX_LIGHTS_PER_PASS 3000
 // support max 8K with 16x16 sized tile
-#define MAX_TILES_PER_PASS ((7680*4320)/(16*16))
+// TODO(XXX): we want to dynamic set the tile size based on the size of viewport
+#define TILE_SIZE 16
+#define MAX_TILES_PER_PASS ((7680*4320)/(TILE_SIZE*TILE_SIZE))
 #define MAX_RECT_INSTANCES 10000
 #define MAX_MESH_INSTANCES 10000
 #define MAX_LIGHTS_PER_TILE 200
@@ -135,6 +137,14 @@ typedef enum R_Vulkan_RenderPassKind
     R_Vulkan_RenderPassKind_COUNT,
 } R_Vulkan_RenderPassKind;
 
+typedef enum R_Vulkan_LightKind
+{
+    R_Vulkan_LightKind_Directional,
+    R_Vulkan_LightKind_Point,
+    R_Vulkan_LightKind_Spot,
+    R_Vulkan_LightKind_COUNT,
+} R_Vulkan_LightKind;
+
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ Some basic types
 
@@ -152,7 +162,7 @@ struct R_Vulkan_Frustum
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
-//~ C-side Shader Types
+//~ C-side Shader Types (ubo,push,sbo)
 
 // ubo
 typedef struct R_Vulkan_UBO_Rect R_Vulkan_UBO_Rect;
@@ -196,20 +206,17 @@ struct R_Vulkan_UBO_Geo3d
     Mat4x4F32 proj;
     Mat4x4F32 proj_inv;
 
-    Vec4F32   global_light;
-
     // Debug
     U32       show_grid;
-    U32       _padding1_[3];
+    U32       _padding_0[3];
 };
 
 typedef struct R_Vulkan_UBO_TileFrustum R_Vulkan_UBO_TileFrustum;
 struct R_Vulkan_UBO_TileFrustum
 {
     Mat4x4F32 proj_inv;
-    Vec2F32 grid_size;
-    // TODO(k): not quite sure if we need this padding
-    U32 _padding1_[2];
+    Vec2U32 grid_size;
+    U32 _padding_0[2];
 };
 
 typedef struct R_Vulkan_UBO_LightCulling R_Vulkan_UBO_LightCulling;
@@ -217,7 +224,16 @@ struct R_Vulkan_UBO_LightCulling
 {
     Mat4x4F32 proj_inv;
     U32 light_count;
-    U32 __padding1_[3];
+    U32 _padding_0[3];
+};
+
+// push
+
+typedef struct R_Vulkan_PUSH_Geo3dForward R_Vulkan_PUSH_Geo3dForward;
+struct R_Vulkan_PUSH_Geo3dForward
+{
+    Vec2F32 viewport;
+    Vec2U32 light_grid_size;
 };
 
 // sbo
@@ -239,13 +255,16 @@ struct R_Vulkan_SBO_Light
     F32 falloff;
 };
 
-#define R_Vulkan_SBO_LightIndice U32
+// NOTE(k): first element will be used as indice_count
+// NOTE(K): we are using std140, so packed it to 16 bytes boundary
+#define R_Vulkan_SBO_LightIndice U32[4]
 
 typedef struct R_Vulkan_SBO_TileLights R_Vulkan_SBO_TileLights;
 struct R_Vulkan_SBO_TileLights
 {
     U32 offset;  
     U32 light_count;
+    F32 _padding_0[2];
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -352,6 +371,7 @@ struct R_Vulkan_DescriptorSetPool
     U64                        cap;
 };
 
+// TODO(XXX): revisit is needed
 typedef struct R_Vulkan_RenderPass R_Vulkan_RenderPass;
 struct R_Vulkan_RenderPass
 {
@@ -470,7 +490,6 @@ typedef struct
     // Instance buffer
     R_Vulkan_Buffer          inst_buffer_rect[MAX_RECT_PASS];
     R_Vulkan_Buffer          inst_buffer_mesh[MAX_GEO3D_PASS];
-
 } R_Vulkan_Frame;
 
 
@@ -555,7 +574,7 @@ internal R_Vulkan_Tex2D           *r_vulkan_tex2d_from_handle(R_Handle handle);
 internal R_Handle                 r_vulkan_handle_from_tex2d(R_Vulkan_Tex2D *texture);
 internal R_Vulkan_Buffer          *r_vulkan_buffer_from_handle(R_Handle handle);
 internal R_Handle                 r_vulkan_handle_from_buffer(R_Vulkan_Buffer *buffer);
-internal S32                      r_vulkan_memory_index_from_type_filer(U32 type_filter, VkMemoryPropertyFlags properties);
+internal S32                      r_vulkan_memory_index_from_type_filer(U32 type_bits, VkMemoryPropertyFlags properties);
 // internal ID3D11Buffer *r_vulkan_instance_buffer_from_size(U64 size);
 // internal void r_usage_access_flags_from_resource_kind(R_ResourceKind kind, D3D11_USAGE *out_vulkan_usage, UINT *out_cpu_access_flags);
 internal void                     r_vulkan_format_for_swapchain(VkSurfaceFormatKHR *formats, U64 count, VkFormat *format, VkColorSpaceKHR *color_space);
