@@ -2,6 +2,11 @@
 #define RENDER_CORE_H
 
 ////////////////////////////////
+//~ some limits/constants
+
+#define MAX_LIGHTS_PER_FRAME 2000
+
+////////////////////////////////
 //~ rjf: Enums
 
 typedef U32 R_GeoVertexFlags;
@@ -306,6 +311,9 @@ struct R_PassParams_Geo3D
     Mat4x4F32         projection;
     R_BatchGroup3DMap mesh_batches;
     B32               omit_light;
+
+    R_Light           *lights;
+    U64               light_count;
 
     // Debug purpose
     B32               show_grid;

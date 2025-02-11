@@ -4259,42 +4259,14 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                         R_Vulkan_UBO_LightCulling ubo = {0};
                         ubo.proj_inv = proj_inv;
                         // TODO(XXX): to be implemented
-                        ubo.light_count = 3;
+                        ubo.light_count = params->light_count;
                         MemoryCopy(light_culling_ubo_dst, &ubo, sizeof(R_Vulkan_UBO_LightCulling));
                         vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
                                                 geo3d_light_culling_pipeline->layout, 0, 1,
                                                 &light_culling_ubo_buffer->set.h, 1, &light_culling_ubo_buffer_off);
                         // global lights
                         // upload lights
-                        // TODO(XXX): test for now, to be implemented
-                        {
-                            R_Light test_lights[3] =
-                            {
-                                {
-                                    .direction_vs = v4f32(0,0,1,0),
-                                    .position_vs = v4f32(0,0,0,1),
-                                    .kind = R_Vulkan_LightKind_Point,
-                                    .color = v4f32(0,1,0,1),
-                                    .range = 3,
-                                    .intensity = 1.0,
-                                },
-                                {
-                                    .direction_ws = v4f32(1,0,0,0),
-                                    .direction_vs = v4f32(1,0,0,0),
-                                    .kind = R_Vulkan_LightKind_Directional,
-                                    .color = v4f32(1,0,0,1),
-                                    .intensity = 1.0,
-                                },
-                                {
-                                    .direction_ws = v4f32(-1,0,0,0),
-                                    .direction_vs = v4f32(-1,0,0,0),
-                                    .kind = R_Vulkan_LightKind_Directional,
-                                    .color = v4f32(0,0,1,1),
-                                    .intensity = 0.3,
-                                },
-                            };
-                            MemoryCopy(lights_sbo_dst, test_lights, 3*sizeof(R_Light));
-                        }
+                        MemoryCopy(lights_sbo_dst, params->lights, params->light_count*sizeof(R_Light));
                         vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
                                                 geo3d_light_culling_pipeline->layout, 1, 1,
                                                 &lights_sbo_buffer->set.h, 1, &lights_sbo_buffer_off);

@@ -93,7 +93,7 @@ RK_NODE_CUSTOM_UPDATE(editor_camera_fn)
     Vec3F32 f = {0};
     Vec3F32 s = {0};
     Vec3F32 u = {0};
-    rk_ijk_from_matrix(node->fixed_xform, &s, &u, &f);
+    rk_ijk_from_xform(node->fixed_xform, &s, &u, &f);
 
     typedef struct RK_CameraDragData RK_CameraDragData;
     struct RK_CameraDragData
@@ -188,26 +188,63 @@ rk_scene_entry__0()
         }
         ret->active_camera = rk_handle_from_node(main_camera);
 
+        /////////////////////////////////////////////////////////////////////////////////
+        // load resource
+
         rk_push_node_bucket(ret->res_node_bucket);
         rk_push_parent(0);
         RK_Handle dancing_stormtrooper = rk_packed_scene_from_gltf(str8_lit("./models/dancing_stormtrooper/scene.gltf"));
         RK_Handle blackguard = rk_packed_scene_from_gltf(str8_lit("./models/blackguard/scene.gltf"));
         // RK_Handle droide = rk_packed_scene_from_gltf(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
+        RK_Handle white_mat = rk_material_from_color(str8_lit("white"), v4f32(1,1,1,1));
 
         rk_pop_parent();
         rk_pop_node_bucket();
+
+        /////////////////////////////////////////////////////////////////////////////////
+        // spwan node
+
+        // reference plane
+        RK_Node *floor = rk_plane_node(str8_lit("floor"), v2f32(9,9), 0,0);
+        floor->node3d->transform.position.y -= 0.01;
+        // TODO(XXX): not working, fix it later
+        floor->mesh_inst3d->material_override = white_mat;
+        floor->flags |= RK_NodeFlag_NavigationRoot;
 
         // RK_Node *n1 = rk_node_from_packed_scene(str8_lit("1"), droide);
         // {
         //     // flip y
         //     n1->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n1->node3d->transform.rotation);
+        //     n1->node3d->transform.position = v3f32(-3,0,0);
+        //     n1->flags |= RK_NodeFlag_NavigationRoot;
         // }
+
+        RK_Node *l1 = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_DirectionalLight, 0, "direction_light_1");
+        l1->directional_light->color = v3f32(0.1,0.1,0.1);
+        l1->directional_light->intensity = 0.1;
+        l1->directional_light->direction = normalize_3f32(v3f32(1,1,0));
+
+        RK_Node *l2 = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_PointLight, 0, "point_light_1");
+        l2->node3d->transform.position.y -= 3;
+        l2->point_light->color = v3f32(1,1,1);
+        l2->point_light->range = 3.5;
+        l2->point_light->intensity = 1;
+        l2->point_light->attenuation = v3f32(1,1,1);
+
+        RK_Node *l3 = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_SpotLight, 0, "spot_light_1");
+        l3->node3d->transform.position.y -= 3;
+        l3->spot_light->color = v3f32(1,1,1);
+        l3->spot_light->intensity = 1;
+        l3->spot_light->attenuation = v3f32(1,1,1);
+        l3->spot_light->direction = normalize_3f32(v3f32(1,1,0));
+        l3->spot_light->range = 9.9;
+        l3->spot_light->angle = radians_from_turns_f32(0.09);
 
         RK_Node *n2 = rk_node_from_packed_scene(str8_lit("2"), blackguard);
         {
             // flip y
             n2->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n2->node3d->transform.rotation);
-            n2->node3d->transform.position = v3f32(3,0,0);
+            n2->node3d->transform.position = v3f32(0,0,0);
             n2->flags |= RK_NodeFlag_NavigationRoot;
         }
 
@@ -215,7 +252,7 @@ rk_scene_entry__0()
         {
             // flip y
             n3->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n3->node3d->transform.rotation);
-            n3->node3d->transform.position = v3f32(6,0,0);
+            n3->node3d->transform.position = v3f32(3,0,0);
             n3->flags |= RK_NodeFlag_NavigationRoot;
         }
     }

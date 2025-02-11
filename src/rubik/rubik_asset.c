@@ -71,7 +71,7 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
     {
         if(cn->has_matrix)
         {
-            rk_trs_from_matrix((Mat4x4F32*)cn->matrix, &transform->position, &transform->rotation, &transform->scale);
+            rk_trs_from_xform((Mat4x4F32*)cn->matrix, &transform->position, &transform->rotation, &transform->scale);
         }
         else
         {
@@ -791,7 +791,7 @@ rk_mesh_primitive_plane(Arena *arena, Vec2F32 size, U64 subdivide_w, U64 subdivi
     Vec3F32 normal = {0.0f, -1.0f, 0.0f};
 
     U64 vertex_count   = (subdivide_d+2) * (subdivide_w+2);
-    U64 indice_count   = (subdivide_d+1) * (subdivide_w+1) * 6 * both_face*2;
+    U64 indice_count   = (subdivide_d+1) * (subdivide_w+1) * 6 * (both_face?2:1);
     R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
     U32 *indices       = push_array(arena, U32, indice_count);
 

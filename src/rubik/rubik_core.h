@@ -113,7 +113,7 @@ typedef U64 RK_NodeFlags;
 #define RK_NodeFlag_Float                (RK_NodeFlags)(1ull<<1)
 #define RK_NodeFlag_Hidden               (RK_NodeFlags)(1ull<<2)
 
-typedef U64 RK_NodeTypeFlags;
+typedef U64                              RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_Node2D           (RK_NodeTypeFlags)(1ull<<0)
 #define RK_NodeTypeFlag_Node3D           (RK_NodeTypeFlags)(1ull<<1)
 #define RK_NodeTypeFlag_Camera3D         (RK_NodeTypeFlags)(1ull<<2)
@@ -122,8 +122,9 @@ typedef U64 RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_MeshInstance3D   (RK_NodeTypeFlags)(1ull<<4)
 #define RK_NodeTypeFlag_SceneInstance    (RK_NodeTypeFlags)(1ull<<5) /* instance from another scene */
 #define RK_NodeTypeFlag_AnimationPlayer  (RK_NodeTypeFlags)(1ull<<6)
-#define RK_NodeTypeFlag_PointLight       (RK_NodeTypeFlags)(1ull<<7)
-#define RK_NodeTypeFlag_DirectionLight   (RK_NodeTypeFlags)(1ull<<8)
+#define RK_NodeTypeFlag_DirectionalLight (RK_NodeTypeFlags)(1ull<<7)
+#define RK_NodeTypeFlag_PointLight       (RK_NodeTypeFlags)(1ull<<8)
+#define RK_NodeTypeFlag_SpotLight        (RK_NodeTypeFlags)(1ull<<9)
 
 /////////////////////////////////
 //~ Key
@@ -236,32 +237,33 @@ struct RK_AnimationPlayback
 typedef struct RK_PointLight RK_PointLight;
 struct RK_PointLight
 {
-    // sphere shape
-    F32 radius;
-
+    RK_PointLight *next;
     // light
     F32 intensity;
-    Vec4F32 color;
-    Vec4F32 attenuation; // x: constant, y: linear, z: quadratic
+    F32 range;
+    Vec3F32 color;
+    Vec3F32 attenuation; // x: constant, y: linear, z: quadratic
 };
 
 typedef struct RK_SpotLight RK_SpotLight;
 struct RK_SpotLight
 {
+    RK_SpotLight *next;
     // cone shape
-    Vec4F32 direction;
+    Vec3F32 direction;
     F32 range;
     F32 angle;
 
     // light
     F32 intensity;
-    Vec4F32 color;
-    Vec4F32 attenuation; // x: constant, y: linear, z: quadratic
+    Vec3F32 color;
+    Vec3F32 attenuation; // x: constant, y: linear, z: quadratic
 };
 
-typedef struct RK_DirectionLight RK_DirectionLight;
-struct RK_DirectionLight
+typedef struct RK_DirectionalLight RK_DirectionalLight;
+struct RK_DirectionalLight
 {
+    RK_DirectionalLight *next;
     Vec3F32 direction;
     Vec3F32 color;
     F32 intensity;
@@ -619,10 +621,11 @@ struct RK_Node
     RK_Node3D                     *node3d;
     RK_Camera3D                   *camera3d;
     RK_MeshInstance3D             *mesh_inst3d;
+    RK_SceneInstance              *scene_inst;
     RK_AnimationPlayer            *animation_player;
+    RK_DirectionalLight           *directional_light;
     RK_PointLight                 *point_light;
     RK_SpotLight                  *spot_light;
-    RK_DirectionLight             *direction_light;
 
     //~ Custom update/draw functions
     // TODO(k): reuse custom_data memory block based on its size
@@ -631,8 +634,11 @@ struct RK_Node
     RK_UpdateFnNode               *last_update_fn;
     RK_NodeCustomDrawFunctionType *custom_draw;
 
-    //~ Artifacts
+    //~ Artifacts (global xform,position,rotation,scale)
     Mat4x4F32                     fixed_xform;
+    Vec3F32                       fixed_position;
+    QuatF32                       fixed_rotation;
+    Vec3F32                       fixed_scale;
 };
 
 typedef struct RK_NodeRec RK_NodeRec;
@@ -656,22 +662,26 @@ struct RK_NodeBucketSlot
 typedef struct RK_NodeBucket RK_NodeBucket;
 struct RK_NodeBucket 
 {
-    Arena              *arena_ref;
+    Arena               *arena_ref;
 
-    RK_NodeBucketSlot  *hash_table;
-    U64                hash_table_size;
-    U64                node_count;
+    RK_NodeBucketSlot   *hash_table;
+    U64                 hash_table_size;
+    U64                 node_count;
 
     //~ Resource Management
-    RK_Node            *first_free_node;
-    RK_UpdateFnNode    *first_free_update_fn_node;
+    RK_Node             *first_free_node;
+    RK_UpdateFnNode     *first_free_update_fn_node;
 
     //- Equipment
-    RK_Node2D          *first_free_node2d;
-    RK_Node3D          *first_free_node3d;
-    RK_Camera3D        *first_free_camera3d;
-    RK_MeshInstance3D  *first_free_mesh_inst3d;
-    RK_AnimationPlayer *first_free_animation_player;
+    RK_Node2D           *first_free_node2d;
+    RK_Node3D           *first_free_node3d;
+    RK_Camera3D         *first_free_camera3d;
+    RK_MeshInstance3D   *first_free_mesh_inst3d;
+    RK_SceneInstance    *first_free_scene_instance;
+    RK_AnimationPlayer  *first_free_animation_player;
+    RK_DirectionalLight *first_free_directional_light;
+    RK_PointLight       *first_free_point_light;
+    RK_SpotLight        *first_free_spot_light;
 };
 
 typedef struct RK_ResourceBucketSlot RK_ResourceBucketSlot;
@@ -1115,8 +1125,8 @@ internal void         rk_drawlist_reset(RK_DrawList *drawlist);
         *return_data = push_array(arena, U8, f_props.size);                              \
         os_file_read(f, rng_1u64(0,f_props.size), *return_data);                         \
     } while (0);
-internal void      rk_trs_from_matrix(Mat4x4F32 *m, Vec3F32 *trans, QuatF32 *rot, Vec3F32 *scale);
-internal void      rk_ijk_from_matrix(Mat4x4F32 m, Vec3F32 *i, Vec3F32 *j, Vec3F32 *k);
+internal void      rk_trs_from_xform(Mat4x4F32 *m, Vec3F32 *trans, QuatF32 *rot, Vec3F32 *scale);
+internal void      rk_ijk_from_xform(Mat4x4F32 m, Vec3F32 *i, Vec3F32 *j, Vec3F32 *k);
 internal Mat4x4F32 rk_xform_from_transform3d(RK_Transform3D *transform);
 internal Mat4x4F32 rk_xform_from_trs(Vec3F32 translate, QuatF32 rotation, Vec3F32 scale);
 internal F32       rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F32 plane_normal, Vec3F32 plane_point);

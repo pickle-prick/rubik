@@ -1030,6 +1030,22 @@ rk_node_alloc(RK_NodeTypeFlags type_flags)
         ret->mesh_inst3d = mesh_inst3d;
     }
 
+    if(type_flags & RK_NodeTypeFlag_SceneInstance)
+    {
+        RK_SceneInstance *scene_inst;
+        if(node_bucket->first_free_scene_instance != 0)
+        {
+            scene_inst = node_bucket->first_free_scene_instance;
+            SLLStackPop(node_bucket->first_free_scene_instance);
+        }
+        else
+        {
+            scene_inst = push_array_no_zero(node_bucket->arena_ref, RK_SceneInstance, 1);
+        }
+        MemoryZeroStruct(scene_inst);
+        ret->scene_inst = scene_inst;
+    }
+
     if(type_flags & RK_NodeTypeFlag_AnimationPlayer)
     {
         RK_AnimationPlayer *animation_player;
@@ -1045,6 +1061,55 @@ rk_node_alloc(RK_NodeTypeFlags type_flags)
         MemoryZeroStruct(animation_player);
         ret->animation_player = animation_player;
     }
+
+    if(type_flags & RK_NodeTypeFlag_DirectionalLight)
+    {
+        RK_DirectionalLight *dir_light;
+        if(node_bucket->first_free_directional_light != 0)
+        {
+            dir_light = node_bucket->first_free_directional_light;
+            SLLStackPop(node_bucket->first_free_directional_light);
+        }
+        else
+        {
+            dir_light = push_array_no_zero(node_bucket->arena_ref, RK_DirectionalLight, 1);
+        }
+        MemoryZeroStruct(dir_light);
+        ret->directional_light = dir_light;
+    }
+
+    if(type_flags & RK_NodeTypeFlag_PointLight)
+    {
+        RK_PointLight *point_light;
+        if(node_bucket->first_free_point_light != 0)
+        {
+            point_light = node_bucket->first_free_point_light;
+            SLLStackPop(node_bucket->first_free_point_light);
+        }
+        else
+        {
+            point_light = push_array_no_zero(node_bucket->arena_ref, RK_PointLight, 1);
+        }
+        MemoryZeroStruct(point_light);
+        ret->point_light = point_light;
+    }
+
+    if(type_flags & RK_NodeTypeFlag_SpotLight)
+    {
+        RK_SpotLight *spot_light;
+        if(node_bucket->first_free_spot_light != 0)
+        {
+            spot_light = node_bucket->first_free_spot_light;
+            SLLStackPop(node_bucket->first_free_spot_light);
+        }
+        else
+        {
+            spot_light = push_array_no_zero(node_bucket->arena_ref, RK_SpotLight, 1);
+        }
+        MemoryZeroStruct(spot_light);
+        ret->spot_light = spot_light;
+    }
+
     return ret;
 }
 
@@ -1095,9 +1160,29 @@ rk_node_release(RK_Node *node)
             SLLStackPush(bucket->first_free_mesh_inst3d, node->mesh_inst3d);
         }
 
+        if(node->type_flags & RK_NodeTypeFlag_SceneInstance)
+        {
+            SLLStackPush(bucket->first_free_scene_instance, node->scene_inst);
+        }
+
         if(node->type_flags & RK_NodeTypeFlag_AnimationPlayer)
         {
             SLLStackPush(bucket->first_free_animation_player, node->animation_player);
+        }
+
+        if(node->type_flags & RK_NodeTypeFlag_DirectionalLight)
+        {
+            SLLStackPush(bucket->first_free_directional_light, node->directional_light);
+        }
+
+        if(node->type_flags & RK_NodeTypeFlag_PointLight)
+        {
+            SLLStackPush(bucket->first_free_point_light, node->point_light);
+        }
+
+        if(node->type_flags & RK_NodeTypeFlag_SpotLight)
+        {
+            SLLStackPush(bucket->first_free_spot_light, node->spot_light);
         }
     }
 
@@ -2654,6 +2739,10 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
         R_PassParams_Geo3D *geo_params = geo_back_pass->params_geo3d;
 
         RK_Node *node = rk_node_from_handle(scene->root);
+
+        // collect lights
+        R_Light *lights = push_array(rk_frame_arena(), R_Light, MAX_LIGHTS_PER_FRAME);
+        U64 light_count = 0;
         while(node != 0)
         {
             B32 force_leaf = !!(node->flags & RK_NodeFlag_Hidden);
@@ -2665,6 +2754,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 fn->f(node, scene, os_events, rk_state->dt_sec, geo_params->projection, geo_params->view);
             }
 
+            // mesh render bucket scope
             D_BucketScope(geo_back_bucket)
             {
                 B32 has_transform = 0;
@@ -2684,7 +2774,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                     node->rotation = node->node3d->transform.rotation;
                 }
 
-                // Update fixed_xform in DFS order 
+                // Update artifacts in DFS order 
                 if(has_transform)
                 {
                     Mat4x4F32 xform = mat_4x4f32(1.0);
@@ -2701,6 +2791,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                         xform = mul_4x4f32(parent->fixed_xform, xform);
                     }
                     node->fixed_xform = xform;
+                    rk_trs_from_xform(&xform, &node->fixed_position, &node->fixed_rotation, &node->fixed_scale);
                 }
 
                 if(node->type_flags & RK_NodeTypeFlag_Camera3D)
@@ -2711,11 +2802,85 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                     }
                 }
 
+                if(node->type_flags & RK_NodeTypeFlag_DirectionalLight)
+                {
+                    R_Light *light_dst = &lights[light_count++];
+                    RK_DirectionalLight *light_src = node->directional_light;
+
+                    Vec4F32 direction_ws = {0,0,0,0};
+                    MemoryCopy(&direction_ws, &light_src->direction, sizeof(Vec3F32));
+                    Vec4F32 direction_vs = transform_4x4f32_4f32(view_m, direction_ws);
+
+                    Vec4F32 color = {0,0,0, 1};
+                    MemoryCopy(&color, &light_src->color, sizeof(Vec3F32));
+
+                    light_dst->kind = R_Vulkan_LightKind_Directional;
+                    light_dst->direction_ws = direction_ws;
+                    light_dst->direction_vs = direction_vs;
+                    light_dst->color = color;
+                    light_dst->intensity = light_src->intensity;
+                }
+
+                if(node->type_flags & RK_NodeTypeFlag_PointLight)
+                {
+                    R_Light *light_dst = &lights[light_count++];
+                    RK_PointLight *light_src = node->point_light;
+
+                    Vec4F32 position_ws = {0,0,0,1};
+                    MemoryCopy(&position_ws, &node->fixed_position, sizeof(Vec3F32));
+                    Vec4F32 position_vs = transform_4x4f32_4f32(view_m, position_ws);
+                    
+                    Vec4F32 color = {0,0,0, 1};
+                    MemoryCopy(&color, &light_src->color, sizeof(Vec3F32));
+
+                    Vec4F32 attenuation = {0};
+                    MemoryCopy(&attenuation, &light_src->attenuation, sizeof(Vec3F32));
+
+                    light_dst->kind = R_Vulkan_LightKind_Point;
+                    light_dst->position_ws = position_ws;
+                    light_dst->position_vs = position_vs;
+                    light_dst->range = light_src->range;
+                    light_dst->color = color;
+                    light_dst->intensity = light_src->intensity;
+                    light_dst->attenuation = attenuation;
+                }
+
+                if(node->type_flags & RK_NodeTypeFlag_SpotLight)
+                {
+                    R_Light *light_dst = &lights[light_count++];
+                    RK_SpotLight *light_src = node->spot_light;
+
+                    Vec4F32 position_ws = {0,0,0,1};
+                    MemoryCopy(&position_ws, &node->fixed_position, sizeof(Vec3F32));
+                    Vec4F32 position_vs = transform_4x4f32_4f32(view_m, position_ws);
+
+                    Vec4F32 direction_ws = {0,0,0,0};
+                    MemoryCopy(&direction_ws, &light_src->direction, sizeof(Vec3F32));
+                    Vec4F32 direction_vs = transform_4x4f32_4f32(view_m, direction_ws);
+                    
+                    Vec4F32 color = {0,0,0, 1};
+                    MemoryCopy(&color, &light_src->color, sizeof(Vec3F32));
+
+                    Vec4F32 attenuation = {0};
+                    MemoryCopy(&attenuation, &light_src->attenuation, sizeof(Vec3F32));
+
+                    light_dst->kind = R_Vulkan_LightKind_Spot;
+                    light_dst->direction_ws = direction_ws;
+                    light_dst->direction_vs = direction_vs;
+                    light_dst->position_ws = position_ws;
+                    light_dst->position_vs = position_vs;
+                    light_dst->spot_angle = light_src->angle;
+                    light_dst->range = light_src->range;
+                    light_dst->color = color;
+                    light_dst->intensity = light_src->intensity;
+                    light_dst->attenuation = attenuation;
+                }
+
                 // Animation Player progress
                 if(node->type_flags & RK_NodeTypeFlag_AnimationPlayer)
                 {
                     RK_AnimationPlayer *anim_player = node->animation_player;
-                    // TODO(k): TESTING, play the first animation
+                    // TODO(XXX): test for now, play the first animation
                     if(rk_handle_is_zero(anim_player->playback.curr))
                     {
                         anim_player->playback.curr = anim_player->animations[0]; 
@@ -2840,6 +3005,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                     }
                     else
                     {
+                        // NOTE(k): omit texture if clr_tex.a is not zero
                         clr_tex = rgba_from_u32(0xF4E0AFFF);
                     }
 
@@ -2866,6 +3032,8 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
             }
             node = rec.next;
         }
+        geo_params->lights = lights;
+        geo_params->light_count = light_count;
     }
 
     // NOTE(k): there could be ui elements within node update
@@ -2921,7 +3089,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
             RK_Key origin_key = rk_key_from_stringf(rk_key_zero(), "gizmo_origin");
 
             Vec3F32 i_hat,j_hat,k_hat;
-            rk_ijk_from_matrix(gizmo_xform_tr, &i_hat, &j_hat, &k_hat);
+            rk_ijk_from_xform(gizmo_xform_tr, &i_hat, &j_hat, &k_hat);
 
             Vec3F32 eye = camera_node->position;
             Vec3F32 ray_eye_to_mouse_end;
@@ -2936,7 +3104,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                     F32 mox_ndc = (rk_state->cursor.x / rk_state->window_dim.x) * 2.f - 1.f;
                     F32 moy_ndc = (rk_state->cursor.y / rk_state->window_dim.y) * 2.f - 1.f;
                     // unproject
-                    Vec4F32 ray_end = mat_4x4f32_transform_4f32(view_proj_inv, v4f32(mox_ndc, moy_ndc, 1.f, 1.f));
+                    Vec4F32 ray_end = transform_4x4f32_4f32(view_proj_inv, v4f32(mox_ndc, moy_ndc, 1.f, 1.f));
                     ray_end = scale_4f32(ray_end, 1.f/ray_end.w);
                     ray_eye_to_mouse_end = v4f32_xyz(ray_end);
                 }
@@ -2944,7 +3112,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 // ray_eye_center
                 {
                     // unproject
-                    Vec4F32 ray_end = mat_4x4f32_transform_4f32(view_proj_inv, v4f32(0, 0, 1.f, 1.f));
+                    Vec4F32 ray_end = transform_4x4f32_4f32(view_proj_inv, v4f32(0, 0, 1.f, 1.f));
                     ray_end = scale_4f32(ray_end, 1.f/ray_end.w);
                     ray_eye_to_center = normalize_3f32(v4f32_xyz(ray_end));
                 }
@@ -3460,7 +3628,7 @@ rk_drawlist_reset(RK_DrawList *drawlist)
 // Helpers
 
 internal void
-rk_trs_from_matrix(Mat4x4F32 *m, Vec3F32 *trans, QuatF32 *rot, Vec3F32 *scale)
+rk_trs_from_xform(Mat4x4F32 *m, Vec3F32 *trans, QuatF32 *rot, Vec3F32 *scale)
 {
     // Translation
     trans->x = m->v[3][0];
@@ -3492,15 +3660,15 @@ rk_trs_from_matrix(Mat4x4F32 *m, Vec3F32 *trans, QuatF32 *rot, Vec3F32 *scale)
 }
 
 internal void
-rk_ijk_from_matrix(Mat4x4F32 m, Vec3F32 *i, Vec3F32 *j, Vec3F32 *k)
+rk_ijk_from_xform(Mat4x4F32 m, Vec3F32 *i, Vec3F32 *j, Vec3F32 *k)
 {
     // NOTE(K): don't apply translation, hence 0 for w
     Vec4F32 i_hat = {1,0,0,0};
     Vec4F32 j_hat = {0,1,0,0};
     Vec4F32 k_hat = {0,0,1,0};
-    i_hat = mat_4x4f32_transform_4f32(m, i_hat);
-    j_hat = mat_4x4f32_transform_4f32(m, j_hat);
-    k_hat = mat_4x4f32_transform_4f32(m, k_hat);
+    i_hat = transform_4x4f32_4f32(m, i_hat);
+    j_hat = transform_4x4f32_4f32(m, j_hat);
+    k_hat = transform_4x4f32_4f32(m, k_hat);
 
     MemoryCopy(i, &i_hat, sizeof(Vec3F32));
     MemoryCopy(j, &j_hat, sizeof(Vec3F32));

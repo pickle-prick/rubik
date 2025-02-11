@@ -661,7 +661,7 @@ internal Mat4x4F32 mul_4x4f32(Mat4x4F32 a, Mat4x4F32 b) {
     return c;
 }
 
-internal Vec4F32 mat_4x4f32_transform_4f32(Mat4x4F32 a, Vec4F32 b)
+internal Vec4F32 transform_4x4f32_4f32(Mat4x4F32 a, Vec4F32 b)
 {
     // clock_t start_time = clock();
     Vec4F32 c = {0};
@@ -695,9 +695,9 @@ internal Vec4F32 mat_4x4f32_transform_4f32(Mat4x4F32 a, Vec4F32 b)
     return c;
 }
 
-internal Vec3F32 mat_4x4f32_transform_3f32(Mat4x4F32 a, Vec3F32 b)
+internal Vec3F32 transform_4x4f32_3f32(Mat4x4F32 a, Vec3F32 b)
 {
-    Vec4F32 tmp = mat_4x4f32_transform_4f32(a, v4f32(b.x, b.y, b.z, 1.0));
+    Vec4F32 tmp = transform_4x4f32_4f32(a, v4f32(b.x, b.y, b.z, 1.0));
     return v3f32(tmp.x, tmp.y, tmp.z);
 }
 

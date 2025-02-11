@@ -29,11 +29,12 @@ layout(location = 2)  flat out  uvec2 frag_id;
 layout(location = 3)  flat out  float frag_omit_texture;
 layout(location = 4)  flat out  float frag_omit_light;
 layout(location = 5)       out  vec3  frag_nor_world;
-layout(location = 6)       out  vec3  frag_pos_world;
-layout(location = 7)       out  vec3  frag_pos_view;
-layout(location = 8)       out  mat4  frag_nor_mat;
-layout(location = 12) flat out  uint  frag_draw_edge;
-layout(location = 13) flat out  uint  frag_depth_test;
+layout(location = 6)       out  vec3  frag_nor_view;
+layout(location = 7)       out  vec3  frag_pos_world;
+layout(location = 8)       out  vec3  frag_pos_view;
+layout(location = 9)       out  mat4  frag_nor_mat;
+layout(location = 13) flat out  uint  frag_draw_edge;
+layout(location = 14) flat out  uint  frag_depth_test;
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // ubo/sbo
@@ -97,6 +98,7 @@ void main()
 
     mat4 normal_mat = transpose(model_inv);
     vec4 nor_world = normalize(normal_mat * nor_local);
+    vec4 nor_view = ubo.view * nor_world;
 
     // Output
     frag_texcoord     = tex;
@@ -105,9 +107,10 @@ void main()
     frag_omit_texture = color_texture.a > 0 ? 1.0 : 0.0;
     frag_omit_light   = omit_light;
     frag_nor_world    = nor_world.xyz;
+    frag_nor_view     = nor_view.xyz;
     frag_pos_world    = pos_world.xyz/pos_world.w;
     frag_pos_view     = pos_view.xyz;
     frag_draw_edge    = draw_edge;
     frag_depth_test   = depth_test;
-    frag_nor_mat      = transpose(model_inv);
+    frag_nor_mat      = normal_mat;
 }

@@ -9,11 +9,12 @@ layout(location = 2)  flat in uvec2 id;
 layout(location = 3)  flat in float omit_texture;
 layout(location = 4)  flat in float omit_light;
 layout(location = 5)       in vec3  nor_world;
-layout(location = 6)       in vec3  pos_world;
-layout(location = 7)       in vec3  pos_view;
-layout(location = 8)       in mat4  nor_mat;
-layout(location = 12) flat in uint  draw_edge;
-layout(location = 13) flat in uint  depth_test;
+layout(location = 6)       in vec3  nor_view;
+layout(location = 7)       in vec3  pos_world;
+layout(location = 8)       in vec3  pos_view;
+layout(location = 9)       in mat4  nor_mat;
+layout(location = 13) flat in uint  draw_edge;
+layout(location = 14) flat in uint  depth_test;
 
 layout(location = 0) out vec4  out_color;
 layout(location = 1) out vec4  out_normal_depth;
@@ -149,6 +150,14 @@ float do_attenuation(Light light, float d)
     return 1.0f - smoothstep(light.range * 0.75f, light.range, d);
 }
 
+float do_spot_cone(Light light, vec4 L)
+{
+    float min_cos = cos(light.spot_angle);
+    float max_cos = mix(min_cos, 1, 0.5);
+    float cos_angle = dot(light.direction_vs, -L);
+    return smoothstep(min_cos, max_cos, cos_angle);
+}
+
 LightResult do_directional_light(Light light, Material mat, vec4 V, vec4 P, vec4 N)
 {
     LightResult ret;
@@ -170,6 +179,21 @@ LightResult do_point_light(Light light, Material mat, vec4 V, vec4 P, vec4 N)
 
     ret.diffuse = do_diffuse(light, L, N) * attenuation * light.intensity;
     ret.specular = do_specular(light, mat, V, L, N) * attenuation * light.intensity;
+    return ret;
+}
+
+LightResult do_spot_light(Light light, Material mat, vec4 V, vec4 P, vec4 N)
+{
+    LightResult ret;
+    vec4 L = light.position_vs - P;
+    float distance = length(L);
+
+    L = L / distance;
+    float attenuation = do_attenuation(light, distance);
+    float spot_intensity = do_spot_cone(light, L);
+    
+    ret.diffuse = do_diffuse(light, L, N) * attenuation * spot_intensity * light.intensity;
+    ret.specular = do_specular(light, mat, V, L, N) * attenuation * spot_intensity * light.intensity;
     return ret;
 }
 
@@ -205,7 +229,7 @@ void main()
     // vec4 colr = omit_texture > 0.0f ? color : texture(texSampler, texcoord);
     // out_color = vec4(colr.rgb * intensity, colr.a);
 
-    // TODO(XXX): finish it (PBR rendering)
+    // TODO(XXX): (PBR rendering)
     // TODO(k): is there better way to do zero initilization 
     Material mat = Material(
         vec4(0,0,0,0),
@@ -242,7 +266,8 @@ void main()
     if(omit_light == 0)
     {
         // REF: Physically Based Rendering: The Light Transport Equation
-        vec4 N = vec4(normalize(mat3(nor_mat) * nor_world).xyz, 0.0);
+        // vec4 N = vec4(normalize(mat3(nor_mat) * nor_world).xyz, 0.0);
+        vec4 N = vec4(nor_view, 0.0);
         vec4 P = vec4(pos_view, 1.0); // view pos for current pixel/fragment
 
         // eye position in view
@@ -285,6 +310,7 @@ void main()
                 }break;
                 case SPOT_LIGHT:
                 {
+                    ret = do_spot_light(light, mat, V, P, N);
                 }break;
             }
 
