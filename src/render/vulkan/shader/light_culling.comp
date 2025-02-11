@@ -159,6 +159,51 @@ bool sphere_intersect_frustum(Sphere sphere, Frustum frustum, float z_near, floa
     return result;
 }
 
+// point inside the positive halfspace of the plane (outside of plane)
+bool point_outside_plane(vec3 p, Plane plane)
+{
+    return dot(plane.N, p) > plane.d;
+}
+
+bool cone_outside_plane(Cone cone, Plane plane)
+{
+    // vec3 m = cross(cross(plane.N, cone.d), cone.d);
+    // vec3 Q = cone.T + cone.d * cone.h - m*cone.r;
+
+    vec3 m = cross(cross(plane.N, cone.d), cone.d);
+    vec3 Q = cone.T + cone.d * cone.h + m*cone.r;
+
+    // the cone is in the negative halfspace of the plane if both the tip
+    // of the cone and the farthest point on the end of the cone to the positive halfspace of 
+    // the plane are both inside the negative halfspace of the plane
+    return point_outside_plane(cone.T, plane) && point_outside_plane(Q, plane);
+}
+
+bool cone_intersect_frustum(Cone cone, Frustum frustum, float z_near, float z_far)
+{
+    bool ret = true;
+    
+    Plane near_plane = {vec3(0,0,-1), z_near};
+    Plane far_plane = {vec3(0,0,1), z_far};
+
+    // first check the near and far clipping planes
+    if(cone_outside_plane(cone, near_plane) || cone_outside_plane(cone, far_plane))
+    {
+        ret = false;
+    }
+
+    // then check the remaining 4 planes (left,right,top,bottom)
+    for(uint i = 0; i < 4 && ret; i++)
+    {
+        if(cone_outside_plane(cone, frustum.planes[i]))
+        {
+            ret = false;
+        }
+    }
+
+    return ret;
+}
+
 vec3 view_from_ndc(vec3 p, mat4 proj_inv)
 {
     vec4 ret = proj_inv * vec4(p.xyz, 1.0);
@@ -170,6 +215,7 @@ void push_light(uint light_idx)
     // index into the visible lights array, relative index
     uint index = atomicAdd(wg_light_count, 1);
 
+    // TODO(XXX): we should calculate avg budge (num of lights) per tile
     if(index < 1024)
     {
         wg_light_list[index] = light_idx;
@@ -264,9 +310,18 @@ void main()
             }break;
             case SPOT_LIGHT:
             {
-                // TODO(XXX): not implemented
-                // cone
-                push_light(i);
+                Cone cone = {l.position_vs.xyz, l.range, l.direction_vs.xyz, tan(l.spot_angle)*l.range};
+                if(cone_intersect_frustum(cone, wg_frustum, near_clip_vs, max_depth_vs))
+                {
+                    // TODO(XXX): add light to the light list for transparent geometry
+                    // push_light(i);
+
+                    // fully inside or half-inside of the min_plane
+                    if(!cone_outside_plane(cone, min_plane))
+                    {
+                        push_light(i);
+                    }
+                }
             }break;
         }
     }
