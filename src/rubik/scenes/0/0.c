@@ -1,84 +1,3 @@
-// Gizmos3D dragging
-// if(active_node != 0 && (active_node->type_flags & RK_NodeTypeFlag_Node3D))
-// {
-//     if(rk_state->sig.f & UI_SignalFlag_LeftDragging && (rk_state->active_key.u64[0] == RK_SpecialKeyKind_GizmosIhat || rk_state->active_key.u64[0] == RK_SpecialKeyKind_GizmosJhat || scene->active_key.u64[0] == RK_SpecialKeyKind_GizmosKhat))
-//     {
-//         RK_Transform3D *transform = &active_node->node3d->transform;
-
-//         typedef struct RK_Gizmos3DDraggingData RK_Gizmos3DDraggingData;
-//         struct RK_Gizmos3DDraggingData
-//         {
-//             Vec3F32 start_direction;
-//             RK_Transform3D start_transform;
-//             Vec2F32 projected_direction; // for moving along ijk
-//         };
-
-//         if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
-//         {
-//             Vec3F32 i,j,k;
-//             rk_ijk_from_matrix(gizmos_xform,&i,&j,&k);
-//             Mat4x4F32 gizmos_xform = active_node->fixed_xform;
-//             Vec4F32 gizmos_origin = v4f32(gizmos_xform.v[3][0], gizmos_xform.v[3][1], gizmos_xform.v[3][2], 1.0);
-
-//             RK_Gizmos3DDraggingData drag_data = {0};
-//             drag_data.start_transform = *transform;
-//             switch(hot_key)
-//             {
-//                 default: {InvalidPath;}break;
-//                 case RK_SpecialKeyKind_GizmosIhat: {drag_data.start_direction = i;}break;
-//                 case RK_SpecialKeyKind_GizmosJhat: {drag_data.start_direction = j;}break;
-//                 case RK_SpecialKeyKind_GizmosKhat: {drag_data.start_direction = k;}break;
-//             }
-//             Mat4x4F32 xform = mul_4x4f32(geo3d_pass->projection, geo3d_pass->view);
-//             Vec4F32 dir = v4f32(drag_data.start_direction.x,
-//                                 drag_data.start_direction.y,
-//                                 drag_data.start_direction.z,
-//                                 0.0);
-
-//             Vec2F32 screen_dim = rk_state->window_dim;
-//             Vec4F32 projected_start = mat_4x4f32_transform_4f32(xform, gizmos_origin);
-//             if(projected_start.w != 0)
-//             {
-//                 projected_start.x /= projected_start.w;
-//                 projected_start.y /= projected_start.w;
-//             }
-//             // vulkan ndc space to screen space
-//             projected_start.x += 1.0;
-//             projected_start.x *= (screen_dim.x/2.0f);
-//             projected_start.y += 1.0;
-//             projected_start.y *= (screen_dim.y/2.0f);
-//             Vec4F32 projected_end = mat_4x4f32_transform_4f32(xform, add_4f32(gizmos_origin, dir));
-//             if(projected_end.w != 0)
-//             {
-//                 projected_end.x /= projected_end.w;
-//                 projected_end.y /= projected_end.w;
-//             }
-//             // vulkan ndc space to screen space
-//             projected_end.x += 1.0;
-//             projected_end.x *= (screen_dim.x/2.0f);
-//             projected_end.y += 1.0;
-//             projected_end.y *= (screen_dim.y/2.0f);
-
-//             drag_data.projected_direction = sub_2f32(v2f32(projected_end.x, projected_end.y), v2f32(projected_start.x, projected_start.y));
-//             ui_store_drag_struct(&drag_data);
-//         }
-
-//         // TODO(k): dragging still fell a bit weird
-
-//         RK_Gizmos3DDraggingData *drag_data = ui_get_drag_struct(RK_Gizmos3DDraggingData);
-//         Vec2F32 delta = ui_drag_delta();
-//         // TODO: negating direction could cause rapid changes on the position, we would want to avoid that 
-//         F32 scale = 0;
-//         Vec2F32 projected_dir = drag_data->projected_direction;
-//         if((delta.x+delta.y) != 0)
-//         {
-//             scale = dot_2f32(delta, normalize_2f32(projected_dir)) / length_2f32(projected_dir);
-//         }
-//         Vec3F32 position_delta = scale_3f32(drag_data->start_direction, scale);
-//         transform->position = add_3f32(drag_data->start_transform.position, position_delta);
-//     }
-// }
-
 // Camera (editor camera)
 RK_NODE_CUSTOM_UPDATE(editor_camera_fn)
 {
@@ -156,6 +75,14 @@ RK_NODE_CUSTOM_UPDATE(editor_camera_fn)
         Vec3F32 dist = scale_3f32(f, rk_state->sig.scroll.y/3.f);
         transform->position = add_3f32(dist, transform->position);
     }
+}
+
+RK_NODE_CUSTOM_UPDATE(rotating_spot_light)
+{
+    RK_SpotLight *light = node->spot_light;
+
+    QuatF32 r = make_rotate_quat_f32(v3f32(1,1,1), 0.3*dt_sec);
+    node->node3d->transform.rotation = mul_quat_f32(r, node->node3d->transform.rotation);
 }
 
 // default editor scene
@@ -280,6 +207,7 @@ rk_scene_entry__0()
             l3->spot_light->direction = normalize_3f32(v3f32(1,1,0));
             l3->spot_light->range = 9.9;
             l3->spot_light->angle = radians_from_turns_f32(0.09);
+            rk_node_push_fn(l3, rotating_spot_light);
         }
 
         RK_Node *n2 = rk_node_from_packed_scene(str8_lit("2"), blackguard);

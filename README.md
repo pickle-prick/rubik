@@ -132,30 +132,53 @@ A list of the layers in the codebase and their associated namespaces is below:
   Provides a core immediate mode hierarchical user interface data structure building
   API, and has helper layers for building some higher-level widgets.
 
-## TODO
+## Features & TODO
 
-- [X] Debug gizmos/grid (PARTIAL)
+- [X] Debug gizmos/grid
 - [X] Scripting
-- [X] Skeletal animation in glTF (PARTIAL)
+- [-] Skeletal animation
+    - [X] play animation
+    - [ ] morph targets
+    - [X] GJK impl
+- [-] Node tree building
+    - [ ] 2D
+    - [X] 3D
+- [-] 3D scene editor UI (PARTIAL)
+    - [X] tree viewer
+    - [X] inspector
+    - [X] profile panel
+    - [X] stats
+- [-] Scene serialization and deserialization (PARTIAL)
+- [-] Multiple platform(AMD64) build
+    - [X] Linux
+    - [X] Windows
+    - [ ] MAC
+- [-] Lighting
+    - [X] directional light
+    - [X] point light
+    - [X] spot light
+    - [ ] area light
+    - [ ] emissive light
+    - [ ] full pbr rendering
+    - [X] forward+ rendering
+    - [ ] shadow map
+- [-] Assets loading
+    - [X] gltf loading
+    - [X] texture loading
+    - [ ] multhreading to speed up
 - [X] 2D collision detection
-- [ ] 2D node
-- [X] 3D scene editor UI (PARTIAL)
-    - [X] Create/delete node (PARTIAL)
-    - [ ] Reorder node
-- [X] Scene serialization and deserialization
-- [X] Windows build
-- [ ] Light
-    - [X] Direct light
-    - [ ] Point light, spot light, area light, emissive light
-    - [ ] Multiple light sources
-- [ ] Assets loading with multithreading
+    - [X] GJK impl
+    - [X] EPA impl
 - [ ] 3D collision detection
-- [ ] Custom vulkan memory allocator
-- [ ] Speed up raycasting and raymarching pass (mesh_debug pass for drawing grid and gizmos)
-- [ ] Support morph target in glTF2.0
-- [ ] PBR texture
-- [ ] 3D physics
-- [ ] Compute shader pass
+    - [ ] GJK impl
+    - [ ] EPA impl
+- [-] Rendering backend
+    - [-] Vulkan
+        - [X] base
+        - [X] forward+ rendering with compute shader
+        - [ ] Custom vulkan memory allocator
+    - [ ] D3D11
+    - [ ] WEBGPU
 - [ ] Audio
 
 ## Reference
