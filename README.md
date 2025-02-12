@@ -136,24 +136,24 @@ A list of the layers in the codebase and their associated namespaces is below:
 
 - [X] Debug gizmos/grid
 - [X] Scripting
-- [-] Skeletal animation
+- [ ] Skeletal animation
     - [X] play animation
     - [ ] morph targets
     - [X] GJK impl
-- [-] Node tree building
+- [ ] Node tree building
     - [ ] 2D
     - [X] 3D
-- [-] 3D scene editor UI (PARTIAL)
+- [ ] 3D scene editor UI (PARTIAL)
     - [X] tree viewer
     - [X] inspector
     - [X] profile panel
     - [X] stats
-- [-] Scene serialization and deserialization (PARTIAL)
-- [-] Multiple platform(AMD64) build
+- [ ] Scene serialization and deserialization (PARTIAL)
+- [ ] Multiple platform(AMD64) build
     - [X] Linux
     - [X] Windows
     - [ ] MAC
-- [-] Lighting
+- [ ] Lighting
     - [X] directional light
     - [X] point light
     - [X] spot light
@@ -162,7 +162,7 @@ A list of the layers in the codebase and their associated namespaces is below:
     - [ ] full pbr rendering
     - [X] forward+ rendering
     - [ ] shadow map
-- [-] Assets loading
+- [ ] Assets loading
     - [X] gltf loading
     - [X] texture loading
     - [ ] multhreading to speed up
@@ -172,8 +172,8 @@ A list of the layers in the codebase and their associated namespaces is below:
 - [ ] 3D collision detection
     - [ ] GJK impl
     - [ ] EPA impl
-- [-] Rendering backend
-    - [-] Vulkan
+- [ ] Rendering backend
+    - [ ] Vulkan
         - [X] base
         - [X] forward+ rendering with compute shader
         - [ ] Custom vulkan memory allocator
