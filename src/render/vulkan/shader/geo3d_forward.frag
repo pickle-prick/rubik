@@ -129,6 +129,13 @@ layout(std140, set=5, binding=0) readonly buffer TileLightsArray
     TileLights array[];
 } tile_lights;
 
+// TODO(XXX): upload material buffers
+// materials
+// layout(std140, set=6, binding=0) readonly buffer MaterialArray
+// {
+//     Material array[];
+// } materials;
+
 /////////////////////////////////////////////////////////////////////////////////////////
 // light calculations
 
@@ -249,7 +256,7 @@ void main()
         vec2(0,0)
     );
     mat.diffuse_color = omit_texture > 0.0 ? color : texture(texSampler, texcoord);
-    mat.opacity = 1.0;
+    mat.opacity = mat.diffuse_color.a;
 
     /////////////////////////////////////////////////////////////////////////////////////
     // light acc

@@ -703,7 +703,7 @@ rk_material_from_color(String8 name, Vec4F32 color)
     {
         ret = rk_resh_alloc(res_key, RK_ResourceKind_Material, 0);
         RK_Material *material = rk_res_data_from_handle(ret);
-        material->base_clr_factor = color;
+        material->diffuse_color = color;
         material->name = push_str8_copy_static(name, material->name_buffer, ArrayCount(material->name_buffer));
     }
     return ret;
@@ -964,152 +964,7 @@ rk_node_alloc(RK_NodeTypeFlags type_flags)
         ret->fixed_xform = mat_4x4f32(1.f);
     }
 
-    if(type_flags & RK_NodeTypeFlag_Node2D)
-    {
-        RK_Node2D *node2d;
-        if(node_bucket->first_free_node2d != 0)
-        {
-            node2d = node_bucket->first_free_node2d;
-            SLLStackPop(node_bucket->first_free_node2d);
-        }
-        else
-        {
-            node2d = push_array_no_zero(node_bucket->arena_ref, RK_Node2D, 1);
-        }
-        MemoryZeroStruct(node2d);
-        ret->node2d = node2d;
-    }
-
-    if(type_flags & RK_NodeTypeFlag_Node3D)
-    {
-        RK_Node3D *node3d;
-        if(node_bucket->first_free_node3d != 0)
-        {
-            node3d = node_bucket->first_free_node3d;
-            SLLStackPop(node_bucket->first_free_node3d);
-        }
-        else
-        {
-            node3d = push_array_no_zero(node_bucket->arena_ref, RK_Node3D, 1);
-        }
-        MemoryZeroStruct(node3d);
-        node3d->transform.rotation = make_indentity_quat_f32();
-        node3d->transform.scale = v3f32(1,1,1);
-        ret->node3d = node3d;
-    }
-
-    if(type_flags & RK_NodeTypeFlag_Camera3D)
-    {
-        RK_Camera3D *camera3d;
-        if(node_bucket->first_free_camera3d != 0)
-        {
-            camera3d = node_bucket->first_free_camera3d;
-            SLLStackPop(node_bucket->first_free_camera3d);
-        }
-        else
-        {
-            camera3d = push_array_no_zero(node_bucket->arena_ref, RK_Camera3D, 1);
-        }
-        MemoryZeroStruct(camera3d);
-        ret->camera3d = camera3d;
-    }
-
-    if(type_flags & RK_NodeTypeFlag_MeshInstance3D)
-    {
-        RK_MeshInstance3D *mesh_inst3d;
-        if(node_bucket->first_free_mesh_inst3d != 0)
-        {
-            mesh_inst3d = node_bucket->first_free_mesh_inst3d;
-            SLLStackPop(node_bucket->first_free_mesh_inst3d);
-        }
-        else
-        {
-            mesh_inst3d = push_array_no_zero(node_bucket->arena_ref, RK_MeshInstance3D, 1);
-        }
-        MemoryZeroStruct(mesh_inst3d);
-        ret->mesh_inst3d = mesh_inst3d;
-    }
-
-    if(type_flags & RK_NodeTypeFlag_SceneInstance)
-    {
-        RK_SceneInstance *scene_inst;
-        if(node_bucket->first_free_scene_instance != 0)
-        {
-            scene_inst = node_bucket->first_free_scene_instance;
-            SLLStackPop(node_bucket->first_free_scene_instance);
-        }
-        else
-        {
-            scene_inst = push_array_no_zero(node_bucket->arena_ref, RK_SceneInstance, 1);
-        }
-        MemoryZeroStruct(scene_inst);
-        ret->scene_inst = scene_inst;
-    }
-
-    if(type_flags & RK_NodeTypeFlag_AnimationPlayer)
-    {
-        RK_AnimationPlayer *animation_player;
-        if(node_bucket->first_free_animation_player != 0)
-        {
-            animation_player = node_bucket->first_free_animation_player;
-            SLLStackPop(node_bucket->first_free_animation_player);
-        }
-        else
-        {
-            animation_player = push_array_no_zero(node_bucket->arena_ref, RK_AnimationPlayer, 1);
-        }
-        MemoryZeroStruct(animation_player);
-        ret->animation_player = animation_player;
-    }
-
-    if(type_flags & RK_NodeTypeFlag_DirectionalLight)
-    {
-        RK_DirectionalLight *dir_light;
-        if(node_bucket->first_free_directional_light != 0)
-        {
-            dir_light = node_bucket->first_free_directional_light;
-            SLLStackPop(node_bucket->first_free_directional_light);
-        }
-        else
-        {
-            dir_light = push_array_no_zero(node_bucket->arena_ref, RK_DirectionalLight, 1);
-        }
-        MemoryZeroStruct(dir_light);
-        ret->directional_light = dir_light;
-    }
-
-    if(type_flags & RK_NodeTypeFlag_PointLight)
-    {
-        RK_PointLight *point_light;
-        if(node_bucket->first_free_point_light != 0)
-        {
-            point_light = node_bucket->first_free_point_light;
-            SLLStackPop(node_bucket->first_free_point_light);
-        }
-        else
-        {
-            point_light = push_array_no_zero(node_bucket->arena_ref, RK_PointLight, 1);
-        }
-        MemoryZeroStruct(point_light);
-        ret->point_light = point_light;
-    }
-
-    if(type_flags & RK_NodeTypeFlag_SpotLight)
-    {
-        RK_SpotLight *spot_light;
-        if(node_bucket->first_free_spot_light != 0)
-        {
-            spot_light = node_bucket->first_free_spot_light;
-            SLLStackPop(node_bucket->first_free_spot_light);
-        }
-        else
-        {
-            spot_light = push_array_no_zero(node_bucket->arena_ref, RK_SpotLight, 1);
-        }
-        MemoryZeroStruct(spot_light);
-        ret->spot_light = spot_light;
-    }
-
+    rk_node_equip_type_flags(ret, type_flags);
     return ret;
 }
 
@@ -1139,52 +994,7 @@ rk_node_release(RK_Node *node)
     }
 
     // free equipments
-    {
-        if(node->type_flags & RK_NodeTypeFlag_Node2D)
-        {
-            SLLStackPush(bucket->first_free_node2d, node->node2d);
-        }
-
-        if(node->type_flags & RK_NodeTypeFlag_Node3D)
-        {
-            SLLStackPush(bucket->first_free_node3d, node->node3d);
-        }
-
-        if(node->type_flags & RK_NodeTypeFlag_Camera3D)
-        {
-            SLLStackPush(bucket->first_free_camera3d, node->camera3d);
-        }
-
-        if(node->type_flags & RK_NodeTypeFlag_MeshInstance3D)
-        {
-            SLLStackPush(bucket->first_free_mesh_inst3d, node->mesh_inst3d);
-        }
-
-        if(node->type_flags & RK_NodeTypeFlag_SceneInstance)
-        {
-            SLLStackPush(bucket->first_free_scene_instance, node->scene_inst);
-        }
-
-        if(node->type_flags & RK_NodeTypeFlag_AnimationPlayer)
-        {
-            SLLStackPush(bucket->first_free_animation_player, node->animation_player);
-        }
-
-        if(node->type_flags & RK_NodeTypeFlag_DirectionalLight)
-        {
-            SLLStackPush(bucket->first_free_directional_light, node->directional_light);
-        }
-
-        if(node->type_flags & RK_NodeTypeFlag_PointLight)
-        {
-            SLLStackPush(bucket->first_free_point_light, node->point_light);
-        }
-
-        if(node->type_flags & RK_NodeTypeFlag_SpotLight)
-        {
-            SLLStackPush(bucket->first_free_spot_light, node->spot_light);
-        }
-    }
+    rk_node_unequip_type_flags(node, node->type_flags);
 
     // free update fn node
     for(RK_UpdateFnNode *fn_node = node->first_update_fn; fn_node != 0; fn_node = fn_node->next)  
@@ -1194,6 +1004,18 @@ rk_node_release(RK_Node *node)
 
     // free node
     SLLStackPush(bucket->first_free_node, node);
+}
+
+internal void
+rk_node_equip_type_flags(RK_Node *n, RK_NodeTypeFlags type_flags)
+{
+    RK_EquipTypeFlagsImpl(n, type_flags);
+}
+
+internal void
+rk_node_unequip_type_flags(RK_Node *n, RK_NodeTypeFlags type_flags)
+{
+    RK_UnequipTypeFlagsImpl(n, type_flags);
 }
 
 internal RK_Node *
@@ -2288,6 +2110,145 @@ internal void rk_ui_inspector(void)
                         ui_f32_edit(&transform3d->rotation.w, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("W###rot_w"));
                     }
                 }
+
+                ////////////////////////////////
+                //- directional light
+
+                if(active_node->type_flags & RK_NodeTypeFlag_DirectionalLight)
+                {
+                    RK_DirectionalLight *light = active_node->directional_light;
+                    ui_set_next_child_layout_axis(Axis2_X);
+                    UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+                    UI_Parent(header_box)
+                    {
+                        ui_spacer(ui_em(0.3f,0.f));
+                        ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+                        ui_labelf("directional light");
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("direction");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_x"));
+                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_y"));
+                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_z"));
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("color");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
+                        ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
+                        ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
+                    }
+                }
+
+                ////////////////////////////////
+                //- point light
+
+                if(active_node->type_flags & RK_NodeTypeFlag_PointLight)
+                {
+                    RK_PointLight *light = active_node->point_light;
+                    ui_set_next_child_layout_axis(Axis2_X);
+                    UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+                    UI_Parent(header_box)
+                    {
+                        ui_spacer(ui_em(0.3f,0.f));
+                        ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+                        ui_labelf("point light");
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("color");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
+                        ui_f32_edit(&light->color.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
+                        ui_f32_edit(&light->color.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("attenuation");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_f32_edit(&light->attenuation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("C###constant"));
+                        ui_f32_edit(&light->attenuation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("L###linear"));
+                        ui_f32_edit(&light->attenuation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Q###quadratic"));
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("range");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_f32_edit(&light->range, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("R###range"));
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("intensity");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_f32_edit(&light->intensity, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("I###intensity"));
+                    }
+                }
+
+                ////////////////////////////////
+                //- spot light
+
+                if(active_node->type_flags & RK_NodeTypeFlag_SpotLight)
+                {
+                    RK_SpotLight *light = active_node->spot_light;
+                    ui_set_next_child_layout_axis(Axis2_X);
+                    UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+                    UI_Parent(header_box)
+                    {
+                        ui_spacer(ui_em(0.3f,0.f));
+                        ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+                        ui_labelf("spot light");
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("color");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
+                        ui_f32_edit(&light->color.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
+                        ui_f32_edit(&light->color.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("attenuation");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_f32_edit(&light->attenuation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("C###attenuation_constant"));
+                        ui_f32_edit(&light->attenuation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("L###attenuation_linear"));
+                        ui_f32_edit(&light->attenuation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Q###attenuation_quadratic"));
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("direction");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_x"));
+                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_y"));
+                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_z"));
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("range");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_f32_edit(&light->range, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("R###range"));
+                    }
+
+                    UI_Row
+                    {
+                        ui_labelf("intensity");
+                        ui_spacer(ui_pct(1.0, 0.0));
+                        ui_f32_edit(&light->intensity, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("I###intensity"));
+                    }
+                }
             }
         }
     }
@@ -2465,6 +2426,8 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 
         // clear frame gizmo drawlist
         rk_drawlist_reset(rk_frame_gizmo_drawlist());
+
+        arena_clear(rk_frame_arena());
     }
 
     /////////////////////////////////
@@ -2856,6 +2819,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 
                     Vec4F32 direction_ws = {0,0,0,0};
                     MemoryCopy(&direction_ws, &light_src->direction, sizeof(Vec3F32));
+                    direction_ws = transform_4x4f32_4f32(node->fixed_xform, direction_ws);
                     Vec4F32 direction_vs = transform_4x4f32_4f32(view_m, direction_ws);
                     
                     Vec4F32 color = {0,0,0, 1};
@@ -2983,6 +2947,9 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                         }
                     }
                     
+                    /////////////////////////////////////////////////////////////////////
+                    // material
+
                     R_Handle albedo_tex = {0};
                     // NOTE(k): alpha != 0 => omit texture and use color texture
                     Vec4F32 clr_tex = {1,1,1,0};
@@ -2993,14 +2960,16 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                         material = rk_res_data_from_handle(mesh->material);
                     }
 
-                    // TODO(k): PBR rendering
+                    // TODO(XXX): PBR rendering
+                    // TODO(XXX): we would want to upload material to sbo buffer (reduce memory usage)
                     if(material != 0)
                     {
-                        RK_Texture2D *tex2d = rk_res_data_from_handle(material->base_clr_tex);
+                        RK_Texture2D *tex2d = rk_res_data_from_handle(material->diffuse_tex);
                         if(tex2d) albedo_tex = tex2d->tex;
                         if(camera->viewport_shading != RK_ViewportShadingKind_Material)
                         {
-                            clr_tex = material->base_clr_factor;
+                            // clr_tex = material->diffuse_color;
+                            clr_tex = v4f32(1,1,1,1);
                         }
                     }
                     else
@@ -3009,20 +2978,18 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                         clr_tex = rgba_from_u32(0xF4E0AFFF);
                     }
 
-                    if(mesh != 0)
-                    {
-                        B32 draw_edge = rk_node_is_active(node);
-                        R_Mesh3DInst *inst = d_mesh(mesh->vertices, mesh->indices, 0,0, mesh->indice_count,
-                                                    mesh->topology, polygon_mode, R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, albedo_tex, clr_tex, 1.f,
-                                                    joint_xforms, joint_count,
-                                                    node->fixed_xform, node->key.u64[0], draw_edge, !mesh_inst3d->disable_depth, 0, 0);
-                        inst->xform_inv = inverse_4x4f32(node->fixed_xform);
-                    }
-                    else
-                    {
-                        // NOTE(k): THIS SHOULD NOT HAPPEDN
-                        InvalidPath;
-                    }
+                    /////////////////////////////////////////////////////////////////////
+                    // draw mesh
+
+                    Assert(mesh != 0);
+                    B32 draw_edge = rk_node_is_active(node) || mesh_inst3d->draw_edge;
+                    // TODO(XXX): clean up this, too many parameters here
+                    R_Mesh3DInst *inst = d_mesh(mesh->vertices, mesh->indices, 0,0, mesh->indice_count,
+                                                mesh->topology, polygon_mode, R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, albedo_tex, clr_tex, 1.f,
+                                                joint_xforms, joint_count,
+                                                node->fixed_xform, node->key.u64[0], draw_edge, !mesh_inst3d->omit_depth_test, 0, 0);
+                    inst->xform_inv = inverse_4x4f32(node->fixed_xform);
+                    inst->omit_light = mesh_inst3d->omit_light;
                 }
             }
 
@@ -3240,7 +3207,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 {
                     F32 ring_radius = 1*scale_t;
                     U64 ring_segments = 69;
-                    F32 ring_line_width = 19*linew_scale;
+                    F32 ring_line_width = 9*linew_scale;
                     F32 axis_length = 1.f*scale_t;
 
 
@@ -3482,6 +3449,12 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 }break;
                 default:{InvalidPath;}break;
             }
+        }
+
+        // draw lights gizmos
+        D_BucketScope(rk_state->bucket_geo3d[RK_GeoBucketKind_Front])
+        {
+            // TODO(XXX)
         }
 
         // build gizmo drawlists

@@ -29,6 +29,30 @@ internal RK_Node * rk_set_next_parent(RK_Node * v) { RK_StackSetNextImpl(rk_stat
 internal RK_NodeBucket * rk_set_next_node_bucket(RK_NodeBucket * v) { RK_StackSetNextImpl(rk_state, NodeBucket, node_bucket, RK_NodeBucket *, v) }
 internal RK_ResourceBucket * rk_set_next_res_bucket(RK_ResourceBucket * v) { RK_StackSetNextImpl(rk_state, ResourceBucket, res_bucket, RK_ResourceBucket *, v) }
 internal RK_Scene * rk_set_next_scene(RK_Scene * v) { RK_StackSetNextImpl(rk_state, Scene, scene, RK_Scene *, v) }
+#define RK_EquipTypeFlagsImpl(node, type_flags) \
+RK_NodeBucket *node_bucket = rk_top_node_bucket(); \
+if(type_flags & RK_NodeTypeFlag_Node2D) { node->node2d = node_bucket->first_free_node2d; if(node->node2d != 0) {SLLStackPop(node_bucket->first_free_node2d);} else {node->node2d = push_array_no_zero(node_bucket->arena_ref, RK_Node2D, 1);} MemoryZeroStruct(node->node2d); if(0) {(*node->node2d) = (RK_Node2D){0};} }\
+if(type_flags & RK_NodeTypeFlag_Node3D) { node->node3d = node_bucket->first_free_node3d; if(node->node3d != 0) {SLLStackPop(node_bucket->first_free_node3d);} else {node->node3d = push_array_no_zero(node_bucket->arena_ref, RK_Node3D, 1);} MemoryZeroStruct(node->node3d); if(1) {(*node->node3d) = (RK_Node3D){.transform = {.rotation = make_indentity_quat_f32(), .scale = v3f32(1,1,1)}};} }\
+if(type_flags & RK_NodeTypeFlag_Camera3D) { node->camera3d = node_bucket->first_free_camera3d; if(node->camera3d != 0) {SLLStackPop(node_bucket->first_free_camera3d);} else {node->camera3d = push_array_no_zero(node_bucket->arena_ref, RK_Camera3D, 1);} MemoryZeroStruct(node->camera3d); if(0) {(*node->camera3d) = (RK_Camera3D){0};} }\
+if(type_flags & RK_NodeTypeFlag_MeshInstance3D) { node->mesh_inst3d = node_bucket->first_free_mesh_inst3d; if(node->mesh_inst3d != 0) {SLLStackPop(node_bucket->first_free_mesh_inst3d);} else {node->mesh_inst3d = push_array_no_zero(node_bucket->arena_ref, RK_MeshInstance3D, 1);} MemoryZeroStruct(node->mesh_inst3d); if(0) {(*node->mesh_inst3d) = (RK_MeshInstance3D){0};} }\
+if(type_flags & RK_NodeTypeFlag_SceneInstance) { node->scene_inst = node_bucket->first_free_scene_inst; if(node->scene_inst != 0) {SLLStackPop(node_bucket->first_free_scene_inst);} else {node->scene_inst = push_array_no_zero(node_bucket->arena_ref, RK_SceneInstance, 1);} MemoryZeroStruct(node->scene_inst); if(0) {(*node->scene_inst) = (RK_SceneInstance){0};} }\
+if(type_flags & RK_NodeTypeFlag_AnimationPlayer) { node->animation_player = node_bucket->first_free_animation_player; if(node->animation_player != 0) {SLLStackPop(node_bucket->first_free_animation_player);} else {node->animation_player = push_array_no_zero(node_bucket->arena_ref, RK_AnimationPlayer, 1);} MemoryZeroStruct(node->animation_player); if(0) {(*node->animation_player) = (RK_AnimationPlayer){0};} }\
+if(type_flags & RK_NodeTypeFlag_DirectionalLight) { node->directional_light = node_bucket->first_free_directional_light; if(node->directional_light != 0) {SLLStackPop(node_bucket->first_free_directional_light);} else {node->directional_light = push_array_no_zero(node_bucket->arena_ref, RK_DirectionalLight, 1);} MemoryZeroStruct(node->directional_light); if(0) {(*node->directional_light) = (RK_DirectionalLight){0};} }\
+if(type_flags & RK_NodeTypeFlag_PointLight) { node->point_light = node_bucket->first_free_point_light; if(node->point_light != 0) {SLLStackPop(node_bucket->first_free_point_light);} else {node->point_light = push_array_no_zero(node_bucket->arena_ref, RK_PointLight, 1);} MemoryZeroStruct(node->point_light); if(0) {(*node->point_light) = (RK_PointLight){0};} }\
+if(type_flags & RK_NodeTypeFlag_SpotLight) { node->spot_light = node_bucket->first_free_spot_light; if(node->spot_light != 0) {SLLStackPop(node_bucket->first_free_spot_light);} else {node->spot_light = push_array_no_zero(node_bucket->arena_ref, RK_SpotLight, 1);} MemoryZeroStruct(node->spot_light); if(0) {(*node->spot_light) = (RK_SpotLight){0};} }\
+node->type_flags |= type_flags;
+#define RK_UnequipTypeFlagsImpl(node, type_flags) \
+RK_NodeBucket *node_bucket = rk_top_node_bucket(); \
+if(type_flags & RK_NodeTypeFlag_Node2D) { SLLStackPush(node_bucket->first_free_node2d, node->node2d); node->node2d = 0; }\
+if(type_flags & RK_NodeTypeFlag_Node3D) { SLLStackPush(node_bucket->first_free_node3d, node->node3d); node->node3d = 0; }\
+if(type_flags & RK_NodeTypeFlag_Camera3D) { SLLStackPush(node_bucket->first_free_camera3d, node->camera3d); node->camera3d = 0; }\
+if(type_flags & RK_NodeTypeFlag_MeshInstance3D) { SLLStackPush(node_bucket->first_free_mesh_inst3d, node->mesh_inst3d); node->mesh_inst3d = 0; }\
+if(type_flags & RK_NodeTypeFlag_SceneInstance) { SLLStackPush(node_bucket->first_free_scene_inst, node->scene_inst); node->scene_inst = 0; }\
+if(type_flags & RK_NodeTypeFlag_AnimationPlayer) { SLLStackPush(node_bucket->first_free_animation_player, node->animation_player); node->animation_player = 0; }\
+if(type_flags & RK_NodeTypeFlag_DirectionalLight) { SLLStackPush(node_bucket->first_free_directional_light, node->directional_light); node->directional_light = 0; }\
+if(type_flags & RK_NodeTypeFlag_PointLight) { SLLStackPush(node_bucket->first_free_point_light, node->point_light); node->point_light = 0; }\
+if(type_flags & RK_NodeTypeFlag_SpotLight) { SLLStackPush(node_bucket->first_free_spot_light, node->spot_light); node->spot_light = 0; }\
+node->type_flags & (~type_flags);
 C_LINKAGE_BEGIN
 String8 rk_icon_kind_text_table[69] =
 {

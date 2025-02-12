@@ -284,9 +284,16 @@ struct RK_Material
     String8 name;
     U8      name_buffer[300];
 
-    // pbr
-    RK_Handle base_clr_tex;
-    Vec4F32 base_clr_factor;
+    // base color (albedo + alpha)
+    RK_Handle diffuse_tex;
+    // NOTE(k) from baseColorFactor
+    // the baseColorFactor contains scale factors for the red, green, blue and alpha component of the color
+    // if no diffuse texture is used, these values will define he color of the whole object
+    Vec4F32 diffuse_color;
+    B32 has_diffuse_texture;
+    F32 opacity;
+
+    // metallic/roughness values
     RK_Handle metallic_roughness_tex;
     F32 metallic_factor;
     F32 roughness_factor;
@@ -294,6 +301,7 @@ struct RK_Material
     // normal texture
     RK_Handle normal_tex;
     F32 normal_scale;
+    B32 has_normal_texture;
 
     // occlusion texture
     RK_Handle occlusion_tex;
@@ -302,8 +310,15 @@ struct RK_Material
     // emissive texture
     RK_Handle emissive_tex;
     Vec3F32 emissive_factor;
+    B32 has_emissive_texture;
 
-    // TODO(k): for serialization
+    // specular
+    // NOTE(k): modern pbr pipeline don't use this
+    RK_Handle specular_tex;
+    F32 specular_scale;
+    B32 has_specular_texture;
+
+    // NOTE(k): for serialization
     String8 path;
     U8 path_buffer[300];
 };
@@ -503,7 +518,9 @@ struct RK_MeshInstance3D
     RK_Handle         skin;
     RK_Key            skin_seed;
     RK_Handle         material_override;
-    B32               disable_depth;
+    B32               omit_depth_test;
+    B32               omit_light;
+    B32               draw_edge;
 };
 
 #define RK_MAX_ANIMATION_PER_INST_COUNT 10
@@ -677,7 +694,7 @@ struct RK_NodeBucket
     RK_Node3D           *first_free_node3d;
     RK_Camera3D         *first_free_camera3d;
     RK_MeshInstance3D   *first_free_mesh_inst3d;
-    RK_SceneInstance    *first_free_scene_instance;
+    RK_SceneInstance    *first_free_scene_inst;
     RK_AnimationPlayer  *first_free_animation_player;
     RK_DirectionalLight *first_free_directional_light;
     RK_PointLight       *first_free_point_light;
@@ -1032,6 +1049,8 @@ internal RK_View*         rk_view_from_kind(RK_ViewKind kind);
 
 internal RK_Node* rk_node_alloc(RK_NodeTypeFlags type_flags);
 internal void     rk_node_release(RK_Node *node);
+internal void     rk_node_equip_type_flags(RK_Node *n, RK_NodeTypeFlags);
+internal void     rk_node_unequip_type_flags(RK_Node *n, RK_NodeTypeFlags);
 internal RK_Node* rk_build_node_from_string(RK_NodeTypeFlags type_flags, RK_NodeFlags flags, String8 name);
 internal RK_Node* rk_build_node_from_stringf(RK_NodeTypeFlags type_flags, RK_NodeFlags flags, char *fmt, ...);
 internal RK_Node* rk_build_node_from_key(RK_NodeTypeFlags type_flags, RK_NodeFlags flags, RK_Key key);

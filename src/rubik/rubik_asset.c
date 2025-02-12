@@ -270,9 +270,13 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
                             material->name = push_str8_copy_static(str8_lit(material_src->name), material->name_buffer, ArrayCount(material->name_buffer));
 
                             // pbr
-                            // if(material_src->has_pbr_metallic_roughness)
-                            material->base_clr_tex = rk_tex_from_gltf_tex(material_src->pbr_metallic_roughness.base_color_texture.texture, data, gltf_directory, seed_key);
-                            material->base_clr_factor = *(Vec4F32*)material_src->pbr_metallic_roughness.base_color_factor;
+                            // (albedo+alpha)
+                            material->diffuse_tex = rk_tex_from_gltf_tex(material_src->pbr_metallic_roughness.base_color_texture.texture, data, gltf_directory, seed_key);
+                            material->diffuse_color = *(Vec4F32*)material_src->pbr_metallic_roughness.base_color_factor;
+                            material->opacity = material->diffuse_color.w;
+                            material->has_diffuse_texture = rk_handle_is_zero(material->diffuse_tex);
+
+                            // metallic/roughness values
                             material->metallic_roughness_tex = rk_tex_from_gltf_tex(material_src->pbr_metallic_roughness.metallic_roughness_texture.texture, data, gltf_directory, seed_key);
                             material->metallic_factor = material_src->pbr_metallic_roughness.metallic_factor;
                             material->roughness_factor = material_src->pbr_metallic_roughness.roughness_factor;
@@ -280,6 +284,7 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
                             // normal
                             material->normal_tex = rk_tex_from_gltf_tex(material_src->normal_texture.texture, data, gltf_directory, seed_key);
                             material->normal_scale = material_src->normal_texture.scale;
+                            material->has_normal_texture = rk_handle_is_zero(material->normal_tex);
 
                             // occlusion texture
                             material->occlusion_tex = rk_tex_from_gltf_tex(material_src->occlusion_texture.texture, data, gltf_directory, seed_key);
@@ -288,6 +293,12 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
                             // emissive texture
                             material->emissive_tex = rk_tex_from_gltf_tex(material_src->emissive_texture.texture, data, gltf_directory, seed_key);
                             material->emissive_factor = *(Vec3F32*)material_src->emissive_factor;
+                            material->has_emissive_texture = rk_handle_is_zero(material->emissive_tex);
+
+                            // specular texture
+                            material->specular_tex = rk_tex_from_gltf_tex(material_src->specular.specular_texture.texture, data, gltf_directory, seed_key);
+                            material->specular_scale = material_src->specular.specular_factor;
+                            material->has_specular_texture = rk_handle_is_zero(material->specular_tex);
                         }
                     }
                 }
@@ -783,6 +794,7 @@ rk_mesh_primitive_box(Arena *arena, Vec3F32 size, U64 subdivide_w, U64 subdivide
 internal void
 rk_mesh_primitive_plane(Arena *arena, Vec2F32 size, U64 subdivide_w, U64 subdivide_d, B32 both_face, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
 {
+    // TODO(XXX): both_face won't work as expected, since the nor is not flipped (we didn't duplicate vertex)
     U64 i,j,prevrow,thisrow,vertex_idx, indice_idx;
     F32 x,z;
 
@@ -1439,6 +1451,7 @@ rk_mesh_primitive_circle_line(Arena *arena, F32 radius, U64 segments, R_Vertex *
 internal void
 rk_mesh_primitive_arc_filled(Arena *arena, F32 radius, F32 pct, U64 segments, B32 both_face, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
 {
+    // TODO(XXX): both_face won't work as expected, since the nor is not flipped (we didn't duplicate vertex)
     U64 vertex_count = segments+2;
     U64 indice_count = segments*3*(2*both_face);
     R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
@@ -1500,8 +1513,8 @@ rk_mesh_primitive_arc_filled(Arena *arena, F32 radius, F32 pct, U64 segments, B3
 
 //~ Node building helper
 
-internal RK_Node *
-rk_box_node(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d)
+internal void
+rk_node_equip_box(RK_Node *n, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d)
 {
     RK_Key res_key;
     {
@@ -1549,14 +1562,12 @@ rk_box_node(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 
             scratch_end(scratch);
         }
     }
-
-    RK_Node *ret = rk_build_mesh_inst3d_from_string(0, 0, string);
-    ret->mesh_inst3d->mesh = mesh_res;
-    return ret;
+    rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
+    n->mesh_inst3d->mesh = mesh_res;
 }
 
-internal RK_Node *
-rk_plane_node(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
+internal void
+rk_node_equip_plane(RK_Node *n, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
 {
     RK_Key res_key;
     {
@@ -1601,13 +1612,12 @@ rk_plane_node(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
         }
     }
 
-    RK_Node *ret = rk_build_mesh_inst3d_from_string(0, 0, string);
-    ret->mesh_inst3d->mesh = mesh_res;
-    return ret;
+    rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
+    n->mesh_inst3d->mesh = mesh_res;
 }
 
-internal RK_Node *
-rk_sphere_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere)
+internal void
+rk_node_equip_sphere(RK_Node *n, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere)
 {
     RK_Key res_key;
     {
@@ -1656,13 +1666,12 @@ rk_sphere_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 
         }
     }
 
-    RK_Node *ret = rk_build_mesh_inst3d_from_string(0, 0, string);
-    ret->mesh_inst3d->mesh = mesh_res;
-    return ret;
+    rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
+    n->mesh_inst3d->mesh = mesh_res;
 }
 
-internal RK_Node *
-rk_cylinder_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom)
+internal void
+rk_node_equip_cylinder(RK_Node *n, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom)
 {
     RK_Key res_key;
     {
@@ -1714,13 +1723,12 @@ rk_cylinder_node(String8 string, F32 radius, F32 height, U64 radial_segments, U6
         }
     }
 
-    RK_Node *ret = rk_build_mesh_inst3d_from_string(0, 0, string);
-    ret->mesh_inst3d->mesh = mesh_res;
-    return ret;
+    rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
+    n->mesh_inst3d->mesh = mesh_res;
 }
 
-internal RK_Node *
-rk_capsule_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings)
+internal void
+rk_node_equip_capsule_(RK_Node *n, F32 radius, F32 height, U64 radial_segments, U64 rings)
 {
     RK_Key res_key;
     {
@@ -1766,13 +1774,12 @@ rk_capsule_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64
         }
     }
 
-    RK_Node *ret = rk_build_mesh_inst3d_from_string(0, 0, string);
-    ret->mesh_inst3d->mesh = mesh_res;
-    return ret;
+    rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
+    n->mesh_inst3d->mesh = mesh_res;
 }
 
-internal RK_Node *
-rk_torus_node(String8 string, F32 inner_radius, F32 outer_radius, U64 rings, U64 ring_segments)
+internal void
+rk_node_equip_torus(RK_Node *n, F32 inner_radius, F32 outer_radius, U64 rings, U64 ring_segments)
 {
     RK_Key res_key;
     {
@@ -1818,9 +1825,8 @@ rk_torus_node(String8 string, F32 inner_radius, F32 outer_radius, U64 rings, U64
         }
     }
 
-    RK_Node *ret = rk_build_mesh_inst3d_from_string(0, 0, string);
-    ret->mesh_inst3d->mesh = mesh_res;
-    return ret;
+    rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
+    n->mesh_inst3d->mesh = mesh_res;
 }
 
 internal RK_DrawNode *

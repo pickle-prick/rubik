@@ -311,6 +311,7 @@ void main()
             case SPOT_LIGHT:
             {
                 Cone cone = {l.position_vs.xyz, l.range, l.direction_vs.xyz, tan(l.spot_angle)*l.range};
+                // TODO(XXX): spot light is not a perfect cone, there should be some hemi_sphere part in the bottom, may cause problem
                 if(cone_intersect_frustum(cone, wg_frustum, near_clip_vs, max_depth_vs))
                 {
                     // TODO(XXX): add light to the light list for transparent geometry

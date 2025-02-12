@@ -197,6 +197,29 @@ rk_scene_entry__0()
         RK_Handle blackguard = rk_packed_scene_from_gltf(str8_lit("./models/blackguard/scene.gltf"));
         // RK_Handle droide = rk_packed_scene_from_gltf(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
         RK_Handle white_mat = rk_material_from_color(str8_lit("white"), v4f32(1,1,1,1));
+        RK_Handle grid_prototype_material;
+        {
+            String8 png_path = str8_lit("./textures/gridbox-prototype-materials/prototype_512x512_blue2.png");
+            RK_Key material_res_key = rk_res_key_from_string(RK_ResourceKind_Material, rk_key_zero(), png_path);
+            grid_prototype_material = rk_resh_alloc(material_res_key, RK_ResourceKind_Material, 1);
+            RK_Material *material = rk_res_data_from_handle(grid_prototype_material);
+
+            // load texture
+            RK_Key tex2d_key = rk_res_key_from_string(RK_ResourceKind_Texture2D, rk_key_zero(), png_path);
+            RK_Handle tex2d_res = rk_resh_alloc(tex2d_key, RK_ResourceKind_Texture2D, 1);
+            R_Tex2DSampleKind sample_kind = R_Tex2DSampleKind_Nearest;
+            RK_Texture2D *tex2d = rk_res_data_from_handle(tex2d_res);
+            {
+                int x,y,n;
+                U8 *image_data = stbi_load((char*)png_path.str, &x, &y, &n, 4);
+                tex2d->tex = r_tex2d_alloc(R_ResourceKind_Static, sample_kind, v2s32(x,y), R_Tex2DFormat_RGBA8, image_data);
+                stbi_image_free(image_data);
+            }
+            tex2d->sample_kind = sample_kind;
+
+            material->name = push_str8_copy_static(str8_lit("prototype_512x512_blue2"), material->name_buffer, ArrayCount(material->name_buffer));
+            material->diffuse_tex = tex2d_res;
+        }
 
         rk_pop_parent();
         rk_pop_node_bucket();
@@ -205,10 +228,12 @@ rk_scene_entry__0()
         // spwan node
 
         // reference plane
-        RK_Node *floor = rk_plane_node(str8_lit("floor"), v2f32(9,9), 0,0);
+        RK_Node *floor = rk_build_node3d_from_stringf(0,0,"floor");
+        rk_node_equip_plane(floor, v2f32(9,9), 0,0);
+
         floor->node3d->transform.position.y -= 0.01;
-        // TODO(XXX): not working, fix it later
         floor->mesh_inst3d->material_override = white_mat;
+        floor->mesh_inst3d->material_override = grid_prototype_material;
         floor->flags |= RK_NodeFlag_NavigationRoot;
 
         // RK_Node *n1 = rk_node_from_packed_scene(str8_lit("1"), droide);
@@ -219,26 +244,43 @@ rk_scene_entry__0()
         //     n1->flags |= RK_NodeFlag_NavigationRoot;
         // }
 
-        RK_Node *l1 = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_DirectionalLight, 0, "direction_light_1");
-        l1->directional_light->color = v3f32(0.1,0.1,0.1);
-        l1->directional_light->intensity = 0.1;
-        l1->directional_light->direction = normalize_3f32(v3f32(1,1,0));
+        // directional light
+        {
+            RK_Node *l1 = rk_build_node3d_from_stringf(RK_NodeTypeFlag_DirectionalLight, 0, "direction_light_1");
+            l1->directional_light->color = v3f32(0.1,0.1,0.1);
+            l1->directional_light->intensity = 0.1;
+            l1->directional_light->direction = normalize_3f32(v3f32(1,1,0));
+        }
 
-        RK_Node *l2 = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_PointLight, 0, "point_light_1");
-        l2->node3d->transform.position.y -= 3;
-        l2->point_light->color = v3f32(1,1,1);
-        l2->point_light->range = 3.5;
-        l2->point_light->intensity = 1;
-        l2->point_light->attenuation = v3f32(1,1,1);
+        // point light 1
+        {
+            RK_Node *l2 = rk_build_node3d_from_stringf(RK_NodeTypeFlag_PointLight, 0, "point_light_1");
+            rk_node_equip_sphere(l2, 0.1, 0.2, 9,9,0);
+            l2->flags |= RK_NodeFlag_NavigationRoot;
+            l2->node3d->transform.position.y -= 3.5;
+            l2->mesh_inst3d->omit_light = 1;
+            l2->mesh_inst3d->draw_edge = 1;
+            l2->point_light->color = v3f32(1,1,1);
+            l2->point_light->range = 3.9;
+            l2->point_light->intensity = 1;
+            l2->point_light->attenuation = v3f32(0,0,1);
+        }
 
-        RK_Node *l3 = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_SpotLight, 0, "spot_light_1");
-        l3->node3d->transform.position.y -= 3;
-        l3->spot_light->color = v3f32(1,1,1);
-        l3->spot_light->intensity = 1;
-        l3->spot_light->attenuation = v3f32(1,1,1);
-        l3->spot_light->direction = normalize_3f32(v3f32(1,1,0));
-        l3->spot_light->range = 9.9;
-        l3->spot_light->angle = radians_from_turns_f32(0.09);
+        // spot light 1
+        {
+            RK_Node *l3 = rk_build_node3d_from_stringf(RK_NodeTypeFlag_SpotLight, 0, "spot_light_1");
+            rk_node_equip_sphere(l3, 0.1, 0.2, 9,9,0);
+            l3->flags |= RK_NodeFlag_NavigationRoot;
+            l3->node3d->transform.position.y -= 3;
+            l3->mesh_inst3d->omit_light = 1;
+            l3->mesh_inst3d->draw_edge = 1;
+            l3->spot_light->color = v3f32(1,0.3,1);
+            l3->spot_light->intensity = 1;
+            l3->spot_light->attenuation = v3f32(0,0,1);
+            l3->spot_light->direction = normalize_3f32(v3f32(1,1,0));
+            l3->spot_light->range = 9.9;
+            l3->spot_light->angle = radians_from_turns_f32(0.09);
+        }
 
         RK_Node *n2 = rk_node_from_packed_scene(str8_lit("2"), blackguard);
         {

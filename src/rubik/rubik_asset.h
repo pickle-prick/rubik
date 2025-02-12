@@ -36,12 +36,12 @@ internal void rk_mesh_primitive_arc_filled(Arena *arena, F32 radius, F32 pct, U6
 
 //~ Node building helper
 
-internal RK_Node* rk_box_node(String8 string, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d);
-internal RK_Node* rk_plane_node(String8 string, Vec2F32 size, U64 subdivide_w, U64 subdivide_d);
-internal RK_Node* rk_sphere_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere);
-internal RK_Node* rk_cylinder_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom);
-internal RK_Node* rk_capsule_node(String8 string, F32 radius, F32 height, U64 radial_segments, U64 rings);
-internal RK_Node* rk_torus_node(String8 string, F32 inner_radius, F32 outer_radius, U64 rings, U64 ring_segments);
+internal void rk_node_equip_box_node(RK_Node *node, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d);
+internal void rk_node_equip_plane(RK_Node *node, Vec2F32 size, U64 subdivide_w, U64 subdivide_d);
+internal void rk_node_equip_sphere(RK_Node *node, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere);
+internal void rk_node_equip_cylinder(RK_Node *node, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom);
+internal void rk_node_equip_capsule(RK_Node *node, F32 radius, F32 height, U64 radial_segments, U64 rings);
+internal void rk_node_equip_torus(RK_Node *node, F32 inner_radius, F32 outer_radius, U64 rings, U64 ring_segments);
 
 //~ Drawlist building helper
 

@@ -110,6 +110,41 @@ RK_StackTable:
 }
 
 ////////////////////////////////
+//~ k: Node equipments
+
+@table(flag, name_lower, type, has_default_value, default_value)
+RK_NodeEquipmentTable:
+{
+  { RK_NodeTypeFlag_Node2D           node2d            `RK_Node2D`           0 0                                                                             }
+  { RK_NodeTypeFlag_Node3D           node3d            `RK_Node3D`           1 `.transform = {.rotation = make_indentity_quat_f32(), .scale = v3f32(1,1,1)}` }
+  { RK_NodeTypeFlag_Camera3D         camera3d          `RK_Camera3D`         0 0                                                                             }
+  { RK_NodeTypeFlag_MeshInstance3D   mesh_inst3d       `RK_MeshInstance3D`   0 0                                                                             }
+  { RK_NodeTypeFlag_SceneInstance    scene_inst        `RK_SceneInstance`    0 0                                                                             }
+  { RK_NodeTypeFlag_AnimationPlayer  animation_player  `RK_AnimationPlayer`  0 0                                                                             }
+  { RK_NodeTypeFlag_DirectionalLight directional_light `RK_DirectionalLight` 0 0                                                                             }
+  { RK_NodeTypeFlag_PointLight       point_light       `RK_PointLight`       0 0                                                                             }
+  { RK_NodeTypeFlag_SpotLight        spot_light        `RK_SpotLight`        0 0                                                                             }
+}
+
+@gen @c_file
+{
+    `#define RK_EquipTypeFlagsImpl(node, type_flags) \\`
+    `RK_NodeBucket *node_bucket = rk_top_node_bucket(); \\`
+    @expand(RK_NodeEquipmentTable a)
+        `if(type_flags & $(a.flag)) { node->$(a.name_lower) = node_bucket->first_free_$(a.name_lower); if(node->$(a.name_lower) != 0) {SLLStackPop(node_bucket->first_free_$(a.name_lower));} else {node->$(a.name_lower) = push_array_no_zero(node_bucket->arena_ref, $(a.type), 1);} MemoryZeroStruct(node->$(a.name_lower)); if($(a.has_default_value)) {(*node->$(a.name_lower)) = ($(a.type)){$(a.default_value)};} }\\`;
+    `node->type_flags |= type_flags;`
+}
+
+@gen @c_file
+{
+    `#define RK_UnequipTypeFlagsImpl(node, type_flags) \\`
+    `RK_NodeBucket *node_bucket = rk_top_node_bucket(); \\`
+    @expand(RK_NodeEquipmentTable a)
+        `if(type_flags & $(a.flag)) { SLLStackPush(node_bucket->first_free_$(a.name_lower), node->$(a.name_lower)); node->$(a.name_lower) = 0; }\\`;
+    `node->type_flags & (~type_flags);`
+}
+
+////////////////////////////////
 //~ rjf: Icons
 
 @table(name, text)
