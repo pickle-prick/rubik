@@ -140,19 +140,29 @@ A list of the layers in the codebase and their associated namespaces is below:
     - [X] play animation
     - [ ] morph targets
     - [X] GJK impl
+- [X] Font rendering
+- [X] 2D ui building blocks (immediate mode)
+    - [X] basic widges (scroll, button, label, line_edit, expander, ...)
 - [ ] Node tree building
     - [ ] 2D
     - [X] 3D
-- [ ] 3D scene editor UI (PARTIAL)
+    - [X] basic mesh primitive building block (box, sphere, plane, ...)
+- [X] 3D scene editor UI
     - [X] tree viewer
     - [X] inspector
     - [X] profile panel
     - [X] stats
+    - [X] dynamic drawlist (immediate mode style)
 - [ ] Scene serialization and deserialization (PARTIAL)
-- [ ] Multiple platform(AMD64) build
-    - [X] Linux
-    - [X] Windows
-    - [ ] MAC
+- [ ] Multiple platform(AMD64) support
+    - [ ] OS layer
+        - [X] Linux
+        - [X] Windows
+        - [ ] MAC
+    - [ ] build
+        - [X] Linux
+        - [X] Windows
+        - [ ] MAC
 - [ ] Lighting
     - [X] directional light
     - [X] point light
@@ -162,24 +172,38 @@ A list of the layers in the codebase and their associated namespaces is below:
     - [ ] full pbr rendering
     - [X] forward+ rendering
     - [ ] shadow map
+    - [X] Phong/Blinn material model
+    - [ ] PBR material model
+    - [ ] IBL reflection
 - [ ] Assets loading
     - [X] gltf loading
     - [X] texture loading
     - [ ] multhreading to speed up
+- [ ] Rendering pass
+    - [X] pixel id pass
+    - [X] zpre pass
+    - [X] toon shading pass
+    - [X] rect pass
+    - [X] tiling and light culling pass (compute)
+    - [ ] shadow map pass
+    - [ ] blur pass (Gaussian)
+    - [X] geo3d pass
+    - [ ] other post effects
 - [X] 2D collision detection
     - [X] GJK impl
     - [X] EPA impl
 - [ ] 3D collision detection
     - [ ] GJK impl
     - [ ] EPA impl
+    - [ ] use compute shader to speed up
+    - [ ] binary space partitioning tree
 - [ ] Rendering backend
-    - [ ] Vulkan
-        - [X] base
-        - [X] forward+ rendering with compute shader
-        - [ ] Custom vulkan memory allocator
+    - [X] Vulkan
     - [ ] D3D11
     - [ ] WEBGPU
+- [ ] Async task architecture (Ref: Parallelizing the Naughty Dog Engine Using Fibers)
 - [ ] Audio
+- [X] Unicode support
 
 ## Reference
 

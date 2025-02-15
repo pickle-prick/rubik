@@ -24,21 +24,10 @@
 // of the GPU could be too larger for it to handle, so the CPU would end up
 // waiting a lot, adding frames of latency Generally extra latency isn't desired
 #define MAX_FRAMES_IN_FLIGHT 2
-// support max 1 rect pass per frame
-#define MAX_RECT_PASS 1
-#define MAX_RECT_GROUPS 3000
-// support max 3 geo3d pass per frame
-#define MAX_GEO3D_PASS 3
-// support max 3000 joints per geo3d pass
-#define MAX_JOINTS_PER_PASS 3000
-// support max 3000 lights per geo3d pass
-#define MAX_LIGHTS_PER_PASS 3000
 // support max 8K with 16x16 sized tile
 // TODO(XXX): we want to dynamic set the tile size based on the size of viewport
 #define TILE_SIZE 16
 #define MAX_TILES_PER_PASS ((7680*4320)/(TILE_SIZE*TILE_SIZE))
-#define MAX_RECT_INSTANCES 10000
-#define MAX_MESH_INSTANCES 10000
 #define MAX_LIGHTS_PER_TILE 200
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -88,6 +77,7 @@ typedef enum R_Vulkan_UBOTypeKind
 typedef enum R_Vulkan_SBOTypeKind
 {
     R_Vulkan_SBOTypeKind_Joints,
+    R_Vulkan_SBOTypeKind_Materials,
     R_Vulkan_SBOTypeKind_Tiles,
     R_Vulkan_SBOTypeKind_Lights,
     R_Vulkan_SBOTypeKind_LightIndices,
@@ -103,6 +93,7 @@ typedef enum R_Vulkan_DescriptorSetKind
     R_Vulkan_DescriptorSetKind_UBO_LightCulling,
     R_Vulkan_DescriptorSetKind_Tex2D,
     R_Vulkan_DescriptorSetKind_SBO_Joints,
+    R_Vulkan_DescriptorSetKind_SBO_Materials,
     R_Vulkan_DescriptorSetKind_SBO_Tiles,
     R_Vulkan_DescriptorSetKind_SBO_Lights,
     R_Vulkan_DescriptorSetKind_SBO_LightIndices,
@@ -266,6 +257,8 @@ struct R_Vulkan_SBO_TileLights
     U32 light_count;
     F32 _padding_0[2];
 };
+
+#define R_Vulkan_SBO_Material R_Material
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Vulkan types

@@ -839,6 +839,35 @@ union Guid
 StaticAssert(sizeof(Guid) == 16, g_guid_size_check);
 
 ////////////////////////////////
+//~ NOTE(k): collection types
+
+typedef struct HashNode HashNode;
+struct HashNode
+{
+    U64           key;
+    HashNode *hash_next;
+    HashNode *hash_prev;
+
+    union
+    {
+        F32 f32;
+        F64 f64;
+        S32 s32;
+        S64 s64;
+        U32 u32;
+        U64 u64;
+        void *ptr;
+    } value;
+};
+
+typedef struct HashSlot HashSlot;
+struct HashSlot
+{
+    HashNode *first;
+    HashNode *last;
+};
+
+////////////////////////////////
 //~ NOTE(allen): Constants
 
 global U32 sign32     = 0x80000000;

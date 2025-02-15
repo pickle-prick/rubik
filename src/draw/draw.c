@@ -167,9 +167,11 @@ internal R_Mesh3DInst *
 d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices,
        U64 vertex_buffer_offset, U64 indice_buffer_offset, U64 indice_count,
        R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags,
-       R_Handle albedo_tex, Vec4F32 color_tex, F32 line_width,
-       Mat4x4F32 *joint_xforms, U64 joint_count, Mat4x4F32 inst_xform, U64 inst_key, B32 draw_edge, B32 depth_test, B32 retain_order, B32 omit_light)
+       Mat4x4F32 *joint_xforms, U64 joint_count,
+       U64 material_idx,
+       F32 line_width, B32 retain_order)
 {
+    // NOTE(k): if joint_count > 0, then we can't do mesh instancing
     Arena *arena = d_thread_ctx->arena;
     D_Bucket *bucket = d_top_bucket();
     R_Pass *pass = r_pass_from_kind(arena, &bucket->passes, R_PassKind_Geo3D, 1);
@@ -197,9 +199,9 @@ d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices,
             (U64)mesh_geo_topology,
             (U64)mesh_geo_polygon,
             (U64)mesh_geo_vertex_flags,
-            albedo_tex.u64[0],
-            albedo_tex.u64[1],
+            material_idx,
             *(U64 *)(&line_width_f64),
+            // NOTE(k): only for diffuse texture
             (U64)d_top_tex2d_sample_kind(),
         };
         hash = d_hash_from_string(str8((U8 *)buffer, sizeof(buffer)));
@@ -242,32 +244,26 @@ d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices,
         DLLPushBack_NP(params->mesh_batches.first, params->mesh_batches.last, node, insert_next, insert_prev);
         params->mesh_batches.array_size++;
 
-        node->hash = hash;
-        node->batches = r_batch_list_make(sizeof(R_Mesh3DInst));
-        node->params.mesh_vertices          = mesh_vertices;
-        node->params.vertex_buffer_offset   = vertex_buffer_offset;
-        node->params.mesh_indices           = mesh_indices;
-        node->params.indice_buffer_offset   = indice_buffer_offset;
-        node->params.indice_count           = indice_count;
-        node->params.line_width             = line_width;
-        node->params.mesh_geo_topology      = mesh_geo_topology;
-        node->params.mesh_geo_polygon       = mesh_geo_polygon;
-        node->params.mesh_geo_vertex_flags  = mesh_geo_vertex_flags;
-        node->params.albedo_tex             = albedo_tex;
-        node->params.albedo_tex_sample_kind = d_top_tex2d_sample_kind();
-        node->params.xform                  = mat_4x4f32(1.0f);
+        node->hash                           = hash;
+        node->batches                        = r_batch_list_make(sizeof(R_Mesh3DInst));
+        node->params.mesh_vertices           = mesh_vertices;
+        node->params.vertex_buffer_offset    = vertex_buffer_offset;
+        node->params.mesh_indices            = mesh_indices;
+        node->params.indice_buffer_offset    = indice_buffer_offset;
+        node->params.indice_count            = indice_count;
+        node->params.line_width              = line_width;
+        node->params.mesh_geo_topology       = mesh_geo_topology;
+        node->params.mesh_geo_polygon        = mesh_geo_polygon;
+        node->params.mesh_geo_vertex_flags   = mesh_geo_vertex_flags;
+        node->params.diffuse_tex_sample_kind = d_top_tex2d_sample_kind();
+        node->params.mat_idx                 = material_idx;
     }
 
     // Push a new instance to the batch group, then return it
     R_Mesh3DInst *inst = (R_Mesh3DInst *)r_batch_list_push_inst(arena, &node->batches, 256);
-    inst->xform         = inst_xform;
-    inst->key           = inst_key;
     inst->joint_xforms  = joint_xforms;
     inst->joint_count   = joint_count;
-    inst->color_texture = color_tex;
-    inst->draw_edge     = draw_edge;
-    inst->depth_test    = depth_test;
-    inst->omit_light    = omit_light;
+    inst->material_idx  = material_idx;
     return inst;
 }
 

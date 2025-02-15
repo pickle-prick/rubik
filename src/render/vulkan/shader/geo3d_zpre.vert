@@ -14,7 +14,7 @@ layout(location = 7)   in mat4  model;
 layout(location = 11)  in mat4  model_inv;
 
 layout(location = 15) in uvec2 id;
-layout(location = 16) in vec4  color_texture;
+layout(location = 16) in uint  material_idx;
 layout(location = 17) in uint  draw_edge;
 layout(location = 18) in uint  joint_count;
 layout(location = 19) in uint  first_joint;

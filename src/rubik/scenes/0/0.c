@@ -77,11 +77,28 @@ RK_NODE_CUSTOM_UPDATE(editor_camera_fn)
     }
 }
 
+typedef struct AnimatedSpotLight AnimatedSpotLight;
+struct AnimatedSpotLight
+{
+    Vec3F32 rotation_axis;
+    F32 target_intensity;
+    F32 target_range;
+};
+
 RK_NODE_CUSTOM_UPDATE(rotating_spot_light)
 {
     RK_SpotLight *light = node->spot_light;
+    AnimatedSpotLight *data = node->custom_data;
 
-    QuatF32 r = make_rotate_quat_f32(v3f32(1,1,1), 0.3*dt_sec);
+    // Animation rate
+    F32 slow_rate = 1 - pow_f32(2, (-90.f * dt_sec));
+    F32 fast_rate = 1 - pow_f32(2, (-40.f * dt_sec));
+
+    // animating intensity
+    // light->intensity += fast_rate * (light->intensity > 0.999f ? 0 : 1 - light->intensity);
+    // light->range += slow_rate * (data->target_range - light->range);
+
+    QuatF32 r = make_rotate_quat_f32(data->rotation_axis, 0.3*dt_sec);
     node->node3d->transform.rotation = mul_quat_f32(r, node->node3d->transform.rotation);
 }
 
@@ -145,7 +162,10 @@ rk_scene_entry__0()
             tex2d->sample_kind = sample_kind;
 
             material->name = push_str8_copy_static(str8_lit("prototype_512x512_blue2"), material->name_buffer, ArrayCount(material->name_buffer));
-            material->diffuse_tex = tex2d_res;
+            material->textures[R_GeoTexKind_Diffuse] = tex2d_res;
+            material->v.diffuse_color = v4f32(1,1,1,1);
+            material->v.opacity = 1.0;
+            material->v.has_diffuse_texture = 1;
         }
 
         rk_pop_parent();
@@ -193,21 +213,27 @@ rk_scene_entry__0()
             l2->point_light->attenuation = v3f32(0,0,1);
         }
 
-        // spot light 1
+        // spot lights
+        for(S64 i = 0; i < 3; i++)
         {
-            RK_Node *l3 = rk_build_node3d_from_stringf(RK_NodeTypeFlag_SpotLight, 0, "spot_light_1");
-            rk_node_equip_sphere(l3, 0.1, 0.2, 9,9,0);
-            l3->flags |= RK_NodeFlag_NavigationRoot;
-            l3->node3d->transform.position.y -= 3;
-            l3->mesh_inst3d->omit_light = 1;
-            l3->mesh_inst3d->draw_edge = 1;
-            l3->spot_light->color = v3f32(1,0.3,1);
-            l3->spot_light->intensity = 1;
-            l3->spot_light->attenuation = v3f32(0,0,1);
-            l3->spot_light->direction = normalize_3f32(v3f32(1,1,0));
-            l3->spot_light->range = 9.9;
-            l3->spot_light->angle = radians_from_turns_f32(0.09);
-            rk_node_push_fn(l3, rotating_spot_light);
+            RK_Node *l = rk_build_node3d_from_stringf(RK_NodeTypeFlag_SpotLight, 0, "spot_light_%I64d", i);
+            rk_node_equip_box(l, v3f32(0.15, 0.15, 0.15), 0,0,0);
+            l->flags |= RK_NodeFlag_NavigationRoot;
+            l->node3d->transform.position.y -= 3;
+            l->node3d->transform.position.x = -3 + i*3;
+            l->mesh_inst3d->omit_light = 1;
+            l->mesh_inst3d->draw_edge = 1;
+            l->spot_light->color.v[i] = 1;
+            l->spot_light->intensity = 1;
+            l->spot_light->attenuation = v3f32(0,0,1);
+            l->spot_light->direction = normalize_3f32(v3f32(1,1,0));
+            l->spot_light->range = 9.9;
+            l->spot_light->angle = radians_from_turns_f32(0.09);
+            rk_node_push_fn(l, rotating_spot_light);
+
+            AnimatedSpotLight *data = rk_node_custom_data_alloc(AnimatedSpotLight);
+            data->rotation_axis.v[i] = 1;
+            l->custom_data = data;
         }
 
         RK_Node *n2 = rk_node_from_packed_scene(str8_lit("2"), blackguard);

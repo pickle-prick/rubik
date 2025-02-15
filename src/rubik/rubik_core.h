@@ -281,46 +281,15 @@ struct RK_Resource;
 typedef struct RK_Material RK_Material;
 struct RK_Material
 {
-    String8 name;
-    U8      name_buffer[300];
-
-    // base color (albedo + alpha)
-    RK_Handle diffuse_tex;
-    // NOTE(k) from baseColorFactor
-    // the baseColorFactor contains scale factors for the red, green, blue and alpha component of the color
-    // if no diffuse texture is used, these values will define he color of the whole object
-    Vec4F32 diffuse_color;
-    B32 has_diffuse_texture;
-    F32 opacity;
-
-    // metallic/roughness values
-    RK_Handle metallic_roughness_tex;
-    F32 metallic_factor;
-    F32 roughness_factor;
-
-    // normal texture
-    RK_Handle normal_tex;
-    F32 normal_scale;
-    B32 has_normal_texture;
-
-    // occlusion texture
-    RK_Handle occlusion_tex;
-    F32 occlusion_strength;
-
-    // emissive texture
-    RK_Handle emissive_tex;
-    Vec3F32 emissive_factor;
-    B32 has_emissive_texture;
-
-    // specular
-    // NOTE(k): modern pbr pipeline don't use this
-    RK_Handle specular_tex;
-    F32 specular_scale;
-    B32 has_specular_texture;
-
+    String8    name;
+    U8         name_buffer[300];
     // NOTE(k): for serialization
-    String8 path;
-    U8 path_buffer[300];
+    String8    path;
+    U8         path_buffer[300];
+
+    RK_Handle  textures[R_GeoTexKind_COUNT];
+
+    R_Material v;
 };
 
 typedef struct RK_Skin RK_Skin;
@@ -343,10 +312,9 @@ struct RK_Mesh
     U64               indice_count;
     U64               vertex_count;
 
-    // TODO
     RK_Handle         material;
 
-    // TODO: make use of morph targets
+    // TODO(k): make use of morph targets
     RK_MorphTarget    morph_targets[RK_MAX_MORPH_TARGET_COUNT];
     U64               morph_target_count;
     F32               morph_weights[RK_MAX_MORPH_TARGET_COUNT];
@@ -466,7 +434,7 @@ struct RK_Resource
     RK_Resource              *next;
     U64                      generation;
 
-    // Hash link
+    // Hash link (storage)
     RK_Resource              *hash_next;
     RK_Resource              *hash_prev;
 
@@ -1055,6 +1023,8 @@ internal RK_Node* rk_build_node_from_string(RK_NodeTypeFlags type_flags, RK_Node
 internal RK_Node* rk_build_node_from_stringf(RK_NodeTypeFlags type_flags, RK_NodeFlags flags, char *fmt, ...);
 internal RK_Node* rk_build_node_from_key(RK_NodeTypeFlags type_flags, RK_NodeFlags flags, RK_Key key);
 internal void     rk_node_equip_display_string(RK_Node* node, String8 string);
+// TODO(XXX): make a hash table to store those block for reuse
+#define rk_node_custom_data_alloc(type) push_array(rk_top_node_bucket()->arena_ref, type, 1)
 
 #define rk_build_node2d_from_string(tf,f,s)              rk_build_node_from_string(((tf)|RK_NodeTypeFlag_Node2D), (f), s)
 #define rk_build_node2d_from_stringf(tf,f,...)           rk_build_node_from_stringf(((tf)|RK_NodeTypeFlag_Node2D), (f), __VA_ARGS__)

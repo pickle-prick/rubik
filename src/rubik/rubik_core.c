@@ -703,7 +703,8 @@ rk_material_from_color(String8 name, Vec4F32 color)
     {
         ret = rk_resh_alloc(res_key, RK_ResourceKind_Material, 0);
         RK_Material *material = rk_res_data_from_handle(ret);
-        material->diffuse_color = color;
+        material->v.diffuse_color = color;
+        material->v.opacity = 1.0f;
         material->name = push_str8_copy_static(name, material->name_buffer, ArrayCount(material->name_buffer));
     }
     return ret;
@@ -2468,55 +2469,72 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
         default:{InvalidPath;}break;
     }
 
-    /////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////
     // Remake drawing buckets every frame
 
+    // rect
     rk_state->bucket_rect = d_bucket_make();
-    for(U64 kind = 0; kind < RK_GeoBucketKind_COUNT; kind++)
+
+    // geo back
     {
-        D_Bucket **bucket = &rk_state->bucket_geo3d[kind];
+        D_Bucket **bucket = &rk_state->bucket_geo3d[RK_GeoBucketKind_Back];
         *bucket = d_bucket_make();
-        d_push_bucket(*bucket);
-
-        Rng2F32 viewport;
-        Mat4x4F32 view;
-        Mat4x4F32 projection;
-        B32 grid;
-        B32 omit_light;
-
-        switch(kind)
+        D_BucketScope(*bucket)
         {
-            case RK_GeoBucketKind_Back:
-            {
-                grid = show_grid;
-                viewport = rk_state->window_rect;
-                view = view_m;
-                projection = projection_m;
-                omit_light = 0;
-            }break;
-            case RK_GeoBucketKind_Front:
-            {
-                grid = 0;
-                viewport = rk_state->window_rect;
-                view = view_m;
-                projection = projection_m;
-                omit_light = 1;
-            }break;
-            case RK_GeoBucketKind_Screen:
-            {
-                grid = 0;
-                viewport = rk_state->window_rect;
-                view = mat_4x4f32(1.f);
-                projection = make_orthographic_vulkan_4x4f32(viewport.x0, viewport.x1, viewport.y1, viewport.y0, 0.1, 100.f);
-                omit_light = 1;
-            }break;
-            default:{InvalidPath;}break;
+            Rng2F32 viewport = rk_state->window_rect;
+            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, projection_m, 1, 0);
+            pass_params->lights = push_array(rk_frame_arena(), R_Light, MAX_LIGHTS_PER_PASS);
+            pass_params->materials = push_array(rk_frame_arena(), R_Material, MAX_MATERIALS_PER_PASS);
+            pass_params->textures = push_array(rk_frame_arena(), R_PackedTextures, MAX_MATERIALS_PER_PASS);
+
+            // load default material
+            pass_params->materials[0].diffuse_color = v4f32(1,1,1,1);
+            pass_params->materials[0].opacity = 1.0f;
+            pass_params->material_count = 1;
         }
-        d_geo3d_begin(viewport, view, projection, grid, omit_light);
-        d_pop_bucket();
     }
 
-    /////////////////////////////////
+    // geo front
+    {
+        D_Bucket **bucket = &rk_state->bucket_geo3d[RK_GeoBucketKind_Front];
+        *bucket = d_bucket_make();
+        D_BucketScope(*bucket)
+        {
+            Rng2F32 viewport = rk_state->window_rect;
+            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, projection_m, 0, 1);
+            pass_params->lights = push_array(rk_frame_arena(), R_Light, MAX_LIGHTS_PER_PASS);
+            pass_params->materials = push_array(rk_frame_arena(), R_Material, MAX_MATERIALS_PER_PASS);
+            pass_params->textures = push_array(rk_frame_arena(), R_PackedTextures, MAX_MATERIALS_PER_PASS);
+
+            // load default material
+            pass_params->materials[0].diffuse_color = v4f32(1,1,1,1);
+            pass_params->materials[0].opacity = 1.0f;
+            pass_params->material_count = 1;
+        }
+    }
+    // geo screen
+    {
+        D_Bucket **bucket = &rk_state->bucket_geo3d[RK_GeoBucketKind_Screen];
+        *bucket = d_bucket_make();
+        D_BucketScope(*bucket)
+        {
+            Rng2F32 viewport = rk_state->window_rect;
+            Mat4x4F32 view_m = mat_4x4f32(1.0f);
+            Mat4x4F32 proj_m = make_orthographic_vulkan_4x4f32(viewport.x0, viewport.x1, viewport.y1, viewport.y0, 0.1, 100.f);
+
+            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, mat_4x4f32(1.0f), projection_m, 0, 1);
+            pass_params->lights = push_array(rk_frame_arena(), R_Light, MAX_LIGHTS_PER_PASS);
+            pass_params->materials = push_array(rk_frame_arena(), R_Material, MAX_MATERIALS_PER_PASS);
+            pass_params->textures = push_array(rk_frame_arena(), R_PackedTextures, MAX_MATERIALS_PER_PASS);
+
+            // load default material
+            pass_params->materials[0].diffuse_color = v4f32(1,1,1,1);
+            pass_params->materials[0].opacity = 1.0f;
+            pass_params->material_count = 1;
+        }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////
     //~ Build ui
 
     //- Build event list for ui
@@ -2703,11 +2721,21 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 
         RK_Node *node = rk_node_from_handle(scene->root);
 
-        // collect lights
-        R_Light *lights = push_array(rk_frame_arena(), R_Light, MAX_LIGHTS_PER_FRAME);
-        U64 light_count = 0;
+        // collect lights,materials,textures
+        /////////////////////////////////////////////////////////////////////////////////
+
+        R_Light *lights = geo_params->lights;
+        U64 *light_count = &geo_params->light_count;
+
+        HashSlot *material_slots = push_array(rk_frame_arena(), HashSlot, 3000);
+        R_Material *materials = geo_params->materials;
+        R_PackedTextures *textures = geo_params->textures;
+        U64 *material_count = &geo_params->material_count;
         while(node != 0)
         {
+            AssertAlways(*light_count < MAX_LIGHTS_PER_PASS);
+            AssertAlways(*material_count < MAX_MATERIALS_PER_PASS);
+
             B32 force_leaf = !!(node->flags & RK_NodeFlag_Hidden);
             RK_NodeRec rec = rk_node_df_pre(node, 0, force_leaf);
             RK_Node *parent = node->parent;
@@ -2767,7 +2795,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 
                 if(node->type_flags & RK_NodeTypeFlag_DirectionalLight)
                 {
-                    R_Light *light_dst = &lights[light_count++];
+                    R_Light *light_dst = &lights[(*light_count)++];
                     RK_DirectionalLight *light_src = node->directional_light;
 
                     Vec4F32 direction_ws = {0,0,0,0};
@@ -2786,7 +2814,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 
                 if(node->type_flags & RK_NodeTypeFlag_PointLight)
                 {
-                    R_Light *light_dst = &lights[light_count++];
+                    R_Light *light_dst = &lights[(*light_count)++];
                     RK_PointLight *light_src = node->point_light;
 
                     Vec4F32 position_ws = {0,0,0,1};
@@ -2810,7 +2838,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 
                 if(node->type_flags & RK_NodeTypeFlag_SpotLight)
                 {
-                    R_Light *light_dst = &lights[light_count++];
+                    R_Light *light_dst = &lights[(*light_count)++];
                     RK_SpotLight *light_src = node->spot_light;
 
                     Vec4F32 position_ws = {0,0,0,1};
@@ -2950,57 +2978,83 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                     /////////////////////////////////////////////////////////////////////
                     // material
 
-                    R_Handle albedo_tex = {0};
-                    // NOTE(k): alpha != 0 => omit texture and use color texture
-                    Vec4F32 clr_tex = {1,1,1,0};
-
-                    RK_Material *material = rk_res_data_from_handle(mesh_inst3d->material_override);
-                    if(material == 0)
+                    U64 mat_idx = 0; // 0 is the default material
+                    if(camera->viewport_shading == RK_ViewportShadingKind_Material)
                     {
-                        material = rk_res_data_from_handle(mesh->material);
-                    }
-
-                    // TODO(XXX): PBR rendering
-                    // TODO(XXX): we would want to upload material to sbo buffer (reduce memory usage)
-                    if(material != 0)
-                    {
-                        RK_Texture2D *tex2d = rk_res_data_from_handle(material->diffuse_tex);
-                        if(tex2d) albedo_tex = tex2d->tex;
-                        if(camera->viewport_shading != RK_ViewportShadingKind_Material)
+                        RK_Resource *mat_res = rk_res_from_handle(mesh_inst3d->material_override);
+                        // load mesh material if no override is provided
+                        if(mat_res == 0)
                         {
-                            // clr_tex = material->diffuse_color;
-                            clr_tex = v4f32(1,1,1,1);
+                            mat_res = rk_res_from_handle(mesh->material);
                         }
-                    }
-                    else
-                    {
-                        // NOTE(k): omit texture if clr_tex.a is not zero
-                        clr_tex = rgba_from_u32(0xF4E0AFFF);
+
+                        if(mat_res)
+                        {
+                            U64 mat_key = mat_res->key.u64[0];
+                            U64 slot_idx = mat_res->key.u64[0] % MAX_MATERIALS_PER_PASS;
+                            U64 *ret = 0;
+                            for(HashNode *n = material_slots->first; n != 0; n = n->hash_next)
+                            {
+                                if(n->key == mat_key)
+                                {
+                                    ret = &n->value.u64;
+                                    break;
+                                }
+                            }
+
+                            // upload material if no cache is found
+                            if(ret == 0)
+                            {
+                                RK_Material *mat_src = &mat_res->v.material;
+                                R_Material *mat_dst = &materials[*material_count];
+
+                                // copy src to dst
+                                // TODO(k): we could set global ambient here based on the settings of scene
+                                MemoryCopy(mat_dst, &mat_src->v, sizeof(R_Material));
+                                for(U64 kind = 0; kind < R_GeoTexKind_COUNT; kind++)
+                                {
+                                    RK_Texture2D *tex = rk_res_data_from_handle(mat_src->textures[kind]);
+                                    if(tex) textures[*material_count].array[kind] = tex->tex;
+                                }
+
+                                // cache it
+                                HashNode *hash_node = push_array(rk_frame_arena(), HashNode, 1);
+                                hash_node->key = mat_res->key.u64[0];
+                                hash_node->value.u64 = *material_count;
+                                DLLPushBack_NP(material_slots[slot_idx].first, material_slots[slot_idx].last, hash_node, hash_next, hash_prev);
+                                (*material_count)++;
+
+                                ret = &hash_node->value.u64;
+                            }
+                            mat_idx = *ret;
+                        }
                     }
 
                     /////////////////////////////////////////////////////////////////////
                     // draw mesh
 
-                    Assert(mesh != 0);
-                    B32 draw_edge = rk_node_is_active(node) || mesh_inst3d->draw_edge;
-                    // TODO(XXX): clean up this, too many parameters here
                     R_Mesh3DInst *inst = d_mesh(mesh->vertices, mesh->indices, 0,0, mesh->indice_count,
-                                                mesh->topology, polygon_mode, R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB, albedo_tex, clr_tex, 1.f,
+                                                mesh->topology, polygon_mode,
+                                                R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB,
                                                 joint_xforms, joint_count,
-                                                node->fixed_xform, node->key.u64[0], draw_edge, !mesh_inst3d->omit_depth_test, 0, 0);
-                    inst->xform_inv = inverse_4x4f32(node->fixed_xform);
+                                                mat_idx, 1, 0);
+
+                    // fill inst info 
+                    inst->xform      = node->fixed_xform;
+                    inst->xform_inv  = inverse_4x4f32(node->fixed_xform);
                     inst->omit_light = mesh_inst3d->omit_light;
+                    inst->key        = node->key.u64[0];
+                    inst->draw_edge  = rk_node_is_active(node) || mesh_inst3d->draw_edge;
+                    inst->depth_test = !mesh_inst3d->omit_depth_test;
                 }
             }
 
             // pop stacks
             {
-                // TODO(k): we could have some stacks here
+                // TODO(k): we may have some stacks here
             }
             node = rec.next;
         }
-        geo_params->lights = lights;
-        geo_params->light_count = light_count;
     }
 
     // NOTE(k): there could be ui elements within node update
@@ -3557,7 +3611,7 @@ rk_drawlist_build(RK_DrawList *drawlist)
     U32 *indices = push_array(scratch.arena, U32, indice_count);
     U64 indice_idx = 0;
 
-    U64 count = 0;
+    U64 node_count = 0;
     for(RK_DrawNode *n = drawlist->first; n != 0; n = n->next)
     {
         // copy vertex
@@ -3569,17 +3623,40 @@ rk_drawlist_build(RK_DrawList *drawlist)
         // NOTE(k): we would use multiple pass here (geo3d back, geo3d front, screen space)
         D_BucketScope(n->draw_bucket)
         {
+            // handle color and albedo texture
+            /////////////////////////////////////////////////////////////////////////////
+
+            R_Pass *pass = r_pass_from_kind(d_thread_ctx->arena, &n->draw_bucket->passes, R_PassKind_Geo3D, 1);
+            R_PassParams_Geo3D *pass_params = pass->params_geo3d;
+
+            U64 mat_idx = pass_params->material_count;
+            pass_params->materials[mat_idx].diffuse_color = n->color;
+            pass_params->materials[mat_idx].opacity = 1.0f;
+            pass_params->materials[mat_idx].has_diffuse_texture = !r_handle_match(n->albedo_tex, r_handle_zero());
+            pass_params->textures[mat_idx].array[R_GeoTexKind_Diffuse] = n->albedo_tex;
+            pass_params->material_count++;
+
+            // draw inst
+            /////////////////////////////////////////////////////////////////////////////
+
             // NOTE(k): mesh group stored as hash map which don't contain the order, that's why we get flicker (we may need a submit ordered group list)
-            d_mesh(vertex_buffer, indice_buffer, vertex_idx*sizeof(R_Vertex), indice_idx*sizeof(U32), n->indice_count,
-                   n->topology, n->polygon, R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB,
-                   n->albedo_tex, n->color, n->line_width, 0, 0, n->xform, n->key.u64[0], n->draw_edge, !n->disable_depth, 1, n->omit_light);
+            R_Mesh3DInst *inst = d_mesh(vertex_buffer, indice_buffer, vertex_idx*sizeof(R_Vertex), indice_idx*sizeof(U32), n->indice_count,
+                                        n->topology, n->polygon, R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB,
+                                        0,0,mat_idx, n->line_width, 1);
+
+            inst->xform = n->xform;
+            inst->xform_inv = inverse_4x4f32(n->xform);
+            inst->key = n->key.u64[0];
+            inst->draw_edge = n->draw_edge;
+            inst->depth_test = n->disable_depth;
+            inst->omit_light = n->omit_light;
         }
 
         vertex_idx += n->vertex_count;
         indice_idx += n->indice_count;
-        count++;
+        node_count++;
     }
-    Assert(count == drawlist->node_count);
+    Assert(node_count == drawlist->node_count);
 
     // upload buffer with new content
     r_buffer_copy(vertex_buffer, vertices, vertex_buffer_size);

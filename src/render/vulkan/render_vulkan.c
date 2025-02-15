@@ -660,7 +660,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         create_info.pBindings    = bindings;
         VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
     }
-    // R_Vulkan_DescriptorSetKind_SBO_Mesh
+    // R_Vulkan_DescriptorSetKind_SBO_Joints
     {
         R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Joints];
         VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
@@ -671,6 +671,24 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
         bindings[0].descriptorCount    = 1;
         bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT;
+        bindings[0].pImmutableSamplers = NULL;
+
+        VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+        create_info.bindingCount = 1;
+        create_info.pBindings    = bindings;
+        VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->device.h, &create_info, NULL, &set_layout->h));
+    }
+    // R_Vulkan_DescriptorSetKind_SBO_Materials
+    {
+        R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Materials];
+        VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+        set_layout->bindings = bindings;
+        set_layout->binding_count = 1;
+
+        bindings[0].binding            = 0;
+        bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+        bindings[0].descriptorCount    = 1;
+        bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT;
         bindings[0].pImmutableSamplers = NULL;
 
         VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
@@ -911,6 +929,7 @@ r_window_equip(OS_Handle wnd_handle)
                 {
                     default:                                {InvalidPath;}break;
                     case R_Vulkan_SBOTypeKind_Joints:       {unit_count = MAX_GEO3D_PASS;}break;
+                    case R_Vulkan_SBOTypeKind_Materials:    {unit_count = MAX_GEO3D_PASS;}break;
                     case R_Vulkan_SBOTypeKind_Lights:       {unit_count = MAX_GEO3D_PASS;}break;
                     case R_Vulkan_SBOTypeKind_Tiles:        {unit_count = MAX_GEO3D_PASS;}break;
                     case R_Vulkan_SBOTypeKind_LightIndices: {unit_count = MAX_GEO3D_PASS;}break;
@@ -2890,11 +2909,11 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
             vtx_attr_descs[15].format   = VK_FORMAT_R32G32_UINT;
             vtx_attr_descs[15].offset   = offsetof(R_Mesh3DInst, key);
 
-            // color texture
+            // material_idx
             vtx_attr_descs[16].binding  = 1;
             vtx_attr_descs[16].location = 16;
-            vtx_attr_descs[16].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-            vtx_attr_descs[16].offset   = offsetof(R_Mesh3DInst, color_texture);
+            vtx_attr_descs[16].format   = VK_FORMAT_R32_UINT;
+            vtx_attr_descs[16].offset   = offsetof(R_Mesh3DInst, material_idx);
 
             // draw_edge
             vtx_attr_descs[17].binding  = 1;
@@ -3329,13 +3348,14 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
             }break;
             case R_Vulkan_PipelineKind_Geo3dForward:
             {
-                set_layout_count = 6;
+                set_layout_count = 7;
                 set_layouts[0] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Geo3d].h;
                 set_layouts[1] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Joints].h;
                 set_layouts[2] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D].h;
                 set_layouts[3] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Lights].h;
                 set_layouts[4] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_LightIndices].h;
                 set_layouts[5] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_TileLights].h;
+                set_layouts[6] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Materials].h;
 
                 push_constant_range_count = 1;
                 push_constant_ranges[0] =
@@ -4051,7 +4071,12 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 // joints sbo
                 R_Vulkan_SBOBuffer *joints_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Joints];
                 U32 joints_sbo_buffer_off = geo3d_pass_idx*MAX_JOINTS_PER_PASS * sizeof(R_Vulkan_SBO_Joint);
-                U8 *joints_sbo_dst = (U8 *)(joints_sbo_buffer->buffer.mapped) + joints_sbo_buffer_off;
+                U8 *joints_sbo_dst = (U8*)(joints_sbo_buffer->buffer.mapped) + joints_sbo_buffer_off;
+
+                // materials sbo
+                R_Vulkan_SBOBuffer *materials_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Materials];
+                U32 materials_sbo_buffer_off = geo3d_pass_idx*MAX_MATERIALS_PER_PASS * sizeof(R_Vulkan_SBO_Material); 
+                U8 *materials_sbo_dst = (U8*)(materials_sbo_buffer->buffer.mapped) + materials_sbo_buffer_off;
 
                 /////////////////////////////////////////////////////////////////////////
                 // upload geo3d ubo buffer
@@ -4063,6 +4088,21 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 geo3d_ubo.view_inv     = view_inv;
                 geo3d_ubo.show_grid    = params->show_grid;
                 MemoryCopy(geo3d_ubo_dst, &geo3d_ubo, sizeof(R_Vulkan_UBO_Geo3d));
+
+                /////////////////////////////////////////////////////////////////////////
+                // upload materials sbo buffer
+
+                Temp scratch = scratch_begin(0,0);
+                AssertAlways(params->material_count < MAX_MATERIALS_PER_PASS);
+                R_Vulkan_SBO_Material *materials = push_array(scratch.arena, R_Vulkan_SBO_Material, params->material_count);
+                for(U64 i = 0; i < params->material_count; i++)
+                {
+                    R_Vulkan_SBO_Material *mat_dst = &materials[i];
+                    R_Material *mat_src = &params->materials[i];
+                    MemoryCopy(mat_dst, mat_src, sizeof(R_Material));
+                }
+                MemoryCopy(materials_sbo_dst, materials, sizeof(R_Vulkan_SBO_Material)*params->material_count);
+                scratch_end(scratch);
 
                 /////////////////////////////////////////////////////////////////////////
                 // walk through all mesh node to fill up buffers(joints, inst_buffer)
@@ -4372,6 +4412,11 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                                         geo3d_forward_pipelines[0].layout, 5, 1,
                                         &tile_lights_sbo_buffer->set.h, 1, &tile_lights_sbo_buffer_off);
 
+                // 6: materials
+                vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        geo3d_forward_pipelines[0].layout, 6, 1,
+                                        &materials_sbo_buffer->set.h, 1, &materials_sbo_buffer_off);
+
                 /////////////////////////////////////////////////////////////////////////
                 //- geo3d forward pass
 
@@ -4393,7 +4438,9 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     R_Vulkan_Pipeline *pipeline = &geo3d_forward_pipelines[R_GeoPolygonKind_COUNT*topology + polygon];
 
                     // Bind texture
-                    R_Handle tex_handle = group_params->albedo_tex;
+                    // TODO(XXX): bind other texture (ambient, normal, bump, ...)
+                    // TODO(XXX): make use of texture sampler kind
+                    R_Handle tex_handle = params->textures[group_params->mat_idx].array[R_GeoTexKind_Diffuse];
                     if(r_handle_match(tex_handle, r_handle_zero()))
                     {
                         tex_handle = r_vulkan_state->backup_texture;
@@ -4554,25 +4601,31 @@ r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
     U64 stride = 0;
 
     B32 device_local = 0;
-    B32 auto_apped = 0;
+    B32 auto_mapped = 0;
     // NOTE(k): we are expecting stride is equal to the size of the struct
     switch(kind)
     {
         case R_Vulkan_SBOTypeKind_Joints:
         {
-            auto_apped = 1;
+            auto_mapped = 1;
             U64 array_size = sizeof(R_Vulkan_SBO_Joint) * MAX_JOINTS_PER_PASS;
+            stride = AlignPow2(array_size, r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);
+        }break;
+        case R_Vulkan_SBOTypeKind_Materials:
+        {
+            auto_mapped = 1;
+            U64 array_size = sizeof(R_Vulkan_SBO_Material) * MAX_MATERIALS_PER_PASS;
             stride = AlignPow2(array_size, r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);
         }break;
         case R_Vulkan_SBOTypeKind_Tiles:
         {
             device_local = 1;
-            U64 array_size = sizeof(R_Vulkan_SBO_Joint) * MAX_TILES_PER_PASS;
+            U64 array_size = sizeof(R_Vulkan_SBO_Tile) * MAX_TILES_PER_PASS;
             stride = AlignPow2(array_size, r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);
         }break;
         case R_Vulkan_SBOTypeKind_Lights:
         {
-            auto_apped = 1;
+            auto_mapped = 1;
             U64 array_size = sizeof(R_Vulkan_SBO_Light) * MAX_LIGHTS_PER_PASS;
             stride = AlignPow2(array_size, r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);
         }break;
@@ -4621,7 +4674,7 @@ r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
 
     VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &ret.buffer.memory));
     VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, ret.buffer.h, ret.buffer.memory, 0));
-    if(auto_apped)
+    if(auto_mapped)
     {
         VK_Assert(vkMapMemory(r_vulkan_state->device.h, ret.buffer.memory, 0, ret.buffer.size, 0, &ret.buffer.mapped));
     }
@@ -4631,6 +4684,7 @@ r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
     switch(kind)
     {
         case R_Vulkan_SBOTypeKind_Joints:       {ds_type = R_Vulkan_DescriptorSetKind_SBO_Joints;}break;
+        case R_Vulkan_SBOTypeKind_Materials:    {ds_type = R_Vulkan_DescriptorSetKind_SBO_Materials;}break;
         case R_Vulkan_SBOTypeKind_Tiles:        {ds_type = R_Vulkan_DescriptorSetKind_SBO_Tiles;}break;
         case R_Vulkan_SBOTypeKind_Lights:       {ds_type = R_Vulkan_DescriptorSetKind_SBO_Lights;}break;
         case R_Vulkan_SBOTypeKind_LightIndices: {ds_type = R_Vulkan_DescriptorSetKind_SBO_LightIndices;}break;
@@ -4777,8 +4831,25 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                     buffer_info->buffer = buffers[i];
                     buffer_info->offset = 0;
                     // NOTE: we want to access it as an array of R_Vulkan_Storage_Mesh 
-                    // TODO(XXX): we should use stride here
                     buffer_info->range  = MAX_JOINTS_PER_PASS*sizeof(R_Vulkan_SBO_Joint);
+
+                    writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    writes[set_idx].dstSet           = sets[i].h;
+                    writes[set_idx].dstBinding       = j;
+                    writes[set_idx].dstArrayElement  = 0; // start updating from the first element
+                    writes[set_idx].descriptorCount  = set_layout.bindings[j].descriptorCount;
+                    writes[set_idx].descriptorType   = set_layout.bindings[j].descriptorType;
+                    writes[set_idx].pBufferInfo      = buffer_info;
+                    writes[set_idx].pImageInfo       = NULL; // Optional
+                    writes[set_idx].pTexelBufferView = NULL; // Optional
+                }break;
+                case R_Vulkan_DescriptorSetKind_SBO_Materials:
+                {
+                    VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+                    buffer_info->buffer = buffers[i];
+                    buffer_info->offset = 0;
+                    // NOTE: we want to access it as an array of R_Vulkan_Storage_Mesh 
+                    buffer_info->range  = MAX_MATERIALS_PER_PASS*sizeof(R_Vulkan_SBO_Material);
 
                     writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[set_idx].dstSet           = sets[i].h;

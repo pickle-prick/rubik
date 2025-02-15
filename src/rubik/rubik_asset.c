@@ -105,7 +105,7 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
         // TODO
     }
 
-    // TODO: mesh gpu instancing
+    // TODO(k): mesh gpu instancing
 
     // mesh
     if(mesh_src != 0) RK_Parent_Scope(ret)
@@ -266,39 +266,43 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
                     {
                         material_res = rk_resh_alloc(material_key, RK_ResourceKind_Material, 1);
                         RK_Material *material = rk_res_data_from_handle(material_res);
+                        // NOTE(k): GLTF supports 2 PBR workflows
+                        // 1. Metallic-Roughness workflow (Modern) (has_pbr_emtallic_roughness)
+                        // 2. Specular-Glossiness workflow (legacy)
+                        // GLTF's PBR relies on image-based lighting(IBL) for embient/reflections
+                        // use environment maps instead of GlobalAmbient/AmbientColor
+                        // focus on DiffuseColor (albedo), Reflectance (metallic), and SpecularPower (roughness/glossiness) for core PBR behavior
                         {
                             material->name = push_str8_copy_static(str8_lit(material_src->name), material->name_buffer, ArrayCount(material->name_buffer));
 
-                            // pbr
-                            // (albedo+alpha)
-                            material->diffuse_tex = rk_tex_from_gltf_tex(material_src->pbr_metallic_roughness.base_color_texture.texture, data, gltf_directory, seed_key);
-                            material->diffuse_color = *(Vec4F32*)material_src->pbr_metallic_roughness.base_color_factor;
-                            material->opacity = material->diffuse_color.w;
-                            material->has_diffuse_texture = rk_handle_is_zero(material->diffuse_tex);
+                            // textures
+                            material->textures[R_GeoTexKind_Emissive]          = rk_handle_zero();
+                            material->textures[R_GeoTexKind_Diffuse]           = rk_tex_from_gltf_tex(material_src->pbr_metallic_roughness.base_color_texture.texture, data, gltf_directory, seed_key);
+                            material->textures[R_GeoTexKind_Specular]          = rk_handle_zero();
+                            material->textures[R_GeoTexKind_SpecularPower]     = rk_handle_zero();
+                            material->textures[R_GeoTexKind_Ambient]           = rk_handle_zero();
+                            material->textures[R_GeoTexKind_Opacity]           = rk_handle_zero();
+                            material->textures[R_GeoTexKind_Normal]            = rk_handle_zero();
+                            material->textures[R_GeoTexKind_Bump]              = rk_handle_zero();
 
-                            // metallic/roughness values
-                            material->metallic_roughness_tex = rk_tex_from_gltf_tex(material_src->pbr_metallic_roughness.metallic_roughness_texture.texture, data, gltf_directory, seed_key);
-                            material->metallic_factor = material_src->pbr_metallic_roughness.metallic_factor;
-                            material->roughness_factor = material_src->pbr_metallic_roughness.roughness_factor;
+                            material->v.has_emissive_texture           = !rk_handle_is_zero(material->textures[R_GeoTexKind_Emissive]);
+                            material->v.has_diffuse_texture            = !rk_handle_is_zero(material->textures[R_GeoTexKind_Diffuse]);
+                            material->v.has_specular_texture           = !rk_handle_is_zero(material->textures[R_GeoTexKind_Specular]);
+                            material->v.has_specular_power_texture     = !rk_handle_is_zero(material->textures[R_GeoTexKind_SpecularPower]);
+                            material->v.has_ambient_texture            = !rk_handle_is_zero(material->textures[R_GeoTexKind_Ambient]);
+                            material->v.has_opacity_texture            = !rk_handle_is_zero(material->textures[R_GeoTexKind_Opacity]);
+                            material->v.has_normal_texture             = !rk_handle_is_zero(material->textures[R_GeoTexKind_Normal]);
+                            material->v.has_bump_texture               = !rk_handle_is_zero(material->textures[R_GeoTexKind_Bump]);
 
-                            // normal
-                            material->normal_tex = rk_tex_from_gltf_tex(material_src->normal_texture.texture, data, gltf_directory, seed_key);
-                            material->normal_scale = material_src->normal_texture.scale;
-                            material->has_normal_texture = rk_handle_is_zero(material->normal_tex);
+                            // colors
+                            material->v.diffuse_color = *(Vec4F32*)material_src->pbr_metallic_roughness.base_color_factor;
+                            material->v.ambient_color = material->v.diffuse_color;
 
-                            // occlusion texture
-                            material->occlusion_tex = rk_tex_from_gltf_tex(material_src->occlusion_texture.texture, data, gltf_directory, seed_key);
-                            material->occlusion_strength = material_src->occlusion_texture.scale;
-
-                            // emissive texture
-                            material->emissive_tex = rk_tex_from_gltf_tex(material_src->emissive_texture.texture, data, gltf_directory, seed_key);
-                            material->emissive_factor = *(Vec3F32*)material_src->emissive_factor;
-                            material->has_emissive_texture = rk_handle_is_zero(material->emissive_tex);
-
-                            // specular texture
-                            material->specular_tex = rk_tex_from_gltf_tex(material_src->specular.specular_texture.texture, data, gltf_directory, seed_key);
-                            material->specular_scale = material_src->specular.specular_factor;
-                            material->has_specular_texture = rk_handle_is_zero(material->specular_tex);
+                            // f32
+                            material->v.opacity = material->v.diffuse_color.w;
+                            material->v.specular_power = 0;
+                            material->v.index_of_refraction = material_src->ior.ior;
+                            material->v.alpha_cutoff = material_src->alpha_cutoff;
                         }
                     }
                 }

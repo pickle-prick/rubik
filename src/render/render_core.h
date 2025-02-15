@@ -4,7 +4,17 @@
 ////////////////////////////////
 //~ some limits/constants
 
-#define MAX_LIGHTS_PER_FRAME 2000
+// support max 1 rect pass per frame
+#define MAX_RECT_PASS 1
+#define MAX_RECT_GROUPS 3000
+// support max 3 geo3d pass per frame
+#define MAX_GEO3D_PASS 3
+#define MAX_JOINTS_PER_PASS 3000
+#define MAX_LIGHTS_PER_PASS 3000
+#define MAX_MATERIALS_PER_PASS 3000
+// inst count limits
+#define MAX_RECT_INSTANCES 10000
+#define MAX_MESH_INSTANCES 10000
 
 ////////////////////////////////
 //~ rjf: Enums
@@ -63,6 +73,19 @@ typedef enum R_GeoPolygonKind
     R_GeoPolygonKind_COUNT,
 } R_GeoPolygonKind;
 
+typedef enum R_GeoTexKind
+{
+    R_GeoTexKind_Ambient,
+    R_GeoTexKind_Emissive,
+    R_GeoTexKind_Diffuse,
+    R_GeoTexKind_Specular,
+    R_GeoTexKind_SpecularPower,
+    R_GeoTexKind_Normal,
+    R_GeoTexKind_Bump,
+    R_GeoTexKind_Opacity,
+    R_GeoTexKind_COUNT,
+} R_GeoTexKind;
+
 typedef enum R_PassKind
 {
     R_PassKind_UI,
@@ -70,64 +93,6 @@ typedef enum R_PassKind
     R_PassKind_Geo3D,
     R_PassKind_COUNT,
 } R_PassKind;
-
-////////////////////////////////
-//~ rjf: Some basic types
-
-typedef struct R_Light R_Light;
-struct R_Light
-{
-    // position for point and spot lights (world space)
-    Vec4F32 position_ws;
-    // direction for spot and directional lights (world space)
-    Vec4F32 direction_ws;
-    // position for point and spot lights (view space)
-    Vec4F32 position_vs;
-    // direction for spot and directional lights (view space)
-    Vec4F32 direction_vs;
-    // color of the light, diffuse and specular colors are not seperated
-    Vec4F32 color;
-    // x: constant y: linear z: quadratic
-    Vec4F32 attenuation;
-    // the half angle of the spotlight cone
-    F32 spot_angle;
-    // the range of the light
-    F32 range;
-    F32 intensity;
-    U32 kind;
-};
-
-typedef struct R_Material R_Material;
-struct R_Material
-{
-    Vec4F32 global_ambient;
-    Vec4F32 ambient_color;
-    Vec4F32 emissive_color;
-    Vec4F32 diffuse_color;
-    Vec4F32 specular_color;
-    // reflective value
-    Vec4F32 reflectance;
-
-    F32 opacity;
-    F32 specular_power;
-    // for transparent materials, IOR > 0
-    F32 index_of_refraction;
-    B32 has_ambient_texture;
-
-    B32 has_emissive_texture;
-    B32 has_diffuse_texture;
-    B32 has_specular_texture;
-    B32 has_specular_power_texture;
-
-    B32 has_normal_texture;
-    B32 has_bump_texture;
-    B32 has_opacity_texture;
-    F32 bump_intensity;
-
-    F32 specular_scale;
-    F32 alpha_threshold;
-    F32 _padding_0[2];
-};
 
 ////////////////////////////////
 //~ rjf: Handle Type
@@ -177,7 +142,7 @@ struct R_Mesh3DInst
     Mat4x4F32 xform;
     Mat4x4F32 xform_inv;
     U64       key;
-    Vec4F32   color_texture;
+    U32       material_idx;
     B32       draw_edge;
     // NOTE(k): joint_xforms is stored in storage buffer instead of instance buffer
     Mat4x4F32 *joint_xforms;
@@ -185,7 +150,69 @@ struct R_Mesh3DInst
     U32       first_joint;
     B32       depth_test;
     B32       omit_light;
-    // TODO(k): material idx, a primitive could have array of materials
+};
+
+////////////////////////////////
+//~ k: Some basic types
+
+typedef struct R_Light R_Light;
+struct R_Light
+{
+    // position for point and spot lights (world space)
+    Vec4F32 position_ws;
+    // direction for spot and directional lights (world space)
+    Vec4F32 direction_ws;
+    // position for point and spot lights (view space)
+    Vec4F32 position_vs;
+    // direction for spot and directional lights (view space)
+    Vec4F32 direction_vs;
+    // color of the light, diffuse and specular colors are not seperated
+    Vec4F32 color;
+    // x: constant y: linear z: quadratic
+    Vec4F32 attenuation;
+    // the half angle of the spotlight cone
+    F32 spot_angle;
+    // the range of the light
+    F32 range;
+    F32 intensity;
+    U32 kind;
+};
+
+typedef struct R_Material R_Material;
+struct R_Material
+{
+    // textures
+    B32 has_ambient_texture;
+    B32 has_emissive_texture;
+    B32 has_diffuse_texture;
+    B32 has_specular_texture;
+    B32 has_specular_power_texture;
+    B32 has_normal_texture;
+    B32 has_bump_texture;
+    B32 has_opacity_texture;
+
+    // color
+    Vec4F32 ambient_color;
+    Vec4F32 emissive_color;
+    Vec4F32 diffuse_color;
+    Vec4F32 specular_color;
+    Vec4F32 reflectance;
+
+    // f32
+    F32 opacity;
+    F32 specular_power;
+    // for transparent materials, IOR > 0
+    F32 index_of_refraction;
+    F32 bump_intensity;
+    F32 specular_scale;
+    F32 alpha_cutoff;
+    F32 _padding_0[2];
+};
+
+typedef struct R_PackedTextures R_PackedTextures;
+struct R_PackedTextures
+{
+    R_Handle array[R_GeoTexKind_COUNT];
 };
 
 ////////////////////////////////
@@ -253,11 +280,13 @@ struct R_BatchGroup3DParams
     R_GeoTopologyKind mesh_geo_topology;
     R_GeoPolygonKind  mesh_geo_polygon;
     R_GeoVertexFlags  mesh_geo_vertex_flags;
-    F32               line_width;     
-    R_Handle          albedo_tex;
-    R_Tex2DSampleKind albedo_tex_sample_kind;
-    // TODO(k): do we need this?
-    Mat4x4F32         xform;
+    F32               line_width;
+
+    // material index
+    U64               mat_idx;
+    // NOTE(k): do we need sample kind for other texture (e.g. normal, emissive)
+    // textures
+    R_Tex2DSampleKind diffuse_tex_sample_kind;
 };
 
 typedef struct R_BatchGroup3DMapNode R_BatchGroup3DMapNode;
@@ -314,6 +343,10 @@ struct R_PassParams_Geo3D
 
     R_Light           *lights;
     U64               light_count;
+
+    R_PackedTextures  *textures;
+    R_Material        *materials;
+    U64               material_count;
 
     // Debug purpose
     B32               show_grid;

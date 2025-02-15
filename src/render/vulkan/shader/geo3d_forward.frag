@@ -6,15 +6,15 @@
 layout(location = 0)       in vec2  texcoord;
 layout(location = 1)       in vec4  color;
 layout(location = 2)  flat in uvec2 id;
-layout(location = 3)  flat in float omit_texture;
-layout(location = 4)  flat in float omit_light;
-layout(location = 5)       in vec3  nor_world;
-layout(location = 6)       in vec3  nor_view;
-layout(location = 7)       in vec3  pos_world;
-layout(location = 8)       in vec3  pos_view;
-layout(location = 9)       in mat4  nor_mat;
-layout(location = 13) flat in uint  draw_edge;
-layout(location = 14) flat in uint  depth_test;
+layout(location = 3)  flat in float omit_light;
+layout(location = 4)       in vec3  nor_world;
+layout(location = 5)       in vec3  nor_view;
+layout(location = 6)       in vec3  pos_world;
+layout(location = 7)       in vec3  pos_view;
+layout(location = 8)       in mat4  nor_mat;
+layout(location = 12) flat in uint  draw_edge;
+layout(location = 13) flat in uint  depth_test;
+layout(location = 14) flat in uint  mat_idx;
 
 layout(location = 0) out vec4  out_color;
 layout(location = 1) out vec4  out_normal_depth;
@@ -58,32 +58,31 @@ struct LightResult
 
 struct Material
 {
-    vec4 global_ambient;
-    vec4 ambient_color;
-    vec4 emissive_color;
-    vec4 diffuse_color;
-    vec4 specular_color;
-    // reflective value
-    vec4 reflectance;
-
-    float opacity;
-    float specular_power;
-    // for transparent materials, IOR > 0
-    float index_of_refraction;
+    // textures
     uint has_ambient_texture;
-
     uint has_emissive_texture;
     uint has_diffuse_texture;
     uint has_specular_texture;
     uint has_specular_power_texture;
-
     uint has_normal_texture;
     uint has_bump_texture;
     uint has_opacity_texture;
-    float bump_intensity;
 
+    // color
+    vec4 ambient_color;
+    vec4 emissive_color;
+    vec4 diffuse_color;
+    vec4 specular_color;
+    vec4 reflectance;
+
+    // f32
+    float opacity;
+    float specular_power;
+    // for transparent materials, IOR > 0
+    float index_of_refraction;
+    float bump_intensity;
     float specular_scale;
-    float alpha_threshold;
+    float alpha_cutoff;
     vec2 _padding_0;
 };
 
@@ -129,12 +128,11 @@ layout(std140, set=5, binding=0) readonly buffer TileLightsArray
     TileLights array[];
 } tile_lights;
 
-// TODO(XXX): upload material buffers
 // materials
-// layout(std140, set=6, binding=0) readonly buffer MaterialArray
-// {
-//     Material array[];
-// } materials;
+layout(std140, set=6, binding=0) readonly buffer MaterialArray
+{
+    Material array[];
+} materials;
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // light calculations
@@ -219,7 +217,8 @@ void main()
     // out_id = uvec2(id_low, id_high);
     out_id = id;
 
-    out_normal_depth.rgb = draw_edge > 0 ? nor_world : vec3(0,0,0);
+    // NOTE(k): normal is interpolated using berrycentric, so it's not guarenteed to be unit vector
+    out_normal_depth.rgb = draw_edge > 0 ? normalize(nor_world) : vec3(0,0,0);
     out_normal_depth.a = draw_edge > 0 ? gl_FragCoord.z : 1.0f;
 
     /////////////////////////////////////////////////////////////////////////////////////
@@ -227,54 +226,38 @@ void main()
 
     // NOTE(k): https://registry.khronos.org/OpenGL-Refpages/gl4/html/gl_FragDepth.xhtml
     // If a shader statically assigns to gl_FragDepth, then the value of the fragment's depth may be undefined for executions of the shader that don't take that path
-    // NOTE(k): this will disblae EARLY_FRAGMENT_TEST
+    // TODO(k): this will disblae EARLY_FRAGMENT_TEST, thus effect the performance, do we really need this
     gl_FragDepth = depth_test == 1 ? gl_FragCoord.z : 0.0f;
 
     /////////////////////////////////////////////////////////////////////////////////////
     // material
 
-    // vec4 colr = omit_texture > 0.0f ? color : texture(texSampler, texcoord);
-    // out_color = vec4(colr.rgb * intensity, colr.a);
-
-    // TODO(XXX): (PBR rendering)
-    // TODO(k): is there better way to do zero initilization 
-    Material mat = Material(
-        vec4(0,0,0,0),
-        vec4(0,0,0,0),
-        vec4(0,0,0,0),
-        vec4(0,0,0,0),
-        vec4(0,0,0,0),
-        vec4(0,0,0,0),
-
-        0,0,0,0,
-        0,0,0,0,
-        0,0,0,0,
-
-        0,0,
-
-        // padding
-        vec2(0,0)
-    );
-    mat.diffuse_color = omit_texture > 0.0 ? color : texture(texSampler, texcoord);
-    mat.opacity = mat.diffuse_color.a;
+    Material mat = materials.array[mat_idx];
 
     /////////////////////////////////////////////////////////////////////////////////////
     // light acc
 
     vec4 diffuse = mat.diffuse_color;
+    if(mat.has_diffuse_texture > 0)
+    {
+        diffuse *= texture(texSampler, texcoord);
+    }
+    // TODO(XXX): not working, fix it later
+    // vec4 specular = mat.specular_color;
+    // vec4 ambient = mat.ambient_color;
+    // vec4 emissive = mat.emissive_color;
     vec4 specular = vec4(0,0,0,0);
     vec4 ambient = vec4(0,0,0,0);
     vec4 emissive = vec4(0,0,0,0);
-    float alpha = mat.opacity;
+    float alpha = diffuse.a;
 
     /////////////////////////////////////////////////////////////////////////////////////
     // lighting
 
     if(omit_light == 0)
     {
-        // REF: Physically Based Rendering: The Light Transport Equation
-        // vec4 N = vec4(normalize(mat3(nor_mat) * nor_world).xyz, 0.0);
-        vec4 N = vec4(nor_view, 0.0);
+        // NOTE(k): since nor_view is interpolated using berrycentric, it's not guaranteed to be unit vector
+        vec4 N = vec4(normalize(nor_view), 0.0);
         vec4 P = vec4(pos_view, 1.0); // view pos for current pixel/fragment
 
         // eye position in view
@@ -328,29 +311,6 @@ void main()
         // discard the alpha value from the lighting calculations
         diffuse *= vec4(acc.diffuse.rgb, 1.0f);
         specular *= acc.specular;
-
-        /////////////////////////////////////////////////////////////////////////////////
-        // legacy code
-
-        // TODO(k): forget how these two lines work
-        // float light_alignment = dot(-ubo.global_light.xyz, (model*normal).xyz);
-        // intensity = 0.5*light_alignment + 0.5;
-
-        // no "Indirect Illumination" for now, use "Ambient Lighting" instead
-        // NOTE(k): directly multiply model matrix with normal is only correct if scale is uniform (sx == sy == sz), prove it later
-        // REF: Resource by Jason L. McKesson:
-        // Learning Modern 3D Graphics Programming -Normal Transformation
-        // intensity = ambient + max(dot(-ubo.global_light.xyz, (model*normal).xyz), 0);
-
-        // NOTE(k): calculating the inverse in shader (any kind)  can be expensive and should be avoided
-        // we could computed it once per frame on cpu, then pass it to the uniform
-        // to furthur optimize this computation, we can ignore the translate part of matrix, since normal shouldn't be affected by translation
-        // mat4 normal_mat = transpose(model_inv);
-
-        // (Diffuse and Lambertian Shading model) for direction light (just like the son)
-        // intensity = ambient + max(dot(-ubo.global_light.xyz, nor), 0);
-
-        /////////////////////////////////////////////////////////////////////////////////
     }
 
     out_color = vec4((ambient+emissive+diffuse+specular).rgb, alpha*mat.opacity);
