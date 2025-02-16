@@ -121,8 +121,6 @@ rk_scene_entry__0()
             main_camera->camera3d->polygon_mode = R_GeoPolygonKind_Fill;
             main_camera->camera3d->hide_cursor = 0;
             main_camera->camera3d->lock_cursor = 0;
-            main_camera->camera3d->show_grid = 1;
-            main_camera->camera3d->show_gizmos = 1;
             main_camera->camera3d->is_active = 1;
             main_camera->camera3d->zn = 0.1;
             main_camera->camera3d->zf = 200.f;
@@ -143,7 +141,7 @@ rk_scene_entry__0()
         RK_Handle white_mat = rk_material_from_color(str8_lit("white"), v4f32(1,1,1,1));
         RK_Handle grid_prototype_material;
         {
-            String8 png_path = str8_lit("./textures/gridbox-prototype-materials/prototype_512x512_blue2.png");
+            String8 png_path = str8_lit("./textures/gridbox-prototype-materials/prototype_512x512_grey2.png");
             RK_Key material_res_key = rk_res_key_from_string(RK_ResourceKind_Material, rk_key_zero(), png_path);
             grid_prototype_material = rk_resh_alloc(material_res_key, RK_ResourceKind_Material, 1);
             RK_Material *material = rk_res_data_from_handle(grid_prototype_material);
@@ -161,7 +159,7 @@ rk_scene_entry__0()
             }
             tex2d->sample_kind = sample_kind;
 
-            material->name = push_str8_copy_static(str8_lit("prototype_512x512_blue2"), material->name_buffer, ArrayCount(material->name_buffer));
+            material->name = push_str8_copy_static(str8_lit("prototype_512x512_grey2"), material->name_buffer, ArrayCount(material->name_buffer));
             material->textures[R_GeoTexKind_Diffuse] = tex2d_res;
             material->v.diffuse_color = v4f32(1,1,1,1);
             material->v.opacity = 1.0;
@@ -200,31 +198,35 @@ rk_scene_entry__0()
         }
 
         // point light 1
+        for(S64 i = 0; i < 3; i++)
         {
-            RK_Node *l2 = rk_build_node3d_from_stringf(RK_NodeTypeFlag_PointLight, 0, "point_light_1");
-            rk_node_equip_sphere(l2, 0.1, 0.2, 9,9,0);
-            l2->flags |= RK_NodeFlag_NavigationRoot;
-            l2->node3d->transform.position.y -= 3.5;
-            l2->mesh_inst3d->omit_light = 1;
-            l2->mesh_inst3d->draw_edge = 1;
-            l2->point_light->color = v3f32(1,1,1);
-            l2->point_light->range = 3.9;
-            l2->point_light->intensity = 1;
-            l2->point_light->attenuation = v3f32(0,0,1);
+            for(S64 j = 0; j < 3; j++)
+            {
+                RK_Node *l = rk_build_node3d_from_stringf(RK_NodeTypeFlag_PointLight, 0, "point_light_1");
+                rk_node_equip_sphere(l, 0.1, 0.2, 9,9,0);
+                l->flags |= RK_NodeFlag_NavigationRoot;
+                l->node3d->transform.position = v3f32(-3+j*3, -3.5, -3+i*3);
+                l->mesh_inst3d->omit_light = 1;
+                l->mesh_inst3d->draw_edge = 1;
+                l->point_light->color = v3f32(1,1,1);
+                l->point_light->range = 3.9;
+                l->point_light->intensity = 0.6;
+                l->point_light->attenuation = v3f32(0,0,1);
+            }
         }
 
         // spot lights
-        for(S64 i = 0; i < 3; i++)
+        for(U64 i = 0; i < 3; i++)
         {
             RK_Node *l = rk_build_node3d_from_stringf(RK_NodeTypeFlag_SpotLight, 0, "spot_light_%I64d", i);
             rk_node_equip_box(l, v3f32(0.15, 0.15, 0.15), 0,0,0);
             l->flags |= RK_NodeFlag_NavigationRoot;
             l->node3d->transform.position.y -= 3;
-            l->node3d->transform.position.x = -3 + i*3;
+            l->node3d->transform.position.x = -3 + (S64)i*3;
             l->mesh_inst3d->omit_light = 1;
             l->mesh_inst3d->draw_edge = 1;
             l->spot_light->color.v[i] = 1;
-            l->spot_light->intensity = 1;
+            l->spot_light->intensity = 3;
             l->spot_light->attenuation = v3f32(0,0,1);
             l->spot_light->direction = normalize_3f32(v3f32(1,1,0));
             l->spot_light->range = 9.9;

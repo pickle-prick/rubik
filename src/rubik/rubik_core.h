@@ -111,7 +111,6 @@ typedef enum RK_ResourceKind
 typedef U64 RK_NodeFlags;
 #define RK_NodeFlag_NavigationRoot       (RK_NodeFlags)(1ull<<0)
 #define RK_NodeFlag_Float                (RK_NodeFlags)(1ull<<1)
-#define RK_NodeFlag_Hidden               (RK_NodeFlags)(1ull<<2)
 
 typedef U64                              RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_Node2D           (RK_NodeTypeFlags)(1ull<<0)
@@ -521,8 +520,6 @@ struct RK_Camera3D
     R_GeoPolygonKind       polygon_mode;
     B32                    hide_cursor;
     B32                    lock_cursor;
-    B32                    show_grid;
-    B32                    show_gizmos;
     B32                    is_active;
     F32                    zn;
     F32                    zf;
@@ -713,8 +710,13 @@ struct RK_Scene
 
     RK_Handle         active_node;
 
+    B32               omit_grid;
+    // ambient light
+    Vec4F32           ambient_light;
+    Vec4F32           ambient_scale;
+
     // gizmo
-    B32               gizmo3d_disabled;
+    B32               omit_gizmo3d;
     RK_Gizmo3dMode    gizmo3d_mode;
 
     String8           name;

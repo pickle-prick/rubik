@@ -333,8 +333,6 @@ rk_scene_entry__2()
             main_camera->camera3d->polygon_mode = R_GeoPolygonKind_Fill;
             main_camera->camera3d->hide_cursor = 0;
             main_camera->camera3d->lock_cursor = 0;
-            main_camera->camera3d->show_grid = 1;
-            main_camera->camera3d->show_gizmos = 1;
             main_camera->camera3d->is_active = 1;
             main_camera->camera3d->zn = 0.1;
             main_camera->camera3d->zf = 200.f;

@@ -97,6 +97,9 @@ void main()
     gl_Position = pos_world;
 
     // NOTE(k): if we are using any non-uniform scale transformation, we need transform normal differently 
+    // NOTE(k): directly multiply model matrix with normal is only correct if scale is uniform (sx == sy == sz), prove it later
+    // REF: Resource by Jason L. McKesson:
+    // Learning Modern 3D Graphics Programming -Normal Transformation
     mat4 normal_mat = transpose(model_inv); // transpoe(inv) will inverse the scale transformation, and leave rotation transform same
     vec4 nor_world = normalize(normal_mat * nor_local);
     vec4 nor_view = ubo.view * nor_world;
