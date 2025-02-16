@@ -1,4 +1,4 @@
-# A "Unnamed" Game Project
+# A "Unnamed" Game Engine built for understanding how 3D graphics work
 
 ![Screenshot of a 3D scene](./screenshots/002.jpg)
 
@@ -139,7 +139,6 @@ A list of the layers in the codebase and their associated namespaces is below:
 - [ ] Skeletal animation
     - [X] play animation
     - [ ] morph targets
-    - [X] GJK impl
 - [X] Font rendering
 - [X] 2D ui building blocks (immediate mode)
     - [X] basic widges (scroll, button, label, line_edit, expander, ...)
@@ -168,8 +167,8 @@ A list of the layers in the codebase and their associated namespaces is below:
     - [X] point light
     - [X] spot light
     - [ ] area light
+    - [ ] sky light
     - [ ] emissive light
-    - [ ] full pbr rendering
     - [X] forward+ rendering
     - [ ] shadow map
     - [X] Phong/Blinn material model
