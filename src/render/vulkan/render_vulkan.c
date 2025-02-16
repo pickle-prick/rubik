@@ -706,7 +706,6 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         bindings[0].binding            = 0;
         bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         bindings[0].descriptorCount    = 1;
-        // TODO(XXX): this is awakward, how we gonna fix this
         bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT|VK_SHADER_STAGE_COMPUTE_BIT;
         bindings[0].pImmutableSamplers = NULL;
 
@@ -3452,6 +3451,11 @@ r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind)
 
     Temp scratch = scratch_begin(0,0);
 
+    // specialization constants
+    ////////////////////////////////////////////
+
+    VkSpecializationInfo spec_info = {0};
+
     // shader stage
     ////////////////////////////////////////////
 
@@ -3461,19 +3465,55 @@ r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind)
         case(R_Vulkan_PipelineKind_TileFrustum):
         {
             compute_shader_mo = r_vulkan_state->cshad_modules[R_Vulkan_CShadKind_TileFrustum];
+            // spec constants
+            Vec2U32 *tile_size = push_array(scratch.arena, Vec2U32, 1);
+            tile_size->x = TILE_SIZE;
+            tile_size->y = TILE_SIZE;
+
+            VkSpecializationMapEntry *entries = push_array(scratch.arena, VkSpecializationMapEntry, 2);
+            entries[0].constantID = 0;
+            entries[0].offset = OffsetOf(Vec2U32, x);
+            entries[0].size = sizeof(U32);
+            entries[1].constantID = 1;
+            entries[1].offset = OffsetOf(Vec2U32, y);
+            entries[1].size = sizeof(U32);
+
+            spec_info.pData = tile_size;
+            spec_info.dataSize = sizeof(Vec2U32);
+            spec_info.pMapEntries = entries;
+            spec_info.mapEntryCount = 2;
         }break;
         case(R_Vulkan_PipelineKind_LightCulling):
         {
             compute_shader_mo = r_vulkan_state->cshad_modules[R_Vulkan_CShadKind_LightCulling];
+
+            // spec constants
+            Vec2U32 *tile_size = push_array(scratch.arena, Vec2U32, 1);
+            tile_size->x = TILE_SIZE;
+            tile_size->y = TILE_SIZE;
+
+            VkSpecializationMapEntry *entries = push_array(scratch.arena, VkSpecializationMapEntry, 2);
+            entries[0].constantID = 0;
+            entries[0].offset = OffsetOf(Vec2U32, x);
+            entries[0].size = sizeof(U32);
+            entries[1].constantID = 1;
+            entries[1].offset = OffsetOf(Vec2U32, y);
+            entries[1].size = sizeof(U32);
+
+            spec_info.pData = tile_size;
+            spec_info.dataSize = sizeof(Vec2U32);
+            spec_info.pMapEntries = entries;
+            spec_info.mapEntryCount = 2;
         }break;
         default: {InvalidPath;}break;
     }
 
     VkPipelineShaderStageCreateInfo shad_stage = {0};
-    shad_stage.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    shad_stage.stage  = VK_SHADER_STAGE_COMPUTE_BIT;
-    shad_stage.module = compute_shader_mo;
-    shad_stage.pName  = "main";
+    shad_stage.sType               = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shad_stage.stage               = VK_SHADER_STAGE_COMPUTE_BIT;
+    shad_stage.module              = compute_shader_mo;
+    shad_stage.pName               = "main";
+    shad_stage.pSpecializationInfo = &spec_info;
 
     // pipeline layout
     ////////////////////////////////////////////
@@ -4294,11 +4334,11 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     /////////////////////////////////////////////////////////////////////
                     // light culling compute pass
 
+                    // TODO(XXX): need a memory berrier here to wait on z_pre and frustum culling to be finished
                     {
                         // ubo upload & bind
                         R_Vulkan_UBO_LightCulling ubo = {0};
                         ubo.proj_inv = proj_inv;
-                        // TODO(XXX): to be implemented
                         ubo.light_count = params->light_count;
                         MemoryCopy(light_culling_ubo_dst, &ubo, sizeof(R_Vulkan_UBO_LightCulling));
                         vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -4336,6 +4376,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 
                 /////////////////////////////////////////////////////////////////////////
                 //~ Start geo3d renderpass
+
+                // TODO(XXX): missing buffer barrier for compute shader to be finished
 
                 VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
                 begin_info.renderPass        = renderpass->h;

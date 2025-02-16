@@ -24,9 +24,8 @@
 // of the GPU could be too larger for it to handle, so the CPU would end up
 // waiting a lot, adding frames of latency Generally extra latency isn't desired
 #define MAX_FRAMES_IN_FLIGHT 2
-// support max 8K with 16x16 sized tile
-// TODO(XXX): we want to dynamic set the tile size based on the size of viewport
-#define TILE_SIZE 16
+// support max 8K with 32x32 sized tile
+#define TILE_SIZE 32
 #define MAX_TILES_PER_PASS ((7680*4320)/(TILE_SIZE*TILE_SIZE))
 #define MAX_LIGHTS_PER_TILE 200
 
@@ -237,14 +236,7 @@ struct R_Vulkan_SBO_Tile
     R_Vulkan_Frustum frustum;
 };
 
-typedef struct R_Vulkan_SBO_Light R_Vulkan_SBO_Light;
-struct R_Vulkan_SBO_Light
-{
-    // TODO(XXX): to be implemented
-    Vec3F32 direction;
-    F32 radius;
-    F32 falloff;
-};
+#define R_Vulkan_SBO_Light R_Light
 
 // NOTE(k): first element will be used as indice_count
 // NOTE(K): we are using std140, so packed it to 16 bytes boundary
@@ -541,6 +533,9 @@ struct R_Vulkan_State
     VkCommandPool                       cmd_pool;
     // For copying staging buffer or transition image layout
     VkCommandBuffer                     oneshot_cmd_buf;
+
+    // resource free list
+    /////////////////////////////////////////////////////////////////////////////////////
 
     R_Vulkan_DescriptorSetPool          *first_avail_ds_pool[R_Vulkan_DescriptorSetKind_COUNT];
     // TODO(k): first_free_descriptor, we could update descriptor to point a new buffer or image/sampler

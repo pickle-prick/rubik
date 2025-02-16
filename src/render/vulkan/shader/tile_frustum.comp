@@ -1,6 +1,8 @@
 #version 450
 
-layout(local_size_x=16, local_size_y=16, local_size_z=1) in;
+// NOTE(k): it's easier for the local group size to match the size of the tile (16x16 e.g.)
+// layout(local_size_x=32, local_size_y=32, local_size_z=1) in;
+layout(local_size_x_id=0, local_size_y_id=1, local_size_z=1) in;
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // basic types

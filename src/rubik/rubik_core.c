@@ -3567,7 +3567,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 
     D_Bucket *ret = d_bucket_make();
     d_push_bucket(ret);
-    // TODO(XXX): we should check there is something in passes, we don't a empty geo pass (performance issue)
+    // NOTE(k): check if there is anything in passes, we don't a empty geo pass (performance issue)
     if(!d_bucket_is_empty(rk_state->bucket_geo3d[RK_GeoBucketKind_Back]))   {d_sub_bucket(rk_state->bucket_geo3d[RK_GeoBucketKind_Back], 0);}
     if(!d_bucket_is_empty(rk_state->bucket_geo3d[RK_GeoBucketKind_Front]))  {d_sub_bucket(rk_state->bucket_geo3d[RK_GeoBucketKind_Front], 0);}
     if(!d_bucket_is_empty(rk_state->bucket_geo3d[RK_GeoBucketKind_Screen])) {d_sub_bucket(rk_state->bucket_geo3d[RK_GeoBucketKind_Screen], 0);}
