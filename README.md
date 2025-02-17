@@ -1,6 +1,6 @@
 # A "Unnamed" Game Engine built for understanding how 3D graphics work
 
-![Screenshot of a 3D scene](./screenshots/002.jpg)
+![Screenshot of a 3D scene](./screenshots/003.gif)
 
 ## Development Setup Instructions
 
