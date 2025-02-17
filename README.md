@@ -90,18 +90,18 @@ A list of the layers in the codebase and their associated namespaces is below:
 - `base` (no namespace): Universal, codebase-wide constructs. Strings, math,
   memory allocators, helper macros, command-line parsing, and so on. Depends
   on no other codebase layers.
-- `draw` (`DR_`): Implements a high-level graphics drawing API for the
+- `draw` (`D_`): Implements a high-level graphics drawing API for the
   game's purposes, using the underlying `render` abstraction layer. Provides
   high-level APIs for various draw commands, but takes care of batching them,
   and so on.
-- `font_cache` (`FNT_`): Implements a cache of rasterized font data, both in
+- `font_cache` (`F_`): Implements a cache of rasterized font data, both in
   CPU-side data for text shaping, and in GPU texture atlases for rasterized
   glyphs. All cache information is sourced from the `font_provider` abstraction
   layer.
 - `font_provider` (`FP_`): An abstraction layer for various font file decoding
   and font rasterization backends.
 - `metagen` (`MG_`): A metaprogram which is used to generate primarily code and
-  data tables. Consumes Metadesk files, stored with the extension `.mdesk`, and
+  data tables(Copied from raddbg codebase). Consumes Metadesk files, stored with the extension `.mdesk`, and
   generates C code which is then included by hand-written C code. Currently, it
   does not analyze the codebase's hand-written C code, but in principle this is
   possible. This allows easier & less-error-prone management of large data
@@ -131,6 +131,8 @@ A list of the layers in the codebase and their associated namespaces is below:
 - `ui` (`UI_`): Machinery for building graphical user interfaces which could be used to build debug ui or game ui.
   Provides a core immediate mode hierarchical user interface data structure building
   API, and has helper layers for building some higher-level widgets.
+- `rubik` (`RK_`): Machinery for building a game engine.
+- `serialize` (`SE_`): An abstraction layer for serialization (currently support yml).
 
 ## Features & TODO
 
