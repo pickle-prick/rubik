@@ -7,7 +7,7 @@
     do { \
         if((result) != VK_SUCCESS) { \
             fprintf(stderr, "[VK_ERROR] [CODE: %d] in (%s)(%s:%d)\n", result, __FUNCTION__, __FILE__, __LINE__); \
-            __builtin_trap(); \
+            Trap(); \
             exit(EXIT_FAILURE); \
         } \
     } while (0)

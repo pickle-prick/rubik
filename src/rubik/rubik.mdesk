@@ -145,6 +145,35 @@ RK_NodeEquipmentTable:
 }
 
 ////////////////////////////////
+//~ k: Enum Display table
+
+@table(display_string)
+RK_ViewportShadingKindTable:
+{
+    { "wireframe" }
+    { "solid"     }
+    { "material"  }
+}
+
+@data(String8) rk_viewport_shading_kind_display_string_table:
+{
+    @expand(RK_ViewportShadingKindTable a) `str8_lit_comp("$(a.display_string)")`,
+}
+
+@table(display_string)
+RK_Gizmo3dModeTable:
+{
+    { "translate" }
+    { "rotation"  }
+    { "scale"     }
+}
+
+@data(String8) rk_gizmo3d_mode_display_string_table:
+{
+    @expand(RK_Gizmo3dModeTable a) `str8_lit_comp("$(a.display_string)")`,
+}
+
+////////////////////////////////
 //~ rjf: Icons
 
 @table(name, text)

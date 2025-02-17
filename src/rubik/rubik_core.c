@@ -589,14 +589,14 @@ rk_resh_alloc(RK_Key key, RK_ResourceKind kind, B32 acquire)
 internal void
 rk_res_release(RK_Resource *res)
 {
-    // TODO
-    NotImplemented;
-
     RK_ResourceBucket *res_bucket = 0;
     if(res != 0)
     {
         res_bucket = res->owner_bucket;
     }
+
+    // TODO(XXX): release based on the res kind
+    NotImplemented;
 }
 
 internal RK_Handle
@@ -1931,10 +1931,16 @@ internal void rk_ui_inspector(void)
                 {
                     ui_labelf("shading");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    // TODO(k): radio button
-                    if(ui_clicked(ui_buttonf("wireframe"))) {camera->viewport_shading = RK_ViewportShadingKind_Wireframe;};
-                    if(ui_clicked(ui_buttonf("solid")))     {camera->viewport_shading = RK_ViewportShadingKind_Solid;};
-                    if(ui_clicked(ui_buttonf("material")))  {camera->viewport_shading = RK_ViewportShadingKind_Material;};
+
+                    UI_TextAlignment(UI_TextAlign_Center) for(U64 k = 0; k < RK_ViewportShadingKind_COUNT; k++)
+                    {
+                        if(camera->viewport_shading == k)
+                        {
+                            ui_set_next_palette(ui_build_palette(ui_top_palette(), .background = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
+                        }
+                        if(ui_clicked(ui_button(rk_viewport_shading_kind_display_string_table[k]))) {camera->viewport_shading = k;}
+                    }
+
                     ui_spacer(ui_em(0.5, 1.0));
                 }
             }
@@ -1979,14 +1985,17 @@ internal void rk_ui_inspector(void)
                 {
                     ui_labelf("mode");
                     ui_spacer(ui_pct(1.0, 0.0));
-                    // TODO(k): radio button
-                    if(ui_clicked(ui_buttonf("translate"))) {scene->gizmo3d_mode = RK_Gizmo3dMode_Translate;};
-                    if(ui_clicked(ui_buttonf("rotation")))  {scene->gizmo3d_mode = RK_Gizmo3dMode_Rotation;};
-                    if(ui_clicked(ui_buttonf("scale")))     {scene->gizmo3d_mode = RK_Gizmo3dMode_Scale;};
+                    UI_TextAlignment(UI_TextAlign_Center) for(U64 k = 0; k < RK_Gizmo3dMode_COUNT; k++)
+                    {
+                        if(scene->gizmo3d_mode == k)
+                        {
+                            ui_set_next_palette(ui_build_palette(ui_top_palette(), .background = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
+                        }
+                        if(ui_clicked(ui_button(rk_gizmo3d_mode_display_string_table[k]))) {scene->gizmo3d_mode = k;}
+                    }
                     ui_spacer(ui_em(0.5, 1.0));
                 }
             }
-
         }
 
         ui_spacer(ui_em(0.2f, 0.f));
@@ -3175,6 +3184,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                                 axis_clr.w = 0.8;
                                 draw_edge = 1;
                             }
+
                             if(is_active)
                             {
                                 axis_clr.w = 0.6;
@@ -3252,7 +3262,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                         rk_drawlist_push_circle(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*0.11, 69,v4f32(1,1,1,0.9), 3, 0); // billboard fashion
 
                         // draw a outer circle
-                        rk_drawlist_push_circle(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*1.3, 69,v4f32(1,1,1,1), 3, 1);
+                        rk_drawlist_push_circle(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*1.3, 69,v4f32(1,1,1,1), linew_scale*6, 1);
 
                     }break;
                     case RK_Gizmo3dMode_Rotation:

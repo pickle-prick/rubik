@@ -8,7 +8,6 @@ layout(local_size_x_id=0, local_size_y_id=1, local_size_z=1) in;
 // basic types
 
 // Constants
-// #define BLOCK_SIZE 16
 #define DIRECTIONAL_LIGHT 0
 #define POINT_LIGHT 1
 #define SPOT_LIGHT 2
@@ -233,13 +232,13 @@ void main()
     float depth_f = texelFetch(depth_texture, depth_tex_coord, 0).r;
     uint depth_u = floatBitsToUint(depth_f);
 
-    // TODO(XXX): won't work well, since no memory barrier, (for test only), use vkCmdFillBuffer instead
-    if(gl_LocalInvocationIndex == 0 && gl_WorkGroupID.x == 0 && gl_WorkGroupID.y == 0)
-    {
-        light_indices.array[0] = 0;
-    }
-    barrier();
-    memoryBarrierBuffer();
+    // NOTE(k): won't work well, since no memory barrier, (for test only), use vkCmdFillBuffer instead
+    // if(gl_LocalInvocationIndex == 0 && gl_WorkGroupID.x == 0 && gl_WorkGroupID.y == 0)
+    // {
+    //     light_indices.array[0] = 0;
+    // }
+    // barrier();
+    // memoryBarrierBuffer();
 
     // first thread in group initializes shared memory
     if(gl_LocalInvocationIndex == 0)

@@ -54,6 +54,20 @@ if(type_flags & RK_NodeTypeFlag_PointLight) { SLLStackPush(node_bucket->first_fr
 if(type_flags & RK_NodeTypeFlag_SpotLight) { SLLStackPush(node_bucket->first_free_spot_light, node->spot_light); node->spot_light = 0; }\
 node->type_flags & (~type_flags);
 C_LINKAGE_BEGIN
+String8 rk_viewport_shading_kind_display_string_table[3] =
+{
+str8_lit_comp("wireframe"),
+str8_lit_comp("solid"),
+str8_lit_comp("material"),
+};
+
+String8 rk_gizmo3d_mode_display_string_table[3] =
+{
+str8_lit_comp("translate"),
+str8_lit_comp("rotation"),
+str8_lit_comp("scale"),
+};
+
 String8 rk_icon_kind_text_table[69] =
 {
 str8_lit_comp(""),

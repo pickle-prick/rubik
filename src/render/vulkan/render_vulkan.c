@@ -4359,8 +4359,9 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                                                 geo3d_light_culling_pipeline->layout, 3, 1,
                                                 &tiles_sbo_buffer->set.h, 1, &tiles_sbo_buffer_off);
                         // global light indices
-                        // TODO(XXX): we should do zero initilization for this buffer (gpu side, buffer clear)
-                        // vkCmdFillBuffer
+                        // do zero initilization for this buffer (gpu side, buffer clear)
+                        // TODO(XXX): we may need to add a buffer barrier here for syncronization
+                        vkCmdFillBuffer(cmd_buf, light_indices_sbo_buffer->buffer.h, light_indices_sbo_buffer_off, light_indices_sbo_buffer->stride, 0);
                         vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
                                                 geo3d_light_culling_pipeline->layout, 4, 1,
                                                 &light_indices_sbo_buffer->set.h, 1, &light_indices_sbo_buffer_off);
@@ -4644,6 +4645,7 @@ r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
 
     B32 device_local = 0;
     B32 auto_mapped = 0;
+    VkBufferUsageFlags flags = 0;
     // NOTE(k): we are expecting stride is equal to the size of the struct
     switch(kind)
     {
@@ -4674,6 +4676,8 @@ r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
         case R_Vulkan_SBOTypeKind_LightIndices:
         {
             device_local = 1;
+            // NOTE(k): we need to use vkFillBuffer to clear this buffer, hense this flag
+            flags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             U64 array_size = sizeof(R_Vulkan_SBO_LightIndice) * MAX_LIGHTS_PER_TILE * MAX_TILES_PER_PASS;
             stride = AlignPow2(array_size, r_vulkan_state->gpu.properties.limits.minStorageBufferOffsetAlignment);
         }break;
@@ -4695,7 +4699,7 @@ r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
 
     VkBufferCreateInfo buf_ci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     buf_ci.size = buf_size;
-    buf_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    buf_ci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|flags;
     // Just like the images in the swapchain, buffers can also be owned by a specific queue family or be shared between multiple at the same time
     // Our buffer will only be used from the graphics queue, so we an stick to exclusive access
     buf_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;

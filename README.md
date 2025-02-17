@@ -170,6 +170,7 @@ A list of the layers in the codebase and their associated namespaces is below:
     - [ ] sky light
     - [ ] emissive light
     - [X] forward+ rendering
+    - [ ] vulumetric lighting
     - [ ] shadow map
     - [X] Phong/Blinn material model
     - [ ] PBR material model
