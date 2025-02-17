@@ -2242,8 +2242,8 @@ internal void rk_ui_inspector(void)
                         ui_labelf("direction");
                         ui_spacer(ui_pct(1.0, 0.0));
                         ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_x"));
-                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_y"));
-                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_z"));
+                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###direction_y"));
+                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###direction_z"));
                     }
 
                     UI_Row

@@ -51,7 +51,7 @@ Within this terminal, `cd` to the root directory of the codebase, and just run
 the `build.bat` script:
 
 ```
-build
+build rubik clang
 ```
 
 If everything worked correctly, there will be a `build` folder in the root
@@ -137,6 +137,7 @@ A list of the layers in the codebase and their associated namespaces is below:
 ## Features & TODO
 
 - [X] Debug gizmos/grid
+- [X] Runtime profiler
 - [X] Scripting
 - [ ] Skeletal animation
     - [X] play animation
