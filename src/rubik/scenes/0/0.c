@@ -202,7 +202,7 @@ rk_scene_entry__0()
         {
             for(S64 j = 0; j < 3; j++)
             {
-                RK_Node *l = rk_build_node3d_from_stringf(RK_NodeTypeFlag_PointLight, 0, "point_light_1");
+                RK_Node *l = rk_build_node3d_from_stringf(RK_NodeTypeFlag_PointLight, 0, "point_light_%I64d_%I64d", i, j);
                 rk_node_equip_sphere(l, 0.1, 0.2, 9,9,0);
                 l->flags |= RK_NodeFlag_NavigationRoot;
                 l->node3d->transform.position = v3f32(-3+j*3, -3.5, -3+i*3);

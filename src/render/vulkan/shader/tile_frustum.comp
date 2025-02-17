@@ -72,7 +72,7 @@ void main()
     uint tile_count = ubo.grid_size.x * ubo.grid_size.y;
     uint tile_idx = uint(xy.y * ubo.grid_size.x) + xy.x;
 
-    if(tile_idx < tile_count)
+    if(xy.x < ubo.grid_size.x && xy.y < ubo.grid_size.y)
     {
         // view space eye position is always at the origin
         vec3 eye = vec3(0,0,0);

@@ -4325,9 +4325,9 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                         /////////////////////////////////////////////////////////////////
                         // compute pass
 
-                        // TODO(XXX): we want set this dynamicly based on the hardware we are running
                         Vec2U32 thread_group_size = {TILE_SIZE,TILE_SIZE};
                         vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, geo3d_tile_frustum_pipeline->h);
+                        // NOTE(k): shader need to check xy is inboud of grid size
                         vkCmdDispatch(cmd_buf, AlignPow2(grid_size.x,thread_group_size.x) / thread_group_size.x, AlignPow2(grid_size.y,thread_group_size.y) / thread_group_size.y, 1);
                     }
 
