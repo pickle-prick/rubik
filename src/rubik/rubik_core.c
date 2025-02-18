@@ -1894,7 +1894,7 @@ internal void rk_ui_inspector(void)
 
         ui_spacer(ui_em(0.215, 0.f));
 
-        // Camera
+        // Camera settings
         {
             UI_Box *camera_cfg_box;
             UI_PrefSize(Axis2_Y, ui_children_sum(1.0)) UI_ChildLayoutAxis(Axis2_Y)
@@ -1948,7 +1948,7 @@ internal void rk_ui_inspector(void)
 
         ui_spacer(ui_em(0.2f, 0.f));
 
-        // Gizmo
+        // Gizmo settings
         {
             UI_Box *gizmo_cfg_box;
             UI_PrefSize(Axis2_Y, ui_children_sum(1.0)) UI_ChildLayoutAxis(Axis2_Y)
@@ -1963,7 +1963,7 @@ internal void rk_ui_inspector(void)
                 UI_Parent(header_box)
                 {
                     ui_set_next_pref_size(Axis2_X, ui_em(2.f, 0.f));
-                    if(ui_clicked(ui_expanderf(inspector->show_camera_cfg, "###show_gizmo_cfg")))
+                    if(ui_clicked(ui_expanderf(inspector->show_gizmo_cfg, "###show_gizmo_cfg")))
                     {
                         inspector->show_gizmo_cfg = !inspector->show_gizmo_cfg;
                     }

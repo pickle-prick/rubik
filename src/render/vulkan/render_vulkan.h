@@ -24,9 +24,9 @@
 // of the GPU could be too larger for it to handle, so the CPU would end up
 // waiting a lot, adding frames of latency Generally extra latency isn't desired
 #define MAX_FRAMES_IN_FLIGHT 2
-// support max 8K with 32x32 sized tile
+// support max 4K with 32x32 sized tile
 #define TILE_SIZE 32
-#define MAX_TILES_PER_PASS ((7680*4320)/(TILE_SIZE*TILE_SIZE))
+#define MAX_TILES_PER_PASS ((3840*2160)/(TILE_SIZE*TILE_SIZE))
 #define MAX_LIGHTS_PER_TILE 200
 
 /////////////////////////////////////////////////////////////////////////////////////////

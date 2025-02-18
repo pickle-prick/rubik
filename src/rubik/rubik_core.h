@@ -108,6 +108,7 @@ typedef enum RK_ResourceKind
     RK_ResourceKind_COUNT,
 } RK_ResourceKind;
 
+// NOTE(k): we have 63 flags to use, don't exceed that 
 typedef U64 RK_NodeFlags;
 #define RK_NodeFlag_NavigationRoot       (RK_NodeFlags)(1ull<<0)
 #define RK_NodeFlag_Float                (RK_NodeFlags)(1ull<<1)
@@ -124,6 +125,7 @@ typedef U64                              RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_DirectionalLight (RK_NodeTypeFlags)(1ull<<7)
 #define RK_NodeTypeFlag_PointLight       (RK_NodeTypeFlags)(1ull<<8)
 #define RK_NodeTypeFlag_SpotLight        (RK_NodeTypeFlags)(1ull<<9)
+#define RK_NodeTypeFlag_Sprite2D         (RK_NodeTypeFlags)(1ull<<10)
 
 /////////////////////////////////
 //~ Key
@@ -266,6 +268,14 @@ struct RK_DirectionalLight
     Vec3F32 direction;
     Vec3F32 color;
     F32 intensity;
+};
+
+typedef struct RK_Sprite2D RK_Sprite2D;
+struct RK_Sprite2D
+{
+    RK_Sprite2D *next;
+    Vec2F32 size;
+    RK_Handle tex;
 };
 
 /////////////////////////////////
@@ -608,6 +618,7 @@ struct RK_Node
     RK_DirectionalLight           *directional_light;
     RK_PointLight                 *point_light;
     RK_SpotLight                  *spot_light;
+    RK_Sprite2D                   *sprite2d;
 
     //~ Custom update/draw functions
     // TODO(k): reuse custom_data memory block based on its size
@@ -664,6 +675,7 @@ struct RK_NodeBucket
     RK_DirectionalLight *first_free_directional_light;
     RK_PointLight       *first_free_point_light;
     RK_SpotLight        *first_free_spot_light;
+    RK_Sprite2D         *first_free_sprite2d;
 };
 
 typedef struct RK_ResourceBucketSlot RK_ResourceBucketSlot;

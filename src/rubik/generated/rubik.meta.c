@@ -40,6 +40,7 @@ if(type_flags & RK_NodeTypeFlag_AnimationPlayer) { node->animation_player = node
 if(type_flags & RK_NodeTypeFlag_DirectionalLight) { node->directional_light = node_bucket->first_free_directional_light; if(node->directional_light != 0) {SLLStackPop(node_bucket->first_free_directional_light);} else {node->directional_light = push_array_no_zero(node_bucket->arena_ref, RK_DirectionalLight, 1);} MemoryZeroStruct(node->directional_light); if(0) {(*node->directional_light) = (RK_DirectionalLight){0};} }\
 if(type_flags & RK_NodeTypeFlag_PointLight) { node->point_light = node_bucket->first_free_point_light; if(node->point_light != 0) {SLLStackPop(node_bucket->first_free_point_light);} else {node->point_light = push_array_no_zero(node_bucket->arena_ref, RK_PointLight, 1);} MemoryZeroStruct(node->point_light); if(0) {(*node->point_light) = (RK_PointLight){0};} }\
 if(type_flags & RK_NodeTypeFlag_SpotLight) { node->spot_light = node_bucket->first_free_spot_light; if(node->spot_light != 0) {SLLStackPop(node_bucket->first_free_spot_light);} else {node->spot_light = push_array_no_zero(node_bucket->arena_ref, RK_SpotLight, 1);} MemoryZeroStruct(node->spot_light); if(0) {(*node->spot_light) = (RK_SpotLight){0};} }\
+if(type_flags & RK_NodeTypeFlag_Sprite2D) { node->sprite2d = node_bucket->first_free_sprite2d; if(node->sprite2d != 0) {SLLStackPop(node_bucket->first_free_sprite2d);} else {node->sprite2d = push_array_no_zero(node_bucket->arena_ref, RK_Sprite2D, 1);} MemoryZeroStruct(node->sprite2d); if(0) {(*node->sprite2d) = (RK_Sprite2D){0};} }\
 node->type_flags |= type_flags;
 #define RK_UnequipTypeFlagsImpl(node, type_flags) \
 RK_NodeBucket *node_bucket = rk_top_node_bucket(); \
@@ -52,6 +53,7 @@ if(type_flags & RK_NodeTypeFlag_AnimationPlayer) { SLLStackPush(node_bucket->fir
 if(type_flags & RK_NodeTypeFlag_DirectionalLight) { SLLStackPush(node_bucket->first_free_directional_light, node->directional_light); node->directional_light = 0; }\
 if(type_flags & RK_NodeTypeFlag_PointLight) { SLLStackPush(node_bucket->first_free_point_light, node->point_light); node->point_light = 0; }\
 if(type_flags & RK_NodeTypeFlag_SpotLight) { SLLStackPush(node_bucket->first_free_spot_light, node->spot_light); node->spot_light = 0; }\
+if(type_flags & RK_NodeTypeFlag_Sprite2D) { SLLStackPush(node_bucket->first_free_sprite2d, node->sprite2d); node->sprite2d = 0; }\
 node->type_flags & (~type_flags);
 C_LINKAGE_BEGIN
 String8 rk_viewport_shading_kind_display_string_table[3] =
