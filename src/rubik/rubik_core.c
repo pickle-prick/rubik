@@ -1668,6 +1668,7 @@ internal void rk_ui_inspector(void)
     {
         B32 show;
         B32 show_scene_cfg;
+        B32 show_tree;
         B32 show_camera_cfg;
         B32 show_gizmo_cfg;
         B32 show_light_cfg;
@@ -1695,8 +1696,9 @@ internal void rk_ui_inspector(void)
         inspector = push_array(inspector_view->arena, RK_Inspector_State, 1);
         inspector_view->custom_data = inspector;
 
-        inspector->show  = 1;
+        inspector->show            = 1;
         inspector->show_scene_cfg  = 1;
+        inspector->show_tree       = 1;
         inspector->show_camera_cfg = 1;
         inspector->show_gizmo_cfg  = 1;
         inspector->show_light_cfg  = 1;
@@ -1736,530 +1738,452 @@ internal void rk_ui_inspector(void)
 
     ui_spacer(ui_em(0.215, 0.f));
 
+    /////////////////////////////////////////////////////////////////////////////////////
+    // scene
+
+    local_persist B32 o = 1;
+    RK_UI_Tab(str8_lit("scene"), &inspector->show_scene_cfg, ui_em(0.1,0), ui_em(0.1,0))
     {
-        // Scene
-        ui_set_next_pref_size(Axis2_Y, ui_children_sum(1.0));
+        UI_Row
+        {
+            {
+                rk_ui_dropdown_begin(str8_lit("load"));
+                for(U64 i = 0; i < rk_state->template_count; i++)
+                {
+                    RK_SceneTemplate t = rk_state->templates[i];
+                    if(ui_clicked(ui_button(t.name)))
+                    {
+                        RK_Scene *new_scene = t.fn();
+                        SLLStackPush(rk_state->first_to_free_scene, scene);
+                        rk_state->active_scene = new_scene;
+
+                        U64 name_size = ClampTop(inspector->scene_path_to_save_buffer_size, new_scene->name.size);
+                        inspector->scene_path_to_save.size = name_size;
+                        MemoryCopy(inspector->scene_path_to_save.str, new_scene->name.str, name_size);
+                        rk_ui_dropdown_hide();
+                    }
+                }
+                rk_ui_dropdown_end();
+            }
+
+            UI_Flags(UI_BoxFlag_ClickToFocus)
+            {
+                if(ui_committed(ui_line_edit(&inspector->txt_cursor, &inspector->txt_mark, inspector->scene_path_to_save.str, inspector->scene_path_to_save_buffer_size, &inspector->txt_edit_string_size, inspector->scene_path_to_save, str8_lit("###scene_path"))))
+                {
+                    inspector->scene_path_to_save.size = inspector->txt_edit_string_size;                        
+                }
+            }
+        }
+
+        ui_divider(ui_em(0.5,0));
+
+        UI_Row
+        {
+            ui_labelf("omit_gizmo");
+            ui_spacer(ui_pct(1.f,0.f));
+            rk_ui_checkbox(&scene->omit_gizmo3d);
+        }
+
+        UI_Row
+        {
+            ui_labelf("omit_grid");
+            ui_spacer(ui_pct(1.f,0.f));
+            rk_ui_checkbox(&scene->omit_grid);
+        }
+
+        UI_Row
+        {
+            ui_labelf("omit_light");
+            ui_spacer(ui_pct(1.f,0.f));
+            rk_ui_checkbox(&scene->omit_light);
+        }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    // Scene tree
+
+    RK_UI_Tab(str8_lit("tree"), &inspector->show_tree, ui_em(0.1,0), ui_em(0.1,0))
+    {
+        F32 row_height = ui_top_font_size()*1.3;
+        // F32 list_height = row_height*30.f;
+        F32 list_height = rk_state->window_dim.y*0.3;
+        ui_set_next_pref_size(Axis2_Y, ui_px(list_height, 0.0));
         ui_set_next_child_layout_axis(Axis2_Y);
-        UI_Box *scene_tree_box = ui_build_box_from_key(0, ui_key_zero());
-        UI_Parent(scene_tree_box)
+        if(!inspector->show_scene_cfg)
         {
-            // Header
+            ui_set_next_flags(UI_BoxFlag_Disabled);
+        }
+        UI_Box *container_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder, "##container");
+        container_box->pref_size[Axis2_Y].value = mix_1f32(list_height, 0, container_box->disabled_t);
+
+        // scroll params
+        UI_ScrollListParams scroll_list_params = {0};
+        {
+            Vec2F32 rect_dim = dim_2f32(container_box->rect);
+            scroll_list_params.flags = UI_ScrollListFlag_All;
+            scroll_list_params.row_height_px = row_height;
+            scroll_list_params.dim_px = rect_dim;
+            scroll_list_params.item_range = r1s64(0, scene->node_bucket->node_count);
+            scroll_list_params.cursor_min_is_empty_selection[Axis2_Y] = 0;
+        }
+        UI_ScrollListSignal scroll_list_sig = {0};
+        // TODO(k): move these to some kind of view state
+        local_persist UI_ScrollPt scroller = {0};
+        scroller.off -= scroller.off * fast_rate;
+        if(abs_f32(scroller.off) < 0.01) scroller.off = 0;
+        Rng1S64 visible_row_rng = {0};
+
+        UI_Parent(container_box) UI_ScrollList(&scroll_list_params, &scroller, 0, 0, &visible_row_rng, &scroll_list_sig)
+        {
+            RK_Node *root = rk_node_from_handle(scene->root);
+            U64 row_idx = 0;
+            S64 active_row = -1;
+            U64 level = 0;
+            U64 indent_size = 2;
+            Temp scratch = scratch_begin(0,0);
+            while(root != 0)
             {
-                ui_set_next_child_layout_axis(Axis2_X);
-                ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
-                UI_Box *header_box = ui_build_box_from_key(0, ui_key_zero());
-                UI_Parent(header_box)
+                RK_NodeRec rec = rk_node_df_pre(root, 0, 0);
+
+                B32 is_active = root == active_node;
+
+                if(row_idx >= visible_row_rng.min && row_idx <= visible_row_rng.max)
                 {
-                    ui_set_next_pref_size(Axis2_X, ui_px(39,0.0));
-                    if(ui_clicked(ui_expanderf(inspector->show_scene_cfg, "###show_scene_cfg")))
+                    String8 indent = str8(0, level*indent_size);
+                    indent.str = push_array(scratch.arena, U8, indent.size);
+                    MemorySet(indent.str, ' ', indent.size);
+
+                    String8 string = push_str8f(scratch.arena, "%S%S###%d", indent, root->name, row_idx);
+                    if(is_active)
                     {
-                        inspector->show_scene_cfg = !inspector->show_scene_cfg;
+                        ui_set_next_palette(ui_build_palette(ui_top_palette(), .overlay = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
+                        ui_set_next_flags(UI_BoxFlag_DrawOverlay);
                     }
-                    ui_set_next_pref_size(Axis2_X, ui_text_dim(3, 0.0));
-                    ui_labelf("Scene");
+                    UI_Signal label = ui_button(string);
+
+                    if(ui_clicked(label) && !is_active)
+                    {
+                        rk_scene_active_node_set(scene, root->key, 0);
+                        inspector->last_active_row = row_idx;
+                        active_row = row_idx;
+                    }
                 }
+
+                if(active_row == -1 && is_active)
+                {
+                    active_row = row_idx;
+                }
+
+                level += (rec.push_count-rec.pop_count);
+                root = rec.next;
+                row_idx++;
             }
+            scratch_end(scratch);
 
-            // Scene cfg
-            ui_set_next_child_layout_axis(Axis2_Y);
-            ui_set_next_pref_height(ui_children_sum(0));
-            UI_Box *scene_cfg = ui_build_box_from_key(0, ui_key_zero());
-            UI_Parent(scene_cfg)
+            if(active_row != inspector->last_active_row && active_row >= 0)
             {
-                UI_Flags(UI_BoxFlag_ClickToFocus)
-                {
-                    if(ui_committed(ui_line_edit(&inspector->txt_cursor, &inspector->txt_mark, inspector->scene_path_to_save.str, inspector->scene_path_to_save_buffer_size, &inspector->txt_edit_string_size, inspector->scene_path_to_save, str8_lit("###scene_path"))))
-                    {
-                        inspector->scene_path_to_save.size = inspector->txt_edit_string_size;                        
-                    }
-                }
-
-                UI_Row
-                {
-                    rk_ui_dropdown_begin(str8_lit("Load Template"));
-                    for(U64 i = 0; i < rk_state->template_count; i++)
-                    {
-                        RK_SceneTemplate t = rk_state->templates[i];
-                        if(ui_clicked(ui_button(t.name)))
-                        {
-                            RK_Scene *new_scene = t.fn();
-                            SLLStackPush(rk_state->first_to_free_scene, scene);
-                            rk_state->active_scene = new_scene;
-
-                            U64 name_size = ClampTop(inspector->scene_path_to_save_buffer_size, new_scene->name.size);
-                            inspector->scene_path_to_save.size = name_size;
-                            MemoryCopy(inspector->scene_path_to_save.str, new_scene->name.str, name_size);
-                            rk_ui_dropdown_hide();
-                        }
-                    }
-                    rk_ui_dropdown_end();
-
-                    if(ui_clicked(ui_buttonf("Save")))
-                    {
-                        // TODO
-                    }
-                    if(ui_clicked(ui_buttonf("Reload")))
-                    {
-                        // TODO
-                    }
-                }
-            }
-
-            // Scene tree
-            {
-                F32 row_height = ui_top_font_size()*1.3;
-                // F32 list_height = row_height*30.f;
-                F32 list_height = rk_state->window_dim.y*0.3;
-                ui_set_next_pref_size(Axis2_Y, ui_px(list_height, 0.0));
-                ui_set_next_child_layout_axis(Axis2_Y);
-                if(!inspector->show_scene_cfg)
-                {
-                    ui_set_next_flags(UI_BoxFlag_Disabled);
-                }
-                UI_Box *container_box = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder, "##container");
-                container_box->pref_size[Axis2_Y].value = mix_1f32(list_height, 0, container_box->disabled_t);
-
-                // scroll params
-                UI_ScrollListParams scroll_list_params = {0};
-                {
-                    Vec2F32 rect_dim = dim_2f32(container_box->rect);
-                    scroll_list_params.flags = UI_ScrollListFlag_All;
-                    scroll_list_params.row_height_px = row_height;
-                    scroll_list_params.dim_px = rect_dim;
-                    scroll_list_params.item_range = r1s64(0, scene->node_bucket->node_count);
-                    scroll_list_params.cursor_min_is_empty_selection[Axis2_Y] = 0;
-                }
-                UI_ScrollListSignal scroll_list_sig = {0};
-                // TODO(k): move these to some kind of view state
-                local_persist UI_ScrollPt scroller = {0};
-                scroller.off -= scroller.off * fast_rate;
-                if(abs_f32(scroller.off) < 0.01) scroller.off = 0;
-                Rng1S64 visible_row_rng = {0};
-
-                UI_Parent(container_box) UI_ScrollList(&scroll_list_params, &scroller, 0, 0, &visible_row_rng, &scroll_list_sig)
-                {
-                    RK_Node *root = rk_node_from_handle(scene->root);
-                    U64 row_idx = 0;
-                    S64 active_row = -1;
-                    U64 level = 0;
-                    U64 indent_size = 2;
-                    Temp scratch = scratch_begin(0,0);
-                    while(root != 0)
-                    {
-                        RK_NodeRec rec = rk_node_df_pre(root, 0, 0);
-
-                        B32 is_active = root == active_node;
-
-                        if(row_idx >= visible_row_rng.min && row_idx <= visible_row_rng.max)
-                        {
-                            String8 indent = str8(0, level*indent_size);
-                            indent.str = push_array(scratch.arena, U8, indent.size);
-                            MemorySet(indent.str, ' ', indent.size);
-
-                            String8 string = push_str8f(scratch.arena, "%S%S###%d", indent, root->name, row_idx);
-                            if(is_active)
-                            {
-                                ui_set_next_palette(ui_build_palette(ui_top_palette(), .overlay = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
-                                ui_set_next_flags(UI_BoxFlag_DrawOverlay);
-                            }
-                            UI_Signal label = ui_button(string);
-
-                            if(ui_clicked(label) && !is_active)
-                            {
-                                rk_scene_active_node_set(scene, root->key, 0);
-                                inspector->last_active_row = row_idx;
-                                active_row = row_idx;
-                            }
-                        }
-
-                        if(active_row == -1 && is_active)
-                        {
-                            active_row = row_idx;
-                        }
-
-                        level += (rec.push_count-rec.pop_count);
-                        root = rec.next;
-                        row_idx++;
-                    }
-                    scratch_end(scratch);
-
-                    if(active_row != inspector->last_active_row && active_row >= 0)
-                    {
-                        inspector->last_active_row = active_row;
-                        ui_scroll_pt_target_idx(&scroller, active_row);
-                    }
-                }
+                inspector->last_active_row = active_row;
+                ui_scroll_pt_target_idx(&scroller, active_row);
             }
         }
+    }
 
-        ui_spacer(ui_em(0.215, 0.f));
+    ui_spacer(ui_em(0.215, 0.f));
 
-        // Camera settings
+    // Camera settings
+    RK_UI_Tab(str8_lit("camera"), &inspector->show_camera_cfg, ui_em(0.1,0), ui_em(0.6,0))
+    {
+        UI_Row
         {
-            UI_Box *camera_cfg_box;
-            UI_PrefSize(Axis2_Y, ui_children_sum(1.0)) UI_ChildLayoutAxis(Axis2_Y)
+            ui_labelf("shading");
+            ui_spacer(ui_pct(1.0, 0.0));
+
+            UI_TextAlignment(UI_TextAlign_Center) for(U64 k = 0; k < RK_ViewportShadingKind_COUNT; k++)
             {
-                camera_cfg_box = ui_build_box_from_key(0, ui_key_zero());
+                if(camera->viewport_shading == k)
+                {
+                    ui_set_next_palette(ui_build_palette(ui_top_palette(), .background = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
+                }
+                if(ui_clicked(ui_button(rk_viewport_shading_kind_display_string_table[k]))) {camera->viewport_shading = k;}
             }
-            UI_Parent(camera_cfg_box)
-            {
-                ui_set_next_child_layout_axis(Axis2_X);
-                ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
-                UI_Box *header_box = ui_build_box_from_key(0, ui_key_zero());
-                UI_Parent(header_box)
-                {
-                    ui_set_next_pref_size(Axis2_X, ui_em(2.f, 0.f));
-                    if(ui_clicked(ui_expanderf(inspector->show_camera_cfg, "###show_camera_cfg")))
-                    {
-                        inspector->show_camera_cfg = !inspector->show_camera_cfg;
-                    }
-                    ui_labelf("Camera");
-                }
 
-                ui_spacer(ui_em(0.2f, 0.f));
+            ui_spacer(ui_em(0.5, 1.0));
+        }
+    }
 
-                UI_Row
-                {
-                    ui_labelf("omit_grid");
-                    ui_spacer(ui_pct(1.f,0.f));
-                    rk_ui_checkbox(&scene->omit_grid);
-                }
+    ui_spacer(ui_em(0.2f, 0.f));
 
-                ui_spacer(ui_em(0.2f, 0.f));
+    /////////////////////////////////////////////////////////////////////////////////////
+    // Gizmo settings
 
-                UI_Row
-                {
-                    ui_labelf("shading");
-                    ui_spacer(ui_pct(1.0, 0.0));
-
-                    UI_TextAlignment(UI_TextAlign_Center) for(U64 k = 0; k < RK_ViewportShadingKind_COUNT; k++)
-                    {
-                        if(camera->viewport_shading == k)
-                        {
-                            ui_set_next_palette(ui_build_palette(ui_top_palette(), .background = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
-                        }
-                        if(ui_clicked(ui_button(rk_viewport_shading_kind_display_string_table[k]))) {camera->viewport_shading = k;}
-                    }
-
-                    ui_spacer(ui_em(0.5, 1.0));
-                }
-            }
+    RK_UI_Tab(str8_lit("camera"), &inspector->show_gizmo_cfg, ui_em(0.1,0), ui_em(0.6,0))
+    {
+        UI_Row
+        {
+            ui_labelf("omit_gizmo");
+            ui_spacer(ui_pct(1.f,0.f));
+            rk_ui_checkbox(&scene->omit_gizmo3d);
         }
 
         ui_spacer(ui_em(0.2f, 0.f));
 
-        // Gizmo settings
+        UI_Row
         {
-            UI_Box *gizmo_cfg_box;
-            UI_PrefSize(Axis2_Y, ui_children_sum(1.0)) UI_ChildLayoutAxis(Axis2_Y)
+            ui_labelf("mode");
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_TextAlignment(UI_TextAlign_Center) for(U64 k = 0; k < RK_Gizmo3dMode_COUNT; k++)
             {
-                gizmo_cfg_box = ui_build_box_from_key(0, ui_key_zero());
+                if(scene->gizmo3d_mode == k)
+                {
+                    ui_set_next_palette(ui_build_palette(ui_top_palette(), .background = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
+                }
+                if(ui_clicked(ui_button(rk_gizmo3d_mode_display_string_table[k]))) {scene->gizmo3d_mode = k;}
             }
-            UI_Parent(gizmo_cfg_box)
+            ui_spacer(ui_em(0.5, 1.0));
+        }
+    }
+
+    ui_spacer(ui_em(0.2f, 0.f));
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    // Active Node
+
+    RK_UI_Tab(str8_lit("node"), &inspector->show_node_cfg, ui_em(0.1,0), ui_em(0.6,0)) if(active_node)
+    {
+        // basic info
+        {
+            ui_set_next_child_layout_axis(Axis2_X);
+            UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+            UI_Parent(header_box)
             {
-                ui_set_next_child_layout_axis(Axis2_X);
-                ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
-                UI_Box *header_box = ui_build_box_from_key(0, ui_key_zero());
-                UI_Parent(header_box)
-                {
-                    ui_set_next_pref_size(Axis2_X, ui_em(2.f, 0.f));
-                    if(ui_clicked(ui_expanderf(inspector->show_gizmo_cfg, "###show_gizmo_cfg")))
-                    {
-                        inspector->show_gizmo_cfg = !inspector->show_gizmo_cfg;
-                    }
-                    ui_labelf("Gizmo");
-                }
+                ui_spacer(ui_em(0.3f,0.f));
+                ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+                ui_labelf("basic");
+            }
 
-                ui_spacer(ui_em(0.2f, 0.f));
+            UI_Row
+            {
+                ui_labelf("name");
+                ui_spacer(ui_pct(1.f,0.f));
+                ui_label(active_node->name);
+            }
 
-                UI_Row
-                {
-                    ui_labelf("omit_gizmo");
-                    ui_spacer(ui_pct(1.f,0.f));
-                    rk_ui_checkbox(&scene->omit_gizmo3d);
-                }
+            UI_Row
+            {
+                ui_labelf("key");
+                ui_spacer(ui_pct(1.f,0.f));
+                ui_labelf("%lu", active_node->key);
+            }
 
-                ui_spacer(ui_em(0.2f, 0.f));
+            if(active_node->parent) UI_Row
+            {
+                ui_labelf("parent");
+                ui_spacer(ui_pct(1.f,0.f));
+                ui_label(active_node->parent->name);
+            }
 
-                UI_Row
-                {
-                    ui_labelf("mode");
-                    ui_spacer(ui_pct(1.0, 0.0));
-                    UI_TextAlignment(UI_TextAlign_Center) for(U64 k = 0; k < RK_Gizmo3dMode_COUNT; k++)
-                    {
-                        if(scene->gizmo3d_mode == k)
-                        {
-                            ui_set_next_palette(ui_build_palette(ui_top_palette(), .background = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
-                        }
-                        if(ui_clicked(ui_button(rk_gizmo3d_mode_display_string_table[k]))) {scene->gizmo3d_mode = k;}
-                    }
-                    ui_spacer(ui_em(0.5, 1.0));
-                }
+            UI_Row
+            {
+                ui_labelf("children_count");
+                ui_spacer(ui_pct(1.f,0.f));
+                ui_labelf("%lu", active_node->children_count);
             }
         }
 
-        ui_spacer(ui_em(0.2f, 0.f));
+        ui_spacer(ui_em(0.9, 0.f));
 
-        // Active Node
+        ////////////////////////////////
+        //~ equipment info
+
+        ////////////////////////////////
+        //- node2d
+
+        if(active_node->type_flags & RK_NodeTypeFlag_Node2D)
         {
-            UI_Box *node_cfg_box;
-            UI_PrefSize(Axis2_Y, ui_children_sum(1.0)) UI_ChildLayoutAxis(Axis2_Y)
+            NotImplemented;
+        }
+
+        ////////////////////////////////
+        //- node3d
+
+        if(active_node->type_flags & RK_NodeTypeFlag_Node3D)
+        {
+            RK_Transform3D *transform3d = &active_node->node3d->transform;
+
+            ui_set_next_child_layout_axis(Axis2_X);
+            UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+            UI_Parent(header_box)
             {
-                node_cfg_box = ui_build_box_from_key(0, ui_key_zero());
+                ui_spacer(ui_em(0.3f,0.f));
+                ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+                ui_labelf("node3d");
             }
-            if(active_node != 0) UI_Parent(node_cfg_box)
+
+            UI_Row
             {
-                ui_set_next_child_layout_axis(Axis2_X);
-                ui_set_next_flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder);
-                UI_Box *header_box = ui_build_box_from_key(0, ui_key_zero());
-                UI_Parent(header_box)
-                {
-                    ui_set_next_pref_size(Axis2_X, ui_em(2.f, 0.f));
-                    if(ui_clicked(ui_expanderf(inspector->show_node_cfg, "###show_node_cfg")))
-                    {
-                        inspector->show_node_cfg = !inspector->show_node_cfg;
-                    }
-                    ui_labelf("Node");
-                }
+                ui_labelf("position");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&transform3d->position.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
+                ui_f32_edit(&transform3d->position.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
+                ui_f32_edit(&transform3d->position.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
+            }
 
-                ui_spacer(ui_em(0.2f, 0.f));
+            UI_Row
+            {
+                ui_labelf("scale");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&transform3d->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###scale_x"));
+                ui_f32_edit(&transform3d->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###scale_y"));
+                ui_f32_edit(&transform3d->scale.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###scale_z"));
+            }
 
-                // basic info
-                {
-                    ui_set_next_child_layout_axis(Axis2_X);
-                    UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
-                    UI_Parent(header_box)
-                    {
-                        ui_spacer(ui_em(0.3f,0.f));
-                        ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
-                        ui_labelf("basic");
-                    }
-                    
-                    UI_Row
-                    {
-                        ui_labelf("name");
-                        ui_spacer(ui_pct(1.f,0.f));
-                        ui_label(active_node->name);
-                    }
+            UI_Row
+            {
+                ui_labelf("rotation");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&transform3d->rotation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###rot_x"));
+                ui_f32_edit(&transform3d->rotation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###rot_y"));
+                ui_f32_edit(&transform3d->rotation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###rot_z"));
+                ui_f32_edit(&transform3d->rotation.w, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("W###rot_w"));
+            }
+        }
 
-                    UI_Row
-                    {
-                        ui_labelf("key");
-                        ui_spacer(ui_pct(1.f,0.f));
-                        ui_labelf("%lu", active_node->key);
-                    }
+        ////////////////////////////////
+        //- directional light
 
-                    if(active_node->parent) UI_Row
-                    {
-                        ui_labelf("parent");
-                        ui_spacer(ui_pct(1.f,0.f));
-                        ui_label(active_node->parent->name);
-                    }
+        if(active_node->type_flags & RK_NodeTypeFlag_DirectionalLight)
+        {
+            RK_DirectionalLight *light = active_node->directional_light;
+            ui_set_next_child_layout_axis(Axis2_X);
+            UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+            UI_Parent(header_box)
+            {
+                ui_spacer(ui_em(0.3f,0.f));
+                ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+                ui_labelf("directional light");
+            }
 
-                    UI_Row
-                    {
-                        ui_labelf("children_count");
-                        ui_spacer(ui_pct(1.f,0.f));
-                        ui_labelf("%lu", active_node->children_count);
-                    }
-                }
+            UI_Row
+            {
+                ui_labelf("direction");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_x"));
+                ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_y"));
+                ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_z"));
+            }
 
-                ui_spacer(ui_em(0.9, 0.f));
+            UI_Row
+            {
+                ui_labelf("color");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
+                ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
+                ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
+            }
+        }
 
-                ////////////////////////////////
-                //~ equipment info
+        ////////////////////////////////
+        //- point light
 
-                ////////////////////////////////
-                //- node2d
+        if(active_node->type_flags & RK_NodeTypeFlag_PointLight)
+        {
+            RK_PointLight *light = active_node->point_light;
+            ui_set_next_child_layout_axis(Axis2_X);
+            UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+            UI_Parent(header_box)
+            {
+                ui_spacer(ui_em(0.3f,0.f));
+                ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+                ui_labelf("point light");
+            }
 
-                if(active_node->type_flags & RK_NodeTypeFlag_Node2D)
-                {
-                    NotImplemented;
-                }
+            UI_Row
+            {
+                ui_labelf("color");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
+                ui_f32_edit(&light->color.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
+                ui_f32_edit(&light->color.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
+            }
 
-                ////////////////////////////////
-                //- node3d
+            UI_Row
+            {
+                ui_labelf("attenuation");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&light->attenuation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("C###constant"));
+                ui_f32_edit(&light->attenuation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("L###linear"));
+                ui_f32_edit(&light->attenuation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Q###quadratic"));
+            }
 
-                if(active_node->type_flags & RK_NodeTypeFlag_Node3D)
-                {
-                    RK_Transform3D *transform3d = &active_node->node3d->transform;
+            UI_Row
+            {
+                ui_labelf("range");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&light->range, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("R###range"));
+            }
 
-                    ui_set_next_child_layout_axis(Axis2_X);
-                    UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
-                    UI_Parent(header_box)
-                    {
-                        ui_spacer(ui_em(0.3f,0.f));
-                        ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
-                        ui_labelf("node3d");
-                    }
+            UI_Row
+            {
+                ui_labelf("intensity");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&light->intensity, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("I###intensity"));
+            }
+        }
 
-                    UI_Row
-                    {
-                        ui_labelf("position");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_f32_edit(&transform3d->position.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
-                        ui_f32_edit(&transform3d->position.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
-                        ui_f32_edit(&transform3d->position.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
-                    }
+        ////////////////////////////////
+        //- spot light
 
-                    UI_Row
-                    {
-                        ui_labelf("scale");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_f32_edit(&transform3d->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###scale_x"));
-                        ui_f32_edit(&transform3d->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###scale_y"));
-                        ui_f32_edit(&transform3d->scale.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###scale_z"));
-                    }
+        if(active_node->type_flags & RK_NodeTypeFlag_SpotLight)
+        {
+            RK_SpotLight *light = active_node->spot_light;
+            ui_set_next_child_layout_axis(Axis2_X);
+            UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+            UI_Parent(header_box)
+            {
+                ui_spacer(ui_em(0.3f,0.f));
+                ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+                ui_labelf("spot light");
+            }
 
-                    UI_Row
-                    {
-                        ui_labelf("rotation");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_f32_edit(&transform3d->rotation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###rot_x"));
-                        ui_f32_edit(&transform3d->rotation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###rot_y"));
-                        ui_f32_edit(&transform3d->rotation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###rot_z"));
-                        ui_f32_edit(&transform3d->rotation.w, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("W###rot_w"));
-                    }
-                }
+            UI_Row
+            {
+                ui_labelf("color");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
+                ui_f32_edit(&light->color.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
+                ui_f32_edit(&light->color.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
+            }
 
-                ////////////////////////////////
-                //- directional light
+            UI_Row
+            {
+                ui_labelf("attenuation");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&light->attenuation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("C###attenuation_constant"));
+                ui_f32_edit(&light->attenuation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("L###attenuation_linear"));
+                ui_f32_edit(&light->attenuation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Q###attenuation_quadratic"));
+            }
 
-                if(active_node->type_flags & RK_NodeTypeFlag_DirectionalLight)
-                {
-                    RK_DirectionalLight *light = active_node->directional_light;
-                    ui_set_next_child_layout_axis(Axis2_X);
-                    UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
-                    UI_Parent(header_box)
-                    {
-                        ui_spacer(ui_em(0.3f,0.f));
-                        ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
-                        ui_labelf("directional light");
-                    }
+            UI_Row
+            {
+                ui_labelf("direction");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_x"));
+                ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###direction_y"));
+                ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###direction_z"));
+            }
 
-                    UI_Row
-                    {
-                        ui_labelf("direction");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_x"));
-                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_y"));
-                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_z"));
-                    }
+            UI_Row
+            {
+                ui_labelf("range");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&light->range, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("R###range"));
+            }
 
-                    UI_Row
-                    {
-                        ui_labelf("color");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
-                        ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
-                        ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
-                    }
-                }
-
-                ////////////////////////////////
-                //- point light
-
-                if(active_node->type_flags & RK_NodeTypeFlag_PointLight)
-                {
-                    RK_PointLight *light = active_node->point_light;
-                    ui_set_next_child_layout_axis(Axis2_X);
-                    UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
-                    UI_Parent(header_box)
-                    {
-                        ui_spacer(ui_em(0.3f,0.f));
-                        ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
-                        ui_labelf("point light");
-                    }
-
-                    UI_Row
-                    {
-                        ui_labelf("color");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
-                        ui_f32_edit(&light->color.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
-                        ui_f32_edit(&light->color.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
-                    }
-
-                    UI_Row
-                    {
-                        ui_labelf("attenuation");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_f32_edit(&light->attenuation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("C###constant"));
-                        ui_f32_edit(&light->attenuation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("L###linear"));
-                        ui_f32_edit(&light->attenuation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Q###quadratic"));
-                    }
-
-                    UI_Row
-                    {
-                        ui_labelf("range");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_f32_edit(&light->range, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("R###range"));
-                    }
-
-                    UI_Row
-                    {
-                        ui_labelf("intensity");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_f32_edit(&light->intensity, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("I###intensity"));
-                    }
-                }
-
-                ////////////////////////////////
-                //- spot light
-
-                if(active_node->type_flags & RK_NodeTypeFlag_SpotLight)
-                {
-                    RK_SpotLight *light = active_node->spot_light;
-                    ui_set_next_child_layout_axis(Axis2_X);
-                    UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
-                    UI_Parent(header_box)
-                    {
-                        ui_spacer(ui_em(0.3f,0.f));
-                        ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
-                        ui_labelf("spot light");
-                    }
-
-                    UI_Row
-                    {
-                        ui_labelf("color");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
-                        ui_f32_edit(&light->color.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
-                        ui_f32_edit(&light->color.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
-                    }
-
-                    UI_Row
-                    {
-                        ui_labelf("attenuation");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_f32_edit(&light->attenuation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("C###attenuation_constant"));
-                        ui_f32_edit(&light->attenuation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("L###attenuation_linear"));
-                        ui_f32_edit(&light->attenuation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Q###attenuation_quadratic"));
-                    }
-
-                    UI_Row
-                    {
-                        ui_labelf("direction");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_x"));
-                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###direction_y"));
-                        ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###direction_z"));
-                    }
-
-                    UI_Row
-                    {
-                        ui_labelf("range");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_f32_edit(&light->range, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("R###range"));
-                    }
-
-                    UI_Row
-                    {
-                        ui_labelf("intensity");
-                        ui_spacer(ui_pct(1.0, 0.0));
-                        ui_f32_edit(&light->intensity, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("I###intensity"));
-                    }
-                }
+            UI_Row
+            {
+                ui_labelf("intensity");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&light->intensity, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("I###intensity"));
             }
         }
     }
@@ -3047,7 +2971,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                     // fill inst info 
                     inst->xform      = node->fixed_xform;
                     inst->xform_inv  = inverse_4x4f32(node->fixed_xform);
-                    inst->omit_light = mesh_inst3d->omit_light;
+                    inst->omit_light = mesh_inst3d->omit_light || scene->omit_light;
                     inst->key        = node->key.u64[0];
                     inst->draw_edge  = rk_node_is_active(node) || mesh_inst3d->draw_edge;
                     inst->depth_test = !mesh_inst3d->omit_depth_test;

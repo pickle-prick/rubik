@@ -525,3 +525,89 @@ rk_ui_checkbox(B32 *b)
     return result;
 #endif
 }
+
+internal UI_Box *
+rk_ui_tab_begin(String8 string, B32 *open, UI_Size padding_x, UI_Size padding_y)
+{
+    UI_Box *ret;
+    UI_PrefSize(Axis2_Y, ui_children_sum(0.0))
+        UI_ChildLayoutAxis(Axis2_Y)
+    {
+        ret = ui_build_box_from_string(0, string);
+    }
+
+    // header
+    /////////////////////////////////////////////////////////////////////////////////////
+
+    UI_Box *header_box;
+    UI_Parent(ret)
+        UI_ChildLayoutAxis(Axis2_X)
+        UI_Flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder)
+    {
+        header_box = ui_build_box_from_key(0, ui_key_zero());
+    }
+
+    UI_Parent(header_box)
+    {
+        ui_set_next_pref_size(Axis2_X, ui_em(2.f, 0.f));
+        if(ui_clicked(ui_expanderf(*open, "show")))
+        {
+            *open = !(*open);
+        }
+        ui_set_next_pref_size(Axis2_X, ui_text_dim(3, 0));
+        ui_label(string);
+    }
+
+    // body (padding+container)
+    /////////////////////////////////////////////////////////////////////////////////////
+
+    UI_Box *body_box;
+    UI_Box *v_box;
+    UI_Box *container_box;
+
+    UI_Parent(ret)
+        // NOTE(k): we are using Clip, so a transient box won't cut it
+        UI_Flags(UI_BoxFlag_Clip)
+        UI_ChildLayoutAxis(Axis2_X)
+        UI_PrefSize(Axis2_Y, (*open) ? ui_children_sum(0) : ui_px(0,0))
+    {
+        body_box = ui_build_box_from_stringf(0, "###body");
+    }
+
+    UI_Parent(body_box)
+    {
+        ui_spacer(padding_x);
+        UI_ChildLayoutAxis(Axis2_Y)
+            UI_PrefWidth(ui_pct(1,0)) 
+            UI_PrefSize(Axis2_Y, ui_children_sum(0))
+        {
+            v_box = ui_build_box_from_key(0, ui_key_zero());
+        }
+        ui_spacer(padding_x);
+
+        UI_Parent(v_box)
+        {
+            ui_spacer(padding_y);
+            UI_ChildLayoutAxis(Axis2_Y)
+                UI_PrefSize(Axis2_Y, ui_children_sum(0))
+            {
+                container_box = ui_build_box_from_key(0, ui_key_zero());
+            }
+            ui_spacer(padding_y);
+        }
+    }
+
+    ui_push_parent(container_box);
+    ui_push_pref_size(Axis2_X, ui_pct(1,0));
+    return ret;
+}
+
+internal UI_Signal
+rk_ui_tab_end()
+{
+    UI_Signal ret;
+    ui_pop_pref_size(Axis2_X);
+    UI_Box *container = ui_pop_parent(); // container_box
+    ret = ui_signal_from_box(container);
+    return ret;
+}

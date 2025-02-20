@@ -610,6 +610,10 @@ ui_calc_sizes_downwards_dependent__in_place_rec(UI_Box *root, Axis2 axis)
                     {
                         sum += child->fixed_size.v[axis];
                     }
+                    else
+                    {
+                        sum = Max(sum, child->fixed_size.v[axis]);
+                    }
                 } 
                 else
                 {
@@ -647,7 +651,6 @@ ui_layout_enforce_constraints__in_place_rec(UI_Box *root, Axis2 axis)
                 }
             }
         }
-
     }
 
     //- rjf: fixup children sizes (in the direction of the layout axis)

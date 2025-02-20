@@ -723,12 +723,14 @@ struct RK_Scene
     RK_Handle         active_node;
 
     B32               omit_grid;
+    B32               omit_gizmo3d;
+    B32               omit_light; 
+
     // ambient light
     Vec4F32           ambient_light;
     Vec4F32           ambient_scale;
 
     // gizmo
-    B32               omit_gizmo3d;
     RK_Gizmo3dMode    gizmo3d_mode;
 
     String8           name;
