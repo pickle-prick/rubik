@@ -5,6 +5,7 @@ RK_ScenesTable:
     {0, default3d}
     {1, entropy}
     {2, go}
+    {3, 2d}
 }
 
 @gen

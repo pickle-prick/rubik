@@ -757,6 +757,24 @@ typedef enum Corner
 }
 Corner;
 
+typedef enum DirH
+{
+  DirH_Invalid = -1,
+  DirH_Left,
+  DirH_Right,
+  DirH_COUNT,
+}
+DirH;
+
+typedef enum DirV
+{
+  DirV_Invalid = -1,
+  DirV_Up,
+  DirV_Down,
+  DirV_COUNT,
+}
+DirV;
+
 typedef enum Dir2
 {
   Dir2_Invalid = -1,

@@ -26,14 +26,24 @@ rk_scene_entry__3()
             main_camera->camera3d->zn = 0;
             main_camera->camera3d->zf = 1;
             // TOOD(XXX): how are we supposed to set it
-            main_camera->camera3d->orthographic.top = 0;
-            main_camera->camera3d->orthographic.top = 0;
-            main_camera->camera3d->orthographic.top = 0;
-            main_camera->camera3d->orthographic.top = 0;
+            main_camera->camera3d->orthographic.top    = 0;
+            main_camera->camera3d->orthographic.bottom = 300;
+            main_camera->camera3d->orthographic.left   = 0;
+            main_camera->camera3d->orthographic.right  = 300;
 
             main_camera->node3d->transform.position = v3f32(0,0,0);
         }
         ret->active_camera = rk_handle_from_node(main_camera);
+
+        // load resource
+        RK_SpriteSheet *doux_spritesheet = rk_spritesheet_from_image(str8_lit("./textures/DinoSprites - doux.png"), str8_lit("./textures/DinoSprites.json"));
+
+        RK_Node *dino = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_AnimatedSprite2D,0, "dino");
+        dino->node2d->transform.position = v2f32(3,3);
+        dino->animated_sprite2d->shape = RK_Sprite2DShapeKind_Rect;
+        dino->animated_sprite2d->size.rect.x = doux_spritesheet->frames[0].source_size.w;
+        dino->animated_sprite2d->size.rect.y = doux_spritesheet->frames[0].source_size.h;
+        dino->animated_sprite2d->sheet = doux_spritesheet;
     }
 
     ret->root = rk_handle_from_node(root);

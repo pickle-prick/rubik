@@ -135,36 +135,12 @@ rk_scene_entry__0()
 
         rk_push_node_bucket(ret->res_node_bucket);
         rk_push_parent(0);
-        RK_Handle dancing_stormtrooper = rk_packed_scene_from_gltf(str8_lit("./models/dancing_stormtrooper/scene.gltf"));
-        RK_Handle blackguard = rk_packed_scene_from_gltf(str8_lit("./models/blackguard/scene.gltf"));
+        RK_PackedScene *dancing_stormtrooper = rk_packed_scene_from_gltf(str8_lit("./models/dancing_stormtrooper/scene.gltf"));
+        RK_PackedScene *blackguard = rk_packed_scene_from_gltf(str8_lit("./models/blackguard/scene.gltf"));
         // RK_Handle droide = rk_packed_scene_from_gltf(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
-        RK_Handle white_mat = rk_material_from_color(str8_lit("white"), v4f32(1,1,1,1));
-        RK_Handle grid_prototype_material;
-        {
-            String8 png_path = str8_lit("./textures/gridbox-prototype-materials/prototype_512x512_grey2.png");
-            RK_Key material_res_key = rk_res_key_from_string(RK_ResourceKind_Material, rk_key_zero(), png_path);
-            grid_prototype_material = rk_resh_alloc(material_res_key, RK_ResourceKind_Material, 1);
-            RK_Material *material = rk_res_data_from_handle(grid_prototype_material);
+        RK_Material *white_mat = rk_material_from_color(str8_lit("white"), v4f32(1,1,1,1));
 
-            // load texture
-            RK_Key tex2d_key = rk_res_key_from_string(RK_ResourceKind_Texture2D, rk_key_zero(), png_path);
-            RK_Handle tex2d_res = rk_resh_alloc(tex2d_key, RK_ResourceKind_Texture2D, 1);
-            R_Tex2DSampleKind sample_kind = R_Tex2DSampleKind_Nearest;
-            RK_Texture2D *tex2d = rk_res_data_from_handle(tex2d_res);
-            {
-                int x,y,n;
-                U8 *image_data = stbi_load((char*)png_path.str, &x, &y, &n, 4);
-                tex2d->tex = r_tex2d_alloc(R_ResourceKind_Static, sample_kind, v2s32(x,y), R_Tex2DFormat_RGBA8, image_data);
-                stbi_image_free(image_data);
-            }
-            tex2d->sample_kind = sample_kind;
-
-            material->name = push_str8_copy_static(str8_lit("prototype_512x512_grey2"), material->name_buffer, ArrayCount(material->name_buffer));
-            material->textures[R_GeoTexKind_Diffuse] = tex2d_res;
-            material->v.diffuse_color = v4f32(1,1,1,1);
-            material->v.opacity = 1.0;
-            material->v.has_diffuse_texture = 1;
-        }
+        RK_Material *grid_prototype_material = rk_material_from_image(str8_lit("grid_prototype"), str8_lit("./textures/gridbox-prototype-materials/prototype_512x512_grey2.png"));
 
         rk_pop_parent();
         rk_pop_node_bucket();

@@ -1,7 +1,7 @@
 #ifndef RUBIK_CORE_H
 #define RUBIK_CORE_H
 
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 //~ Enum
 
 typedef enum RK_PhysicsKind
@@ -27,16 +27,24 @@ typedef enum RK_TransformKind
     RK_TransformKind_COUNT
 } RK_TransformKind;
 
-typedef enum RK_Gizmo3dMode
+typedef enum RK_Gizmo3DMode
 {
-    RK_Gizmo3dMode_Translate,
-    RK_Gizmo3dMode_Rotation,
-    RK_Gizmo3dMode_Scale,
-    RK_Gizmo3dMode_COUNT,
-} RK_Gizmo3dMode;
+    RK_Gizmo3DMode_Translate,
+    RK_Gizmo3DMode_Rotation,
+    RK_Gizmo3DMode_Scale,
+    RK_Gizmo3DMode_COUNT,
+} RK_Gizmo3DMode;
 
-/////////////////////////////////
+typedef enum RK_Sprite2DShapeKind
+{
+    RK_Sprite2DShapeKind_Rect,
+    RK_Sprite2DShapeKind_Circle,
+    RK_Sprite2DShapeKind_COUNT,
+} RK_Sprite2DShapeKind;
+
+/////////////////////////////////////////////////////////////////////////////////////////
 //- Render bucket
+
 typedef enum RK_GeoBucketKind
 {
     RK_GeoBucketKind_Back,
@@ -45,7 +53,7 @@ typedef enum RK_GeoBucketKind
     RK_GeoBucketKind_COUNT,
 } RK_GeoBucketKind;
 
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 //- Animation
 
 typedef enum RK_InterpolationKind
@@ -104,6 +112,7 @@ typedef enum RK_ResourceKind
     RK_ResourceKind_Material,
     RK_ResourceKind_Animation,
     RK_ResourceKind_Texture2D,
+    RK_ResourceKind_SpriteSheet,
     // RK_ResourceKind_AudioStream,
     RK_ResourceKind_COUNT,
 } RK_ResourceKind;
@@ -117,7 +126,6 @@ typedef U64                              RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_Node2D           (RK_NodeTypeFlags)(1ull<<0)
 #define RK_NodeTypeFlag_Node3D           (RK_NodeTypeFlags)(1ull<<1)
 #define RK_NodeTypeFlag_Camera3D         (RK_NodeTypeFlags)(1ull<<2)
-// TODO: do we need this flag?
 // #define RK_NodeTypeFlag_Joint3D          (RK_NodeTypeFlags)(1ull<<3)
 #define RK_NodeTypeFlag_MeshInstance3D   (RK_NodeTypeFlags)(1ull<<4)
 #define RK_NodeTypeFlag_SceneInstance    (RK_NodeTypeFlags)(1ull<<5) /* instance from another scene */
@@ -126,17 +134,18 @@ typedef U64                              RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_PointLight       (RK_NodeTypeFlags)(1ull<<8)
 #define RK_NodeTypeFlag_SpotLight        (RK_NodeTypeFlags)(1ull<<9)
 #define RK_NodeTypeFlag_Sprite2D         (RK_NodeTypeFlags)(1ull<<10)
+#define RK_NodeTypeFlag_AnimatedSprite2D (RK_NodeTypeFlags)(1ull<<11)
 
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 //~ Key
 
 typedef struct RK_Key RK_Key;
 struct RK_Key
 {
-    U64 u64[1];
+    U64 u64[2];
 };
 
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 //~ Handle Type
 
 typedef union RK_Handle RK_Handle;
@@ -147,8 +156,7 @@ union RK_Handle
     U16 u16[8];
 };
 
-
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 //~ Basic types
 
 typedef struct RK_Transform2D RK_Transform2D;
@@ -167,9 +175,6 @@ struct RK_Transform3D
     QuatF32 rotation;
     Vec3F32 scale;
 };
-
-/////////////////////////////////
-//- Mesh basic types
 
 typedef struct RK_Bind RK_Bind;
 struct RK_Bind
@@ -212,8 +217,6 @@ struct RK_TrackFrame
 typedef struct RK_Track RK_Track;
 struct RK_Track
 {
-    RK_Track *next;
-    RK_Track *prev;
     RK_Key target_key;
     RK_TrackTargetKind target_kind;
     RK_InterpolationKind interpolation;
@@ -222,11 +225,12 @@ struct RK_Track
     F32 duration_sec;
 };
 
+struct RK_Animation;
 typedef struct RK_AnimationPlayback RK_AnimationPlayback;
 struct RK_AnimationPlayback
 {
-    RK_Handle curr;
-    RK_Handle next;
+    struct RK_Animation *curr;
+    struct RK_Animation *next;
     B32 loop;
     F32 speed_scale;
 
@@ -235,81 +239,40 @@ struct RK_AnimationPlayback
     F32 end_time;
 };
 
-typedef struct RK_PointLight RK_PointLight;
-struct RK_PointLight
-{
-    RK_PointLight *next;
-    // light
-    F32 intensity;
-    F32 range;
-    Vec3F32 color;
-    Vec3F32 attenuation; // x: constant, y: linear, z: quadratic
-};
-
-typedef struct RK_SpotLight RK_SpotLight;
-struct RK_SpotLight
-{
-    RK_SpotLight *next;
-    // cone shape
-    Vec3F32 direction;
-    F32 range;
-    F32 angle;
-
-    // light
-    F32 intensity;
-    Vec3F32 color;
-    Vec3F32 attenuation; // x: constant, y: linear, z: quadratic
-};
-
-typedef struct RK_DirectionalLight RK_DirectionalLight;
-struct RK_DirectionalLight
-{
-    RK_DirectionalLight *next;
-    Vec3F32 direction;
-    Vec3F32 color;
-    F32 intensity;
-};
-
-typedef struct RK_Sprite2D RK_Sprite2D;
-struct RK_Sprite2D
-{
-    RK_Sprite2D *next;
-    Vec2F32 size;
-    RK_Handle tex;
-};
-
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 //~ Resource
 
 typedef struct RK_Resource RK_Resource;
 struct RK_Resource;
 
-//- Mesh Resources
+typedef struct RK_Texture2D RK_Texture2D;
+struct RK_Texture2D
+{
+    R_Tex2DSampleKind sample_kind;
+    R_Handle          tex;
+
+    // for serialize/deserialize
+    String8           path;
+};
 
 // PBR material
 typedef struct RK_Material RK_Material;
 struct RK_Material
 {
-    String8    name;
-    U8         name_buffer[300];
+    String8      name;
     // NOTE(k): for serialization
-    String8    path;
-    U8         path_buffer[300];
+    String8      path;
 
-    RK_Handle  textures[R_GeoTexKind_COUNT];
+    RK_Texture2D *textures[R_GeoTexKind_COUNT];
 
-    R_Material v;
+    R_Material   v;
 };
 
 typedef struct RK_Skin RK_Skin;
 struct RK_Skin
 {
-    RK_Bind     binds[300];
+    RK_Bind     *binds;
     U64         bind_count;
-
-    // TODO: for serialization
-    String8 path;
-    U8 path_buffer[300];
 };
 
 typedef struct RK_Mesh RK_Mesh;
@@ -321,7 +284,7 @@ struct RK_Mesh
     U64               indice_count;
     U64               vertex_count;
 
-    RK_Handle         material;
+    RK_Material       *material;
 
     // TODO(k): make use of morph targets
     RK_MorphTarget    morph_targets[RK_MAX_MORPH_TARGET_COUNT];
@@ -387,7 +350,6 @@ struct RK_Mesh
         {
 
             String8 path;
-            U8 path_buffer[300];
         }
         ext;
     } src;
@@ -396,29 +358,66 @@ struct RK_Mesh
 typedef struct RK_Animation RK_Animation;
 struct RK_Animation
 {
-    RK_Animation *next;
     String8 name;
-    U8 name_buffer[300];
     F32 duration_sec;
 
-    // TODO(k): not sure what data structure to use here (binary tree or array?)
-    RK_Track *first_track;
-    RK_Track *last_track;
+    RK_Track *tracks;
     U64 track_count;
 
     String8 path;
-    U8 path_buffer[300];
 };
 
-typedef struct RK_Texture2D RK_Texture2D;
-struct RK_Texture2D
+typedef struct RK_SpriteSheetFrame RK_SpriteSheetFrame;
+struct RK_SpriteSheetFrame
 {
-    R_Tex2DSampleKind sample_kind;
-    R_Handle          tex;
+    F64 x;
+    F64 y;
+    F64 w;
+    F64 h;
+    B32 rotated;
+    B32 trimmed;
+    struct
+    {
+        F64 x;
+        F64 y;
+        F64 w;
+        F64 h;
+    }
+    sprite_source_size;
+    struct
+    {
+        F64 w;
+        F64 h;
+    }
+    source_size;
+    F64 duration;
+};
+
+typedef struct RK_SpriteSheetTag RK_SpriteSheetTag;
+struct RK_SpriteSheetTag
+{
+    String8 name; 
+    U64 from;
+    U64 to;
+    DirH direction;
+    // TODO: what's for
+    Vec4F32 color;
+};
+
+typedef struct RK_SpriteSheet RK_SpriteSheet;
+struct RK_SpriteSheet
+{
+    RK_Texture2D        *tex;
+    Vec2F32             size;
 
     // for serialize/deserialize
-    String8           path;
-    U8                path_buffer[300];
+    String8             path;
+
+    // animations
+    U64                 frame_count;
+    RK_SpriteSheetFrame *frames;
+    U64                 tag_count;
+    RK_SpriteSheetTag   *tags;
 };
 
 struct RK_Node;
@@ -428,45 +427,26 @@ struct RK_PackedScene
 {
     struct RK_Node           *root;
 
-    struct RK_ResourceBucket *res_bucket;
-
     // for serialize/deserialize
     String8                  path;
-    U8                       path_buffer[300];
 };
 
 struct RK_ResourceBucket;
 typedef struct RK_Resource RK_Resource;
 struct RK_Resource
 {
-    // Allocation link
-    RK_Resource              *next;
-    U64                      generation;
-
     // Hash link (storage)
-    RK_Resource              *hash_next;
-    RK_Resource              *hash_prev;
+    RK_Resource     *hash_next;
+    RK_Resource     *hash_prev;
 
-    RK_ResourceKind          kind;
-    RK_Key                   key;
-    // TODO(k): maybe it's a bad idea to individually free resource
-    U64                      rc;
-    B32                      auto_free; /* Release after rc hit 0 */
+    RK_ResourceKind kind;
+    RK_Key          key;
 
-    struct RK_ResourceBucket *owner_bucket;
-
-    union
-    {
-        RK_Material    material;
-        RK_Skin        skin;
-        RK_Mesh        mesh;
-        RK_Animation   animation;
-        RK_Texture2D   tex2d;
-        RK_PackedScene packed_scene;
-    } v;
+    struct          RK_ResourceBucket *owner_bucket;
+    void            *data;
 };
 
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 //~ Node Equipment
 
 typedef struct RK_Node2D RK_Node2D;
@@ -483,42 +463,6 @@ struct RK_Node3D
     // allocation link
     RK_Node3D      *next;
     RK_Transform3D transform;
-};
-
-typedef struct RK_MeshInstance3D RK_MeshInstance3D;
-struct RK_MeshInstance3D
-{
-    // allocation link
-    RK_MeshInstance3D *next;
-
-    RK_Handle         mesh;
-    RK_Handle         skin;
-    RK_Key            skin_seed;
-    RK_Handle         material_override;
-    B32               omit_depth_test;
-    B32               omit_light;
-    B32               draw_edge;
-};
-
-#define RK_MAX_ANIMATION_PER_INST_COUNT 10
-typedef struct RK_AnimationPlayer RK_AnimationPlayer;
-struct RK_AnimationPlayer
-{
-    RK_AnimationPlayer *next;
-    RK_Handle animations[RK_MAX_ANIMATION_PER_INST_COUNT];
-    U64 animation_count;
-
-    RK_Key target_seed;
-    RK_AnimationPlayback playback;
-
-    // TODO(k): support animation blending
-};
-
-typedef struct RK_SceneInstance RK_SceneInstance;
-struct RK_SceneInstance
-{
-    RK_SceneInstance *next;
-    RK_Handle        *packed_scene;
 };
 
 typedef struct RK_Camera3D RK_Camera3D;
@@ -553,6 +497,102 @@ struct RK_Camera3D
     };
 };
 
+typedef struct RK_MeshInstance3D RK_MeshInstance3D;
+struct RK_MeshInstance3D
+{
+    // allocation link
+    RK_MeshInstance3D *next;
+
+    RK_Mesh           *mesh;
+    RK_Skin           *skin;
+    RK_Key            skin_seed;
+    RK_Material       *material_override;
+    B32               omit_depth_test;
+    B32               omit_light;
+    B32               draw_edge;
+};
+
+typedef struct RK_SceneInstance RK_SceneInstance;
+struct RK_SceneInstance
+{
+    RK_SceneInstance *next;
+    RK_PackedScene   *packed_scene;
+};
+
+typedef struct RK_AnimationPlayer RK_AnimationPlayer;
+struct RK_AnimationPlayer
+{
+    RK_AnimationPlayer *next;
+    RK_Animation **animations;
+    U64 animation_count;
+
+    RK_Key target_seed;
+    RK_AnimationPlayback playback;
+};
+
+typedef struct RK_DirectionalLight RK_DirectionalLight;
+struct RK_DirectionalLight
+{
+    RK_DirectionalLight *next;
+    Vec3F32 direction;
+    Vec3F32 color;
+    F32 intensity;
+};
+
+typedef struct RK_PointLight RK_PointLight;
+struct RK_PointLight
+{
+    RK_PointLight *next;
+    // light
+    F32 intensity;
+    F32 range;
+    Vec3F32 color;
+    Vec3F32 attenuation; // x: constant, y: linear, z: quadratic
+};
+
+typedef struct RK_SpotLight RK_SpotLight;
+struct RK_SpotLight
+{
+    RK_SpotLight *next;
+    // cone shape
+    Vec3F32 direction;
+    F32 range;
+    F32 angle;
+
+    // light
+    F32 intensity;
+    Vec3F32 color;
+    Vec3F32 attenuation; // x: constant, y: linear, z: quadratic
+};
+
+typedef struct RK_Sprite2D RK_Sprite2D;
+struct RK_Sprite2D
+{
+    RK_Sprite2D *next;
+    RK_Sprite2DShapeKind shape;
+    RK_Texture2D *tex;
+    union
+    {
+        Vec2F32 rect;
+        F32 circle;
+    } size;
+};
+
+typedef struct RK_AnimatedSprite2D RK_AnimatedSprite2D;
+struct RK_AnimatedSprite2D
+{
+    RK_AnimatedSprite2D *next;
+    RK_Sprite2DShapeKind shape;
+    union
+    {
+        Vec2F32 rect;
+        F32 circle;
+    } size;
+
+    // animations
+    RK_SpriteSheet *sheet;
+};
+
 /////////////////////////////////
 //~ Node Type
 
@@ -577,7 +617,7 @@ typedef struct RK_Node RK_Node;
 struct RK_Node
 {
     // Instance
-    RK_Handle                     instance; // if this node came from a PackedScene
+    RK_PackedScene                *instance; // if this node came from a PackedScene
     B32                           is_foreign; // if this is a subnode of a instance node
 
     //~ Node tree links
@@ -619,6 +659,7 @@ struct RK_Node
     RK_PointLight                 *point_light;
     RK_SpotLight                  *spot_light;
     RK_Sprite2D                   *sprite2d;
+    RK_AnimatedSprite2D           *animated_sprite2d;
 
     //~ Custom update/draw functions
     // TODO(k): reuse custom_data memory block based on its size
@@ -676,6 +717,7 @@ struct RK_NodeBucket
     RK_PointLight       *first_free_point_light;
     RK_SpotLight        *first_free_spot_light;
     RK_Sprite2D         *first_free_sprite2d;
+    RK_AnimatedSprite2D *first_free_animated_sprite2d;
 };
 
 typedef struct RK_ResourceBucketSlot RK_ResourceBucketSlot;
@@ -691,13 +733,7 @@ struct RK_ResourceBucket
     Arena                 *arena_ref;
     RK_ResourceBucketSlot *hash_table;
     U64                   hash_table_size;
-    U64                   resource_count;
-
-    // Resource management
-    RK_Resource           *first_free_res;
-    RK_Animation          *first_free_animation;
-    RK_Track              *first_free_track;
-    RK_TrackFrame         *first_free_track_frame;
+    U64                   res_count;
 };
 
 /////////////////////////////////
@@ -731,7 +767,7 @@ struct RK_Scene
     Vec4F32           ambient_scale;
 
     // gizmo
-    RK_Gizmo3dMode    gizmo3d_mode;
+    RK_Gizmo3DMode    gizmo3d_mode;
 
     String8           name;
     String8           save_path;
@@ -840,6 +876,7 @@ struct RK_DrawNode
 
     RK_Key key;
     Mat4x4F32 xform;
+    Mat4x4F32 xform_inv;
 
     D_Bucket *draw_bucket;
     B32 draw_edge;
@@ -975,7 +1012,7 @@ internal RK_Key rk_key_from_string(RK_Key seed, String8 string);
 internal RK_Key rk_key_from_stringf(RK_Key seed, char* fmt, ...);
 internal RK_Key rk_key_merge(RK_Key a, RK_Key b);
 internal B32    rk_key_match(RK_Key a, RK_Key b);
-internal RK_Key rk_key_make(U64 v);
+internal RK_Key rk_key_make(U64 a, U64 b);
 internal RK_Key rk_key_zero();
 
 /////////////////////////////////
@@ -998,26 +1035,13 @@ internal RK_Node*           rk_node_from_key(RK_Key key);
 
 internal RK_Key       rk_res_key_from_string(RK_ResourceKind kind, RK_Key seed, String8 string);
 internal RK_Key       rk_res_key_from_stringf(RK_ResourceKind kind, RK_Key seed, char* fmt, ...);
-internal RK_Handle    rk_resh_alloc(RK_Key key, RK_ResourceKind kind, B32 acquire);
-internal void         rk_res_release(RK_Resource *ses);
-internal RK_Handle    rk_resh_from_key(RK_Key key);
-internal RK_Handle    rk_resh_acquire_from_key(RK_Key key);
-internal RK_Handle    rk_resh_acquire(RK_Handle handle);
-internal void         rk_resh_return(RK_Handle handle);
-internal RK_Resource* rk_res_from_handle(RK_Handle handle);
-internal void*        rk_res_data_from_handle(RK_Handle handle);
-internal RK_Handle    rk_handle_from_res(RK_Resource *res);
 
-//- High-lelve Resource Allocation Functions
-
-internal RK_Handle    rk_material_from_color(String8 name, Vec4F32 color);
+internal RK_Resource* rk_res_store(RK_Key key, void *data);
+internal void         rk_res_free(RK_Resource *ses);
+internal RK_Resource* rk_res_from_key(RK_Key key);
 
 /////////////////////////////////
 //- Resourcea Building Helpers (subresource management etc...)
-
-internal RK_Animation*  rk_animation_alloc();
-internal RK_Track*      rk_track_alloc();
-internal RK_TrackFrame* rk_track_frame_alloc();
 
 /////////////////////////////////
 //~ State accessor/mutator

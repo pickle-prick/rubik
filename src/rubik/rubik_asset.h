@@ -11,15 +11,23 @@
 /////////////////////////////////
 //~ GLTF2.0
 
-internal RK_Handle rk_tex_from_gltf_tex(cgltf_texture *tex_src, cgltf_data *data, String8 gltf_directory, RK_Key seed_key);
-internal RK_Node*  rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String8 gltf_directory);
-internal RK_Handle rk_packed_scene_from_gltf(String8 path);
-internal RK_Handle rk_animation_from_gltf_animation(cgltf_data *data, cgltf_animation *animation_src ,RK_Key seed);
+internal RK_Texture2D*   rk_tex2d_from_gltf_tex(cgltf_texture *tex_src, String8 gltf_directory);
+internal RK_Node*        rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String8 gltf_directory);
+internal RK_PackedScene* rk_packed_scene_from_gltf(String8 path);
+internal RK_Animation*   rk_animation_from_gltf_animation(cgltf_data *data, cgltf_animation *animation_src ,RK_Key seed);
+
+/////////////////////////////////
+//~ Other resources
+
+internal RK_Texture2D*   rk_tex2d_from_image(String8 path);
+internal RK_SpriteSheet* rk_spritesheet_from_image(String8 path, String8 meta_path);
+internal RK_Material*    rk_material_from_color(String8 name, Vec4F32 color);
+internal RK_Material*    rk_material_from_image(String8 name, String8 path);
 
 //~ Node building helper
 
 internal RK_Node* rk_node_from_packed_scene_node(RK_Node *node, RK_Key seed_key);
-internal RK_Node* rk_node_from_packed_scene(String8 string, RK_Handle packed_scene);
+internal RK_Node* rk_node_from_packed_scene(String8 string, RK_PackedScene *packed);
 
 /////////////////////////////////
 //~ Mesh primitives
@@ -45,6 +53,7 @@ internal void rk_node_equip_torus(RK_Node *node, F32 inner_radius, F32 outer_rad
 
 //~ Drawlist building helper
 
+internal RK_DrawNode* rk_drawlist_push_rect(Arena *arena, RK_DrawList *drawlist, Rng2F32 src, Rng2F32 dst, Vec3F32 color);
 internal RK_DrawNode* rk_drawlist_push_plane_filled(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec2F32 size, B32 both_face, Vec3F32 origin, Vec3F32 i_hat, Vec3F32 j_hat, Vec4F32 clr, B32 draw_edge, B32 omit_light);
 internal RK_DrawNode* rk_drawlist_push_box_filled(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 size, Vec3F32 origin, Vec3F32 i_hat, Vec3F32 j_hat, Vec4F32 clr, B32 draw_edge, B32 omit_light);
 internal RK_DrawNode* rk_drawlist_push_sphere(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 origin, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere, Vec4F32 clr, B32 draw_edge, B32 omit_light);

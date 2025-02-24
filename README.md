@@ -55,7 +55,7 @@ build rubik clang
 ```
 
 If everything worked correctly, there will be a `build` folder in the root
-level of the codebase, and it will contain a freshly-built `game`.
+level of the codebase, and it will contain a freshly-built `rubik` executable.
 
 ## Codebase Introduction
 

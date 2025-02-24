@@ -1,38 +1,23 @@
 /////////////////////////////////
 // Scene serialization/deserialization
 
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 // GLTF2.0
 
-internal RK_Handle
-rk_tex_from_gltf_tex(cgltf_texture *tex_src, cgltf_data *data, String8 gltf_directory, RK_Key seed_key)
+internal RK_Texture2D *
+rk_tex2d_from_gltf_tex(cgltf_texture *tex_src, String8 gltf_directory)
 {
-    RK_Handle ret = rk_handle_zero();
-    if(tex_src == 0) return ret;
+    RK_Texture2D* ret = 0;
 
-    U64 texture_idx = cgltf_texture_index(data, tex_src);
-    RK_Key res_key = rk_res_key_from_stringf(RK_ResourceKind_Texture2D, seed_key, "texture_%d", texture_idx);
-    ret = rk_resh_acquire_from_key(res_key);
+    // tex2d path
+    Temp scratch = scratch_begin(0,0);
+    String8List path_parts = {0};
+    str8_list_push(scratch.arena, &path_parts, gltf_directory);
+    str8_list_push(scratch.arena, &path_parts, str8_cstring(tex_src->image->uri));
+    String8 path = str8_path_list_join_by_style(scratch.arena, &path_parts, PathStyle_Relative);
 
-    if(rk_handle_is_zero(ret))
-    {
-        ret = rk_resh_alloc(res_key, RK_ResourceKind_Texture2D, 1);
-        RK_Texture2D *tex2d = rk_res_data_from_handle(ret);
-        R_Tex2DSampleKind sample_kind = R_Tex2DSampleKind_Nearest;
-        tex2d->sample_kind = sample_kind;
-
-        Temp temp = scratch_begin(0,0);
-        String8List path_parts = {0};
-        str8_list_push(temp.arena, &path_parts, gltf_directory);
-        str8_list_push(temp.arena, &path_parts, str8_cstring(tex_src->image->uri));
-        String8 path = str8_path_list_join_by_style(temp.arena, &path_parts, PathStyle_Relative);
-
-        int x,y,n;
-        U8 *image_data = stbi_load((char*)path.str, &x, &y, &n, 4);
-        tex2d->tex = r_tex2d_alloc(R_ResourceKind_Static, sample_kind, v2s32(x,y), R_Tex2DFormat_RGBA8, image_data);
-        stbi_image_free(image_data);
-        scratch_end(temp);
-    }
+    ret = rk_tex2d_from_image(path);
+    scratch_end(scratch);
     return ret;
 }
 
@@ -102,29 +87,27 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
     // fill camera info
     if(camera_src != 0)
     {
-        // TODO
+        // TODO(XXX): to be implemented
     }
 
     // TODO(k): mesh gpu instancing
 
     // mesh
+    RK_Skin *skin = 0;
     if(mesh_src != 0) RK_Parent_Scope(ret)
     {
-        RK_Handle skin_res = rk_handle_zero();
-        B32 has_skin = 0;
         if(skin_src != 0)
         {
             U64 skin_idx = cgltf_skin_index(data, skin_src);
             RK_Key skin_key = rk_res_key_from_stringf(RK_ResourceKind_Skin, seed_key, "skin_%d", skin_idx);
-            skin_res = rk_resh_acquire_from_key(skin_key);
 
-            if(rk_handle_is_zero(skin_res))
+            if(rk_res_from_key(skin_key) == 0)
             {
-                skin_res = rk_resh_alloc(skin_key, RK_ResourceKind_Skin, 1);
-                RK_Skin *skin = rk_res_data_from_handle(skin_res);
+                skin = push_array(res_bucket->arena_ref, RK_Skin, 1);
+                rk_res_from_key(skin_key);
 
                 skin->bind_count = skin_src->joints_count;
-                AssertAlways(skin->bind_count < ArrayCount(skin->binds));
+                skin->binds = push_array(res_bucket->arena_ref, RK_Bind, skin_src->joints_count);
                 Mat4x4F32 *inverse_bind_matrices = 0;
                 {
                     cgltf_accessor *accessor = cn->skin->inverse_bind_matrices;
@@ -142,24 +125,20 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
                     skin->binds[i].inverse_bind_matrix = inverse_bind_matrices[i];
                 }
             }
-            has_skin = 1;
         }
 
         RK_Mesh *meshes = push_array(res_bucket->arena_ref, RK_Mesh, mesh_src->primitives_count);
         U64 mesh_idx = cgltf_mesh_index(data, mesh_src);
         for(U64 pi = 0; pi < mesh_src->primitives_count; pi++)
         {
-            RK_Handle mesh_res = rk_handle_zero();
             RK_Key mesh_key = rk_res_key_from_stringf(RK_ResourceKind_Mesh, seed_key, "mesh_%d_%d", mesh_idx, pi);
 
-            // fetch from cache first
-            mesh_res = rk_resh_from_key(mesh_key);
-
-            // create mesh if no cache was found
-            if(rk_handle_is_zero(mesh_res))
+            RK_Mesh *mesh = 0;
+            RK_Resource *mesh_res = rk_res_from_key(mesh_key);
+            if(mesh_res == 0)
             {
-                mesh_res = rk_resh_alloc(mesh_key, RK_ResourceKind_Mesh, 1);
-                RK_Mesh *mesh = rk_res_data_from_handle(mesh_res);
+                mesh = push_array(res_bucket->arena_ref, RK_Mesh, 1);
+                mesh_res = rk_res_store(mesh_key, mesh);
 
                 cgltf_primitive *primitive = &mesh_src->primitives[pi];
 
@@ -212,40 +191,40 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
                             switch(attr->type)
                             {
                                 case cgltf_attribute_type_position:
-                                {
-                                    AssertAlways(accessor->component_type == cgltf_component_type_r_32f);
-                                    MemoryCopy(&v->pos, src, sizeof(v->pos));
-                                }break;
+                                    {
+                                        AssertAlways(accessor->component_type == cgltf_component_type_r_32f);
+                                        MemoryCopy(&v->pos, src, sizeof(v->pos));
+                                    }break;
                                 case cgltf_attribute_type_normal:
-                                {
-                                    AssertAlways(accessor->component_type == cgltf_component_type_r_32f);
-                                    MemoryCopy(&v->nor, src, sizeof(v->nor));
-                                }break;
+                                    {
+                                        AssertAlways(accessor->component_type == cgltf_component_type_r_32f);
+                                        MemoryCopy(&v->nor, src, sizeof(v->nor));
+                                    }break;
                                 case cgltf_attribute_type_tangent:
-                                {
-                                    AssertAlways(accessor->component_type == cgltf_component_type_r_32f);
-                                    MemoryCopy(&v->tan, src, sizeof(v->tan));
-                                }break;
+                                    {
+                                        AssertAlways(accessor->component_type == cgltf_component_type_r_32f);
+                                        MemoryCopy(&v->tan, src, sizeof(v->tan));
+                                    }break;
                                 case cgltf_attribute_type_texcoord:
-                                {
-                                    AssertAlways(accessor->component_type == cgltf_component_type_r_32f);
-                                    MemoryCopy(&v->tex, src, sizeof(v->tex));
-                                }break;
+                                    {
+                                        AssertAlways(accessor->component_type == cgltf_component_type_r_32f);
+                                        MemoryCopy(&v->tex, src, sizeof(v->tex));
+                                    }break;
                                 case cgltf_attribute_type_color:
-                                {
-                                    AssertAlways(accessor->component_type == cgltf_component_type_r_32f);
-                                    MemoryCopy(&v->col, src, sizeof(v->col));
-                                }break;
+                                    {
+                                        AssertAlways(accessor->component_type == cgltf_component_type_r_32f);
+                                        MemoryCopy(&v->col, src, sizeof(v->col));
+                                    }break;
                                 case cgltf_attribute_type_joints:
-                                {
-                                    AssertAlways(accessor->component_type == cgltf_component_type_r_16u);
-                                    for(U64 k = 0; k < 4; k++) { v->joints.v[k] = ((U16 *)src)[k]; }
-                                }break;
+                                    {
+                                        AssertAlways(accessor->component_type == cgltf_component_type_r_16u);
+                                        for(U64 k = 0; k < 4; k++) { v->joints.v[k] = ((U16 *)src)[k]; }
+                                    }break;
                                 case cgltf_attribute_type_weights:
-                                {
-                                    AssertAlways(accessor->component_type == cgltf_component_type_r_32f);
-                                    MemoryCopy(&v->weights, src, sizeof(v->weights));
-                                }break;
+                                    {
+                                        AssertAlways(accessor->component_type == cgltf_component_type_r_32f);
+                                        MemoryCopy(&v->weights, src, sizeof(v->weights));
+                                    }break;
                                 default: {}break;
                             }
                         }
@@ -255,17 +234,18 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
                 }
 
                 // load material
-                RK_Handle material_res = rk_handle_zero();
+                RK_Material *material = 0;
                 {
                     cgltf_material *material_src = primitive->material;
                     U64 material_idx = cgltf_material_index(data, material_src);
                     RK_Key material_key = rk_res_key_from_stringf(RK_ResourceKind_Material, seed_key, "material_%d", material_idx);
-                    material_res = rk_resh_acquire_from_key(material_key);
+                    RK_Resource *mat_res = rk_res_from_key(material_key);
 
-                    if(rk_handle_is_zero(material_res))
+                    if(mat_res == 0)
                     {
-                        material_res = rk_resh_alloc(material_key, RK_ResourceKind_Material, 1);
-                        RK_Material *material = rk_res_data_from_handle(material_res);
+                        material = push_array(res_bucket->arena_ref, RK_Material, 1);
+                        mat_res = rk_res_store(material_key, material);
+
                         // NOTE(k): GLTF supports 2 PBR workflows
                         // 1. Metallic-Roughness workflow (Modern) (has_pbr_emtallic_roughness)
                         // 2. Specular-Glossiness workflow (legacy)
@@ -273,26 +253,26 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
                         // use environment maps instead of GlobalAmbient/AmbientColor
                         // focus on DiffuseColor (albedo), Reflectance (metallic), and SpecularPower (roughness/glossiness) for core PBR behavior
                         {
-                            material->name = push_str8_copy_static(str8_lit(material_src->name), material->name_buffer, ArrayCount(material->name_buffer));
+                            material->name = push_str8_copy(res_bucket->arena_ref, str8_cstring(material_src->name));
 
                             // textures
-                            material->textures[R_GeoTexKind_Emissive]          = rk_handle_zero();
-                            material->textures[R_GeoTexKind_Diffuse]           = rk_tex_from_gltf_tex(material_src->pbr_metallic_roughness.base_color_texture.texture, data, gltf_directory, seed_key);
-                            material->textures[R_GeoTexKind_Specular]          = rk_handle_zero();
-                            material->textures[R_GeoTexKind_SpecularPower]     = rk_handle_zero();
-                            material->textures[R_GeoTexKind_Ambient]           = rk_handle_zero();
-                            material->textures[R_GeoTexKind_Opacity]           = rk_handle_zero();
-                            material->textures[R_GeoTexKind_Normal]            = rk_handle_zero();
-                            material->textures[R_GeoTexKind_Bump]              = rk_handle_zero();
+                            material->textures[R_GeoTexKind_Emissive]      = 0;
+                            material->textures[R_GeoTexKind_Diffuse]       = rk_tex2d_from_gltf_tex(material_src->pbr_metallic_roughness.base_color_texture.texture, gltf_directory);
+                            material->textures[R_GeoTexKind_Specular]      = 0;
+                            material->textures[R_GeoTexKind_SpecularPower] = 0;
+                            material->textures[R_GeoTexKind_Ambient]       = 0;
+                            material->textures[R_GeoTexKind_Opacity]       = 0;
+                            material->textures[R_GeoTexKind_Normal]        = 0;
+                            material->textures[R_GeoTexKind_Bump]          = 0;
 
-                            material->v.has_emissive_texture           = !rk_handle_is_zero(material->textures[R_GeoTexKind_Emissive]);
-                            material->v.has_diffuse_texture            = !rk_handle_is_zero(material->textures[R_GeoTexKind_Diffuse]);
-                            material->v.has_specular_texture           = !rk_handle_is_zero(material->textures[R_GeoTexKind_Specular]);
-                            material->v.has_specular_power_texture     = !rk_handle_is_zero(material->textures[R_GeoTexKind_SpecularPower]);
-                            material->v.has_ambient_texture            = !rk_handle_is_zero(material->textures[R_GeoTexKind_Ambient]);
-                            material->v.has_opacity_texture            = !rk_handle_is_zero(material->textures[R_GeoTexKind_Opacity]);
-                            material->v.has_normal_texture             = !rk_handle_is_zero(material->textures[R_GeoTexKind_Normal]);
-                            material->v.has_bump_texture               = !rk_handle_is_zero(material->textures[R_GeoTexKind_Bump]);
+                            material->v.has_emissive_texture           = material->textures[R_GeoTexKind_Emissive] != 0;
+                            material->v.has_diffuse_texture            = material->textures[R_GeoTexKind_Diffuse] != 0;
+                            material->v.has_specular_texture           = material->textures[R_GeoTexKind_Specular] != 0;
+                            material->v.has_specular_power_texture     = material->textures[R_GeoTexKind_SpecularPower] != 0;
+                            material->v.has_ambient_texture            = material->textures[R_GeoTexKind_Ambient] != 0;
+                            material->v.has_opacity_texture            = material->textures[R_GeoTexKind_Opacity] != 0;
+                            material->v.has_normal_texture             = material->textures[R_GeoTexKind_Normal] != 0;
+                            material->v.has_bump_texture               = material->textures[R_GeoTexKind_Bump] != 0;
 
                             // colors
                             material->v.diffuse_color = *(Vec4F32*)material_src->pbr_metallic_roughness.base_color_factor;
@@ -305,20 +285,28 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
                             material->v.alpha_cutoff = material_src->alpha_cutoff;
                         }
                     }
+                    else
+                    {
+                        material = mat_res->data;
+                    }
                 }
-                mesh->material = material_res;
+                mesh->material = material;
+            }
+            else
+            {
+                mesh = mesh_res->data;
             }
 
             // create mesh_inst3d for every primitive
             String8 name = push_str8f(scratch.arena, "%S_%d", ret->name, pi);
             RK_Key key = rk_key_from_stringf(seed_key, "node_%d_%d", cn_idx, pi);
             RK_NodeFlags flags = 0;
-            if(has_skin) flags |= RK_NodeFlag_Float;
+            if(skin_src != 0) flags |= RK_NodeFlag_Float;
             RK_NodeTypeFlags type_flags = RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_MeshInstance3D;
             RK_Node *inst3d = rk_build_node_from_key(type_flags, flags, key);
             rk_node_equip_display_string(inst3d, name);
-            inst3d->mesh_inst3d->mesh = mesh_res;
-            inst3d->mesh_inst3d->skin = skin_res;
+            inst3d->mesh_inst3d->mesh = mesh;
+            inst3d->mesh_inst3d->skin = skin;
             inst3d->mesh_inst3d->skin_seed = seed_key;
         }
     }
@@ -333,21 +321,18 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
     return ret;
 }
 
-internal RK_Handle
+internal RK_PackedScene *
 rk_packed_scene_from_gltf(String8 gltf_path)
 {
-    RK_Handle ret = rk_handle_zero();
-    RK_Key res_key = rk_res_key_from_string(RK_ResourceKind_PackedScene, rk_key_zero(), gltf_path);
+    RK_PackedScene *ret = 0;
+    RK_Key key = rk_res_key_from_string(RK_ResourceKind_PackedScene, rk_key_zero(), gltf_path);
     RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    RK_Resource *res = rk_res_from_key(key);
 
-    if(rk_handle_is_zero(ret))
+    if(res == 0)
     {
-        ret = rk_resh_alloc(res_key, RK_ResourceKind_PackedScene, 1);
-        RK_PackedScene *packed_scene = rk_res_data_from_handle(ret);
-        {
-            packed_scene->res_bucket = rk_res_bucket_make(res_bucket->arena_ref, 4096-1);
-            packed_scene->path = push_str8_copy_static(gltf_path, packed_scene->path_buffer, ArrayCount(packed_scene->path_buffer));
-        }
+        ret = push_array(res_bucket->arena_ref, RK_PackedScene, 1);
+        rk_res_store(key, ret);
 
         cgltf_options opts = {0};
         cgltf_data *data;
@@ -360,161 +345,693 @@ rk_packed_scene_from_gltf(String8 gltf_path)
         AssertAlways(buf_ld_ret == cgltf_result_success);
         AssertAlways(data->scenes_count == 1);
 
-        //- Select the first scene (TODO: only load default scene for now)
+        //- Select the first scene (TODO(XXX): only load default scene for now)
         cgltf_scene *root_scene = &data->scenes[0];
         AssertAlways(root_scene->nodes_count == 1);
         cgltf_node *cgltf_root = root_scene->nodes[0];
 
-        packed_scene->root = rk_node_from_gltf_node(cgltf_root, data, res_key, str8_chop_last_slash(gltf_path));
+        // fill info
+        ret->root = rk_node_from_gltf_node(cgltf_root, data, key, str8_chop_last_slash(gltf_path));
+        ret->path = push_str8_copy(res_bucket->arena_ref, gltf_path);
 
         //- Load skeleton animations after model is loaded
-        if(data->animations_count > 0) RK_Parent_Scope(packed_scene->root)
+        if(data->animations_count > 0) RK_Parent_Scope(ret->root)
         {
-            AssertAlways(data->animations_count < RK_MAX_ANIMATION_PER_INST_COUNT);
-
-            // create AnimationPlayer
-            RK_Key key = rk_key_from_stringf(res_key, "animation_player");
-            RK_Node *n = rk_build_node_from_key(RK_NodeTypeFlag_AnimationPlayer, 0, key);
+            // create AnimationPlayer node
+            RK_Key node_key = rk_key_from_stringf(key, "animation_player");
+            RK_Node *n = rk_build_node_from_key(RK_NodeTypeFlag_AnimationPlayer, 0, node_key);
             rk_node_equip_display_string(n, str8_lit("animation_player"));
-            {
-                n->animation_player->animation_count = data->animations_count;
-            }
+
+            // fill info
+            n->animation_player->animation_count = data->animations_count;
+            n->animation_player->animations = push_array(res_bucket->arena_ref, RK_Animation*, data->animations_count);
 
             for(U64 i = 0; i < data->animations_count; i++)
             {
-                n->animation_player->animations[i] = rk_animation_from_gltf_animation(data, &data->animations[i], res_key);
+                n->animation_player->animations[i] = rk_animation_from_gltf_animation(data, &data->animations[i], key);
             }
         }
         
         cgltf_free(data); 
     }
+    else
+    {
+        ret = res->data;
+    }
     return ret;
 }
 
-internal RK_Handle
+internal RK_Animation *
 rk_animation_from_gltf_animation(cgltf_data *data, cgltf_animation *animation_src, RK_Key seed)
 {
-    RK_Handle ret;
+    RK_Animation *ret = 0;
     RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    Arena *arena = res_bucket->arena_ref;
 
     // NOTE(k): animation is unique in gltf, so we don't fetch from cache
     U64 animation_idx = cgltf_animation_index(data, animation_src);
-    RK_Key res_key = rk_res_key_from_stringf(RK_ResourceKind_Animation, seed, "animation_%d", animation_idx);
-    ret = rk_resh_alloc(res_key, RK_ResourceKind_Animation, 1);
-    RK_Animation *animation = rk_res_data_from_handle(ret);
+    RK_Key key = rk_res_key_from_stringf(RK_ResourceKind_Animation, seed, "animation_%d", animation_idx);
+    RK_Resource *res = rk_res_from_key(key);
 
-    // fill basic info
+    if(res == 0)
     {
-        animation->name = push_str8_copy_static(str8_cstring(animation_src->name), animation->name_buffer, ArrayCount(animation->name_buffer));
-        animation->track_count = animation_src->channels_count;
-    }
+        ret = push_array(arena, RK_Animation, 1);
+        rk_res_store(key, ret);
 
-    F32 max_track_duration_sec = 0;
+        U64 track_count = animation_src->channels_count;
+        F32 max_track_duration_sec = 0;
+        RK_Track *tracks = push_array(arena, RK_Track, track_count);
 
-    // tracks
-    for(U64 i = 0; i < animation->track_count; i++)
-    {
-        RK_Track *track = rk_track_alloc();
-        cgltf_animation_channel *channel = &animation_src->channels[i];
-
-        RK_TrackTargetKind target_kind;
-        switch(channel->target_path)
+        // load tracks
+        for(U64 i = 0; i < track_count; i++)
         {
-            case cgltf_animation_path_type_translation: { target_kind = RK_TrackTargetKind_Position3D; }break;
-            case cgltf_animation_path_type_rotation:    { target_kind = RK_TrackTargetKind_Rotation3D; }break;
-            case cgltf_animation_path_type_scale:       { target_kind = RK_TrackTargetKind_Scale3D; }break;
-            case cgltf_animation_path_type_weights:     { target_kind = RK_TrackTargetKind_MorphWeight3D; }break;
-            default:                                    { InvalidPath; }break;
-        }
+            RK_Track *track = &tracks[i];
+            cgltf_animation_channel *channel = &animation_src->channels[i];
 
-        // target key
-        RK_Key target_key;
-        {
-            U64 target_node_idx = cgltf_node_index(data, channel->target_node);
-            target_key = rk_key_from_stringf(seed, "node_%d", target_node_idx);
-        }
-
-        // interpolation
-        RK_InterpolationKind interpolation;
-        switch(channel->sampler->interpolation)
-        {
-            case cgltf_interpolation_type_linear:       { interpolation = RK_InterpolationKind_Linear; }break;
-            case cgltf_interpolation_type_step:         { interpolation = RK_InterpolationKind_Step; }break;
-            case cgltf_interpolation_type_cubic_spline: { interpolation = RK_InterpolationKind_Cubic; }break;
-            default:                                    { InvalidPath; }break;
-        }
-
-        // timestamps
-        cgltf_accessor *input_accessor = channel->sampler->input;
-        U8 *input_src = ((U8*)input_accessor->buffer_view->buffer->data) + input_accessor->offset + input_accessor->buffer_view->offset;
-        Assert(input_accessor->type == cgltf_type_scalar);
-        Assert(input_accessor->component_type == cgltf_component_type_r_32f);
-        // values (position/rotation/scale/morph_weights)
-        cgltf_accessor *output_accessor = channel->sampler->output;
-        U8 *output_src = ((U8*)output_accessor->buffer_view->buffer->data) + output_accessor->offset + output_accessor->buffer_view->offset;
-
-        U64 frame_count = input_accessor->count;
-
-        for(U64 frame_idx = 0; frame_idx < frame_count; frame_idx++)
-        {
-            RK_TrackFrame *frame = rk_track_frame_alloc();
-            
-            frame->ts_sec = *(F32 *)(input_src+(frame_idx*input_accessor->stride));
-
-            switch(target_kind)
+            RK_TrackTargetKind target_kind;
+            switch(channel->target_path)
             {
-                case RK_TrackTargetKind_Position3D:
-                {
-                    Assert(output_accessor->type == cgltf_type_vec3);
-                    Assert(output_accessor->component_type == cgltf_component_type_r_32f);
-                    Assert(output_accessor->stride == sizeof(F32)*3);
-                    frame->v.position3d = *(Vec3F32 *)(output_src+(frame_idx*output_accessor->stride));
-                }break;
-                case RK_TrackTargetKind_Scale3D:
-                {
-                    Assert(output_accessor->type == cgltf_type_vec3);
-                    Assert(output_accessor->component_type == cgltf_component_type_r_32f);
-                    Assert(output_accessor->stride == sizeof(F32)*3);
-                    frame->v.scale3d = *(Vec3F32 *)(output_src+(frame_idx*output_accessor->stride));
-                }break;
-                case RK_TrackTargetKind_Rotation3D:
-                {
-                    Assert(output_accessor->type == cgltf_type_vec4);
-                    Assert(output_accessor->component_type == cgltf_component_type_r_32f);
-                    Assert(output_accessor->stride == sizeof(F32)*4);
-                    frame->v.rotation3d = *(QuatF32 *)(output_src+(frame_idx*output_accessor->stride));
-                }break;
-                case RK_TrackTargetKind_MorphWeight3D:
-                {
-                    Assert(output_accessor->type == cgltf_type_scalar);
-                    Assert(output_accessor->component_type == cgltf_component_type_r_32f);
-                    Assert(output_accessor->stride == sizeof(F32));
-                    Assert(output_accessor->count <= RK_MAX_MORPH_TARGET_COUNT);
-                    MemoryCopy(&frame->v.morph_weights3d, (output_src+(frame_idx*output_accessor->stride)), sizeof(frame->v.morph_weights3d));
-                }break;
-                default: {InvalidPath;}break;
+                case cgltf_animation_path_type_translation: { target_kind = RK_TrackTargetKind_Position3D; }break;
+                case cgltf_animation_path_type_rotation:    { target_kind = RK_TrackTargetKind_Rotation3D; }break;
+                case cgltf_animation_path_type_scale:       { target_kind = RK_TrackTargetKind_Scale3D; }break;
+                case cgltf_animation_path_type_weights:     { target_kind = RK_TrackTargetKind_MorphWeight3D; }break;
+                default:                                    { InvalidPath; }break;
             }
 
-            // last frame in the track, update duration
-            if(frame_idx == frame_count-1)
+            // target key
+            RK_Key target_key;
             {
-                track->duration_sec = frame->ts_sec;
-                if(frame->ts_sec > max_track_duration_sec) max_track_duration_sec = frame->ts_sec;
+                U64 target_node_idx = cgltf_node_index(data, channel->target_node);
+                target_key = rk_key_from_stringf(seed, "node_%d", target_node_idx);
             }
-            BTPushback_PLRSHZ(track->frame_btree_root,frame,parent,left,right,btree_size,btree_height,0);
+
+            // interpolation
+            RK_InterpolationKind interpolation;
+            switch(channel->sampler->interpolation)
+            {
+                case cgltf_interpolation_type_linear:       { interpolation = RK_InterpolationKind_Linear; }break;
+                case cgltf_interpolation_type_step:         { interpolation = RK_InterpolationKind_Step; }break;
+                case cgltf_interpolation_type_cubic_spline: { interpolation = RK_InterpolationKind_Cubic; }break;
+                default:                                    { InvalidPath; }break;
+            }
+
+            // timestamps
+            cgltf_accessor *input_accessor = channel->sampler->input;
+            U8 *input_src = ((U8*)input_accessor->buffer_view->buffer->data) + input_accessor->offset + input_accessor->buffer_view->offset;
+            Assert(input_accessor->type == cgltf_type_scalar);
+            Assert(input_accessor->component_type == cgltf_component_type_r_32f);
+            // values (position/rotation/scale/morph_weights)
+            cgltf_accessor *output_accessor = channel->sampler->output;
+            U8 *output_src = ((U8*)output_accessor->buffer_view->buffer->data) + output_accessor->offset + output_accessor->buffer_view->offset;
+
+            U64 frame_count = input_accessor->count;
+
+            for(U64 frame_idx = 0; frame_idx < frame_count; frame_idx++)
+            {
+                RK_TrackFrame *frame = push_array(arena, RK_TrackFrame, 1);
+                frame->ts_sec = *(F32 *)(input_src+(frame_idx*input_accessor->stride));
+
+                switch(target_kind)
+                {
+                    case RK_TrackTargetKind_Position3D:
+                    {
+                        Assert(output_accessor->type == cgltf_type_vec3);
+                        Assert(output_accessor->component_type == cgltf_component_type_r_32f);
+                        Assert(output_accessor->stride == sizeof(F32)*3);
+                        frame->v.position3d = *(Vec3F32 *)(output_src+(frame_idx*output_accessor->stride));
+                    }break;
+                    case RK_TrackTargetKind_Scale3D:
+                    {
+                        Assert(output_accessor->type == cgltf_type_vec3);
+                        Assert(output_accessor->component_type == cgltf_component_type_r_32f);
+                        Assert(output_accessor->stride == sizeof(F32)*3);
+                        frame->v.scale3d = *(Vec3F32 *)(output_src+(frame_idx*output_accessor->stride));
+                    }break;
+                    case RK_TrackTargetKind_Rotation3D:
+                    {
+                        Assert(output_accessor->type == cgltf_type_vec4);
+                        Assert(output_accessor->component_type == cgltf_component_type_r_32f);
+                        Assert(output_accessor->stride == sizeof(F32)*4);
+                        frame->v.rotation3d = *(QuatF32 *)(output_src+(frame_idx*output_accessor->stride));
+                    }break;
+                    case RK_TrackTargetKind_MorphWeight3D:
+                    {
+                        Assert(output_accessor->type == cgltf_type_scalar);
+                        Assert(output_accessor->component_type == cgltf_component_type_r_32f);
+                        Assert(output_accessor->stride == sizeof(F32));
+                        Assert(output_accessor->count <= RK_MAX_MORPH_TARGET_COUNT);
+                        MemoryCopy(&frame->v.morph_weights3d, (output_src+(frame_idx*output_accessor->stride)), sizeof(frame->v.morph_weights3d));
+                    }break;
+                    default: {InvalidPath;}break;
+                }
+
+                // last frame in the track, update duration
+                if(frame_idx == frame_count-1)
+                {
+                    track->duration_sec = frame->ts_sec;
+                    if(frame->ts_sec > max_track_duration_sec) max_track_duration_sec = frame->ts_sec;
+                }
+                BTPushback_PLRSHZ(track->frame_btree_root,frame,parent,left,right,btree_size,btree_height,0);
+            }
+
+            track->target_kind   = target_kind;
+            track->target_key    = target_key;
+            track->interpolation = interpolation;
+            track->frame_count   = frame_count;
         }
 
-        track->target_kind   = target_kind;
-        track->target_key    = target_key;
-        track->interpolation = interpolation;
-        track->frame_count   = frame_count;
-        DLLPushBack(animation->first_track, animation->last_track, track);
+        ret->name = push_str8_copy(arena, str8_cstring(animation_src->name));
+        ret->duration_sec = max_track_duration_sec;
+        ret->track_count = animation_src->channels_count;
+        ret->tracks = tracks;
     }
-
-    animation->duration_sec = max_track_duration_sec;
+    else
+    {
+        ret = res->data;
+    }
     return ret;
 }
 
+/////////////////////////////////
+//~ Other resources
+
+internal RK_Texture2D *
+rk_tex2d_from_image(String8 path)
+{
+    // TODO(XXX): we should consider sampler kind here
+    RK_Texture2D *ret = 0;
+    RK_Key key = rk_res_key_from_string(RK_ResourceKind_Texture2D, rk_key_zero(), path);
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    Arena *arena = res_bucket->arena_ref;
+    RK_Resource *res = rk_res_from_key(key);
+
+    if(res == 0)
+    {
+        ret = push_array(res_bucket->arena_ref, RK_Texture2D, 1);
+
+        R_Tex2DSampleKind sample_kind = R_Tex2DSampleKind_Nearest;
+        {
+            int x,y,n;
+            U8 *image_data = stbi_load((char*)path.str, &x, &y, &n, 4);
+
+            ret->tex = r_tex2d_alloc(R_ResourceKind_Static, sample_kind, v2s32(x,y), R_Tex2DFormat_RGBA8, image_data);
+            ret->sample_kind = sample_kind;
+            ret->path = push_str8_copy(arena, path);
+
+            stbi_image_free(image_data);
+        }
+
+        // cache
+        rk_res_store(key, ret);
+    }
+    else
+    {
+        ret = res->data;
+    }
+
+    return ret;
+}
+
+internal String8
+rk_string_from_token(Arena *arena, U8 *json, jsmntok_t *token)
+{
+    U64 len = token->end-token->start;
+    String8 ret = {0};
+    ret.str = push_array(arena, U8, len+1);
+    ret.size = len;
+    MemoryCopy(ret.str, json+token->start, len);
+    return ret;
+}
+
+internal U64
+rk_u64_from_token(U8 *json, jsmntok_t *token)
+{
+    String8 str = {json+token->start, token->end-token->start};
+    U64 ret = u64_from_str8(str, 10);
+    return ret;
+}
+
+internal U64
+rk_b32_from_token(U8 *json, jsmntok_t *token)
+{
+    String8 str = {json+token->start, token->end-token->start};
+    B32 ret = str8_match(str, str8_lit("true"), 0);
+    return ret;
+}
+
+internal F64
+rk_f64_from_token(U8 *json, jsmntok_t *token)
+{
+    String8 str = {json+token->start, token->end-token->start};
+    U64 ret = f64_from_str8(str);
+    return ret;
+}
+
+internal void 
+rk_token_pass(jsmntok_t *tokens, U64 *i)
+{
+    jsmntok_t *t = &tokens[*i];
+    switch(t->type)
+    {
+        case JSMN_UNDEFINED:
+        {
+            // noop
+        }break;
+        case JSMN_OBJECT:
+        {
+            (*i)++; // skip object itself
+            for(U64 j = 0; j < t->size; j++)
+            {
+                (*i)++; // skip the key
+                rk_token_pass(tokens, i);
+            }
+        }break;
+        case JSMN_ARRAY:
+        {
+            (*i)++;
+            for(U64 j = 0; j < t->size; j++)
+            {
+                rk_token_pass(tokens, i);
+            }
+        }break;
+        case JSMN_STRING:
+        {
+            AssertAlways(t->size == 1 || t->size == 0);
+            (*i)++;
+            if(t->size == 1)
+            {
+                rk_token_pass(tokens, i);
+            }
+        }break;
+        case JSMN_PRIMITIVE:
+        {
+            (*i)++;
+        }break;
+        default:{InvalidPath;}break;
+    }
+}
+
+internal RK_SpriteSheet *
+rk_spritesheet_from_image(String8 path, String8 meta_path)
+{
+    RK_SpriteSheet *ret = 0;
+    Temp scratch = scratch_begin(0,0);
+    RK_Key key = rk_res_key_from_string(RK_ResourceKind_SpriteSheet, rk_key_zero(), push_str8_cat(scratch.arena, path, meta_path));
+    Arena *arena = rk_top_res_bucket()->arena_ref;
+    RK_Resource *res = rk_res_from_key(key);
+
+    if(res == 0)
+    {
+        ret = push_array(arena, RK_SpriteSheet, 1);
+        res = rk_res_store(key, ret);
+
+        /////////////////////////////////////////////////////////////////////////////////
+        // load meta
+
+        // parse tokens
+        U64 token_count = 3000;
+        U8 *json;
+        U64 json_size;
+        jsmntok_t *tokens = push_array(scratch.arena, jsmntok_t, token_count);
+        {
+            jsmn_parser p;
+            jsmn_init(&p);
+            FileReadAll(scratch.arena, meta_path, &json, &json_size);
+
+            while(1)
+            {
+                U64 ret = jsmn_parse(&p, (char*)json, json_size, tokens, token_count);
+
+                // bad token, JSON string is corrupted
+                if(ret == JSMN_ERROR_INVAL)
+                {
+                    Trap();
+                }
+                // not enough tokens, JSON string is too large
+                else if(ret == JSMN_ERROR_NOMEM)
+                {
+                    token_count *= 2;
+                    tokens = push_array(scratch.arena, jsmntok_t, token_count);
+                }
+                // JSON string is too short, expecting more JSON data
+                else if(token_count == JSMN_ERROR_PART)
+                {
+                    Trap();
+                }
+                else
+                {
+                    // A non-negative return value of jsmn_parse is the number of tokens actually 
+                    // used by the parser
+                    token_count = ret;
+                    break;
+                }
+            }
+        }
+
+        U64 frame_count;
+        RK_SpriteSheetFrame *frames;
+        RK_SpriteSheetTag *tags;
+        U64 tag_count;
+        Vec2F32 sheet_size = {0};
+
+        // tokens to frames
+        {
+            jsmntok_t *root = &tokens[0];
+
+            // skip root node
+            U64 i = 1; // token index
+            while(i < token_count)
+            {
+                String8 key_str = rk_string_from_token(scratch.arena, json, &tokens[i]);
+                
+                if(str8_match(key_str, str8_lit("frames"), 0))
+                {
+                    i++; // skip the key
+                    U64 size = tokens[i].size;
+                    i++; // skip the array body
+                    frame_count = size;
+                    frames = push_array(arena, RK_SpriteSheetFrame, frame_count);
+                    for(U64 frame_idx = 0; frame_idx < size; frame_idx++)
+                    {
+                        i++;
+                        RK_SpriteSheetFrame *frame = &frames[frame_idx];
+                        U64 key_count = tokens[i].size;
+                        i++;
+                        for(U64 key_idx = 0; key_idx < key_count; key_idx++)
+                        {
+                            String8 key_str = rk_string_from_token(scratch.arena, json, &tokens[i]);
+                            i++; // skip key
+
+                            if(str8_match(key_str, str8_lit("frame"), 0))
+                            {
+                                U64 key_count = tokens[i].size;
+                                i++;
+                                for(U64 key_idx = 0; key_idx < key_count; key_idx++)
+                                {
+                                    String8 key_str = rk_string_from_token(scratch.arena, json, &tokens[i]);
+                                    i++;
+                                    if(str8_match(key_str, str8_lit("x"), 0))
+                                    {
+                                        frame->x = rk_f64_from_token(json, &tokens[i]);
+                                        i++; 
+                                    }
+                                    else if(str8_match(key_str, str8_lit("y"), 0))
+                                    {
+                                        frame->y = rk_f64_from_token(json, &tokens[i]);
+                                        i++; 
+                                    }
+                                    else if(str8_match(key_str, str8_lit("w"), 0))
+                                    {
+                                        frame->w = rk_f64_from_token(json, &tokens[i]);
+                                        i++; 
+                                    }
+                                    else if(str8_match(key_str, str8_lit("h"), 0))
+                                    {
+                                        frame->h = rk_f64_from_token(json, &tokens[i]);
+                                        i++; 
+                                    }
+                                    else
+                                    {
+                                        rk_token_pass(tokens, &i);
+                                    }
+                                }
+                            }
+                            else if(str8_match(key_str, str8_lit("spriteSourceSize"), 0))
+                            {
+                                U64 key_count = tokens[i].size;
+                                i++;
+                                for(U64 key_idx = 0; key_idx < key_count; key_idx++)
+                                {
+                                    String8 key_str = rk_string_from_token(scratch.arena, json, &tokens[i]);
+                                    i++;
+                                    if(str8_match(key_str, str8_lit("x"), 0))
+                                    {
+                                        frame->sprite_source_size.x = rk_f64_from_token(json, &tokens[i]);
+                                        i++; 
+                                    }
+                                    else if(str8_match(key_str, str8_lit("y"), 0))
+                                    {
+                                        frame->sprite_source_size.y = rk_f64_from_token(json, &tokens[i]);
+                                        i++; 
+                                    }
+                                    else if(str8_match(key_str, str8_lit("w"), 0))
+                                    {
+                                        frame->sprite_source_size.w = rk_f64_from_token(json, &tokens[i]);
+                                        i++; 
+                                    }
+                                    else if(str8_match(key_str, str8_lit("h"), 0))
+                                    {
+                                        frame->sprite_source_size.h = rk_f64_from_token(json, &tokens[i]);
+                                        i++; 
+                                    }
+                                    else
+                                    {
+                                        rk_token_pass(tokens, &i);
+                                    }
+                                }
+                            }
+                            else if(str8_match(key_str, str8_lit("sourceSize"), 0))
+                            {
+                                U64 key_count = tokens[i].size;
+                                i++;
+                                for(U64 key_idx = 0; key_idx < key_count; key_idx++)
+                                {
+                                    String8 key_str = rk_string_from_token(scratch.arena, json, &tokens[i]);
+                                    i++;
+                                    if(str8_match(key_str, str8_lit("w"), 0))
+                                    {
+                                        frame->source_size.w = rk_f64_from_token(json, &tokens[i]);
+                                        i++; 
+                                    }
+                                    else if(str8_match(key_str, str8_lit("h"), 0))
+                                    {
+                                        frame->source_size.h = rk_f64_from_token(json, &tokens[i]);
+                                        i++; 
+                                    }
+                                    else
+                                    {
+                                        rk_token_pass(tokens, &i);
+                                    }
+                                }
+                            }
+                            else if(str8_match(key_str, str8_lit("rotated"), 0))
+                            {
+                                frame->rotated = rk_b32_from_token(json, &tokens[i]);
+                                i++;
+                            }
+                            else if(str8_match(key_str, str8_lit("trimmed"), 0))
+                            {
+                                frame->trimmed = rk_b32_from_token(json, &tokens[i]);
+                                i++;
+                            }
+                            else if(str8_match(key_str, str8_lit("duration"), 0))
+                            {
+                                frame->duration = rk_f64_from_token(json, &tokens[i]);
+                                i++;
+                            }
+                            else
+                            {
+                                rk_token_pass(tokens, &i);
+                            }
+                        }
+                    }
+                }
+                else if(str8_match(key_str, str8_lit("meta"), 0))
+                {
+                    i++; // skip the key
+                    U64 size = tokens[i].size;
+                    i++; // skip the body
+
+                    for(U64 j = 0; j < size; j++)
+                    {
+                        String8 key_str = rk_string_from_token(scratch.arena, json, &tokens[i]);
+                        i++; // skip key
+                        if(str8_match(key_str, str8_lit("frameTags"), 0))
+                        {
+                            U64 size = tokens[i].size;
+                            i++; // skip the array body
+                            tag_count = size;
+                            tags = push_array(arena, RK_SpriteSheetTag, tag_count);
+                            for(U64 tag_idx = 0; tag_idx < size; tag_idx++)
+                            {
+                                U64 size = tokens[i].size;
+                                i++; // skip object body 
+
+                                RK_SpriteSheetTag *tag = &tags[tag_idx];
+                                
+                                for(U64 key_idx = 0; key_idx < size; key_idx++)
+                                {
+                                    String8 key_str = rk_string_from_token(scratch.arena, json, &tokens[i]);
+                                    i++; // skip key
+
+                                    if(str8_match(key_str, str8_lit("name"), 0))
+                                    {
+                                        String8 tag_name = str8(json+tokens[i].start, tokens[i].end-tokens[i].start);
+                                        tag->name = push_str8_copy(arena, tag_name);
+                                        i++;
+                                    }
+                                    else if(str8_match(key_str, str8_lit("from"), 0))
+                                    {
+                                        tag->from = rk_u64_from_token(json, &tokens[i]);
+                                        i++;
+                                    }
+                                    else if(str8_match(key_str, str8_lit("to"), 0))
+                                    {
+                                        tag->to = rk_u64_from_token(json, &tokens[i]);
+                                        i++;
+                                    }
+                                    else if(str8_match(key_str, str8_lit("direction"), 0))
+                                    {
+                                        String8 direction_str = rk_string_from_token(scratch.arena, json, &tokens[i]);
+                                        if(str8_match(direction_str, str8_lit("forward"), 0))
+                                        {
+                                            tag->direction = DirH_Right;
+                                        }
+                                        else if(str8_match(direction_str, str8_lit("backward"), 0))
+                                        {
+                                            tag->direction = DirH_Left;
+                                        }
+                                        i++;
+                                    }
+                                    else if(str8_match(key_str, str8_lit("color"), 0))
+                                    {
+                                        // TODO(XXX): why we need color
+                                        i++;
+                                    }
+                                    else
+                                    {
+                                        rk_token_pass(tokens, &i);
+                                    }
+                                }
+                            }
+                        }
+                        else if(str8_match(key_str, str8_lit("size"), 0))
+                        {
+                            U64 key_count = tokens[i].size;
+                            i++;
+                            for (U64 key_idx = 0; key_idx < key_count; key_idx++)
+                            {
+                                String8 key_str = rk_string_from_token(scratch.arena, json, &tokens[i]);
+                                i++;
+                                if(str8_match(key_str, str8_lit("w"), 0))
+                                {
+                                    sheet_size.x = rk_f64_from_token(json, &tokens[i]); 
+                                    i++;
+                                }
+                                else if(str8_match(key_str, str8_lit("h"), 0))
+                                {
+                                    sheet_size.y = rk_f64_from_token(json, &tokens[i]); 
+                                    i++;
+                                }
+                                else
+                                {
+                                    rk_token_pass(tokens, &i);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            rk_token_pass(tokens, &i);
+                        }
+                    }
+                }
+                else
+                {
+                    rk_token_pass(tokens, &i);
+                }
+            }
+        }
+
+        ret->tex         = rk_tex2d_from_image(path);
+        ret->size        = sheet_size;
+        ret->path        = push_str8_copy(arena, meta_path);
+        ret->frames      = frames;
+        ret->frame_count = frame_count;
+        ret->tags        = tags;
+        ret->tag_count   = tag_count;
+    }
+
+    scratch_end(scratch);
+    ret = res->data;
+    return ret;
+}
+
+internal RK_Material *
+rk_material_from_color(String8 name, Vec4F32 color)
+{
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    Arena *arena = res_bucket->arena_ref;
+    RK_Key res_key = rk_res_key_from_string(RK_ResourceKind_Material, rk_key_zero(), name);
+
+    RK_Material *ret = 0;
+    RK_Resource *res = rk_res_from_key(res_key);
+    if(res == 0)
+    {
+        ret = push_array(arena, RK_Material, 1);
+        res = rk_res_store(res_key, ret);
+
+        ret->v.diffuse_color = color;
+        ret->v.opacity = 1.0f;
+        ret->name = push_str8_copy(arena, name);
+    }
+
+    ret = res->data;
+    return ret;
+}
+
+internal RK_Material *
+rk_material_from_image(String8 name, String8 path)
+{
+    RK_Material *ret = 0;
+    RK_Key key = rk_res_key_from_string(RK_ResourceKind_Material, rk_key_zero(), name);
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    Arena *arena = res_bucket->arena_ref;
+    RK_Resource *res = rk_res_from_key(key);
+
+    if(res == 0)
+    {
+        ret = push_array(arena, RK_Material, 1);
+        res = rk_res_store(key, ret);
+
+        // load tex
+        RK_Key tex_key = rk_res_key_from_string(RK_ResourceKind_Texture2D, rk_key_zero(), path);
+        RK_Texture2D *tex = 0;
+        RK_Resource *tex_res = rk_res_from_key(tex_key);
+        R_Tex2DSampleKind sample_kind = R_Tex2DSampleKind_Nearest;
+        if(tex_res == 0)
+        {
+            tex = push_array(arena, RK_Texture2D, 1);
+            rk_res_store(tex_key, tex);
+
+            int x,y,n;
+            U8 *image_data = stbi_load((char*)path.str, &x, &y, &n, 4);
+
+            tex->tex = r_tex2d_alloc(R_ResourceKind_Static, sample_kind, v2s32(x,y), R_Tex2DFormat_RGBA8, image_data);
+            tex->sample_kind = sample_kind;
+            tex->path = push_str8_copy(arena, path);
+
+            stbi_image_free(image_data);
+        }
+        else
+        {
+            tex = tex_res->data;
+        }
+
+        ret->name = push_str8_copy(arena, name);
+        ret->textures[R_GeoTexKind_Diffuse] = tex;
+        ret->v.opacity = 1.0;
+        ret->v.diffuse_color = v4f32(1,1,1,1);
+        ret->v.has_diffuse_texture = 1;
+    }
+    else
+    {
+        ret = res->data;
+    }
+
+    return ret;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
 //~ Node building helper
 
 internal RK_Node *
@@ -570,15 +1087,14 @@ rk_node_from_packed_scene_node(RK_Node *node, RK_Key seed_key)
 }
 
 internal RK_Node *
-rk_node_from_packed_scene(String8 string, RK_Handle handle)
+rk_node_from_packed_scene(String8 string, RK_PackedScene *packed)
 {
-    RK_PackedScene *packed_scene = rk_res_data_from_handle(handle);
     RK_Key seed_key = rk_key_from_string(rk_key_zero(), string);
     RK_Node *ret = 0;
-    if(packed_scene != 0)
+    if(packed != 0)
     {
-        ret = rk_node_from_packed_scene_node(packed_scene->root, seed_key);
-        ret->instance = handle;
+        ret = rk_node_from_packed_scene_node(packed->root, seed_key);
+        ret->instance = packed;
         ret->name = push_str8_copy_static(string, ret->name_buffer, ArrayCount(ret->name_buffer));
     }
     return ret;
@@ -1520,6 +2036,8 @@ rk_mesh_primitive_arc_filled(Arena *arena, F32 radius, F32 pct, U64 segments, B3
 internal void
 rk_node_equip_box(RK_Node *n, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d)
 {
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    Arena *arena = res_bucket->arena_ref;
     RK_Key res_key;
     {
         F64 sizex_f64 = size.x;
@@ -1538,11 +2056,12 @@ rk_node_equip_box(RK_Node *n, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U6
         res_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
     }
 
-    RK_Handle mesh_res = rk_resh_acquire_from_key(res_key);
-    if(rk_handle_is_zero(mesh_res))
+    RK_Resource *res = rk_res_from_key(res_key);
+    if(res == 0)
     {
-        mesh_res = rk_resh_alloc(res_key, RK_ResourceKind_Mesh, 1);
-        RK_Mesh *mesh = rk_res_data_from_handle(mesh_res);
+        RK_Mesh *mesh = push_array(arena, RK_Mesh, 1);
+        res = rk_res_store(res_key, mesh);
+
         {
             Temp scratch = scratch_begin(0,0);
             R_Vertex *vertices;
@@ -1567,12 +2086,15 @@ rk_node_equip_box(RK_Node *n, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U6
         }
     }
     rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
-    n->mesh_inst3d->mesh = mesh_res;
+    n->mesh_inst3d->mesh = res->data;
 }
 
 internal void
 rk_node_equip_plane(RK_Node *n, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
 {
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    Arena *arena = res_bucket->arena_ref;
+
     RK_Key res_key;
     {
         F64 sizex_f64 = size.x;
@@ -1588,11 +2110,12 @@ rk_node_equip_plane(RK_Node *n, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
         res_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
     }
 
-    RK_Handle mesh_res = rk_resh_acquire_from_key(res_key);
-    if(rk_handle_is_zero(mesh_res))
+    RK_Resource *res = rk_res_from_key(res_key);
+    if(res == 0)
     {
-        mesh_res = rk_resh_alloc(res_key, RK_ResourceKind_Mesh, 1);
-        RK_Mesh *mesh = rk_res_data_from_handle(mesh_res);
+        RK_Mesh *mesh = push_array(arena, RK_Mesh, 1);
+        res = rk_res_store(res_key, mesh);
+
         {
             Temp scratch = scratch_begin(0,0);
             R_Vertex *vertices;
@@ -1617,12 +2140,15 @@ rk_node_equip_plane(RK_Node *n, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
     }
 
     rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
-    n->mesh_inst3d->mesh = mesh_res;
+    n->mesh_inst3d->mesh = res->data;
 }
 
 internal void
 rk_node_equip_sphere(RK_Node *n, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere)
 {
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    Arena *arena = res_bucket->arena_ref;
+
     RK_Key res_key;
     {
         F64 radius_f64 = radius;
@@ -1640,11 +2166,12 @@ rk_node_equip_sphere(RK_Node *n, F32 radius, F32 height, U64 radial_segments, U6
         res_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
     }
 
-    RK_Handle mesh_res = rk_resh_acquire_from_key(res_key);
-    if(rk_handle_is_zero(mesh_res))
+    RK_Resource *res = rk_res_from_key(res_key);
+    if(res == 0)
     {
-        mesh_res = rk_resh_alloc(res_key, RK_ResourceKind_Mesh, 1);
-        RK_Mesh *mesh = rk_res_data_from_handle(mesh_res);
+        RK_Mesh *mesh = push_array(arena, RK_Mesh, 1);
+        res = rk_res_store(res_key, mesh);
+
         {
             Temp scratch = scratch_begin(0,0);
             R_Vertex *vertices;
@@ -1671,12 +2198,15 @@ rk_node_equip_sphere(RK_Node *n, F32 radius, F32 height, U64 radial_segments, U6
     }
 
     rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
-    n->mesh_inst3d->mesh = mesh_res;
+    n->mesh_inst3d->mesh = res->data;
 }
 
 internal void
 rk_node_equip_cylinder(RK_Node *n, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom)
 {
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    Arena *arena = res_bucket->arena_ref;
+
     RK_Key res_key;
     {
         F64 radius_f64 = radius;
@@ -1696,11 +2226,12 @@ rk_node_equip_cylinder(RK_Node *n, F32 radius, F32 height, U64 radial_segments, 
         res_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
     }
 
-    RK_Handle mesh_res = rk_resh_acquire_from_key(res_key);
-    if(rk_handle_is_zero(mesh_res))
+    RK_Resource *res = rk_res_from_key(res_key);
+    if(res == 0)
     {
-        mesh_res = rk_resh_alloc(res_key, RK_ResourceKind_Mesh, 1);
-        RK_Mesh *mesh = rk_res_data_from_handle(mesh_res);
+        RK_Mesh *mesh = push_array(arena, RK_Mesh, 1);
+        res = rk_res_store(res_key, mesh);
+
         {
             Temp scratch = scratch_begin(0,0);
             R_Vertex *vertices;
@@ -1728,12 +2259,15 @@ rk_node_equip_cylinder(RK_Node *n, F32 radius, F32 height, U64 radial_segments, 
     }
 
     rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
-    n->mesh_inst3d->mesh = mesh_res;
+    n->mesh_inst3d->mesh = res->data;
 }
 
 internal void
 rk_node_equip_capsule_(RK_Node *n, F32 radius, F32 height, U64 radial_segments, U64 rings)
 {
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    Arena *arena = res_bucket->arena_ref;
+
     RK_Key res_key;
     {
         F64 radius_f64 = radius;
@@ -1749,11 +2283,12 @@ rk_node_equip_capsule_(RK_Node *n, F32 radius, F32 height, U64 radial_segments, 
         res_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
     }
 
-    RK_Handle mesh_res = rk_resh_acquire_from_key(res_key);
-    if(rk_handle_is_zero(mesh_res))
+    RK_Resource *res = rk_res_from_key(res_key);
+    if(res == 0)
     {
-        mesh_res = rk_resh_alloc(res_key, RK_ResourceKind_Mesh, 1);
-        RK_Mesh *mesh = rk_res_data_from_handle(mesh_res);
+        RK_Mesh *mesh = push_array(arena, RK_Mesh, 1);
+        res = rk_res_store(res_key, mesh);
+
         {
             Temp scratch = scratch_begin(0,0);
             R_Vertex *vertices;
@@ -1779,12 +2314,15 @@ rk_node_equip_capsule_(RK_Node *n, F32 radius, F32 height, U64 radial_segments, 
     }
 
     rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
-    n->mesh_inst3d->mesh = mesh_res;
+    n->mesh_inst3d->mesh = res->data;
 }
 
 internal void
 rk_node_equip_torus(RK_Node *n, F32 inner_radius, F32 outer_radius, U64 rings, U64 ring_segments)
 {
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    Arena *arena = res_bucket->arena_ref;
+
     RK_Key res_key;
     {
         F64 inner_radius_f64 = inner_radius;
@@ -1800,11 +2338,12 @@ rk_node_equip_torus(RK_Node *n, F32 inner_radius, F32 outer_radius, U64 rings, U
         res_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
     }
 
-    RK_Handle mesh_res = rk_resh_acquire_from_key(res_key);
-    if(rk_handle_is_zero(mesh_res))
+    RK_Resource *res = rk_res_from_key(res_key);
+    if(res == 0)
     {
-        mesh_res = rk_resh_alloc(res_key, RK_ResourceKind_Mesh, 1);
-        RK_Mesh *mesh = rk_res_data_from_handle(mesh_res);
+        RK_Mesh *mesh = push_array(arena, RK_Mesh, 1);
+        res = rk_res_store(res_key, mesh);
+
         {
             Temp scratch = scratch_begin(0,0);
             R_Vertex *vertices;
@@ -1830,7 +2369,59 @@ rk_node_equip_torus(RK_Node *n, F32 inner_radius, F32 outer_radius, U64 rings, U
     }
 
     rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
-    n->mesh_inst3d->mesh = mesh_res;
+    n->mesh_inst3d->mesh = res->data;
+}
+
+internal RK_DrawNode* rk_drawlist_push_rect(Arena *arena, RK_DrawList *drawlist, Rng2F32 src, Rng2F32 dst, Vec3F32 color)
+{
+    RK_DrawNode *ret = rk_drawlist_push(arena, drawlist);
+    D_Bucket *bucket = d_top_bucket();
+
+    R_Vertex *vertices = push_array(arena, R_Vertex, 4);
+    U64 vertex_count = 4;
+    U32 indice_count = 6;
+    U32 *indices = push_array(arena, U32, 6);
+
+    // top left 0
+    vertices[0].col = color;
+    vertices[0].nor = v3f32(0,0,-1);
+    vertices[0].pos = v3f32(src.x0, src.y0, 0);
+    vertices[0].tex = v2f32(dst.x0, dst.y0);
+
+    // bottom left 1
+    vertices[1].col = color;
+    vertices[1].nor = v3f32(0,0,-1);
+    vertices[1].pos = v3f32(src.x0, src.y1, 0);
+    vertices[1].tex = v2f32(dst.x0, dst.y1);
+
+    // top right 2
+    vertices[2].col = color;
+    vertices[2].nor = v3f32(0,0,-1);
+    vertices[2].pos = v3f32(src.x1, src.y0, 0);
+    vertices[2].tex = v2f32(dst.x1, dst.y0);
+
+    // bottom right 3
+    vertices[3].col = color;
+    vertices[3].nor = v3f32(0,0,-1);
+    vertices[3].pos = v3f32(src.x1, src.y1, 0);
+    vertices[3].tex = v2f32(dst.x1, dst.y1);
+
+    indices[0] = 0;
+    indices[1] = 1;
+    indices[2] = 2;
+
+    indices[3] = 1;
+    indices[4] = 3;
+    indices[5] = 2;
+
+    ret->draw_bucket = bucket;
+    ret->vertices = vertices;
+    ret->vertex_count = vertex_count;
+    ret->indices = indices;
+    ret->indice_count = indice_count;
+    ret->topology = R_GeoTopologyKind_Triangles;
+    ret->polygon = R_GeoPolygonKind_Fill;
+    return ret;
 }
 
 internal RK_DrawNode *

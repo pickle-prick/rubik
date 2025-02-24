@@ -443,13 +443,13 @@ rk_key_merge(RK_Key a, RK_Key b)
 internal B32
 rk_key_match(RK_Key a, RK_Key b)
 {
-    return a.u64[0] == b.u64[0];
+    return a.u64[0] == b.u64[0] && a.u64[1] == b.u64[1];
 }
 
 internal RK_Key
-rk_key_make(U64 v)
+rk_key_make(U64 a, U64 b)
 {
-    RK_Key result = {v};
+    RK_Key result = {a,b};
     return result;
 }
 
@@ -505,9 +505,9 @@ rk_res_bucket_release(RK_ResourceBucket *res_bucket)
     {
         RK_ResourceBucketSlot *slot = &res_bucket->hash_table[i];
 
-        for(RK_Resource *res = slot->first; res != 0; res = res->next)
+        for(RK_Resource *res = slot->first; res != 0; res = res->hash_next)
         {
-            rk_res_release(res);
+            NotImplemented;
         }
     }
 }
@@ -534,9 +534,8 @@ rk_node_from_key(RK_Key key)
 internal RK_Key
 rk_res_key_from_string(RK_ResourceKind kind, RK_Key seed, String8 string)
 {
-    RK_Key ret;
-    RK_Key src_key = rk_key_from_string(seed, string);
-    ret = rk_key_merge(rk_key_make(kind), src_key);
+    RK_Key ret = rk_key_from_string(seed, string);
+    ret.u64[1] = kind;
     return ret;
 }
 
@@ -555,39 +554,27 @@ rk_res_key_from_stringf(RK_ResourceKind kind, RK_Key seed, char* fmt, ...)
     return result;
 }
 
-internal RK_Handle
-rk_resh_alloc(RK_Key key, RK_ResourceKind kind, B32 acquire)
+internal RK_Resource *
+rk_res_store(RK_Key key, void *data)
 {
     RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-    RK_Resource *ret = res_bucket->first_free_res;
-
-    if(ret != 0)
-    {
-        U64 generation = ret->generation;
-        SLLStackPop(res_bucket->first_free_res);
-        MemoryZeroStruct(ret);
-        ret->generation = generation;
-    }
-    else
-    {
-        ret = push_array(res_bucket->arena_ref, RK_Resource, 1);
-    }
+    RK_Resource *ret = push_array(res_bucket->arena_ref, RK_Resource, 1);
 
     // fill info
-    ret->kind = kind;
-    ret->key = key;
-    ret->rc = !!acquire;
+    ret->kind = key.u64[1];
+    ret->key  = key;
+    ret->data = data;
 
     // insert into hash table
     U64 slot_idx = key.u64[0] % res_bucket->hash_table_size;
     RK_ResourceBucketSlot *slot = &res_bucket->hash_table[slot_idx];
     DLLPushBack_NP(slot->first, slot->last, ret, hash_next, hash_prev);
-    res_bucket->resource_count++;
-    return rk_handle_from_res(ret);
+    res_bucket->res_count++;
+    return ret;
 }
 
 internal void
-rk_res_release(RK_Resource *res)
+rk_res_free(RK_Resource *res)
 {
     RK_ResourceBucket *res_bucket = 0;
     if(res != 0)
@@ -599,169 +586,26 @@ rk_res_release(RK_Resource *res)
     NotImplemented;
 }
 
-internal RK_Handle
-rk_resh_from_key(RK_Key key)
-{
-    RK_Resource *ret = 0;
-    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-    U64 slot_idx = key.u64[0] % res_bucket->hash_table_size;
-    for(RK_Resource *res = res_bucket->hash_table[slot_idx].first; res != 0; res = res->hash_next)
-    {
-        if(rk_key_match(res->key, key))
-        {
-            ret = res;
-            break;
-        }
-    }
-    return rk_handle_from_res(ret);
-}
-
-internal RK_Handle
-rk_resh_acquire_from_key(RK_Key key)
-{
-    RK_Resource *ret = 0;
-    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-    U64 slot_idx = key.u64[0] % res_bucket->hash_table_size;
-    for(RK_Resource *res = res_bucket->hash_table[slot_idx].first; res != 0; res = res->hash_next)
-    {
-        if(rk_key_match(res->key, key))
-        {
-            ret = res;
-            break;
-        }
-    }
-    if(ret!=0) ret->rc++;
-    return rk_handle_from_res(ret);
-}
-
-internal RK_Handle
-rk_resh_acquire(RK_Handle handle)
-{
-    RK_Resource *res = rk_res_from_handle(handle);
-    if(res !=0 )
-    {
-        res->rc++;
-    }
-    return handle;
-}
-
-internal void rk_resh_return(RK_Handle handle)
-{
-    RK_Resource *res = rk_res_from_handle(handle);
-    if(res != 0)
-    {
-        res->rc--;
-
-        if(res->rc == 0 && res->auto_free)
-        {
-            rk_res_release(res);
-        }
-    }
-}
-
 internal RK_Resource *
-rk_res_from_handle(RK_Handle handle)
+rk_res_from_key(RK_Key key)
 {
-    RK_Resource *ret = (RK_Resource *)handle.u64[0];
-    U64 generation = handle.u64[1];
-    if(ret != 0 && generation == ret->generation)
+    RK_Resource *ret = 0;
+    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
+    U64 slot_idx = key.u64[0] % res_bucket->hash_table_size;
+    RK_ResourceBucketSlot *slot = &res_bucket->hash_table[slot_idx];
+    for(RK_Resource *r = slot->first; r != 0; r = r->hash_next)
     {
-        return ret;
-    }
-    return 0;
-}
-
-internal void *
-rk_res_data_from_handle(RK_Handle handle)
-{
-    void *ret = 0;
-    RK_Resource *res = rk_res_from_handle(handle);
-    if(res != 0)
-    {
-        ret = &res->v;
-    }
-    return ret;
-}
-
-internal RK_Handle
-rk_handle_from_res(RK_Resource *res)
-{
-    RK_Handle ret = {0};
-    ret.u64[0] = (U64)res;
-    if(res) ret.u64[1] = res->generation;
-    return ret;
-}
-
-//- High-lelve Resource Allocation Functions
-
-internal RK_Handle
-rk_material_from_color(String8 name, Vec4F32 color)
-{
-    RK_Key res_key = rk_res_key_from_string(RK_ResourceKind_Material, rk_key_zero(), name);
-    RK_Handle ret = rk_resh_from_key(res_key);
-    if(rk_handle_is_zero(ret))
-    {
-        ret = rk_resh_alloc(res_key, RK_ResourceKind_Material, 0);
-        RK_Material *material = rk_res_data_from_handle(ret);
-        material->v.diffuse_color = color;
-        material->v.opacity = 1.0f;
-        material->name = push_str8_copy_static(name, material->name_buffer, ArrayCount(material->name_buffer));
+        if(rk_key_match(key, r->key))
+        {
+            ret = r;
+            break;
+        }
     }
     return ret;
 }
 
 /////////////////////////////////
 //- Resourcea Building Helpers (subresource management etc...)
-
-internal RK_Animation *
-rk_animation_alloc()
-{
-    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-    RK_Animation *ret = res_bucket->first_free_animation;
-
-    if(ret != 0)
-    {
-        SLLStackPop(res_bucket->first_free_animation);
-    }
-    else
-    {
-        ret = push_array_no_zero(res_bucket->arena_ref, RK_Animation, 1);
-    }
-    MemoryZeroStruct(ret);
-    return ret;
-}
-internal RK_Track *
-rk_track_alloc()
-{
-    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-    RK_Track *ret = res_bucket->first_free_track;
-    if(ret != 0)
-    {
-        SLLStackPop(res_bucket->first_free_track);
-    }
-    else
-    {
-        ret = push_array_no_zero(res_bucket->arena_ref, RK_Track, 1);
-    }
-    MemoryZeroStruct(ret);
-    return ret;
-}
-internal RK_TrackFrame *
-rk_track_frame_alloc()
-{
-    RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-    RK_TrackFrame *ret = res_bucket->first_free_track_frame;
-    if(ret != 0)
-    {
-        SLLStackPop(res_bucket->first_free_track_frame);
-    }
-    else
-    {
-        ret = push_array_no_zero(res_bucket->arena_ref, RK_TrackFrame, 1);
-    }
-    MemoryZeroStruct(ret);
-    return ret;
-}
 
 /////////////////////////////////
 // State accessor/mutator
@@ -962,7 +806,11 @@ rk_node_alloc(RK_NodeTypeFlags type_flags)
 
     // some default values
     {
+        ret->rotation = make_indentity_quat_f32();
+        ret->scale = v3f32(1,1,1);
         ret->fixed_xform = mat_4x4f32(1.f);
+        ret->fixed_scale = v3f32(1,1,1);
+        ret->fixed_rotation = make_indentity_quat_f32();
     }
 
     rk_node_equip_type_flags(ret, type_flags);
@@ -1779,13 +1627,6 @@ internal void rk_ui_inspector(void)
 
         UI_Row
         {
-            ui_labelf("omit_gizmo");
-            ui_spacer(ui_pct(1.f,0.f));
-            rk_ui_checkbox(&scene->omit_gizmo3d);
-        }
-
-        UI_Row
-        {
             ui_labelf("omit_grid");
             ui_spacer(ui_pct(1.f,0.f));
             rk_ui_checkbox(&scene->omit_grid);
@@ -1931,7 +1772,7 @@ internal void rk_ui_inspector(void)
         {
             ui_labelf("mode");
             ui_spacer(ui_pct(1.0, 0.0));
-            UI_TextAlignment(UI_TextAlign_Center) for(U64 k = 0; k < RK_Gizmo3dMode_COUNT; k++)
+            UI_TextAlignment(UI_TextAlign_Center) for(U64 k = 0; k < RK_Gizmo3DMode_COUNT; k++)
             {
                 if(scene->gizmo3d_mode == k)
                 {
@@ -2639,28 +2480,34 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 
     RK_Node *active_node = rk_node_from_handle(scene->active_node);
 
-    /////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////
     //~ Update/draw node in the scene tree
+
     ProfScope("update/draw game")
     {
-        // unpack geo back pass params
-        R_Pass *geo_back_pass = 0;
+        // unpack pass/params
+
         D_Bucket *geo_back_bucket = rk_state->bucket_geo3d[RK_GeoBucketKind_Back];
-        geo_back_pass = r_pass_from_kind(d_thread_ctx->arena, &geo_back_bucket->passes, R_PassKind_Geo3D, 1);
-        R_PassParams_Geo3D *geo_params = geo_back_pass->params_geo3d;
+        R_Pass *geo_back_pass = r_pass_from_kind(d_thread_ctx->arena, &geo_back_bucket->passes, R_PassKind_Geo3D, 1);
+        R_PassParams_Geo3D *geo_back_params = geo_back_pass->params_geo3d;
+
+        D_Bucket *geo_screen_bucket = rk_state->bucket_geo3d[RK_GeoBucketKind_Screen];
+        R_Pass *geo_screen_pass = r_pass_from_kind(d_thread_ctx->arena, &geo_screen_bucket->passes, R_PassKind_Geo3D, 1);
+        R_PassParams_Geo3D *geo_screen_params = geo_screen_pass->params_geo3d;
+
 
         RK_Node *node = rk_node_from_handle(scene->root);
 
         // collect lights,materials,textures
         /////////////////////////////////////////////////////////////////////////////////
 
-        R_Light *lights = geo_params->lights;
-        U64 *light_count = &geo_params->light_count;
+        R_Light *lights = geo_back_params->lights;
+        U64 *light_count = &geo_back_params->light_count;
 
         HashSlot *material_slots = push_array(rk_frame_arena(), HashSlot, 3000);
-        R_Material *materials = geo_params->materials;
-        R_PackedTextures *textures = geo_params->textures;
-        U64 *material_count = &geo_params->material_count;
+        R_Material *materials = geo_back_params->materials;
+        R_PackedTextures *textures = geo_back_params->textures;
+        U64 *material_count = &geo_back_params->material_count;
         while(node != 0)
         {
             AssertAlways(*light_count < MAX_LIGHTS_PER_PASS);
@@ -2671,311 +2518,361 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 
             for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
             {
-                fn->f(node, scene, os_events, rk_state->dt_sec, geo_params->projection, geo_params->view);
+                fn->f(node, scene, os_events, rk_state->dt_sec, geo_back_params->projection, geo_back_params->view);
             }
 
-            // mesh render bucket scope
-            D_BucketScope(geo_back_bucket)
+            B32 has_transform = 0;
+
+            if(node->type_flags & RK_NodeTypeFlag_Node2D)
             {
-                B32 has_transform = 0;
-                // Update fixed_xform in DFS order
-                if(node->type_flags & RK_NodeTypeFlag_Node2D)
+                has_transform = 1;
+                MemoryCopy(&node->position, &node->node2d->transform.position, sizeof(Vec2F32));
+                MemoryCopy(&node->scale, &node->node2d->transform.scale, sizeof(Vec2F32));
+                node->rotation = make_rotate_quat_f32(v3f32(0,0,-1), node->node2d->transform.rotation);
+            }
+
+            if(node->type_flags & RK_NodeTypeFlag_Node3D)
+            {
+                has_transform = 1;
+                node->position = node->node3d->transform.position;
+                node->scale = node->node3d->transform.scale;
+                node->rotation = node->node3d->transform.rotation;
+            }
+
+            // Update artifacts in DFS order 
+            if(has_transform)
+            {
+                Mat4x4F32 xform = mat_4x4f32(1.0);
+                Mat4x4F32 rotation_m = mat_4x4f32_from_quat_f32(node->rotation);
+                Mat4x4F32 translate_m = make_translate_4x4f32(node->position);
+                Mat4x4F32 scale_m = make_scale_4x4f32(node->scale);
+                // TRS order
+                xform = mul_4x4f32(scale_m, xform);
+                xform = mul_4x4f32(rotation_m, xform);
+                xform = mul_4x4f32(translate_m, xform);
+
+                if(parent != 0 && !(node->flags & RK_NodeFlag_Float))
                 {
-                    has_transform = 1;
-                    NotImplemented;
+                    xform = mul_4x4f32(parent->fixed_xform, xform);
                 }
+                node->fixed_xform = xform;
+                rk_trs_from_xform(&xform, &node->fixed_position, &node->fixed_rotation, &node->fixed_scale);
+            }
 
-                // Update fixed_xform in DFS order
-                if(node->type_flags & RK_NodeTypeFlag_Node3D)
+            if(node->type_flags & RK_NodeTypeFlag_Camera3D)
+            {
+                if(node->camera3d->is_active) 
                 {
-                    has_transform = 1;
-                    node->position = node->node3d->transform.position;
-                    node->scale = node->node3d->transform.scale;
-                    node->rotation = node->node3d->transform.rotation;
+                    rk_scene_active_camera_set(scene, node);
                 }
+            }
 
-                // Update artifacts in DFS order 
-                if(has_transform)
-                {
-                    Mat4x4F32 xform = mat_4x4f32(1.0);
-                    Mat4x4F32 rotation_m = mat_4x4f32_from_quat_f32(node->rotation);
-                    Mat4x4F32 translate_m = make_translate_4x4f32(node->position);
-                    Mat4x4F32 scale_m = make_scale_4x4f32(node->scale);
-                    // TRS order
-                    xform = mul_4x4f32(scale_m, xform);
-                    xform = mul_4x4f32(rotation_m, xform);
-                    xform = mul_4x4f32(translate_m, xform);
+            if(node->type_flags & RK_NodeTypeFlag_DirectionalLight)
+            {
+                R_Light *light_dst = &lights[(*light_count)++];
+                RK_DirectionalLight *light_src = node->directional_light;
 
-                    if(parent != 0 && !(node->flags & RK_NodeFlag_Float))
-                    {
-                        xform = mul_4x4f32(parent->fixed_xform, xform);
-                    }
-                    node->fixed_xform = xform;
-                    rk_trs_from_xform(&xform, &node->fixed_position, &node->fixed_rotation, &node->fixed_scale);
-                }
+                Vec4F32 direction_ws = {0,0,0,0};
+                MemoryCopy(&direction_ws, &light_src->direction, sizeof(Vec3F32));
+                Vec4F32 direction_vs = transform_4x4f32_4f32(view_m, direction_ws);
 
-                if(node->type_flags & RK_NodeTypeFlag_Camera3D)
-                {
-                    if(node->camera3d->is_active) 
-                    {
-                        rk_scene_active_camera_set(scene, node);
-                    }
-                }
+                Vec4F32 color = {0,0,0, 1};
+                MemoryCopy(&color, &light_src->color, sizeof(Vec3F32));
 
-                if(node->type_flags & RK_NodeTypeFlag_DirectionalLight)
-                {
-                    R_Light *light_dst = &lights[(*light_count)++];
-                    RK_DirectionalLight *light_src = node->directional_light;
+                light_dst->kind = R_Vulkan_LightKind_Directional;
+                light_dst->direction_ws = direction_ws;
+                light_dst->direction_vs = direction_vs;
+                light_dst->color = color;
+                light_dst->intensity = light_src->intensity;
+            }
 
-                    Vec4F32 direction_ws = {0,0,0,0};
-                    MemoryCopy(&direction_ws, &light_src->direction, sizeof(Vec3F32));
-                    Vec4F32 direction_vs = transform_4x4f32_4f32(view_m, direction_ws);
+            if(node->type_flags & RK_NodeTypeFlag_PointLight)
+            {
+                R_Light *light_dst = &lights[(*light_count)++];
+                RK_PointLight *light_src = node->point_light;
 
-                    Vec4F32 color = {0,0,0, 1};
-                    MemoryCopy(&color, &light_src->color, sizeof(Vec3F32));
-
-                    light_dst->kind = R_Vulkan_LightKind_Directional;
-                    light_dst->direction_ws = direction_ws;
-                    light_dst->direction_vs = direction_vs;
-                    light_dst->color = color;
-                    light_dst->intensity = light_src->intensity;
-                }
-
-                if(node->type_flags & RK_NodeTypeFlag_PointLight)
-                {
-                    R_Light *light_dst = &lights[(*light_count)++];
-                    RK_PointLight *light_src = node->point_light;
-
-                    Vec4F32 position_ws = {0,0,0,1};
-                    MemoryCopy(&position_ws, &node->fixed_position, sizeof(Vec3F32));
-                    Vec4F32 position_vs = transform_4x4f32_4f32(view_m, position_ws);
-                    
-                    Vec4F32 color = {0,0,0, 1};
-                    MemoryCopy(&color, &light_src->color, sizeof(Vec3F32));
-
-                    Vec4F32 attenuation = {0};
-                    MemoryCopy(&attenuation, &light_src->attenuation, sizeof(Vec3F32));
-
-                    light_dst->kind = R_Vulkan_LightKind_Point;
-                    light_dst->position_ws = position_ws;
-                    light_dst->position_vs = position_vs;
-                    light_dst->range = light_src->range;
-                    light_dst->color = color;
-                    light_dst->intensity = light_src->intensity;
-                    light_dst->attenuation = attenuation;
-                }
-
-                if(node->type_flags & RK_NodeTypeFlag_SpotLight)
-                {
-                    R_Light *light_dst = &lights[(*light_count)++];
-                    RK_SpotLight *light_src = node->spot_light;
-
-                    Vec4F32 position_ws = {0,0,0,1};
-                    MemoryCopy(&position_ws, &node->fixed_position, sizeof(Vec3F32));
-                    Vec4F32 position_vs = transform_4x4f32_4f32(view_m, position_ws);
-
-                    Vec4F32 direction_ws = {0,0,0,0};
-                    MemoryCopy(&direction_ws, &light_src->direction, sizeof(Vec3F32));
-                    direction_ws = transform_4x4f32_4f32(node->fixed_xform, direction_ws);
-                    Vec4F32 direction_vs = transform_4x4f32_4f32(view_m, direction_ws);
-                    
-                    Vec4F32 color = {0,0,0, 1};
-                    MemoryCopy(&color, &light_src->color, sizeof(Vec3F32));
-
-                    Vec4F32 attenuation = {0};
-                    MemoryCopy(&attenuation, &light_src->attenuation, sizeof(Vec3F32));
-
-                    light_dst->kind = R_Vulkan_LightKind_Spot;
-                    light_dst->direction_ws = direction_ws;
-                    light_dst->direction_vs = direction_vs;
-                    light_dst->position_ws = position_ws;
-                    light_dst->position_vs = position_vs;
-                    light_dst->spot_angle = light_src->angle;
-                    light_dst->range = light_src->range;
-                    light_dst->color = color;
-                    light_dst->intensity = light_src->intensity;
-                    light_dst->attenuation = attenuation;
-                }
-
-                // Animation Player progress
-                if(node->type_flags & RK_NodeTypeFlag_AnimationPlayer)
-                {
-                    RK_AnimationPlayer *anim_player = node->animation_player;
-                    // TODO(XXX): test for now, play the first animation
-                    if(rk_handle_is_zero(anim_player->playback.curr))
-                    {
-                        anim_player->playback.curr = anim_player->animations[0]; 
-                        anim_player->playback.loop = 1;
-                    }
+                Vec4F32 position_ws = {0,0,0,1};
+                MemoryCopy(&position_ws, &node->fixed_position, sizeof(Vec3F32));
+                Vec4F32 position_vs = transform_4x4f32_4f32(view_m, position_ws);
                 
-                    // play animation if there is any
-                    if(!rk_handle_is_zero(anim_player->playback.curr))
-                    {
-                        anim_player->playback.pos += rk_state->dt_sec;
-                        RK_Animation *animation = rk_res_data_from_handle(anim_player->playback.curr);
-                        if(anim_player->playback.pos > animation->duration_sec && anim_player->playback.loop)
-                        {
-                            anim_player->playback.pos = mod_f32(anim_player->playback.pos, animation->duration_sec);
-                        }
-                        if(animation)
-                        {
-                            F32 pos = anim_player->playback.pos;
-                            for(RK_Track *track = animation->first_track; track != 0; track = track->next)
-                            {
-                                RK_Node *target = rk_node_from_key(rk_key_merge(anim_player->target_seed, track->target_key));
-                                AssertAlways(target != 0);
+                Vec4F32 color = {0,0,0, 1};
+                MemoryCopy(&color, &light_src->color, sizeof(Vec3F32));
 
-                                F32 t = 0;
-                                RK_TrackFrame *prev_frame = 0;
-                                BTSetFindPrev_PLRKZ(track->frame_btree_root,pos,prev_frame,parent,left,right,ts_sec,0);
-                                RK_TrackFrame *next_frame = 0;
-                                BTNext_PLRZ(prev_frame, next_frame, parent, left, right, 0);
-                                // NOTE(k): single frame track or track is finished
-                                if(next_frame == 0)
-                                {
-                                    next_frame = prev_frame;
-                                    t = 0;
-                                }
-                                else
-                                {
-                                    Assert(next_frame->ts_sec > prev_frame->ts_sec);
-                                    Assert(pos > prev_frame->ts_sec);
-                                    Assert(pos <= next_frame->ts_sec);
-                                    switch(track->interpolation)
-                                    {
-                                        case RK_InterpolationKind_Linear:
-                                        {
-                                            t = (pos-prev_frame->ts_sec)/(next_frame->ts_sec-prev_frame->ts_sec);
-                                        }break;
-                                        case RK_InterpolationKind_Cubic:
-                                        case RK_InterpolationKind_Step:
-                                        {
-                                            NotImplemented;
-                                        }break;
-                                        default: {InvalidPath;}break;
-                                    }
-                                }
+                Vec4F32 attenuation = {0};
+                MemoryCopy(&attenuation, &light_src->attenuation, sizeof(Vec3F32));
 
-                                switch(track->target_kind)
-                                {
-                                    case RK_TrackTargetKind_Position3D:
-                                    {
-                                        target->node3d->transform.position = mix_3f32(prev_frame->v.position3d, next_frame->v.position3d, t);
-                                    }break;
-                                    case RK_TrackTargetKind_Rotation3D:
-                                    {
-                                        target->node3d->transform.rotation = mix_quat_f32(prev_frame->v.rotation3d, next_frame->v.rotation3d, t);
-                                    }break;
-                                    case RK_TrackTargetKind_Scale3D:
-                                    {
-                                        target->node3d->transform.scale = mix_3f32(prev_frame->v.scale3d, next_frame->v.scale3d, t);
-                                    }break;
-                                    case RK_TrackTargetKind_MorphWeight3D:
-                                    default: {}break;
-                                }
-                            }
-                        }
-                    }
-                }
+                light_dst->kind = R_Vulkan_LightKind_Point;
+                light_dst->position_ws = position_ws;
+                light_dst->position_vs = position_vs;
+                light_dst->range = light_src->range;
+                light_dst->color = color;
+                light_dst->intensity = light_src->intensity;
+                light_dst->attenuation = attenuation;
+            }
 
-                // Draw mesh(3d/2d)
-                if(node->type_flags & RK_NodeTypeFlag_MeshInstance3D)
+            if(node->type_flags & RK_NodeTypeFlag_SpotLight)
+            {
+                R_Light *light_dst = &lights[(*light_count)++];
+                RK_SpotLight *light_src = node->spot_light;
+
+                Vec4F32 position_ws = {0,0,0,1};
+                MemoryCopy(&position_ws, &node->fixed_position, sizeof(Vec3F32));
+                Vec4F32 position_vs = transform_4x4f32_4f32(view_m, position_ws);
+
+                Vec4F32 direction_ws = {0,0,0,0};
+                MemoryCopy(&direction_ws, &light_src->direction, sizeof(Vec3F32));
+                direction_ws = transform_4x4f32_4f32(node->fixed_xform, direction_ws);
+                Vec4F32 direction_vs = transform_4x4f32_4f32(view_m, direction_ws);
+                
+                Vec4F32 color = {0,0,0, 1};
+                MemoryCopy(&color, &light_src->color, sizeof(Vec3F32));
+
+                Vec4F32 attenuation = {0};
+                MemoryCopy(&attenuation, &light_src->attenuation, sizeof(Vec3F32));
+
+                light_dst->kind = R_Vulkan_LightKind_Spot;
+                light_dst->direction_ws = direction_ws;
+                light_dst->direction_vs = direction_vs;
+                light_dst->position_ws = position_ws;
+                light_dst->position_vs = position_vs;
+                light_dst->spot_angle = light_src->angle;
+                light_dst->range = light_src->range;
+                light_dst->color = color;
+                light_dst->intensity = light_src->intensity;
+                light_dst->attenuation = attenuation;
+            }
+
+            // Animation Player progress
+            if(node->type_flags & RK_NodeTypeFlag_AnimationPlayer)
+            {
+                RK_AnimationPlayer *anim_player = node->animation_player;
+                // TODO(XXX): test for now, play the first animation
+                if(anim_player->playback.curr == 0)
                 {
-                    RK_MeshInstance3D *mesh_inst3d = node->mesh_inst3d;
-                    RK_Mesh *mesh = rk_res_data_from_handle(mesh_inst3d->mesh);
-                    RK_Skin *skin = rk_res_data_from_handle(mesh_inst3d->skin);
-                    RK_Key skin_seed = mesh_inst3d->skin_seed;
-                    U64 joint_count = 0;
-                    Mat4x4F32 *joint_xforms = 0;
-
-                    if(skin != 0)
-                    {
-                        joint_count = skin->bind_count;
-                        joint_xforms = push_array(rk_frame_arena(), Mat4x4F32, joint_count);
-
-                        RK_Bind *bind;
-                        for(U64 i = 0; i < joint_count; i++)
-                        {
-                            bind = &skin->binds[i];
-                            RK_Key target_key = rk_key_merge(skin_seed, bind->joint);
-                            RK_Node *target = rk_node_from_key(target_key);
-                            AssertAlways(target != 0);
-                            joint_xforms[i] = mul_4x4f32(target->fixed_xform, bind->inverse_bind_matrix);
-                        }
-                    }
-                    
-                    /////////////////////////////////////////////////////////////////////
-                    // material
-
-                    U64 mat_idx = 0; // 0 is the default material
-                    if(camera->viewport_shading == RK_ViewportShadingKind_Material)
-                    {
-                        RK_Resource *mat_res = rk_res_from_handle(mesh_inst3d->material_override);
-                        // load mesh material if no override is provided
-                        if(mat_res == 0)
-                        {
-                            mat_res = rk_res_from_handle(mesh->material);
-                        }
-
-                        if(mat_res)
-                        {
-                            U64 mat_key = mat_res->key.u64[0];
-                            U64 slot_idx = mat_res->key.u64[0] % MAX_MATERIALS_PER_PASS;
-                            U64 *ret = 0;
-                            for(HashNode *n = material_slots->first; n != 0; n = n->hash_next)
-                            {
-                                if(n->key == mat_key)
-                                {
-                                    ret = &n->value.u64;
-                                    break;
-                                }
-                            }
-
-                            // upload material if no cache is found
-                            if(ret == 0)
-                            {
-                                RK_Material *mat_src = &mat_res->v.material;
-                                R_Material *mat_dst = &materials[*material_count];
-
-                                // copy src to dst
-                                // TODO(k): we could set global ambient here based on the settings of scene
-                                MemoryCopy(mat_dst, &mat_src->v, sizeof(R_Material));
-                                for(U64 kind = 0; kind < R_GeoTexKind_COUNT; kind++)
-                                {
-                                    RK_Texture2D *tex = rk_res_data_from_handle(mat_src->textures[kind]);
-                                    if(tex) textures[*material_count].array[kind] = tex->tex;
-                                }
-
-                                // cache it
-                                HashNode *hash_node = push_array(rk_frame_arena(), HashNode, 1);
-                                hash_node->key = mat_res->key.u64[0];
-                                hash_node->value.u64 = *material_count;
-                                DLLPushBack_NP(material_slots[slot_idx].first, material_slots[slot_idx].last, hash_node, hash_next, hash_prev);
-                                (*material_count)++;
-
-                                ret = &hash_node->value.u64;
-                            }
-                            mat_idx = *ret;
-                        }
-                    }
-
-                    /////////////////////////////////////////////////////////////////////
-                    // draw mesh
-
-                    R_Mesh3DInst *inst = d_mesh(mesh->vertices, mesh->indices, 0,0, mesh->indice_count,
-                                                mesh->topology, polygon_mode,
-                                                R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB,
-                                                joint_xforms, joint_count,
-                                                mat_idx, 1, 0);
-
-                    // fill inst info 
-                    inst->xform      = node->fixed_xform;
-                    inst->xform_inv  = inverse_4x4f32(node->fixed_xform);
-                    inst->omit_light = mesh_inst3d->omit_light || scene->omit_light;
-                    inst->key        = node->key.u64[0];
-                    inst->draw_edge  = rk_node_is_active(node) || mesh_inst3d->draw_edge;
-                    inst->depth_test = !mesh_inst3d->omit_depth_test;
+                    anim_player->playback.curr = anim_player->animations[0]; 
+                    anim_player->playback.loop = 1;
                 }
+            
+                // play animation if there is any
+                if(anim_player->playback.curr != 0)
+                {
+                    anim_player->playback.pos += rk_state->dt_sec;
+                    RK_Animation *animation = anim_player->playback.curr;
+                    if(anim_player->playback.pos > animation->duration_sec && anim_player->playback.loop)
+                    {
+                        anim_player->playback.pos = mod_f32(anim_player->playback.pos, animation->duration_sec);
+                    }
+                    if(animation)
+                    {
+                        F32 pos = anim_player->playback.pos;
+                        for(U64 i = 0; i < animation->track_count; i++)
+                        {
+                            RK_Track *track = &animation->tracks[i];
+                            RK_Node *target = rk_node_from_key(rk_key_merge(anim_player->target_seed, track->target_key));
+                            AssertAlways(target != 0);
+
+                            F32 t = 0;
+                            RK_TrackFrame *prev_frame = 0;
+                            BTSetFindPrev_PLRKZ(track->frame_btree_root,pos,prev_frame,parent,left,right,ts_sec,0);
+                            RK_TrackFrame *next_frame = 0;
+                            BTNext_PLRZ(prev_frame, next_frame, parent, left, right, 0);
+                            // NOTE(k): single frame track or track is finished
+                            if(next_frame == 0)
+                            {
+                                next_frame = prev_frame;
+                                t = 0;
+                            }
+                            else
+                            {
+                                Assert(next_frame->ts_sec > prev_frame->ts_sec);
+                                Assert(pos > prev_frame->ts_sec);
+                                Assert(pos <= next_frame->ts_sec);
+                                switch(track->interpolation)
+                                {
+                                    case RK_InterpolationKind_Linear:
+                                    {
+                                        t = (pos-prev_frame->ts_sec)/(next_frame->ts_sec-prev_frame->ts_sec);
+                                    }break;
+                                    case RK_InterpolationKind_Cubic:
+                                    case RK_InterpolationKind_Step:
+                                    {
+                                        NotImplemented;
+                                    }break;
+                                    default: {InvalidPath;}break;
+                                }
+                            }
+
+                            switch(track->target_kind)
+                            {
+                                case RK_TrackTargetKind_Position3D:
+                                {
+                                    target->node3d->transform.position = mix_3f32(prev_frame->v.position3d, next_frame->v.position3d, t);
+                                }break;
+                                case RK_TrackTargetKind_Rotation3D:
+                                {
+                                    target->node3d->transform.rotation = mix_quat_f32(prev_frame->v.rotation3d, next_frame->v.rotation3d, t);
+                                }break;
+                                case RK_TrackTargetKind_Scale3D:
+                                {
+                                    target->node3d->transform.scale = mix_3f32(prev_frame->v.scale3d, next_frame->v.scale3d, t);
+                                }break;
+                                case RK_TrackTargetKind_MorphWeight3D:
+                                default: {}break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // draw sprite2d
+            D_BucketScope(geo_screen_bucket) if(node->type_flags & RK_NodeTypeFlag_Sprite2D)
+            {
+                RK_Sprite2D *sprite = node->sprite2d;
+                RK_Texture2D *tex = sprite->tex;
+
+                /////////////////////////////////////////////////////////////////////////
+                // draw mesh
+
+                // TODO(XXX): implement it
+                Rng2F32 src = {0,0, 30,30};
+                Rng2F32 dst = {0,0, 1,1};
+                RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_gizmo_drawlist(), src, dst, v3f32(1,1,1));
+                n->key = node->key;
+                n->xform = node->fixed_xform;
+                n->draw_edge = 0;
+                n->omit_light = 1;
+                n->disable_depth = 0;
+                n->line_width = 1;
+                if(tex) n->albedo_tex = tex->tex;
+                n->color = v4f32(1,1,1,1);
+            }
+
+            D_BucketScope(geo_screen_bucket) if(node->type_flags & RK_NodeTypeFlag_AnimatedSprite2D)
+            {
+                RK_AnimatedSprite2D *sprite = node->animated_sprite2d;
+                RK_SpriteSheet *sheet = sprite->sheet;
+
+                /////////////////////////////////////////////////////////////////////////
+                // draw mesh
+
+                // TODO(XXX): implement it
+                Rng2F32 src = {0};
+                src.x1 = sheet->frames[0].w;
+                src.y1 = sheet->frames[0].h;
+                Rng2F32 dst = {0};
+                dst.x0 = sheet->frames[0].x / sheet->size.x;
+                dst.y0 = sheet->frames[0].y / sheet->size.y;
+                dst.x1 = (sheet->frames[0].x+sheet->frames[0].w) / sheet->size.x;
+                dst.y1 = (sheet->frames[0].y+sheet->frames[0].h) / sheet->size.y;
+
+                RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_gizmo_drawlist(), src, dst, v3f32(1,1,1));
+                n->key = node->key;
+                n->xform = node->fixed_xform;
+                n->draw_edge = 0;
+                n->omit_light = 1;
+                n->disable_depth = 0;
+                n->line_width = 1;
+                n->albedo_tex = sheet->tex->tex;
+                n->color = v4f32(1,1,1,1);
+            }
+
+            // Draw mesh(3d)
+            D_BucketScope(geo_back_bucket) if(node->type_flags & RK_NodeTypeFlag_MeshInstance3D)
+            {
+                RK_MeshInstance3D *mesh_inst3d = node->mesh_inst3d;
+                RK_Mesh *mesh = mesh_inst3d->mesh;
+                RK_Skin *skin = mesh_inst3d->skin;
+                RK_Key skin_seed = mesh_inst3d->skin_seed;
+                U64 joint_count = 0;
+                Mat4x4F32 *joint_xforms = 0;
+
+                if(skin != 0)
+                {
+                    joint_count = skin->bind_count;
+                    joint_xforms = push_array(rk_frame_arena(), Mat4x4F32, joint_count);
+
+                    RK_Bind *bind;
+                    for(U64 i = 0; i < joint_count; i++)
+                    {
+                        bind = &skin->binds[i];
+                        RK_Key target_key = rk_key_merge(skin_seed, bind->joint);
+                        RK_Node *target = rk_node_from_key(target_key);
+                        AssertAlways(target != 0);
+                        joint_xforms[i] = mul_4x4f32(target->fixed_xform, bind->inverse_bind_matrix);
+                    }
+                }
+                
+                /////////////////////////////////////////////////////////////////////
+                // material
+
+                U64 mat_idx = 0; // 0 is the default material
+                if(camera->viewport_shading == RK_ViewportShadingKind_Material)
+                {
+                    RK_Material *mat = mesh_inst3d->material_override;
+                    // load mesh material if no override is provided
+                    if(mat == 0)
+                    {
+                        mat = mesh->material;
+                    }
+
+                    if(mat)
+                    {
+                        U64 mat_key = (U64)mat;
+                        U64 slot_idx = mat_key % MAX_MATERIALS_PER_PASS;
+                        U64 *ret = 0;
+                        for(HashNode *n = material_slots->first; n != 0; n = n->hash_next)
+                        {
+                            if(n->key == mat_key)
+                            {
+                                ret = &n->value.u64;
+                                break;
+                            }
+                        }
+
+                        // upload material if no cache is found
+                        if(ret == 0)
+                        {
+                            RK_Material *mat_src = mat;
+                            R_Material *mat_dst = &materials[*material_count];
+
+                            // copy src to dst
+                            // TODO(k): we could set global ambient here based on the settings of scene
+                            MemoryCopy(mat_dst, &mat_src->v, sizeof(R_Material));
+                            for(U64 kind = 0; kind < R_GeoTexKind_COUNT; kind++)
+                            {
+                                RK_Texture2D *tex = mat_src->textures[kind];
+                                if(tex) textures[*material_count].array[kind] = tex->tex;
+                            }
+
+                            // cache it
+                            HashNode *hash_node = push_array(rk_frame_arena(), HashNode, 1);
+                            hash_node->key = mat_key;
+                            hash_node->value.u64 = *material_count;
+                            DLLPushBack_NP(material_slots[slot_idx].first, material_slots[slot_idx].last, hash_node, hash_next, hash_prev);
+                            (*material_count)++;
+
+                            ret = &hash_node->value.u64;
+                        }
+                        mat_idx = *ret;
+                    }
+                }
+
+                /////////////////////////////////////////////////////////////////////
+                // draw mesh
+
+                R_Mesh3DInst *inst = d_mesh(mesh->vertices, mesh->indices, 0,0, mesh->indice_count,
+                                            mesh->topology, polygon_mode,
+                                            R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB,
+                                            joint_xforms, joint_count,
+                                            mat_idx, 1, 0);
+
+                // fill inst info 
+                inst->xform      = node->fixed_xform;
+                inst->xform_inv  = inverse_4x4f32(node->fixed_xform);
+                inst->omit_light = mesh_inst3d->omit_light || scene->omit_light;
+                inst->key        = node->key.u64[0];
+                inst->draw_edge  = rk_node_is_active(node) || mesh_inst3d->draw_edge;
+                inst->depth_test = !mesh_inst3d->omit_depth_test;
             }
 
             // pop stacks
@@ -2992,7 +2889,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
     /////////////////////////////////
     // Update hot/active key
     {
-        scene->hot_key = rk_key_make(hot_key);
+        scene->hot_key = rk_key_make(hot_key, 0);
         if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
         {
             scene->active_key = scene->hot_key;
@@ -3087,7 +2984,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 RK_Key axis_keys[3] = {i_hat_key, j_hat_key, k_hat_key};
                 switch(scene->gizmo3d_mode)
                 {
-                    case RK_Gizmo3dMode_Translate:
+                    case RK_Gizmo3DMode_Translate:
                     {
                         // cfg
                         F32 axis_length = 1.0 * scale_t;
@@ -3189,7 +3086,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                         rk_drawlist_push_circle(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*1.3, 69,v4f32(1,1,1,1), linew_scale*6, 1);
 
                     }break;
-                    case RK_Gizmo3dMode_Rotation:
+                    case RK_Gizmo3DMode_Rotation:
                     {
                         F32 ring_radius = 1*scale_t;
                         U64 ring_segments = 69;
@@ -3252,8 +3149,8 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                                 Vec3F32 dir = normalize_3f32(sub_3f32(intersect, gizmo_origin));
                                 intersect = add_3f32(gizmo_origin, scale_3f32(dir, ring_radius));
 
-                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_make(0), intersect, gizmo_origin, v4f32(1,0,0,1), 5.f*linew_scale, 1);
-                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_make(0), drag_data->anchor, gizmo_origin, v4f32(0,1,0,1), 5.f*linew_scale, 1);
+                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_make(0,0), intersect, gizmo_origin, v4f32(1,0,0,1), 5.f*linew_scale, 1);
+                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_make(0,0), drag_data->anchor, gizmo_origin, v4f32(0,1,0,1), 5.f*linew_scale, 1);
 
                                 Vec3F32 start_dir = normalize_3f32(sub_3f32(drag_data->anchor, gizmo_origin));
                                 Vec3F32 curr_dir = normalize_3f32(sub_3f32(intersect, gizmo_origin));
@@ -3295,7 +3192,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                         // draw a outer circle
                         // rk_drawlist_push_circle(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*1.3, 69,v4f32(0,0,0,0.1), 9, 0);
                     }break;
-                    case RK_Gizmo3dMode_Scale:
+                    case RK_Gizmo3DMode_Scale:
                     {
                         // cfg
                         F32 axis_length = 1.0 * scale_t;
@@ -3446,11 +3343,6 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
             {
                 RK_NodeRec rec = rk_node_df_pre(node, 0, 0);
 
-                if(node->type_flags & RK_NodeTypeFlag_PointLight)
-                {
-
-                }
-
                 if(node->type_flags & RK_NodeTypeFlag_SpotLight)
                 {
                     RK_SpotLight *light = node->spot_light;
@@ -3464,14 +3356,17 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                                                                    origin, negate_3f32(dir), radius, height, 39, v4f32(1,1,1,0.3), 1, 1);
                     draw_node->polygon = R_GeoPolygonKind_Line;
                 }
-
                 node = rec.next;
             }
         }
-
-        // build gizmo drawlists
-        rk_drawlist_build(rk_frame_gizmo_drawlist());
     }
+
+    // TODO(XXX): we should change the name of drawlist, it could be generic
+    // TODO(XXX): performance issue when enabled, find out why
+    // build gizmo drawlists
+    ProfBegin("drawlist build");
+    rk_drawlist_build(rk_frame_gizmo_drawlist());
+    ProfEnd();
 
     /////////////////////////////////
     // Draw ui
@@ -3501,7 +3396,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 
     D_Bucket *ret = d_bucket_make();
     d_push_bucket(ret);
-    // NOTE(k): check if there is anything in passes, we don't a empty geo pass (performance issue)
+    // NOTE(k): check if there is anything in passes, we don't a empty geo pass (pass is not cheap)
     if(!d_bucket_is_empty(rk_state->bucket_geo3d[RK_GeoBucketKind_Back]))   {d_sub_bucket(rk_state->bucket_geo3d[RK_GeoBucketKind_Back], 0);}
     if(!d_bucket_is_empty(rk_state->bucket_geo3d[RK_GeoBucketKind_Front]))  {d_sub_bucket(rk_state->bucket_geo3d[RK_GeoBucketKind_Front], 0);}
     if(!d_bucket_is_empty(rk_state->bucket_geo3d[RK_GeoBucketKind_Screen])) {d_sub_bucket(rk_state->bucket_geo3d[RK_GeoBucketKind_Screen], 0);}
