@@ -2290,10 +2290,9 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
         D_BucketScope(*bucket)
         {
             Rng2F32 viewport = rk_state->window_rect;
-            Mat4x4F32 view_m = mat_4x4f32(1.0f);
             Mat4x4F32 proj_m = make_orthographic_vulkan_4x4f32(viewport.x0, viewport.x1, viewport.y1, viewport.y0, 0.1, 100.f);
 
-            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, mat_4x4f32(1.0f), projection_m, 0, 1);
+            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, projection_m, 0, 1);
             pass_params->lights = push_array(rk_frame_arena(), R_Light, MAX_LIGHTS_PER_PASS);
             pass_params->materials = push_array(rk_frame_arena(), R_Material, MAX_MATERIALS_PER_PASS);
             pass_params->textures = push_array(rk_frame_arena(), R_PackedTextures, MAX_MATERIALS_PER_PASS);
@@ -2736,7 +2735,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 // TODO(XXX): implement it
                 Rng2F32 src = {0,0, 30,30};
                 Rng2F32 dst = {0,0, 1,1};
-                RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_gizmo_drawlist(), src, dst, v3f32(1,1,1));
+                RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_gizmo_drawlist(), src, dst, 0);
                 n->key = node->key;
                 n->xform = node->fixed_xform;
                 n->draw_edge = 0;
@@ -2755,17 +2754,57 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 /////////////////////////////////////////////////////////////////////////
                 // draw mesh
 
-                // TODO(XXX): implement it
-                Rng2F32 src = {0};
-                src.x1 = sheet->frames[0].w;
-                src.y1 = sheet->frames[0].h;
-                Rng2F32 dst = {0};
-                dst.x0 = sheet->frames[0].x / sheet->size.x;
-                dst.y0 = sheet->frames[0].y / sheet->size.y;
-                dst.x1 = (sheet->frames[0].x+sheet->frames[0].w) / sheet->size.x;
-                dst.y1 = (sheet->frames[0].y+sheet->frames[0].h) / sheet->size.y;
+                // animation
 
-                RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_gizmo_drawlist(), src, dst, v3f32(1,1,1));
+                if(sprite->is_animating)
+                {
+                    sprite->ts_ms += rk_state->dt_ms;
+                }
+
+                RK_SpriteSheetTag *tag = 0;
+                while(tag == 0)
+                {
+                    tag = &sprite->sheet->tags[sprite->curr_tag];
+
+                    if(sprite->ts_ms > tag->duration)
+                    {
+                        sprite->ts_ms -= tag->duration;
+                        if(!sprite->loop)
+                        {
+                            sprite->curr_tag = sprite->next_tag;
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                RK_SpriteSheetFrame *frame;
+                F32 frame_duration_acc = 0;
+                // find the frame
+                // TODO(XXX): linear search for now, we can do better
+                for(U64 i = tag->from; i <= tag->to; i++)
+                {
+                    frame_duration_acc += sprite->sheet->frames[i].duration;
+                    if(sprite->ts_ms < frame_duration_acc)
+                    {
+                        frame = &sprite->sheet->frames[i];
+                        break;
+                    }
+                }
+                AssertAlways(frame != 0);
+
+                Rng2F32 src = {0};
+                src.x1 = frame->w;
+                src.y1 = frame->h;
+                Rng2F32 dst = {0};
+                dst.x0 = frame->x / sheet->size.x;
+                dst.y0 = frame->y / sheet->size.y;
+                dst.x1 = (frame->x+frame->w) / sheet->size.x;
+                dst.y1 = (frame->y+frame->h) / sheet->size.y;
+
+                RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_gizmo_drawlist(), src, dst, 10);
                 n->key = node->key;
                 n->xform = node->fixed_xform;
                 n->draw_edge = 0;
@@ -2774,6 +2813,21 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
                 n->line_width = 1;
                 n->albedo_tex = sheet->tex->tex;
                 n->color = v4f32(1,1,1,1);
+
+                // debug rect
+                if(1)
+                // if(rk_key_match(scene->hot_key, node->key))
+                {
+                    RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_gizmo_drawlist(), src, dst, 0);
+                    n->key = node->key;
+                    n->xform = node->fixed_xform;
+                    n->draw_edge = 1;
+                    n->omit_light = 1;
+                    n->disable_depth = 0;
+                    n->line_width = 1;
+                    n->albedo_tex = r_handle_zero();
+                    n->color = v4f32(0.1,0.1,0.1,0.3);
+                }
             }
 
             // Draw mesh(3d)
@@ -3484,7 +3538,7 @@ rk_drawlist_build(RK_DrawList *drawlist)
 
             U64 mat_idx = pass_params->material_count;
             pass_params->materials[mat_idx].diffuse_color = n->color;
-            pass_params->materials[mat_idx].opacity = 1.0f;
+            pass_params->materials[mat_idx].opacity = 1.0;
             pass_params->materials[mat_idx].has_diffuse_texture = !r_handle_match(n->albedo_tex, r_handle_zero());
             pass_params->textures[mat_idx].array[R_GeoTexKind_Diffuse] = n->albedo_tex;
             pass_params->material_count++;
@@ -3501,7 +3555,7 @@ rk_drawlist_build(RK_DrawList *drawlist)
             inst->xform_inv = inverse_4x4f32(n->xform);
             inst->key = n->key.u64[0];
             inst->draw_edge = n->draw_edge;
-            inst->depth_test = n->disable_depth;
+            inst->depth_test = !n->disable_depth;
             inst->omit_light = n->omit_light;
         }
 

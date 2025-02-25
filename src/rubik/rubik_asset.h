@@ -53,7 +53,7 @@ internal void rk_node_equip_torus(RK_Node *node, F32 inner_radius, F32 outer_rad
 
 //~ Drawlist building helper
 
-internal RK_DrawNode* rk_drawlist_push_rect(Arena *arena, RK_DrawList *drawlist, Rng2F32 src, Rng2F32 dst, Vec3F32 color);
+internal RK_DrawNode* rk_drawlist_push_rect(Arena *arena, RK_DrawList *drawlist, Rng2F32 src, Rng2F32 dst, F32 depth);
 internal RK_DrawNode* rk_drawlist_push_plane_filled(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec2F32 size, B32 both_face, Vec3F32 origin, Vec3F32 i_hat, Vec3F32 j_hat, Vec4F32 clr, B32 draw_edge, B32 omit_light);
 internal RK_DrawNode* rk_drawlist_push_box_filled(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 size, Vec3F32 origin, Vec3F32 i_hat, Vec3F32 j_hat, Vec4F32 clr, B32 draw_edge, B32 omit_light);
 internal RK_DrawNode* rk_drawlist_push_sphere(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 origin, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere, Vec4F32 clr, B32 draw_edge, B32 omit_light);

@@ -942,6 +942,19 @@ rk_spritesheet_from_image(String8 path, String8 meta_path)
             }
         }
 
+        // acc tag frames total duration
+        for(U64 i = 0; i < tag_count; i++)
+        {
+            F32 duration = 0; 
+            RK_SpriteSheetTag *tag = &tags[i];
+            for(U64 j = tag->from; j <= tag->to; j++)
+            {
+                duration += frames[j].duration;
+            }
+
+            tag->duration = duration;
+        }
+
         ret->tex         = rk_tex2d_from_image(path);
         ret->size        = sheet_size;
         ret->path        = push_str8_copy(arena, meta_path);
@@ -1080,7 +1093,6 @@ rk_node_from_packed_scene_node(RK_Node *node, RK_Key seed_key)
     // recursive
     for(RK_Node *child = node->first; child != 0; child = child->next) RK_Parent_Scope(ret)
     {
-        // TODO: how to handle skin
         rk_node_from_packed_scene_node(child, seed_key);
     }
     return ret;
@@ -1100,7 +1112,7 @@ rk_node_from_packed_scene(String8 string, RK_PackedScene *packed)
     return ret;
 }
 
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 //~ Mesh primitives
 
 internal void
@@ -2372,7 +2384,8 @@ rk_node_equip_torus(RK_Node *n, F32 inner_radius, F32 outer_radius, U64 rings, U
     n->mesh_inst3d->mesh = res->data;
 }
 
-internal RK_DrawNode* rk_drawlist_push_rect(Arena *arena, RK_DrawList *drawlist, Rng2F32 src, Rng2F32 dst, Vec3F32 color)
+internal RK_DrawNode *
+rk_drawlist_push_rect(Arena *arena, RK_DrawList *drawlist, Rng2F32 src, Rng2F32 dst, F32 depth)
 {
     RK_DrawNode *ret = rk_drawlist_push(arena, drawlist);
     D_Bucket *bucket = d_top_bucket();
@@ -2383,27 +2396,27 @@ internal RK_DrawNode* rk_drawlist_push_rect(Arena *arena, RK_DrawList *drawlist,
     U32 *indices = push_array(arena, U32, 6);
 
     // top left 0
-    vertices[0].col = color;
+    vertices[0].col = v3f32(0,0,0);
     vertices[0].nor = v3f32(0,0,-1);
-    vertices[0].pos = v3f32(src.x0, src.y0, 0);
+    vertices[0].pos = v3f32(src.x0, src.y0, depth);
     vertices[0].tex = v2f32(dst.x0, dst.y0);
 
     // bottom left 1
-    vertices[1].col = color;
+    vertices[1].col = v3f32(0,0,0);
     vertices[1].nor = v3f32(0,0,-1);
-    vertices[1].pos = v3f32(src.x0, src.y1, 0);
+    vertices[1].pos = v3f32(src.x0, src.y1, depth);
     vertices[1].tex = v2f32(dst.x0, dst.y1);
 
     // top right 2
-    vertices[2].col = color;
+    vertices[2].col = v3f32(0,0,0);
     vertices[2].nor = v3f32(0,0,-1);
-    vertices[2].pos = v3f32(src.x1, src.y0, 0);
+    vertices[2].pos = v3f32(src.x1, src.y0, depth);
     vertices[2].tex = v2f32(dst.x1, dst.y0);
 
     // bottom right 3
-    vertices[3].col = color;
+    vertices[3].col = v3f32(0,0,0);
     vertices[3].nor = v3f32(0,0,-1);
-    vertices[3].pos = v3f32(src.x1, src.y1, 0);
+    vertices[3].pos = v3f32(src.x1, src.y1, depth);
     vertices[3].tex = v2f32(dst.x1, dst.y1);
 
     indices[0] = 0;

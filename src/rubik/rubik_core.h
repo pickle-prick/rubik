@@ -35,13 +35,6 @@ typedef enum RK_Gizmo3DMode
     RK_Gizmo3DMode_COUNT,
 } RK_Gizmo3DMode;
 
-typedef enum RK_Sprite2DShapeKind
-{
-    RK_Sprite2DShapeKind_Rect,
-    RK_Sprite2DShapeKind_Circle,
-    RK_Sprite2DShapeKind_COUNT,
-} RK_Sprite2DShapeKind;
-
 /////////////////////////////////////////////////////////////////////////////////////////
 //- Render bucket
 
@@ -402,6 +395,7 @@ struct RK_SpriteSheetTag
     DirH direction;
     // TODO: what's for
     Vec4F32 color;
+    F32 duration;
 };
 
 typedef struct RK_SpriteSheet RK_SpriteSheet;
@@ -569,28 +563,21 @@ typedef struct RK_Sprite2D RK_Sprite2D;
 struct RK_Sprite2D
 {
     RK_Sprite2D *next;
-    RK_Sprite2DShapeKind shape;
     RK_Texture2D *tex;
-    union
-    {
-        Vec2F32 rect;
-        F32 circle;
-    } size;
 };
 
 typedef struct RK_AnimatedSprite2D RK_AnimatedSprite2D;
 struct RK_AnimatedSprite2D
 {
     RK_AnimatedSprite2D *next;
-    RK_Sprite2DShapeKind shape;
-    union
-    {
-        Vec2F32 rect;
-        F32 circle;
-    } size;
 
     // animations
     RK_SpriteSheet *sheet;
+    U64 curr_tag;
+    U64 next_tag;
+    B32 loop;
+    B32 is_animating;
+    F32 ts_ms;
 };
 
 /////////////////////////////////
