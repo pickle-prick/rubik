@@ -2025,6 +2025,21 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
     return ret;
 }
 
+internal void
+r_tex2d_release(R_Handle handle)
+{
+    R_Vulkan_Tex2D *tex2d = r_vulkan_tex2d_from_handle(handle);
+
+    // view->image->ds->memory
+    vkDestroyImageView(r_vulkan_state->device.h, tex2d->image.view, NULL);
+    vkDestroyImage(r_vulkan_state->device.h, tex2d->image.h, NULL);
+    r_vulkan_descriptor_set_destroy(&tex2d->desc_set);
+    vkFreeMemory(r_vulkan_state->device.h, tex2d->image.memory, NULL);
+
+    SLLStackPush(r_vulkan_state->first_free_tex2d, tex2d);
+    tex2d->generation++;
+}
+
 internal R_Handle
 r_vulkan_handle_from_tex2d(R_Vulkan_Tex2D *texture)
 {

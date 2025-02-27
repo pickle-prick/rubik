@@ -1,7 +1,6 @@
 // Camera (editor camera)
 RK_NODE_CUSTOM_UPDATE(editor_camera_fn)
 {
-    Assert(node->type_flags & RK_NodeTypeFlag_Camera3D);
     RK_Transform3D *transform = &node->node3d->transform;
 
     if(rk_state->sig.f & UI_SignalFlag_LeftDragging)

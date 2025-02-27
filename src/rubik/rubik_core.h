@@ -729,8 +729,9 @@ struct RK_ResourceBucket
 typedef struct RK_Scene RK_Scene;
 struct RK_Scene
 {
-    // Allocation link
     RK_Scene          *next;
+
+    U64               frame_idx;
     // Storage
     Arena             *arena;
     RK_NodeBucket     *node_bucket;
@@ -974,6 +975,7 @@ struct RK_State
         U64 gpu_dt_us;
     } debug;
 
+    RK_Scene              *next_active_scene;
     RK_Scene              *first_to_free_scene;
 
     RK_DeclStackNils;
@@ -1119,7 +1121,7 @@ internal void rk_ui_profiler(void);
 //~ Frame
 
 internal void      rk_ui_draw(void);
-internal D_Bucket* rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt, U64 hot_key);
+internal D_Bucket* rk_frame(OS_EventList os_events, U64 dt, U64 hot_key);
 
 /////////////////////////////////
 // Dynamic drawing (in immediate mode fashion)

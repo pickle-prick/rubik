@@ -576,6 +576,7 @@ internal void                     r_vulkan_rendpass_grp_destroy(R_Vulkan_RenderP
 internal R_Vulkan_Pipeline        r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoPolygonKind polygon, VkRenderPass renderpass, R_Vulkan_Pipeline *old);
 internal R_Vulkan_Pipeline        r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind);
 internal void                     r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind, U64 set_count, U64 cap, VkBuffer *buffers, VkImageView *image_views, VkSampler *sampler, R_Vulkan_DescriptorSet *sets);
+internal void                     r_vulkan_descriptor_set_destroy(R_Vulkan_DescriptorSet *set);
 internal void                     r_vulkan_rendpass_grp_submit(R_Vulkan_Bag *bag, R_Vulkan_RenderPassGroup *grp);
 internal R_Vulkan_UBOBuffer       r_vulkan_ubo_buffer_alloc(R_Vulkan_UBOTypeKind kind, U64 unit_count);
 internal R_Vulkan_SBOBuffer       r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count);

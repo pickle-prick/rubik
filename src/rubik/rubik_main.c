@@ -131,7 +131,7 @@ entry_point(CmdLine *cmd_line)
         //~ Game frame
 
         // TODO(k): calculation of frame_dt_us may be not accurate
-        D_Bucket *d_bucket = rk_frame(rk_state->active_scene, events, frame_dt_us, hot_id);
+        D_Bucket *d_bucket = rk_frame(events, frame_dt_us, hot_id);
 
         /////////////////////////////////
         //~ End of frame

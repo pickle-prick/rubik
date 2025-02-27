@@ -507,7 +507,29 @@ rk_res_bucket_release(RK_ResourceBucket *res_bucket)
 
         for(RK_Resource *res = slot->first; res != 0; res = res->hash_next)
         {
-            NotImplemented;
+            switch(res->kind)
+            {
+                case RK_ResourceKind_Mesh:
+                {
+                    RK_Mesh *mesh = res->data;
+                    r_buffer_release(mesh->vertices);
+                    r_buffer_release(mesh->indices);
+                }break;
+                case RK_ResourceKind_Material:
+                case RK_ResourceKind_Skin:
+                case RK_ResourceKind_Animation:
+                case RK_ResourceKind_PackedScene:
+                case RK_ResourceKind_SpriteSheet:
+                {
+                    // noop
+                }break;
+                case RK_ResourceKind_Texture2D:
+                {
+                    RK_Texture2D *tex2d = res->data;
+                    r_tex2d_release(tex2d->tex);
+                }break;
+                default:{InvalidPath;}break;
+            }
         }
     }
 }
@@ -1603,11 +1625,12 @@ internal void rk_ui_inspector(void)
                     {
                         RK_Scene *new_scene = t.fn();
                         SLLStackPush(rk_state->first_to_free_scene, scene);
-                        rk_state->active_scene = new_scene;
+                        rk_state->next_active_scene = new_scene;
 
-                        U64 name_size = ClampTop(inspector->scene_path_to_save_buffer_size, new_scene->name.size);
-                        inspector->scene_path_to_save.size = name_size;
-                        MemoryCopy(inspector->scene_path_to_save.str, new_scene->name.str, name_size);
+                        // TODO(XXX): to be removed
+                        // U64 name_size = ClampTop(inspector->scene_path_to_save_buffer_size, new_scene->name.size);
+                        // inspector->scene_path_to_save.size = name_size;
+                        // MemoryCopy(inspector->scene_path_to_save.str, new_scene->name.str, name_size);
                         rk_ui_dropdown_hide();
                     }
                 }
@@ -2179,13 +2202,37 @@ internal void rk_ui_profiler(void)
 // Frame
 
 internal D_Bucket *
-rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
+rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
 {
     ProfBeginFunction();
+
+    RK_Scene *scene = rk_state->active_scene;
 
     /////////////////////////////////
     // Begin of the frame
     {
+        // free scenes
+        {
+            RK_Scene *s = rk_state->first_to_free_scene;
+            if(s != 0 && (rk_state->frame_counter-s->frame_idx) > MAX_FRAMES_IN_FLIGHT)
+            {
+                while(s)
+                {
+                    RK_Scene *next = s->next;
+                    SLLStackPop(rk_state->first_to_free_scene);
+                    rk_scene_release(s);
+                    s = next;
+                }
+            }
+        }
+
+        if(rk_state->next_active_scene != 0)
+        {
+            scene = rk_state->next_active_scene;
+            SLLStackPop(rk_state->next_active_scene);
+        }
+            
+        scene->frame_idx = rk_state->frame_counter;
         rk_push_node_bucket(scene->node_bucket);
         rk_push_res_bucket(scene->res_bucket);
         rk_push_scene(scene);
@@ -3424,6 +3471,7 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
 
     /////////////////////////////////
     // Draw ui
+
     ui_end_build();
     ProfScope("draw ui") D_BucketScope(rk_state->bucket_rect)
     {
@@ -3431,19 +3479,11 @@ rk_frame(RK_Scene *scene, OS_EventList os_events, U64 dt_us, U64 hot_key)
     }
 
     /////////////////////////////////
-    // End of the frame (pop, release scene)
-    {
-        rk_pop_node_bucket();
-        rk_pop_res_bucket();
-        rk_pop_scene();
+    // End of frame
 
-        RK_Scene *s = rk_state->first_to_free_scene;
-        for(RK_Scene *s = rk_state->first_to_free_scene; s != 0; s = rk_state->first_to_free_scene)
-        {
-            SLLStackPop(rk_state->first_to_free_scene);
-            rk_scene_release(s);
-        }
-    }
+    rk_pop_node_bucket();
+    rk_pop_res_bucket();
+    rk_pop_scene();
 
     /////////////////////////////////
     // concate draw buckets
@@ -3752,7 +3792,7 @@ rk_scene_alloc(String8 name, String8 save_path)
 internal void
 rk_scene_release(RK_Scene *s)
 {
-    // TODO(XXX): release resources, not done yet
+    rk_res_bucket_release(s->res_bucket);
     arena_release(s->arena);
 }
 
