@@ -537,6 +537,8 @@ rk_tex2d_from_image(String8 path)
             ret->tex = r_tex2d_alloc(R_ResourceKind_Static, sample_kind, v2s32(x,y), R_Tex2DFormat_RGBA8, image_data);
             ret->sample_kind = sample_kind;
             ret->path = push_str8_copy(arena, path);
+            ret->size.x = x;
+            ret->size.y = y;
 
             stbi_image_free(image_data);
         }

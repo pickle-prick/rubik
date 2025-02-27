@@ -638,7 +638,7 @@ rk_init(OS_Handle os_wnd)
     Arena *arena = arena_alloc();
     rk_state = push_array(arena, RK_State, 1);
     {
-        rk_state->arena           = arena;
+        rk_state->arena = arena;
         for(U64 i = 0; i < ArrayCount(rk_state->frame_arenas); i++)
         {
             rk_state->frame_arenas[i] = arena_alloc();
@@ -649,10 +649,10 @@ rk_init(OS_Handle os_wnd)
         rk_state->os_wnd          = os_wnd;
         rk_state->dpi             = os_dpi_from_window(os_wnd);
         rk_state->last_dpi        = rk_state->last_dpi;
-        for(U64 i = 0; i < ArrayCount(rk_state->gizmo_drawlists); i++)
+        for(U64 i = 0; i < ArrayCount(rk_state->drawlists); i++)
         {
             // TODO(k): some device offers 256MB memory which is both cpu visiable and device local
-            rk_state->gizmo_drawlists[i] = rk_drawlist_alloc(arena, MB(8), MB(8));
+            rk_state->drawlists[i] = rk_drawlist_alloc(arena, MB(8), MB(8));
         }
     }
 
@@ -756,9 +756,9 @@ rk_frame_arena()
 }
 
 internal RK_DrawList *
-rk_frame_gizmo_drawlist()
+rk_frame_drawlist()
 {
-    return rk_state->gizmo_drawlists[rk_state->frame_counter % ArrayCount(rk_state->gizmo_drawlists)];
+    return rk_state->drawlists[rk_state->frame_counter % ArrayCount(rk_state->drawlists)];
 }
 
 internal void 
@@ -1065,13 +1065,6 @@ rk_node_is_active(RK_Node *node)
         ret = 1;
     }
     return ret;
-}
-
-/////////////////////////////////
-// Node base scripting
-
-RK_NODE_CUSTOM_UPDATE(base_fn)
-{
 }
 
 /////////////////////////////////
@@ -1616,6 +1609,7 @@ internal void rk_ui_inspector(void)
     {
         UI_Row
         {
+            // templates selection
             {
                 rk_ui_dropdown_begin(str8_lit("load"));
                 for(U64 i = 0; i < rk_state->template_count; i++)
@@ -1864,7 +1858,39 @@ internal void rk_ui_inspector(void)
 
         if(active_node->type_flags & RK_NodeTypeFlag_Node2D)
         {
-            NotImplemented;
+            RK_Transform2D *transform2d = &active_node->node2d->transform;
+
+            ui_set_next_child_layout_axis(Axis2_X);
+            UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+            UI_Parent(header_box)
+            {
+                ui_spacer(ui_em(0.3f,0.f));
+                ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+                ui_labelf("node3d");
+            }
+
+            UI_Row
+            {
+                ui_labelf("position");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&transform2d->position.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
+                ui_f32_edit(&transform2d->position.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
+            }
+
+            UI_Row
+            {
+                ui_labelf("scale");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&transform2d->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###scale_x"));
+                ui_f32_edit(&transform2d->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###scale_y"));
+            }
+
+            UI_Row
+            {
+                ui_labelf("rotation");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_f32_edit(&transform2d->rotation, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###rot"));
+            }
         }
 
         ////////////////////////////////
@@ -2229,6 +2255,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         if(rk_state->next_active_scene != 0)
         {
             scene = rk_state->next_active_scene;
+            rk_state->active_scene = scene;
             SLLStackPop(rk_state->next_active_scene);
         }
             
@@ -2248,7 +2275,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         rk_state->dpi = os_dpi_from_window(rk_state->os_wnd);
 
         // clear frame gizmo drawlist
-        rk_drawlist_reset(rk_frame_gizmo_drawlist());
+        rk_drawlist_reset(rk_frame_drawlist());
 
         arena_clear(rk_frame_arena());
     }
@@ -2337,8 +2364,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         D_BucketScope(*bucket)
         {
             Rng2F32 viewport = rk_state->window_rect;
-            Mat4x4F32 proj_m = make_orthographic_vulkan_4x4f32(viewport.x0, viewport.x1, viewport.y1, viewport.y0, 0.1, 100.f);
-
+            Mat4x4F32 view_m = mat_4x4f32(1.0);
+            Mat4x4F32 proj_m = make_orthographic_vulkan_4x4f32(viewport.x0, viewport.x1, viewport.y1, viewport.y0, 0.1, 1.f);
             R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, projection_m, 0, 1);
             pass_params->lights = push_array(rk_frame_arena(), R_Light, MAX_LIGHTS_PER_PASS);
             pass_params->materials = push_array(rk_frame_arena(), R_Material, MAX_MATERIALS_PER_PASS);
@@ -2537,9 +2564,9 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         R_Pass *geo_back_pass = r_pass_from_kind(d_thread_ctx->arena, &geo_back_bucket->passes, R_PassKind_Geo3D, 1);
         R_PassParams_Geo3D *geo_back_params = geo_back_pass->params_geo3d;
 
-        D_Bucket *geo_screen_bucket = rk_state->bucket_geo3d[RK_GeoBucketKind_Screen];
-        R_Pass *geo_screen_pass = r_pass_from_kind(d_thread_ctx->arena, &geo_screen_bucket->passes, R_PassKind_Geo3D, 1);
-        R_PassParams_Geo3D *geo_screen_params = geo_screen_pass->params_geo3d;
+        // D_Bucket *geo_screen_bucket = rk_state->bucket_geo3d[RK_GeoBucketKind_Screen];
+        // R_Pass *geo_screen_pass = r_pass_from_kind(d_thread_ctx->arena, &geo_screen_bucket->passes, R_PassKind_Geo3D, 1);
+        // R_PassParams_Geo3D *geo_screen_params = geo_screen_pass->params_geo3d;
 
 
         RK_Node *node = rk_node_from_handle(scene->root);
@@ -2771,18 +2798,19 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
             }
 
             // draw sprite2d
-            D_BucketScope(geo_screen_bucket) if(node->type_flags & RK_NodeTypeFlag_Sprite2D)
+            D_BucketScope(geo_back_bucket) if(node->type_flags & RK_NodeTypeFlag_Sprite2D)
             {
+                RK_Transform2D *transform2d = &node->node2d->transform;
                 RK_Sprite2D *sprite = node->sprite2d;
                 RK_Texture2D *tex = sprite->tex;
 
                 /////////////////////////////////////////////////////////////////////////
                 // draw mesh
 
-                // TODO(XXX): implement it
-                Rng2F32 src = {0,0, 30,30};
+                Vec2F32 half_size = scale_2f32(sprite->size, 0.5);
+                Rng2F32 src = {-half_size.x,-half_size.y, half_size.x, half_size.y};
                 Rng2F32 dst = {0,0, 1,1};
-                RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_gizmo_drawlist(), src, dst, 0);
+                RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), src, dst, transform2d->depth);
                 n->key = node->key;
                 n->xform = node->fixed_xform;
                 n->draw_edge = 0;
@@ -2790,11 +2818,26 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                 n->disable_depth = 0;
                 n->line_width = 1;
                 if(tex) n->albedo_tex = tex->tex;
-                n->color = v4f32(1,1,1,1);
+                n->color = sprite->color;
+
+                // TODO(XXX): not working
+                if(rk_key_match(scene->hot_key, node->key))
+                {
+                    RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), src, dst, transform2d->depth-0.1);
+                    n->key = node->key;
+                    n->xform = node->fixed_xform;
+                    n->draw_edge = 1;
+                    n->omit_light = 1;
+                    n->disable_depth = 0;
+                    n->line_width = 1;
+                    n->albedo_tex = r_handle_zero();
+                    n->color = v4f32(0.1,0.1,0.1,0.3);
+                }
             }
 
-            D_BucketScope(geo_screen_bucket) if(node->type_flags & RK_NodeTypeFlag_AnimatedSprite2D)
+            D_BucketScope(geo_back_bucket) if(node->type_flags & RK_NodeTypeFlag_AnimatedSprite2D)
             {
+                RK_Transform2D *transform2d = &node->node2d->transform;
                 RK_AnimatedSprite2D *sprite = node->animated_sprite2d;
                 RK_SpriteSheet *sheet = sprite->sheet;
 
@@ -2811,24 +2854,29 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                 RK_SpriteSheetTag *tag = 0;
                 while(tag == 0)
                 {
-                    tag = &sprite->sheet->tags[sprite->curr_tag];
+                    RK_SpriteSheetTag *curr_tag = &sprite->sheet->tags[sprite->curr_tag];
 
-                    if(sprite->ts_ms > tag->duration)
+                    if(sprite->ts_ms > curr_tag->duration)
                     {
-                        sprite->ts_ms -= tag->duration;
                         if(!sprite->loop)
                         {
                             sprite->curr_tag = sprite->next_tag;
                         }
+                        else
+                        {
+                            sprite->ts_ms = fmod(sprite->ts_ms, curr_tag->duration);
+                        }
                     }
                     else
                     {
+                        tag = curr_tag;
                         break;
                     }
                 }
 
                 RK_SpriteSheetFrame *frame;
                 F32 frame_duration_acc = 0;
+
                 // find the frame
                 // TODO(XXX): linear search for now, we can do better
                 for(U64 i = tag->from; i <= tag->to; i++)
@@ -2850,8 +2898,12 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                 dst.y0 = frame->y / sheet->size.y;
                 dst.x1 = (frame->x+frame->w) / sheet->size.x;
                 dst.y1 = (frame->y+frame->h) / sheet->size.y;
+                if(sprite->flipped)
+                {
+                    Swap(F32, dst.x0, dst.x1);
+                }
 
-                RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_gizmo_drawlist(), src, dst, 10);
+                RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), src, dst, transform2d->depth);
                 n->key = node->key;
                 n->xform = node->fixed_xform;
                 n->draw_edge = 0;
@@ -2862,10 +2914,10 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                 n->color = v4f32(1,1,1,1);
 
                 // debug rect
-                if(1)
-                // if(rk_key_match(scene->hot_key, node->key))
+                // if(1)
+                if(rk_key_match(scene->hot_key, node->key))
                 {
-                    RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_gizmo_drawlist(), src, dst, 0);
+                    RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), src, dst, 0);
                     n->key = node->key;
                     n->xform = node->fixed_xform;
                     n->draw_edge = 1;
@@ -2903,7 +2955,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                     }
                 }
                 
-                /////////////////////////////////////////////////////////////////////
+                /////////////////////////////////////////////////////////////////////////
                 // material
 
                 U64 mat_idx = 0; // 0 is the default material
@@ -3155,7 +3207,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                                 }
 
                                 // draw axis to indicate direction
-                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), axis_clr, 3*linew_scale, 0);
+                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), axis_clr, 3*linew_scale, 0);
                             }
 
                             // drag plane
@@ -3170,21 +3222,21 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                                 Vec3F32 dir = normalize_3f32(add_3f32(axises[(i+1)%3], axises[(i+2)%3]));
                                 Vec3F32 dist = scale_3f32(dir, size.x*0.9);
                                 origin = add_3f32(origin, dist);
-                                rk_drawlist_push_plane_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), drag_plane_key, size, 1, origin, axises[(i+2)%3], axis, plane_clr, 1, 1);
+                                rk_drawlist_push_plane_filled(rk_frame_arena(), rk_frame_drawlist(), drag_plane_key, size, 1, origin, axises[(i+2)%3], axis, plane_clr, 1, 1);
                             }
 
                             // curr axis
-                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, gizmo_origin, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis_clr, 6*linew_scale, draw_edge);
+                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_drawlist(), axis_key, gizmo_origin, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis_clr, 6*linew_scale, draw_edge);
                             // curr axis tip
-                            rk_drawlist_push_cone(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis, 0.1*scale_t, 0.3*scale_t, 39, axis_clr, 1, 1);
+                            rk_drawlist_push_cone(rk_frame_arena(), rk_frame_drawlist(), axis_key, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis, 0.1*scale_t, 0.3*scale_t, 39, axis_clr, 1, 1);
                         }
 
                         // draw a ball and circle in the middle
-                        rk_drawlist_push_sphere(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, axis_length*0.1, axis_length*0.2, 19, 19, 0, v4f32(0,0,0,0.9), 0, 1);
-                        rk_drawlist_push_circle(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*0.11, 69,v4f32(1,1,1,0.9), 3, 0); // billboard fashion
+                        rk_drawlist_push_sphere(rk_frame_arena(), rk_frame_drawlist(), rk_key_zero(), gizmo_origin, axis_length*0.1, axis_length*0.2, 19, 19, 0, v4f32(0,0,0,0.9), 0, 1);
+                        rk_drawlist_push_circle(rk_frame_arena(), rk_frame_drawlist(), rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*0.11, 69,v4f32(1,1,1,0.9), 3, 0); // billboard fashion
 
                         // draw a outer circle
-                        rk_drawlist_push_circle(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*1.3, 69,v4f32(1,1,1,1), linew_scale*6, 1);
+                        rk_drawlist_push_circle(rk_frame_arena(), rk_frame_drawlist(), rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*1.3, 69,v4f32(1,1,1,1), linew_scale*6, 1);
 
                     }break;
                     case RK_Gizmo3DMode_Rotation:
@@ -3250,8 +3302,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                                 Vec3F32 dir = normalize_3f32(sub_3f32(intersect, gizmo_origin));
                                 intersect = add_3f32(gizmo_origin, scale_3f32(dir, ring_radius));
 
-                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_make(0,0), intersect, gizmo_origin, v4f32(1,0,0,1), 5.f*linew_scale, 1);
-                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_make(0,0), drag_data->anchor, gizmo_origin, v4f32(0,1,0,1), 5.f*linew_scale, 1);
+                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_drawlist(), rk_key_make(0,0), intersect, gizmo_origin, v4f32(1,0,0,1), 5.f*linew_scale, 1);
+                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_drawlist(), rk_key_make(0,0), drag_data->anchor, gizmo_origin, v4f32(0,1,0,1), 5.f*linew_scale, 1);
 
                                 Vec3F32 start_dir = normalize_3f32(sub_3f32(drag_data->anchor, gizmo_origin));
                                 Vec3F32 curr_dir = normalize_3f32(sub_3f32(intersect, gizmo_origin));
@@ -3267,10 +3319,10 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                                     // draw arc to indicate pct
                                     F32 turn_pct = fmod(abs_f32(turn), 1.f);
                                     Assert(turn_pct > 0 && turn_pct < 1);
-                                    rk_drawlist_push_arc_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, drag_data->anchor, intersect, ring_segments*turn_pct, 1, v4f32(0,0,1,0.6), 3, 1, mat_4x4f32(1.f));
+                                    rk_drawlist_push_arc_filled(rk_frame_arena(), rk_frame_drawlist(), rk_key_zero(), gizmo_origin, drag_data->anchor, intersect, ring_segments*turn_pct, 1, v4f32(0,0,1,0.6), 3, 1, mat_4x4f32(1.f));
 
                                     // draw axis
-                                    rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length)), axis_clr, 6.f*linew_scale, 0);
+                                    rk_drawlist_push_line(rk_frame_arena(), rk_frame_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length)), axis_clr, 6.f*linew_scale, 0);
                                 }
 
                                 // change active node rotation
@@ -3282,16 +3334,16 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                             }
 
                             // draw rotation circle to indicate which axis is rotating
-                            rk_drawlist_push_circle(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, gizmo_origin, axis, ring_radius,ring_segments, axis_clr, ring_line_width, draw_edge);
+                            rk_drawlist_push_circle(rk_frame_arena(), rk_frame_drawlist(), axis_key, gizmo_origin, axis, ring_radius,ring_segments, axis_clr, ring_line_width, draw_edge);
                         }
 
                         // draw a cube in the inner middle
-                        // rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), scale_3f32(v3f32(1,1,1), axis_length*0.1), gizmo_origin, axises[1], v4f32(1,1,1,1), 1);
+                        // rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_drawlist(), rk_key_zero(), scale_3f32(v3f32(1,1,1), axis_length*0.1), gizmo_origin, axises[1], v4f32(1,1,1,1), 1);
                         // draw a white ball in the middle (NOTE(k): it's semi transparency, so we need draw it last)
-                        rk_drawlist_push_sphere(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, ring_radius*0.9, ring_radius*0.9*2, ring_segments, 19, 0, v4f32(0,0,0,0.6), 0, 1);
+                        rk_drawlist_push_sphere(rk_frame_arena(), rk_frame_drawlist(), rk_key_zero(), gizmo_origin, ring_radius*0.9, ring_radius*0.9*2, ring_segments, 19, 0, v4f32(0,0,0,0.6), 0, 1);
 
                         // draw a outer circle
-                        // rk_drawlist_push_circle(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*1.3, 69,v4f32(0,0,0,0.1), 9, 0);
+                        // rk_drawlist_push_circle(rk_frame_arena(), rk_frame_drawlist(), rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*1.3, 69,v4f32(0,0,0,0.1), 9, 0);
                     }break;
                     case RK_Gizmo3DMode_Scale:
                     {
@@ -3364,19 +3416,19 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                                 }
 
                                 // draw axis to indicate direction
-                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), axis_clr, 6.f*linew_scale, 0);
+                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_drawlist(), rk_key_zero(), sub_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), add_3f32(gizmo_origin, scale_3f32(axis, axis_length*9)), axis_clr, 6.f*linew_scale, 0);
                                 // draw a cube to indicate curr scale pos(projected)
                                 Vec4F32 box_clr = axis_clr;
                                 box_clr.w = 1.0f;
-                                rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, scale_3f32(v3f32(1,1,1), axis_length*0.1), add_3f32(gizmo_origin, scale_3f32(axis, dist)), i_hat, j_hat, box_clr, draw_edge, 1);
+                                rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_drawlist(), axis_key, scale_3f32(v3f32(1,1,1), axis_length*0.1), add_3f32(gizmo_origin, scale_3f32(axis, dist)), i_hat, j_hat, box_clr, draw_edge, 1);
                             }
 
                             // curr axis
-                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, gizmo_origin, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis_clr, 19*linew_scale, draw_edge);
+                            rk_drawlist_push_line(rk_frame_arena(), rk_frame_drawlist(), axis_key, gizmo_origin, add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), axis_clr, 19*linew_scale, draw_edge);
                             // curr axis tip
                             Vec4F32 tip_clr = scale_4f32(axis_clr,0.5);
                             tip_clr.w = axis_clr.w;
-                            rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), axis_key, scale_3f32(v3f32(1,1,1),axis_length*0.19), add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), i_hat, j_hat, tip_clr, draw_edge, 1);
+                            rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_drawlist(), axis_key, scale_3f32(v3f32(1,1,1),axis_length*0.19), add_3f32(gizmo_origin,scale_3f32(axis, axis_length)), i_hat, j_hat, tip_clr, draw_edge, 1);
                         }
 
                         // draw unit scale box in the middle
@@ -3418,7 +3470,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                                 F32 scale = dist / drag_data->start_dist;
 
                                 // draw a line from gizmo_origin to intersect
-                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(), gizmo_origin, intersect, v4f32(1,1,1,0.9), 3*linew_scale, draw_edge);
+                                rk_drawlist_push_line(rk_frame_arena(), rk_frame_drawlist(), rk_key_zero(), gizmo_origin, intersect, v4f32(1,1,1,0.9), 3*linew_scale, draw_edge);
 
                                 // scale active_node along all axises
                                 if(scale != 0)
@@ -3428,7 +3480,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                             }
 
                             // draw middle cube
-                            rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_gizmo_drawlist(), origin_key, scale_3f32(v3f32(1,1,1),axis_length*0.2), gizmo_origin, i_hat, j_hat, clr, draw_edge, 1);
+                            rk_drawlist_push_box_filled(rk_frame_arena(), rk_frame_drawlist(), origin_key, scale_3f32(v3f32(1,1,1),axis_length*0.2), gizmo_origin, i_hat, j_hat, clr, draw_edge, 1);
                         }
                     }break;
                     default:{InvalidPath;}break;
@@ -3453,7 +3505,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                     float height = light->range*0.1;
                     Vec3F32 origin = add_3f32(pos, scale_3f32(dir, height));
                     F32 radius = tanf(light->angle) * height;
-                    RK_DrawNode *draw_node = rk_drawlist_push_cone(rk_frame_arena(), rk_frame_gizmo_drawlist(), rk_key_zero(),
+                    RK_DrawNode *draw_node = rk_drawlist_push_cone(rk_frame_arena(), rk_frame_drawlist(), rk_key_zero(),
                                                                    origin, negate_3f32(dir), radius, height, 39, v4f32(1,1,1,0.3), 1, 1);
                     draw_node->polygon = R_GeoPolygonKind_Line;
                 }
@@ -3466,7 +3518,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     // TODO(XXX): performance issue when enabled, find out why
     // build gizmo drawlists
     ProfBegin("drawlist build");
-    rk_drawlist_build(rk_frame_gizmo_drawlist());
+    rk_drawlist_build(rk_frame_drawlist());
     ProfEnd();
 
     /////////////////////////////////
@@ -3810,14 +3862,14 @@ rk_scene_active_camera_set(RK_Scene *s, RK_Node *camera_node)
 internal void
 rk_scene_active_node_set(RK_Scene *s, RK_Key key, B32 only_navigation_root)
 {
-    RK_Node *node = 0;
+    RK_Node *node = rk_node_from_key(key);
+
     if(only_navigation_root)
     {
-        node = rk_node_from_key(key);
         for(; node != 0 && !(node->flags & RK_NodeFlag_NavigationRoot); node = node->parent) {}
     }
 
-    if(node != 0 || rk_key_match(key, rk_key_zero()))
+    if(node || rk_key_match(key, rk_key_zero()))
     {
         s->active_node = rk_handle_from_node(node);
     }

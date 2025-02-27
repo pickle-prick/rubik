@@ -421,23 +421,16 @@ rk_ui_dropdown_begin(String8 string)
         ui_set_auto_focus_active_key(ui_key_zero());
     }
 
-    ui_set_next_fixed_x(box->fixed_position.x);
-    ui_set_next_fixed_y(box->fixed_position.y + box->fixed_size.y);
-    ui_set_next_pref_width(ui_px(box->fixed_size.x, 0.0));
-    ui_set_next_child_layout_axis(Axis2_Y);
-    if(is_focus_active)
+    UI_Box *list_container = 0;
+    UI_FixedX(box->fixed_position.x)
+        UI_FixedY(box->fixed_position.y + box->fixed_size.y)
+        UI_PrefWidth(ui_px(box->fixed_size.x, 0.0))
+        UI_PrefHeight(is_focus_active ? ui_children_sum(0) : ui_px(0,1))
+        UI_ChildLayoutAxis(Axis2_Y)
+        UI_Flags(UI_BoxFlag_Floating|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder|UI_BoxFlag_Clip)
     {
-        ui_set_next_pref_height(ui_children_sum(0.0));
+        list_container = ui_build_box_from_stringf(0, "###%S-dropdown_container", string);
     }
-    else
-    {
-        ui_set_next_pref_height(ui_px(0.0, 1.0));
-    }
-    UI_Box *list_container = ui_build_box_from_stringf(UI_BoxFlag_Floating|
-                                                       UI_BoxFlag_DrawDropShadow|
-                                                       UI_BoxFlag_DrawBorder|
-                                                       UI_BoxFlag_Clip,
-                                                       "###%S-dropdown_container", string);
     ui_pop_focus_hot();
     ui_pop_focus_active();
     ui_push_parent(list_container);
@@ -567,7 +560,7 @@ rk_ui_tab_begin(String8 string, B32 *open, UI_Size padding_x, UI_Size padding_y)
 
     UI_Parent(ret)
         // NOTE(k): we are using Clip, so a transient box won't cut it
-        UI_Flags(UI_BoxFlag_Clip)
+        // UI_Flags(UI_BoxFlag_Clip)
         UI_ChildLayoutAxis(Axis2_X)
         UI_PrefSize(Axis2_Y, (*open) ? ui_children_sum(0) : ui_px(0,0))
     {

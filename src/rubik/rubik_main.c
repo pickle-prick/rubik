@@ -136,14 +136,11 @@ entry_point(CmdLine *cmd_line)
         /////////////////////////////////
         //~ End of frame
 
-        // TODO: the order here may be wrong, check later
+        // TODO(XXX): the order here may be wrong, check later
         gpu_start_us = os_now_microseconds();
-        ProfScope("submit")
-        {
-            d_submit_bucket(window, wnd, d_bucket);
-            hot_id = r_window_end_frame(window, wnd, rk_state->cursor);
-            r_end_frame();
-        }
+        d_submit_bucket(window, wnd, d_bucket);
+        hot_id = r_window_end_frame(window, wnd, rk_state->cursor);
+        r_end_frame();
         arena_clear(frame_arena);
 
         cpu_end_us = os_now_microseconds();

@@ -157,6 +157,7 @@ struct RK_Transform2D
 {
     Vec2F32 position;
     F32     rotation;
+    F32     depth;
     Vec2F32 scale;
     F32     skew;
 };
@@ -243,6 +244,7 @@ struct RK_Texture2D
 {
     R_Tex2DSampleKind sample_kind;
     R_Handle          tex;
+    Vec2F32           size;
 
     // for serialize/deserialize
     String8           path;
@@ -564,12 +566,17 @@ struct RK_Sprite2D
 {
     RK_Sprite2D *next;
     RK_Texture2D *tex;
+    Vec2F32 size;
+    // TODO(XXX): it's weird to put color here
+    Vec4F32 color;
 };
 
 typedef struct RK_AnimatedSprite2D RK_AnimatedSprite2D;
 struct RK_AnimatedSprite2D
 {
     RK_AnimatedSprite2D *next;
+
+    B32 flipped;
 
     // animations
     RK_SpriteSheet *sheet;
@@ -931,7 +938,7 @@ struct RK_State
     D_Bucket              *bucket_geo3d[RK_GeoBucketKind_COUNT];
 
     //- Gizmos drawlists
-    RK_DrawList           *gizmo_drawlists[2];
+    RK_DrawList           *drawlists[2];
 
     //- Window
     Rng2F32               window_rect;
@@ -1037,7 +1044,7 @@ internal RK_Resource* rk_res_from_key(RK_Key key);
 
 internal void             rk_init(OS_Handle os_wnd);
 internal Arena*           rk_frame_arena();
-internal RK_DrawList*     rk_frame_gizmo_drawlist();
+internal RK_DrawList*     rk_frame_drawlist();
 internal RK_FunctionNode* rk_function_from_string(String8 string);
 internal RK_View*         rk_view_from_kind(RK_ViewKind kind);
 
@@ -1075,15 +1082,10 @@ internal RK_NodeRec rk_node_df(RK_Node *n, RK_Node *root, U64 sib_member_off, U6
 #define rk_node_df_post(node, root, force_leaf) rk_node_df(node, root, OffsetOf(RK_Node, prev), OffsetOf(RK_Node, last), force_leaf)
 
 internal void      rk_node_push_fn(RK_Node *n, RK_NodeCustomUpdateFunctionType *fn);
+#define  rk_node_push_custom_data(n, T) (n->custom_data = push_array(rk_top_node_bucket()->arena_ref, T, 1))
 internal RK_Handle rk_handle_from_node(RK_Node *n);
 internal RK_Node*  rk_node_from_handle(RK_Handle handle);
-
 internal B32       rk_node_is_active(RK_Node *node);
-
-/////////////////////////////////
-// Node scripting
-
-RK_NODE_CUSTOM_UPDATE(base_fn);
 
 /////////////////////////////////
 //~ Magic
