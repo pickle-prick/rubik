@@ -56,12 +56,12 @@ entry_point(CmdLine *cmd_line)
     String8 window_title = str8_lit("Rubik");
 
     //- Open window
-    OS_Handle window = os_window_open(default_resolution, 0, window_title);
-    os_window_first_paint(window);
+    OS_Handle os_wnd = os_window_open(default_resolution, 0, window_title);
+    os_window_first_paint(os_wnd);
 
     //- Render initialization
-    r_init((char *)window_title.str, window, true);
-    R_Handle wnd = r_window_equip(window);
+    r_init((char *)window_title.str, os_wnd, BUILD_DEBUG);
+    R_Handle wnd = r_window_equip(os_wnd);
 
     Arena *frame_arena = arena_alloc();
 
@@ -79,21 +79,18 @@ entry_point(CmdLine *cmd_line)
     //- User interaction
     OS_EventList events;
 
-    //- Window
-    Rng2F32 window_rect = {0};
-
     //- Init ui state
     UI_State *ui = ui_state_alloc();
     ui_select_state(ui);
 
     //- Init game state
-    rk_init(window);
+    rk_init(os_wnd);
 
     //- Load scene template and load default scene
     rk_state->template_count = ArrayCount(rk_scene_templates);
     rk_state->templates = rk_scene_templates;
 
-    RK_Scene *default_scene = rk_state->templates[0].fn();
+    RK_Scene *default_scene = rk_state->templates[3].fn();
     rk_state->active_scene = default_scene;
 
     // Hot id
@@ -116,7 +113,7 @@ entry_point(CmdLine *cmd_line)
         //- k: begin of frame
         ProfBegin("frame begin");
         r_begin_frame();
-        r_window_begin_frame(window, wnd);
+        r_window_begin_frame(os_wnd, wnd);
         gpu_end_us = os_now_microseconds();
         gpu_dt_us = (gpu_end_us - gpu_start_us);
         cpu_start_us = os_now_microseconds();
@@ -138,8 +135,8 @@ entry_point(CmdLine *cmd_line)
 
         // TODO(XXX): the order here may be wrong, check later
         gpu_start_us = os_now_microseconds();
-        d_submit_bucket(window, wnd, d_bucket);
-        hot_id = r_window_end_frame(window, wnd, rk_state->cursor);
+        d_submit_bucket(os_wnd, wnd, d_bucket);
+        hot_id = r_window_end_frame(wnd, rk_state->cursor);
         r_end_frame();
         arena_clear(frame_arena);
 
@@ -151,5 +148,5 @@ entry_point(CmdLine *cmd_line)
     /////////////////////////////////
     //~ Cleanup
 
-    os_window_close(window);
+    os_window_close(os_wnd);
 }

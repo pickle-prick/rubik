@@ -46,8 +46,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     Arena *arena = arena_alloc();
     r_vulkan_state = push_array(arena, R_Vulkan_State, 1);
     r_vulkan_state->arena = arena;
-    r_vulkan_state->enable_validation_layer = debug;
-    Temp temp = scratch_begin(0,0);
+    r_vulkan_state->debug = debug;
+    Temp scratch = scratch_begin(0,0);
 
     // Now, to create an instance we'll first have to fill in a struct with 
     //      some information about our application.
@@ -105,49 +105,59 @@ r_init(const char* app_name, OS_Handle window, bool debug)
 
         enabled_ext_count = required_inst_ext_count;
         // NOTE(k): add one for optional debug extension
-        enabled_ext_names = push_array(temp.arena, char *, required_inst_ext_count + 1);
+        enabled_ext_names = push_array(scratch.arena, char *, required_inst_ext_count + 1);
 
         for(U64 i = 0; i < required_inst_ext_count; i++)
         {
             enabled_ext_names[i] = (char *)required_inst_exts[i];
         }
 
-        if(r_vulkan_state->enable_validation_layer)
+        if(r_vulkan_state->debug)
         {
             enabled_ext_names[enabled_ext_count++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
         }
 
     }
 
-    /////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////
     //~ Validation Layer
 
-    // All of the useful standard validation layer is bundle into a layer included in
-    //      the SDK that is known as VK_LAYER_KHRONOS_validation 
-    U64 layer_count = 0;
-    const char *layers[] = { "VK_LAYER_KHRONOS_validation" };
-    if(r_vulkan_state->enable_validation_layer)
-    {
-        layer_count = 1;
-        U32 count;
-        VK_Assert(vkEnumerateInstanceLayerProperties(&count, NULL));
-        VkLayerProperties available_layers[count];
-        VK_Assert(vkEnumerateInstanceLayerProperties(&count, available_layers));
+    // All of the useful standard validation layer is bundle into a layer included in the SDK that is known as VK_LAYER_KHRONOS_validation 
+    U64 enabled_layer_count = 0;
+    const char *enabled_layers[] = { "VK_LAYER_KHRONOS_validation" };
 
-        bool support_validation_layer;
-        for(U64 i = 0; i < count; i++)
+    if(r_vulkan_state->debug)
+    {
+        enabled_layer_count = 1;
+    }
+
+    // get instance layer info
+    U32 instance_layer_count;
+    VK_Assert(vkEnumerateInstanceLayerProperties(&instance_layer_count, NULL));
+    VkLayerProperties available_layers[instance_layer_count];
+    VK_Assert(vkEnumerateInstanceLayerProperties(&instance_layer_count, available_layers));
+    
+    // check if all enabled layers are presented
+    for(U64 i = 0; i < enabled_layer_count; i++)
+    {
+        B32 found = 0;
+        for(U64 j = 0; j < instance_layer_count; j++)
         {
-            if(strcmp(available_layers[i].layerName, layers[0]))
+            if(strcmp(available_layers[i].layerName, enabled_layers[i]))
             {
-                support_validation_layer = true;
+                found = 1;
                 break;
             }
         }
-        // TODO(k): handle it later
-        // Assert(support_validation_layer);
+
+        if(!found)
+        {
+            fprintf(stderr, "layer '%s' was not found for this instance", enabled_layers[i]);
+            Trap();
+        }
     }
 
-    /////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////
     //~ Create vulkan instance (create debug_messenger if needed)
 
     // It tells the Vulkan driver which global extension and validation layers we want ot use.
@@ -186,25 +196,30 @@ r_init(const char* app_name, OS_Handle window, bool debug)
             .pUserData       = NULL, // Optional 
         };
 
-        if(r_vulkan_state->enable_validation_layer)
+        create_info.enabledLayerCount   = enabled_layer_count;
+        create_info.ppEnabledLayerNames = enabled_layers;
+
+        if(r_vulkan_state->debug)
         {
-            create_info.enabledLayerCount   = layer_count;
-            create_info.ppEnabledLayerNames = layers;
-            create_info.pNext               = &debug_messenger_create_info;
+            create_info.pNext = &debug_messenger_create_info;
         }
 
+        // create instance
         VK_Assert(vkCreateInstance(&create_info, NULL, &r_vulkan_state->instance));
 
-        // This struct should be passed to the vkCreateDebugUtilsMessengerEXT function to create the VkDebugUtilsMessengerEXT object
-        // Unfortunately, because this function is an extension function, it is not automatically loaded, we have to load it ourself
-        PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(r_vulkan_state->instance, "vkCreateDebugUtilsMessengerEXT");
-        AssertAlways(vkCreateDebugUtilsMessengerEXT != NULL);
+        if(r_vulkan_state->debug)
+        {
+            // This struct should be passed to the vkCreateDebugUtilsMessengerEXT function to create the VkDebugUtilsMessengerEXT object
+            // Unfortunately, because this function is an extension function, it is not automatically loaded, we have to load it ourself
+            PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(r_vulkan_state->instance, "vkCreateDebugUtilsMessengerEXT");
+            AssertAlways(vkCreateDebugUtilsMessengerEXT != NULL);
 
-        r_vulkan_state->vkDestroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(r_vulkan_state->instance, "vkDestroyDebugUtilsMessengerEXT");
-        AssertAlways(r_vulkan_state->vkDestroyDebugUtilsMessengerEXT != NULL);
+            r_vulkan_state->vkDestroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(r_vulkan_state->instance, "vkDestroyDebugUtilsMessengerEXT");
+            AssertAlways(r_vulkan_state->vkDestroyDebugUtilsMessengerEXT != NULL);
 
-        /* VK_ERROR_EXTENSION_NOT_PRESENT */
-        VK_Assert(vkCreateDebugUtilsMessengerEXT(r_vulkan_state->instance, &debug_messenger_create_info, NULL, &r_vulkan_state->debug_messenger));
+            /* VK_ERROR_EXTENSION_NOT_PRESENT */
+            VK_Assert(vkCreateDebugUtilsMessengerEXT(r_vulkan_state->instance, &debug_messenger_create_info, NULL, &r_vulkan_state->debug_messenger));
+        }
     }
 
     /////////////////////////////////////////////////////////////////////////////////
@@ -418,8 +433,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     // You can even create multiple logical devices from the same physical device if you have varying requirements
     // Create one graphic queue
     // The currently available drivers will only allow you to create a small number of queues for each queue family
-    // And you don't really need more than one. That's because you can create all of 
-    //      the commands buffers on multiple threads and then submit them all at once on the main thread with a single low-overhead call
+    // And you don't really need more than one. That's because you can create all of the commands buffers on multiple threads and then submit them all at once on the main thread with a single low-overhead call
     {
         const F32 graphic_queue_priority = 1.0f;
         const F32 present_queue_priority = 1.0f;
@@ -468,14 +482,11 @@ r_init(const char* app_name, OS_Handle window, bool debug)
 
         // Device specific extension VK_KHR_swapchain, which allows you to present rendered images from that device to windows 
         // It's possible that there are Vulkan devices in the system that lack this ability, for example because they only support compute operations
-        if(r_vulkan_state->enable_validation_layer)
-        {
-            // Previous implementations of Vulkan made a distinction between instance and device specific validation layers, but this is no longer the case
-            // That means that the enabledLayerCount and ppEnabledLayerNames fields of VkDeviceCreateInfo are ignored by up-to-date implementations. 
-            // However, it is still a good idea to set them anyway to be compatible with older implementations
-            create_info.enabledLayerCount   = layer_count;
-            create_info.ppEnabledLayerNames = layers;
-        }
+        // Previous implementations of Vulkan made a distinction between instance and device specific validation layers, but this is no longer the case
+        // That means that the enabledLayerCount and ppEnabledLayerNames fields of VkDeviceCreateInfo are ignored by up-to-date implementations. 
+        // However, it is still a good idea to set them anyway to be compatible with older implementations
+        create_info.enabledLayerCount   = enabled_layer_count;
+        create_info.ppEnabledLayerNames = enabled_layers;
         VK_Assert(vkCreateDevice(r_vulkan_state->gpu.h, &create_info, NULL, &r_vulkan_state->device.h));
 
         // Retrieving queue handles
@@ -524,11 +535,9 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         VK_Assert(vkAllocateCommandBuffers(r_vulkan_state->device.h, &alloc_info, &r_vulkan_state->oneshot_cmd_buf));
     }
 
-    // Create samplers
-    {
-        r_vulkan_state->samplers[R_Tex2DSampleKind_Nearest] = r_vulkan_sampler2d(R_Tex2DSampleKind_Nearest);
-        r_vulkan_state->samplers[R_Tex2DSampleKind_Linear]  = r_vulkan_sampler2d(R_Tex2DSampleKind_Linear);
-    }
+    // Create texture samplers
+    r_vulkan_state->samplers[R_Tex2DSampleKind_Nearest] = r_vulkan_sampler2d(R_Tex2DSampleKind_Nearest);
+    r_vulkan_state->samplers[R_Tex2DSampleKind_Linear]  = r_vulkan_sampler2d(R_Tex2DSampleKind_Linear);
 
     /////////////////////////////////////////////////////////////////////////////////
     // Load shader modules
@@ -554,7 +563,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         }
         long shad_size = 0;
         U8 *shad_code  = 0;
-        FileReadAll(temp.arena, shad_path, &shad_code, &shad_size);
+        FileReadAll(scratch.arena, shad_path, &shad_code, &shad_size);
 
         Assert(shad_size != 0); Assert(shad_code != NULL);
         VkShaderModuleCreateInfo create_info = {
@@ -581,7 +590,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         }
         long shad_size = 0;
         U8 *shad_code  = 0;
-        FileReadAll(temp.arena, shad_path, &shad_code, &shad_size);
+        FileReadAll(scratch.arena, shad_path, &shad_code, &shad_size);
         Assert(shad_size != 0); Assert(shad_code != NULL);
         VkShaderModuleCreateInfo create_info = {
             .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -603,7 +612,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         }
         long shad_size = 0;
         U8 *shad_code  = 0;
-        FileReadAll(temp.arena, shad_path, &shad_code, &shad_size);
+        FileReadAll(scratch.arena, shad_path, &shad_code, &shad_size);
         Assert(shad_size != 0); Assert(shad_code != NULL);
         VkShaderModuleCreateInfo create_info = {
             .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -838,7 +847,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
         0xFF330033, 0xFFFF00FF,
     };
     r_vulkan_state->backup_texture = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Nearest, v2s32(2,2), R_Tex2DFormat_RGBA8, backup_texture_data);
-    scratch_end(temp);
+    scratch_end(scratch);
     R_Vulkan_InitStacks(r_vulkan_state);
     R_Vulkan_InitStackNils(r_vulkan_state);
 }
@@ -1125,7 +1134,7 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
     }
     else
     {
-        Rng2F32 client_rect = os_client_rect_from_window(os_wnd);
+        Rng2F32 client_rect = os_client_rect_from_window(os_wnd,0);
         Vec2F32 dim = dim_2f32(client_rect);
         U32 width = dim.x;
         U32 height = dim.y;
@@ -3264,11 +3273,15 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
     switch(kind)
     {
         default:{InvalidPath;}break;
-        case R_Vulkan_PipelineKind_Rect: {}break;
-        case R_Vulkan_PipelineKind_Geo3dDebug: {}break;
-        case R_Vulkan_PipelineKind_Geo3dForward: {}break;
+        case R_Vulkan_PipelineKind_Rect:
+        case R_Vulkan_PipelineKind_Geo3dDebug:
+        case R_Vulkan_PipelineKind_Geo3dForward:
+        { 
+            // noop
+        }break;
         case R_Vulkan_PipelineKind_Geo3dComposite:
         {
+            // color_blend_attachment_state[0].blendEnable = VK_FALSE;
             // TODO(k): what is this, why we ever want to do this, it don't make sense, but I am too afraid to delete it
             // color_blend_attachment_state[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
             // color_blend_attachment_state[0].dstColorBlendFactor = VK_BLEND_FACTOR_DST_ALPHA;
@@ -3727,7 +3740,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
 }
 
 internal U64
-r_window_end_frame(OS_Handle os_wnd, R_Handle window_equip, Vec2F32 mouse_ptr)
+r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
 {
     // TODO(k): Should every window have its own thread?
     //           since different window need to wait on its fence, we don't want to block it for other windows
@@ -4064,6 +4077,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
             case R_PassKind_Geo3D: 
             {
                 Assert(geo3d_pass_idx < MAX_GEO3D_PASS);
+
                 // Unpack params
                 R_PassParams_Geo3D *params = pass->params_geo3d;
                 R_BatchGroup3DMap *mesh_group_map = &params->mesh_batches;
@@ -4141,7 +4155,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 geo3d_ubo.proj_inv     = proj_inv;
                 geo3d_ubo.view         = params->view;
                 geo3d_ubo.view_inv     = view_inv;
-                geo3d_ubo.show_grid    = params->show_grid;
+                geo3d_ubo.show_grid    = !params->omit_grid;
                 MemoryCopy(geo3d_ubo_dst, &geo3d_ubo, sizeof(R_Vulkan_UBO_Geo3d));
 
                 /////////////////////////////////////////////////////////////////////////
@@ -4212,8 +4226,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 {
                     viewport.x      = params->viewport.p0.x;
                     viewport.y      = params->viewport.p0.y;
-                    viewport.width  = params->viewport.p1.x;
-                    viewport.height = params->viewport.p1.y;
+                    viewport.width  = viewport_dim.x;
+                    viewport.height = viewport_dim.y;
                 }
                 viewport.minDepth = 0.0f;
                 viewport.maxDepth = 1.0f;
@@ -4422,7 +4436,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                 /////////////////////////////////////////////////////////////////////////
                 //- draw geo3d debug if asked
 
-                if(params->show_grid)
+                if(!params->omit_grid)
                 {
                     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                             geo3d_debug_pipelines[0].layout, 0, 1,
@@ -5112,7 +5126,7 @@ void r_vulkan_window_resize(R_Vulkan_Window *window)
     // NOTE(k): if the rate of resizing is too high, we could be lagged behind bag destruction, since we're not using generation/idx to track first_to_free_bag
     // frames's bag could be out of synced constantly, and the count of to_free_bag will keep increasing, and resulting out of gpu memory 
     // so we add some debounce here to avoid recreating swapchain unecessarly
-    Vec2F32 window_dim = dim_2f32(os_client_rect_from_window(window->os_wnd));
+    Vec2F32 window_dim = dim_2f32(os_client_rect_from_window(window->os_wnd,0));
     U64 last_window_dim_us = os_now_microseconds();
 
     // Handle minimization
@@ -5122,7 +5136,7 @@ void r_vulkan_window_resize(R_Vulkan_Window *window)
     Temp temp = scratch_begin(0,0);
     while(window_dim.x == 0.f || window_dim.y == 0.f || (os_now_microseconds()-last_window_dim_us) < 50000)
     {
-        Vec2F32 dim = dim_2f32(os_client_rect_from_window(window->os_wnd));
+        Vec2F32 dim = dim_2f32(os_client_rect_from_window(window->os_wnd,0));
         if(dim.x != window_dim.x || dim.y != window_dim.y)
         {
             window_dim = dim;

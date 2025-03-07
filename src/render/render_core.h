@@ -349,7 +349,7 @@ struct R_PassParams_Geo3D
     U64               material_count;
 
     // Debug purpose
-    B32               show_grid;
+    B32               omit_grid;
 };
 
 typedef struct R_Pass R_Pass;
@@ -424,7 +424,7 @@ internal void     r_buffer_copy(R_Handle buffer, void *data, U64 size);
 internal void r_begin_frame(void);
 internal void r_end_frame(void);
 internal void r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip);
-internal U64 r_window_end_frame(OS_Handle os_wnd, R_Handle window_equip, Vec2F32 mouse_ptr);
+internal U64  r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr);
 
 //- rjf: render pass submission
 internal void r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes);

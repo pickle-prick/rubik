@@ -157,7 +157,7 @@ internal void           os_window_push_custom_title_bar(OS_Handle handle, F32 th
 internal void           os_window_push_custom_edges(OS_Handle handle, F32 thickness);
 internal void           os_window_push_custom_title_bar_client_area(OS_Handle handle, Rng2F32 rect);
 internal Rng2F32        os_rect_from_window(OS_Handle window);
-internal Rng2F32        os_client_rect_from_window(OS_Handle window);
+internal Rng2F32        os_client_rect_from_window(OS_Handle window, B32 forced);
 internal F32            os_dpi_from_window(OS_Handle window);
 
 ////////////////////////////////

@@ -274,7 +274,7 @@ rk_scene_entry__1()
                     cell->atom_count++;
                 }
             }
-            board_data->pane_rect = os_client_rect_from_window(rk_state->os_wnd);
+            board_data->pane_rect = rk_state->window_rect;
             {
                 board_data->pane_rect.x0 += 600;
                 board_data->pane_rect.x1 -= 600;

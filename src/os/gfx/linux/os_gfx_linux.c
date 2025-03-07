@@ -251,33 +251,36 @@ os_rect_from_window(OS_Handle handle)
 }
 
 internal Rng2F32
-os_client_rect_from_window(OS_Handle handle)
+os_client_rect_from_window(OS_Handle handle, B32 forced)
 {
-    ProfBeginFunction();
     Rng2F32 rect = {0};
     OS_LNX_Window *w = (OS_LNX_Window *)handle.u64[0];
 
-#if 0
-    // NOTE(k): this is a slow operation
-    if (!os_handle_match(handle, os_handle_zero())) {
-        Window root;
-        int x_return,y_return;
-        unsigned int width_return,height_return,border_width_return,depth_return;
-        XGetGeometry(os_lnx_gfx_state->display, w->window,
-                     &root, &x_return,&y_return, &width_return,&height_return,
-                     &border_width_return, &depth_return);
+    // NOTE(k): cached value is updated by events, in some cased, we need get rect first before any events processing
+    if(forced)
+    {
+        // NOTE(k): this is a slow operation
+        if(!os_handle_match(handle, os_handle_zero()))
+        {
+            Window root;
+            int x_return,y_return;
+            unsigned int width_return,height_return,border_width_return,depth_return;
+            XGetGeometry(os_lnx_gfx_state->display, w->window,
+                         &root, &x_return,&y_return, &width_return,&height_return,
+                         &border_width_return, &depth_return);
+            rect.p0.x = 0;
+            rect.p0.y = 0;
+            rect.p1.x = width_return;
+            rect.p1.y = height_return;
+        }
+    }
+    else
+    {
         rect.p0.x = 0;
         rect.p0.y = 0;
-        rect.p1.x = width_return;
-        rect.p1.y = height_return;
+        rect.p1.x = w->client_dim.x;
+        rect.p1.y = w->client_dim.y;
     }
-#else
-    rect.p0.x = 0;
-    rect.p0.y = 0;
-    rect.p1.x = w->client_dim.x;
-    rect.p1.y = w->client_dim.y;
-#endif
-    ProfEnd();
     return rect;
 }
 

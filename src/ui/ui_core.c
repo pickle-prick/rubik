@@ -328,7 +328,7 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
 
     //- k: build top-level root
     {
-        Rng2F32 window_rect = os_client_rect_from_window(os_wnd);
+        Rng2F32 window_rect = os_client_rect_from_window(os_wnd,0);
         Vec2F32 window_rect_size = dim_2f32(window_rect);
         ui_set_next_fixed_width(window_rect_size.x);
         ui_set_next_fixed_height(window_rect_size.y);

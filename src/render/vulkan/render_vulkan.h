@@ -509,7 +509,7 @@ struct R_Vulkan_Window
 typedef struct R_Vulkan_State R_Vulkan_State;
 struct R_Vulkan_State
 {
-    bool                                enable_validation_layer;
+    bool                                debug;
     VkDebugUtilsMessengerEXT            debug_messenger;
     // Dynamic loaded functions
     PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT;

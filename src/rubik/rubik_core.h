@@ -35,6 +35,16 @@ typedef enum RK_Gizmo3DMode
     RK_Gizmo3DMode_COUNT,
 } RK_Gizmo3DMode;
 
+typedef enum RK_Sprite2DAnchorKind
+{
+    RK_Sprite2DAnchorKind_TopLeft,
+    RK_Sprite2DAnchorKind_TopRight,
+    RK_Sprite2DAnchorKind_BottomLeft,
+    RK_Sprite2DAnchorKind_BottomRight,
+    RK_Sprite2DAnchorKind_Center,
+    RK_Sprite2DAnchorKind_COUNT,
+} RK_Sprite2DAnchorKind;
+
 /////////////////////////////////////////////////////////////////////////////////////////
 //- Render bucket
 
@@ -114,6 +124,8 @@ typedef enum RK_ResourceKind
 typedef U64 RK_NodeFlags;
 #define RK_NodeFlag_NavigationRoot       (RK_NodeFlags)(1ull<<0)
 #define RK_NodeFlag_Float                (RK_NodeFlags)(1ull<<1)
+#define RK_NodeFlag_DrawHotEffects       (RK_NodeFlags)(1ull<<2)
+#define RK_NodeFlag_DrawBorder           (RK_NodeFlags)(1ull<<2)
 
 typedef U64                              RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_Node2D           (RK_NodeTypeFlags)(1ull<<0)
@@ -468,6 +480,7 @@ struct RK_Camera3D
     RK_ProjectionKind      projection;
     RK_ViewportShadingKind viewport_shading;
     R_GeoPolygonKind       polygon_mode;
+    Rng2F32                viewport;
     B32                    hide_cursor;
     B32                    lock_cursor;
     B32                    is_active;
@@ -480,7 +493,8 @@ struct RK_Camera3D
         struct
         {
             F32 fov;
-        } perspective;
+        }
+        perspective;
 
         // Orthographic
         struct
@@ -489,7 +503,8 @@ struct RK_Camera3D
             F32 right;
             F32 bottom;
             F32 top;
-        } orthographic;
+        }
+        orthographic;
     };
 };
 
@@ -567,6 +582,7 @@ struct RK_Sprite2D
     RK_Sprite2D *next;
     RK_Texture2D *tex;
     Vec2F32 size;
+    RK_Sprite2DAnchorKind anchor;
     // TODO(XXX): it's weird to put color here
     Vec4F32 color;
 };
@@ -654,6 +670,10 @@ struct RK_Node
     RK_SpotLight                  *spot_light;
     RK_Sprite2D                   *sprite2d;
     RK_AnimatedSprite2D           *animated_sprite2d;
+
+    // animations
+    F32                           hot_t;
+    F32                           active_t;
 
     //~ Custom update/draw functions
     // TODO(k): reuse custom_data memory block based on its size
@@ -1082,7 +1102,7 @@ internal RK_NodeRec rk_node_df(RK_Node *n, RK_Node *root, U64 sib_member_off, U6
 #define rk_node_df_post(node, root, force_leaf) rk_node_df(node, root, OffsetOf(RK_Node, prev), OffsetOf(RK_Node, last), force_leaf)
 
 internal void      rk_node_push_fn(RK_Node *n, RK_NodeCustomUpdateFunctionType *fn);
-#define  rk_node_push_custom_data(n, T) (n->custom_data = push_array(rk_top_node_bucket()->arena_ref, T, 1))
+#define  rk_node_push_custom_data(T, s) (push_array(rk_top_node_bucket()->arena_ref, T, s))
 internal RK_Handle rk_handle_from_node(RK_Node *n);
 internal RK_Node*  rk_node_from_handle(RK_Handle handle);
 internal B32       rk_node_is_active(RK_Node *node);

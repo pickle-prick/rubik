@@ -50,7 +50,7 @@ table_alloc(Arena *arena, Vec2U64 size)
     ret->slots = push_array(arena, Slot, slot_count);
     ret->stones = push_array(arena, Stone, slot_count);
 
-    ret->pane_rect = os_client_rect_from_window(rk_state->os_wnd);
+    ret->pane_rect = rk_state->window_rect;
     {
         ret->pane_rect.x0 += 900;
         ret->pane_rect.x1 -= 900;

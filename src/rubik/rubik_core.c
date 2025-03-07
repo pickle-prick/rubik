@@ -649,6 +649,9 @@ rk_init(OS_Handle os_wnd)
         rk_state->os_wnd          = os_wnd;
         rk_state->dpi             = os_dpi_from_window(os_wnd);
         rk_state->last_dpi        = rk_state->last_dpi;
+        rk_state->window_rect     = os_client_rect_from_window(os_wnd, 1);
+        rk_state->window_dim      = dim_2f32(rk_state->window_rect);
+
         for(U64 i = 0; i < ArrayCount(rk_state->drawlists); i++)
         {
             // TODO(k): some device offers 256MB memory which is both cpu visiable and device local
@@ -735,13 +738,14 @@ rk_init(OS_Handle os_wnd)
         rk_state->cfg_ui_debug_palettes[RK_PaletteCode_DropSiteOverlay].border     = current->colors[RK_ThemeColor_DropSiteOverlay];
     }
 
-    // Views
+    // UI Views
     for(U64 i = 0; i < RK_ViewKind_COUNT; i++)
     {
         RK_View *view = &rk_state->views[i];
         view->arena = arena_alloc();
     }
 
+    // TODO(XXX): not used for now, too many stuffs to fix
     rk_state->function_hash_table_size = 1000;
     rk_state->function_hash_table = push_array(arena, RK_FunctionSlot, rk_state->function_hash_table_size);
 
@@ -1764,8 +1768,18 @@ internal void rk_ui_inspector(void)
                 }
                 if(ui_clicked(ui_button(rk_viewport_shading_kind_display_string_table[k]))) {camera->viewport_shading = k;}
             }
+        }
 
-            ui_spacer(ui_em(0.5, 1.0));
+        ui_spacer(ui_em(0.5, 1.0));
+
+        UI_Row
+        {
+            ui_labelf("viewport");
+            ui_spacer(ui_pct(1.0, 0.0));
+            ui_f32_edit(&camera->viewport.x0, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X0###viewport_x0"));
+            ui_f32_edit(&camera->viewport.x1, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X1###viewport_x1"));
+            ui_f32_edit(&camera->viewport.y0, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y0###viewport_y0"));
+            ui_f32_edit(&camera->viewport.y1, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y1###viewport_y1"));
         }
     }
 
@@ -2234,7 +2248,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
 
     RK_Scene *scene = rk_state->active_scene;
 
-    /////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////
     // Begin of the frame
     {
         // free scenes
@@ -2267,7 +2281,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         rk_state->dt_us = dt_us;
         rk_state->dt_sec = dt_us/1000000.0f;
         rk_state->dt_ms = dt_us/1000.0f;
-        rk_state->window_rect = os_client_rect_from_window(rk_state->os_wnd);
+        rk_state->window_rect = os_client_rect_from_window(rk_state->os_wnd, 0);
         rk_state->window_dim = dim_2f32(rk_state->window_rect);
         rk_state->last_cursor = rk_state->cursor;
         rk_state->cursor = os_mouse_from_window(rk_state->os_wnd);
@@ -2280,7 +2294,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         arena_clear(rk_frame_arena());
     }
 
-    /////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////
     // Unpack active camera
 
     RK_Node *camera_node = rk_node_from_handle(scene->active_camera);
@@ -2301,11 +2315,19 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     //- view/projection (NOTE(k): behind by one frame)
     Mat4x4F32 view_m = inverse_4x4f32(camera_xform);
     Mat4x4F32 projection_m;
+    Rng2F32 viewport = camera->viewport;
+    Vec2F32 viewport_dim = dim_2f32(camera->viewport);
+    if(viewport_dim.x == 0 || viewport_dim.y == 0)
+    {
+        viewport = rk_state->window_rect;
+        viewport_dim = dim_2f32(viewport);
+    }
+
     switch(camera->projection)
     {
         case RK_ProjectionKind_Perspective:
         {
-            projection_m = make_perspective_vulkan_4x4f32(camera->perspective.fov, rk_state->window_dim.x/rk_state->window_dim.y, camera->zn, camera->zf);
+            projection_m = make_perspective_vulkan_4x4f32(camera->perspective.fov, viewport_dim.x/viewport_dim.y, camera->zn, camera->zf);
         }break;
         case RK_ProjectionKind_Orthographic:
         {
@@ -2326,8 +2348,9 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         *bucket = d_bucket_make();
         D_BucketScope(*bucket)
         {
-            Rng2F32 viewport = rk_state->window_rect;
-            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, projection_m, !scene->omit_grid, 0);
+            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, projection_m);
+            pass_params->omit_light = scene->omit_light;
+            pass_params->omit_grid = scene->omit_grid;
             pass_params->lights = push_array(rk_frame_arena(), R_Light, MAX_LIGHTS_PER_PASS);
             pass_params->materials = push_array(rk_frame_arena(), R_Material, MAX_MATERIALS_PER_PASS);
             pass_params->textures = push_array(rk_frame_arena(), R_PackedTextures, MAX_MATERIALS_PER_PASS);
@@ -2345,8 +2368,9 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         *bucket = d_bucket_make();
         D_BucketScope(*bucket)
         {
-            Rng2F32 viewport = rk_state->window_rect;
-            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, projection_m, 0, 1);
+            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, projection_m);
+            pass_params->omit_light = 1;
+            pass_params->omit_grid = 1;
             pass_params->lights = push_array(rk_frame_arena(), R_Light, MAX_LIGHTS_PER_PASS);
             pass_params->materials = push_array(rk_frame_arena(), R_Material, MAX_MATERIALS_PER_PASS);
             pass_params->textures = push_array(rk_frame_arena(), R_PackedTextures, MAX_MATERIALS_PER_PASS);
@@ -2366,7 +2390,9 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
             Rng2F32 viewport = rk_state->window_rect;
             Mat4x4F32 view_m = mat_4x4f32(1.0);
             Mat4x4F32 proj_m = make_orthographic_vulkan_4x4f32(viewport.x0, viewport.x1, viewport.y1, viewport.y0, 0.1, 1.f);
-            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, projection_m, 0, 1);
+            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, projection_m);
+            pass_params->omit_light = 1;
+            pass_params->omit_grid = 1;
             pass_params->lights = push_array(rk_frame_arena(), R_Light, MAX_LIGHTS_PER_PASS);
             pass_params->materials = push_array(rk_frame_arena(), R_Material, MAX_MATERIALS_PER_PASS);
             pass_params->textures = push_array(rk_frame_arena(), R_PackedTextures, MAX_MATERIALS_PER_PASS);
@@ -2387,6 +2413,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     OS_Event *os_evt_opl = os_events.last + 1;
     for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
     {
+        // if(os_window_is_focused(window))
         if(os_evt == 0) continue;
 
         UI_Event ui_evt = zero_struct;
@@ -2556,6 +2583,16 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     /////////////////////////////////////////////////////////////////////////////////////
     //~ Update/draw node in the scene tree
 
+    /////////////////////////////////////////////////////////////////////////////////////
+    // animation rates
+
+    F32 vast_rate = 1 - pow_f32(2, (-60.f * rk_state->dt_sec));
+    F32 fast_rate = 1 - pow_f32(2, (-50.f * rk_state->dt_sec));
+    F32 fish_rate = 1 - pow_f32(2, (-40.f * rk_state->dt_sec));
+    F32 slow_rate = 1 - pow_f32(2, (-30.f * rk_state->dt_sec));
+    F32 slug_rate = 1 - pow_f32(2, (-15.f * rk_state->dt_sec));
+    F32 slaf_rate = 1 - pow_f32(2, (-8.f  * rk_state->dt_sec));
+
     ProfScope("update/draw game")
     {
         // unpack pass/params
@@ -2571,8 +2608,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
 
         RK_Node *node = rk_node_from_handle(scene->root);
 
-        // collect lights,materials,textures
         /////////////////////////////////////////////////////////////////////////////////
+        // collect lights,materials,textures
 
         R_Light *lights = geo_back_params->lights;
         U64 *light_count = &geo_back_params->light_count;
@@ -2594,8 +2631,26 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                 fn->f(node, scene, os_events, rk_state->dt_sec, geo_back_params->projection, geo_back_params->view);
             }
 
-            B32 has_transform = 0;
+            /////////////////////////////////////////////////////////////////////////////
+            // update animation t(s)
 
+            B32 is_hot = rk_key_match(scene->hot_key, node->key);
+            B32 is_active = rk_key_match(scene->active_key, node->key);
+
+            // determine rates
+            F32 hot_rate      = fast_rate;
+            F32 active_rate   = fast_rate;
+            F32 disabled_rate = slow_rate;
+            F32 focus_rate    = fast_rate;
+
+            // animate t
+            node->hot_t    += hot_rate * ((F32)is_hot - node->hot_t);
+            node->active_t += active_rate * ((F32)is_active - node->active_t);
+
+            /////////////////////////////////////////////////////////////////////////////
+            // update node transform based on it's type flags
+
+            B32 has_transform = 0;
             if(node->type_flags & RK_NodeTypeFlag_Node2D)
             {
                 has_transform = 1;
@@ -2800,6 +2855,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
             // draw sprite2d
             D_BucketScope(geo_back_bucket) if(node->type_flags & RK_NodeTypeFlag_Sprite2D)
             {
+                // TODO(XXX): since we are doing dynamic drawlist, gpu instancing will not work, maybe we should create or reuse the rect pass
+
                 RK_Transform2D *transform2d = &node->node2d->transform;
                 RK_Sprite2D *sprite = node->sprite2d;
                 RK_Texture2D *tex = sprite->tex;
@@ -2808,7 +2865,31 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                 // draw mesh
 
                 Vec2F32 half_size = scale_2f32(sprite->size, 0.5);
-                Rng2F32 src = {-half_size.x,-half_size.y, half_size.x, half_size.y};
+                Rng2F32 src;
+                switch(sprite->anchor)
+                {
+                    case RK_Sprite2DAnchorKind_TopLeft:
+                    {
+                        src = (Rng2F32){0,0, sprite->size.x, sprite->size.y};
+                    }break;
+                    case RK_Sprite2DAnchorKind_TopRight:
+                    {
+                        src = (Rng2F32){-sprite->size.x, 0,0, sprite->size.y};
+                    }break;
+                    case RK_Sprite2DAnchorKind_BottomLeft:
+                    {
+                        src = (Rng2F32){0, -sprite->size.y, sprite->size.x, 0};
+                    }break;
+                    case RK_Sprite2DAnchorKind_BottomRight:
+                    {
+                        src = (Rng2F32){-sprite->size.x, -sprite->size.y, 0,0};
+                    }break;
+                    case RK_Sprite2DAnchorKind_Center:
+                    {
+                        src = (Rng2F32){-half_size.x,-half_size.y, half_size.x, half_size.y};
+                    }break;
+                    default:{InvalidPath;}break;
+                }
                 Rng2F32 dst = {0,0, 1,1};
                 RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), src, dst, transform2d->depth);
                 n->key = node->key;
@@ -2820,18 +2901,18 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                 if(tex) n->albedo_tex = tex->tex;
                 n->color = sprite->color;
 
-                // TODO(XXX): not working
-                if(rk_key_match(scene->hot_key, node->key))
+                if(rk_key_match(scene->hot_key, node->key) && (node->flags & RK_NodeFlag_DrawHotEffects))
                 {
                     RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), src, dst, transform2d->depth-0.1);
                     n->key = node->key;
                     n->xform = node->fixed_xform;
-                    n->draw_edge = 1;
+                    n->draw_edge = node->flags & RK_NodeFlag_DrawBorder;
                     n->omit_light = 1;
                     n->disable_depth = 0;
                     n->line_width = 1;
                     n->albedo_tex = r_handle_zero();
-                    n->color = v4f32(0.1,0.1,0.1,0.3);
+                    n->color = sprite->color;
+                    n->color.w *= node->hot_t;
                 }
             }
 
@@ -2917,7 +2998,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                 // if(1)
                 if(rk_key_match(scene->hot_key, node->key))
                 {
-                    RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), src, dst, 0);
+                    RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), src, dst, transform2d->depth-0.1);
                     n->key = node->key;
                     n->xform = node->fixed_xform;
                     n->draw_edge = 1;
@@ -3039,8 +3120,9 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     // NOTE(k): there could be ui elements within node update
     rk_state->sig = ui_signal_from_box(overlay);
 
-    /////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////
     // Update hot/active key
+
     {
         scene->hot_key = rk_key_make(hot_key, 0);
         if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
@@ -3054,8 +3136,9 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         }
     }
 
-    /////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////
     // handle cursors
+
     if(camera->hide_cursor && (!rk_state->cursor_hidden))
     {
         os_hide_cursor(rk_state->os_wnd);
@@ -3521,7 +3604,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     rk_drawlist_build(rk_frame_drawlist());
     ProfEnd();
 
-    /////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////
     // Draw ui
 
     ui_end_build();
@@ -3530,14 +3613,14 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         rk_ui_draw();
     }
 
-    /////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////
     // End of frame
 
     rk_pop_node_bucket();
     rk_pop_res_bucket();
     rk_pop_scene();
 
-    /////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////
     // concate draw buckets
 
     D_Bucket *ret = d_bucket_make();
@@ -3554,8 +3637,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     return ret;
 }
 
-/////////////////////////////////
-// Dynamic drawing (in immediate mode fashion)
+/////////////////////////////////////////////////////////////////////////////////////////
+// Dynamic drawing api (in immediate mode fashion)
 
 internal RK_DrawList *
 rk_drawlist_alloc(Arena *arena, U64 vertex_buffer_cap, U64 indice_buffer_cap)
@@ -3673,7 +3756,7 @@ rk_drawlist_reset(RK_DrawList *drawlist)
     drawlist->node_count = 0;
 }
 
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 // Helpers
 
 internal void
@@ -3777,7 +3860,7 @@ rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F32 plane_normal, Vec
     return t;
 }
 
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 //~ Enum to string
 
 internal String8
@@ -3822,7 +3905,7 @@ rk_string_from_polygon_kind(RK_ViewportShadingKind kind)
     return ret;
 }
 
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 // Scene creation and destruction
 
 internal RK_Scene *

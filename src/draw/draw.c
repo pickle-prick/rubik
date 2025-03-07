@@ -145,7 +145,7 @@ d_top_bucket(void)
 
 //- rjf: 3d rendering pass params
 internal R_PassParams_Geo3D *
-d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection, B32 show_grid, B32 omit_light)
+d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection)
 {
     Arena *arena = d_thread_ctx->arena;
     D_Bucket *bucket = d_top_bucket();
@@ -155,8 +155,6 @@ d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection, B32 show_g
         params->viewport   = viewport;
         params->view       = view;
         params->projection = projection;
-        params->show_grid  = show_grid;
-        params->omit_light = omit_light;
     }
     return params;
 }
