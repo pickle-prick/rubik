@@ -424,7 +424,7 @@ push_str8_copy(Arena *arena, String8 s){
 }
 
 internal String8
-push_str8_copy_static(String8 s, U8 *backed, U64 backed_size)
+push_str8_copy_static_(String8 s, U8 *backed, U64 backed_size)
 {
   U64 size = Min(s.size, backed_size);
   MemoryCopy(backed, s.str, size);

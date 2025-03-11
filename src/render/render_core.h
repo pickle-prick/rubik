@@ -11,7 +11,7 @@
 #define MAX_GEO3D_PASS 3
 #define MAX_JOINTS_PER_PASS 3000
 #define MAX_LIGHTS_PER_PASS 3000
-#define MAX_MATERIALS_PER_PASS 3000
+#define MAX_MATERIALS_PER_PASS 30000
 // inst count limits
 #define MAX_RECT_INSTANCES 10000
 #define MAX_MESH_INSTANCES 10000
@@ -197,6 +197,9 @@ struct R_Material
     Vec4F32 diffuse_color;
     Vec4F32 specular_color;
     Vec4F32 reflectance;
+
+    // sample_channel maps
+    Mat4x4F32 diffuse_sample_channel_map;
 
     // f32
     F32 opacity;

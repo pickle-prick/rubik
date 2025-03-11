@@ -1109,7 +1109,7 @@ rk_node_from_packed_scene(String8 string, RK_PackedScene *packed)
     {
         ret = rk_node_from_packed_scene_node(packed->root, seed_key);
         ret->instance = packed;
-        ret->name = push_str8_copy_static(string, ret->name_buffer, ArrayCount(ret->name_buffer));
+        ret->name = push_str8_copy_static(string, ret->name_buffer);
     }
     return ret;
 }
@@ -2387,7 +2387,7 @@ rk_node_equip_torus(RK_Node *n, F32 inner_radius, F32 outer_radius, U64 rings, U
 }
 
 internal RK_DrawNode *
-rk_drawlist_push_rect(Arena *arena, RK_DrawList *drawlist, Rng2F32 src, Rng2F32 dst, F32 depth)
+rk_drawlist_push_rect(Arena *arena, RK_DrawList *drawlist, Rng2F32 dst, Rng2F32 src, F32 depth)
 {
     RK_DrawNode *ret = rk_drawlist_push(arena, drawlist);
     D_Bucket *bucket = d_top_bucket();
@@ -2400,26 +2400,26 @@ rk_drawlist_push_rect(Arena *arena, RK_DrawList *drawlist, Rng2F32 src, Rng2F32 
     // top left 0
     vertices[0].col = v3f32(0,0,0);
     vertices[0].nor = v3f32(0,0,-1);
-    vertices[0].pos = v3f32(src.x0, src.y0, depth);
-    vertices[0].tex = v2f32(dst.x0, dst.y0);
+    vertices[0].pos = v3f32(dst.x0, dst.y0, depth);
+    vertices[0].tex = v2f32(src.x0, src.y0);
 
     // bottom left 1
     vertices[1].col = v3f32(0,0,0);
     vertices[1].nor = v3f32(0,0,-1);
-    vertices[1].pos = v3f32(src.x0, src.y1, depth);
-    vertices[1].tex = v2f32(dst.x0, dst.y1);
+    vertices[1].pos = v3f32(dst.x0, dst.y1, depth);
+    vertices[1].tex = v2f32(src.x0, src.y1);
 
     // top right 2
     vertices[2].col = v3f32(0,0,0);
     vertices[2].nor = v3f32(0,0,-1);
-    vertices[2].pos = v3f32(src.x1, src.y0, depth);
-    vertices[2].tex = v2f32(dst.x1, dst.y0);
+    vertices[2].pos = v3f32(dst.x1, dst.y0, depth);
+    vertices[2].tex = v2f32(src.x1, src.y0);
 
     // bottom right 3
     vertices[3].col = v3f32(0,0,0);
     vertices[3].nor = v3f32(0,0,-1);
-    vertices[3].pos = v3f32(src.x1, src.y1, depth);
-    vertices[3].tex = v2f32(dst.x1, dst.y1);
+    vertices[3].pos = v3f32(dst.x1, dst.y1, depth);
+    vertices[3].tex = v2f32(src.x1, src.y1);
 
     indices[0] = 0;
     indices[1] = 1;
@@ -2436,6 +2436,83 @@ rk_drawlist_push_rect(Arena *arena, RK_DrawList *drawlist, Rng2F32 src, Rng2F32 
     ret->indice_count = indice_count;
     ret->topology = R_GeoTopologyKind_Triangles;
     ret->polygon = R_GeoPolygonKind_Fill;
+    return ret;
+}
+
+internal RK_DrawNode *
+rk_drawlist_push_string(Arena *arena, RK_DrawList *drawlist, Rng2F32 dst, F32 depth, String8 string, D_FancyRunList *list, F_Tag font, F32 font_size, Vec4F32 font_color, U64 tab_size, F_RasterFlags text_raster_flags)
+{
+    RK_DrawNode *ret = 0;
+
+    // TODO(XXX): not sure if we should start from bottom left, find out later
+    Vec2F32 p = {dst.x0, dst.y1}; // bottom left
+    Vec2F32 dst_dim = dim_2f32(dst);
+    F32 max_x = dst_dim.x;
+    F_Run trailer_run = {0};
+    B32 trailer_enabled = ((p.x+list->dim.x) > max_x && (p.x+trailer_run.dim.x) < max_x);
+
+    F32 off_x = p.x;
+    F32 off_y = p.y;
+    F32 advance = 0;
+    B32 trailer_found = 0;
+    Vec4F32 last_color = {0};
+    for(D_FancyRunNode *n = list->first; n != 0; n = n->next)
+    {
+        F_Piece *piece_first = n->v.run.pieces.v;
+        F_Piece *piece_opl = n->v.run.pieces.v + n->v.run.pieces.count;
+
+        for(F_Piece *piece = piece_first; piece < piece_opl; piece++)
+        {
+            if(trailer_enabled && (off_x+advance+piece->advance) > (max_x-trailer_run.dim.x))
+            {
+                trailer_found = 1; 
+                break;
+            }
+
+            if(!trailer_enabled && (off_x+advance+piece->advance) > max_x)
+            {
+                goto end_draw;
+            }
+
+            Rng2F32 dst = r2f32p(piece->rect.x0+off_x, piece->rect.y0+off_y, piece->rect.x1+off_x, piece->rect.y1+off_y);
+            Rng2F32 src = r2f32p(piece->subrect.x0/piece->texture_dim.x,
+                                 piece->subrect.y0/piece->texture_dim.y,
+                                 piece->subrect.x1/piece->texture_dim.x,
+                                 piece->subrect.y1/piece->texture_dim.y);
+            // normalize tex coordinates
+
+            // TODO(k): src wil be all zeros in gcc release build but not with clang
+            AssertAlways((src.x0 + src.x1 + src.y0 + src.y1) != 0);
+            Vec2F32 size = dim_2f32(dst);
+            AssertAlways(!r_handle_match(piece->texture, r_handle_zero()));
+            last_color = n->v.color;
+
+            // NOTE(k): Space will have 0 extent
+            if(size.x > 0 && size.y > 0)
+            {
+                // if(0)
+                // {
+                //     d_rect(dst, n->v.color, 1.0, 1.0, 1.0);
+                // }
+                // d_img(dst, src, piece->texture, n->v.color, 0,0,0);
+                RK_DrawNode *d_node = rk_drawlist_push_rect(arena, drawlist, dst, src, depth);
+                d_node->albedo_tex = piece->texture;
+                d_node->color = font_color;
+                ret = ret == 0 ? d_node : ret;
+            }
+
+            advance += piece->advance;
+        }
+
+        // TODO(k): underline
+        // TODO(k): strikethrough
+
+        if(trailer_found)
+        {
+            break;
+        }
+    }
+    end_draw:;
     return ret;
 }
 

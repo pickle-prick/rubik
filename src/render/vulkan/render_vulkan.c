@@ -4016,7 +4016,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     }
 
                     //~ Bind uniform buffer
-                    /////////////////////////////////////////////////
+                    /////////////////////////////////////////////////////////////////////
 
                     // Upload uniforms
                     R_Vulkan_UBO_Rect uniforms = {0};
@@ -4169,6 +4169,41 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                     R_Vulkan_SBO_Material *mat_dst = &materials[i];
                     R_Material *mat_src = &params->materials[i];
                     MemoryCopy(mat_dst, mat_src, sizeof(R_Material));
+
+                    /////////////////////////////////////////////////////////////////////
+                    // update sample map
+                    // Set up texture sample map matrix based on texture format
+                    // Vulkan use col-major
+
+                    // diffuse texture
+                    if(mat_dst->has_diffuse_texture)
+                    {
+                        R_Vulkan_Tex2D *tex = r_vulkan_tex2d_from_handle(params->textures[i].array[R_GeoTexKind_Diffuse]);
+                        Vec4F32 texture_sample_channel_map[4] = {
+                            {1, 0, 0, 0},
+                            {0, 1, 0, 0},
+                            {0, 0, 1, 0},
+                            {0, 0, 0, 1},
+                        };
+                        if(tex)
+                        {
+                            switch(tex->format)
+                            {
+                                default: break;
+                                case R_Tex2DFormat_R8: 
+                                {
+                                    MemoryZeroStruct(&texture_sample_channel_map);
+                                    // TODO(k): why, shouldn't vulkan use col-major order?
+                                    texture_sample_channel_map[0] = v4f32(1, 1, 1, 1);
+                                    // texture_sample_channel_map[0].x = 1;
+                                    // texture_sample_channel_map[1].x = 1;
+                                    // texture_sample_channel_map[2].x = 1;
+                                    // texture_sample_channel_map[3].x = 1;
+                                }break;
+                            }
+                        }
+                        MemoryCopy(&mat_dst->diffuse_sample_channel_map, &texture_sample_channel_map, sizeof(Mat4x4F32));
+                    }
                 }
                 MemoryCopy(materials_sbo_dst, materials, sizeof(R_Vulkan_SBO_Material)*params->material_count);
                 scratch_end(scratch);

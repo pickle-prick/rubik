@@ -585,6 +585,15 @@ struct RK_Sprite2D
     RK_Sprite2DAnchorKind anchor;
     // TODO(XXX): it's weird to put color here
     Vec4F32 color;
+
+    // string
+    String8 string;
+    D_FancyRunList fancy_run_list;
+    F_Tag font;
+    F32 font_size;
+    Vec4F32 font_color;
+    U64 tab_size;
+    F_RasterFlags text_raster_flags;
 };
 
 typedef struct RK_AnimatedSprite2D RK_AnimatedSprite2D;
@@ -608,7 +617,7 @@ struct RK_AnimatedSprite2D
 
 struct RK_Node;
 struct RK_Scene;
-#define RK_NODE_CUSTOM_UPDATE(name) void name(struct RK_Node *node, struct RK_Scene *scene, OS_EventList os_events, F32 dt_sec, Mat4x4F32 projection_m, Mat4x4F32 view_m)
+#define RK_NODE_CUSTOM_UPDATE(name) void name(struct RK_Node *node, struct RK_Scene *scene, OS_EventList os_events, F32 dt_sec, Mat4x4F32 proj_m, Mat4x4F32 view_m, Mat4x4F32 proj_view_m)
 typedef RK_NODE_CUSTOM_UPDATE(RK_NodeCustomUpdateFunctionType);
 
 #define RK_NODE_CUSTOM_DRAW(name) void name(struct RK_Node *node, void *node_data)
@@ -833,6 +842,7 @@ typedef enum RK_FontSlot
     RK_FontSlot_Main,
     RK_FontSlot_Code,
     RK_FontSlot_Icons,
+    RK_FontSlot_Game,
     RK_FontSlot_COUNT
 } RK_FontSlot;
 
@@ -1170,6 +1180,8 @@ internal void      rk_ijk_from_xform(Mat4x4F32 m, Vec3F32 *i, Vec3F32 *j, Vec3F3
 internal Mat4x4F32 rk_xform_from_transform3d(RK_Transform3D *transform);
 internal Mat4x4F32 rk_xform_from_trs(Vec3F32 translate, QuatF32 rotation, Vec3F32 scale);
 internal F32       rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F32 plane_normal, Vec3F32 plane_point);
+internal Rng2F32   rk_rect_from_sprite2d(RK_Sprite2D *sprite2d);
+internal void      rk_sprite2d_equip_string(Arena *arena, RK_Sprite2D *sprite2d, String8 string, F_Tag font, F32 font_size, Vec4F32 font_color, U64 tab_size, F_RasterFlags text_raster_flags);
 
 /////////////////////////////////
 //~ Enum to string

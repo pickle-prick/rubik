@@ -670,9 +670,10 @@ rk_init(OS_Handle os_wnd)
     rk_state->setting_vals[RK_SettingCode_CodeFontSize].s32 = ClampBot(rk_state->setting_vals[RK_SettingCode_CodeFontSize].s32, rk_setting_code_default_val_table[RK_SettingCode_CodeFontSize].s32);
 
     // Fonts
-    rk_state->cfg_font_tags[RK_FontSlot_Main]  = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
-    rk_state->cfg_font_tags[RK_FontSlot_Code]  = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
-    rk_state->cfg_font_tags[RK_FontSlot_Icons] = f_tag_from_path(str8_lit("./fonts/icons.ttf"));
+    rk_state->cfg_font_tags[RK_FontSlot_Main]   = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
+    rk_state->cfg_font_tags[RK_FontSlot_Code]   = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
+    rk_state->cfg_font_tags[RK_FontSlot_Icons]  = f_tag_from_path(str8_lit("./fonts/icons.ttf"));
+    rk_state->cfg_font_tags[RK_FontSlot_Game]   = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
 
     // Theme 
     MemoryCopy(rk_state->cfg_theme_target.colors, rk_theme_preset_colors__handmade_hero, sizeof(rk_theme_preset_colors__handmade_hero));
@@ -948,8 +949,7 @@ rk_build_node_from_key(RK_NodeTypeFlags type_flags, RK_NodeFlags flags, RK_Key k
 internal void
 rk_node_equip_display_string(RK_Node* node, String8 string)
 {
-    Arena *arena = node->owner_bucket->arena_ref;
-    node->name = push_str8_copy_static(rk_display_part_from_key_string(string), node->name_buffer, ArrayCount(node->name_buffer));
+    node->name = push_str8_copy_static(rk_display_part_from_key_string(string), node->name_buffer);
 }
 
 /////////////////////////////////
@@ -2302,7 +2302,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     RK_Camera3D *camera = camera_node->camera3d;
     Mat4x4F32 camera_xform = camera_node->fixed_xform;
 
-    // polygon mode
+    //- polygon mode
     R_GeoPolygonKind polygon_mode;
     switch(camera->viewport_shading)
     {
@@ -2628,7 +2628,9 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
 
             for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
             {
-                fn->f(node, scene, os_events, rk_state->dt_sec, geo_back_params->projection, geo_back_params->view);
+                fn->f(node, scene, os_events, rk_state->dt_sec,
+                      geo_back_params->projection, geo_back_params->view,
+                      mul_4x4f32(geo_back_params->projection, geo_back_params->view));
             }
 
             /////////////////////////////////////////////////////////////////////////////
@@ -2865,33 +2867,9 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                 // draw mesh
 
                 Vec2F32 half_size = scale_2f32(sprite->size, 0.5);
-                Rng2F32 src;
-                switch(sprite->anchor)
-                {
-                    case RK_Sprite2DAnchorKind_TopLeft:
-                    {
-                        src = (Rng2F32){0,0, sprite->size.x, sprite->size.y};
-                    }break;
-                    case RK_Sprite2DAnchorKind_TopRight:
-                    {
-                        src = (Rng2F32){-sprite->size.x, 0,0, sprite->size.y};
-                    }break;
-                    case RK_Sprite2DAnchorKind_BottomLeft:
-                    {
-                        src = (Rng2F32){0, -sprite->size.y, sprite->size.x, 0};
-                    }break;
-                    case RK_Sprite2DAnchorKind_BottomRight:
-                    {
-                        src = (Rng2F32){-sprite->size.x, -sprite->size.y, 0,0};
-                    }break;
-                    case RK_Sprite2DAnchorKind_Center:
-                    {
-                        src = (Rng2F32){-half_size.x,-half_size.y, half_size.x, half_size.y};
-                    }break;
-                    default:{InvalidPath;}break;
-                }
-                Rng2F32 dst = {0,0, 1,1};
-                RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), src, dst, transform2d->depth);
+                Rng2F32 dst = rk_rect_from_sprite2d(sprite);
+                Rng2F32 src = {0,0, 1,1};
+                RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), dst, src, transform2d->depth);
                 n->key = node->key;
                 n->xform = node->fixed_xform;
                 n->draw_edge = 0;
@@ -2901,9 +2879,26 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                 if(tex) n->albedo_tex = tex->tex;
                 n->color = sprite->color;
 
+                // draw text
+                if(sprite->string.size > 0)
+                {
+                    RK_DrawNode *n = rk_drawlist_push_string(rk_frame_arena(), rk_frame_drawlist(),
+                                                             dst, transform2d->depth-0.1,
+                                                             sprite->string, &sprite->fancy_run_list,
+                                                             sprite->font, sprite->font_size,
+                                                             sprite->font_color, sprite->tab_size,
+                                                             sprite->text_raster_flags);
+                    n->key = node->key;
+                    n->xform = node->fixed_xform;
+                    n->draw_edge = 0;
+                    n->omit_light = 1;
+                    n->disable_depth = 0;
+                    n->line_width = 1;
+                }
+
                 if(rk_key_match(scene->hot_key, node->key) && (node->flags & RK_NodeFlag_DrawHotEffects))
                 {
-                    RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), src, dst, transform2d->depth-0.1);
+                    RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), dst, src, transform2d->depth-0.1);
                     n->key = node->key;
                     n->xform = node->fixed_xform;
                     n->draw_edge = node->flags & RK_NodeFlag_DrawBorder;
@@ -2971,20 +2966,20 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                 }
                 AssertAlways(frame != 0);
 
-                Rng2F32 src = {0};
-                src.x1 = frame->w;
-                src.y1 = frame->h;
                 Rng2F32 dst = {0};
-                dst.x0 = frame->x / sheet->size.x;
-                dst.y0 = frame->y / sheet->size.y;
-                dst.x1 = (frame->x+frame->w) / sheet->size.x;
-                dst.y1 = (frame->y+frame->h) / sheet->size.y;
+                dst.x1 = frame->w;
+                dst.y1 = frame->h;
+                Rng2F32 src = {0};
+                src.x0 = frame->x / sheet->size.x;
+                src.y0 = frame->y / sheet->size.y;
+                src.x1 = (frame->x+frame->w) / sheet->size.x;
+                src.y1 = (frame->y+frame->h) / sheet->size.y;
                 if(sprite->flipped)
                 {
                     Swap(F32, dst.x0, dst.x1);
                 }
 
-                RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), src, dst, transform2d->depth);
+                RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), dst, src, transform2d->depth);
                 n->key = node->key;
                 n->xform = node->fixed_xform;
                 n->draw_edge = 0;
@@ -2998,7 +2993,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                 // if(1)
                 if(rk_key_match(scene->hot_key, node->key))
                 {
-                    RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), src, dst, transform2d->depth-0.1);
+                    RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), dst, src, transform2d->depth-0.1);
                     n->key = node->key;
                     n->xform = node->fixed_xform;
                     n->draw_edge = 1;
@@ -3858,6 +3853,63 @@ rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F32 plane_normal, Vec
         t = 0;
     }
     return t;
+}
+
+internal Rng2F32
+rk_rect_from_sprite2d(RK_Sprite2D *sprite2d)
+{
+    Rng2F32 ret;
+    Vec2F32 half_size = scale_2f32(sprite2d->size, 0.5);
+    switch(sprite2d->anchor)
+    {
+        case RK_Sprite2DAnchorKind_TopLeft:
+        {
+            ret = (Rng2F32){0,0, sprite2d->size.x, sprite2d->size.y};
+        }break;
+        case RK_Sprite2DAnchorKind_TopRight:
+        {
+            ret = (Rng2F32){-sprite2d->size.x, 0,0, sprite2d->size.y};
+        }break;
+        case RK_Sprite2DAnchorKind_BottomLeft:
+        {
+            ret = (Rng2F32){0, -sprite2d->size.y, sprite2d->size.x, 0};
+        }break;
+        case RK_Sprite2DAnchorKind_BottomRight:
+        {
+            ret = (Rng2F32){-sprite2d->size.x, -sprite2d->size.y, 0,0};
+        }break;
+        case RK_Sprite2DAnchorKind_Center:
+        {
+            ret = (Rng2F32){-half_size.x,-half_size.y, half_size.x, half_size.y};
+        }break;
+        default:{InvalidPath;}break;
+    }
+    return ret;
+}
+
+internal void
+rk_sprite2d_equip_string(Arena *arena, RK_Sprite2D *sprite2d, String8 string, F_Tag font, F32 font_size, Vec4F32 font_color, U64 tab_size, F_RasterFlags text_raster_flags)
+{
+    D_FancyStringNode fancy_string_n = {0};
+    fancy_string_n.next = 0;
+    fancy_string_n.v.font                    = font;
+    fancy_string_n.v.string                  = string;
+    fancy_string_n.v.color                   = font_color;
+    fancy_string_n.v.size                    = font_size;
+    fancy_string_n.v.underline_thickness     = 0;
+    fancy_string_n.v.strikethrough_thickness = 0;
+
+    D_FancyStringList fancy_strings = {0};
+    fancy_strings.first = &fancy_string_n;
+    fancy_strings.last = &fancy_string_n;
+    fancy_strings.node_count = 1;
+
+    sprite2d->string            = string;
+    sprite2d->font              = font;
+    sprite2d->font_size         = font_size;
+    sprite2d->font_color        = font_color;
+    sprite2d->text_raster_flags = text_raster_flags;
+    sprite2d->fancy_run_list    = d_fancy_run_list_from_fancy_string_list(arena, tab_size, text_raster_flags, &fancy_strings);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

@@ -315,7 +315,8 @@ d_sub_bucket(D_Bucket *bucket, B32 merge_pass)
 // Fancy String Type Functions
 
 internal D_FancyRunList
-d_fancy_run_list_from_fancy_string_list(Arena *arena, F32 tab_size_px, F_RasterFlags flags, D_FancyStringList *strs) {
+d_fancy_run_list_from_fancy_string_list(Arena *arena, F32 tab_size_px, F_RasterFlags flags, D_FancyStringList *strs)
+{
     D_FancyRunList run_list = {0};
     F32 base_align_px = 0;
     for(D_FancyStringNode *n = strs->first; n != 0; n = n->next)

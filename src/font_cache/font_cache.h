@@ -27,6 +27,7 @@ typedef struct F_Piece F_Piece;
 struct F_Piece
 {
     R_Handle texture;
+    Vec2S16  texture_dim;
     Rng2S16  rect;
     Rng2F32  subrect;
     F32      advance;

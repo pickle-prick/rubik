@@ -695,12 +695,6 @@ internal Vec4F32 transform_4x4f32_4f32(Mat4x4F32 a, Vec4F32 b)
     return c;
 }
 
-internal Vec3F32 transform_4x4f32_3f32(Mat4x4F32 a, Vec3F32 b)
-{
-    Vec4F32 tmp = transform_4x4f32_4f32(a, v4f32(b.x, b.y, b.z, 1.0));
-    return v3f32(tmp.x, tmp.y, tmp.z);
-}
-
 internal Mat4x4F32 scale_4x4f32(Mat4x4F32 m, F32 scale) {
     for (int j = 0; j < 4; j += 1) {
         for (int i = 0; i < 4; i += 1) {

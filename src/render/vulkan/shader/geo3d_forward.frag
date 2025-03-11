@@ -75,6 +75,9 @@ struct Material
     vec4 specular_color;
     vec4 reflectance;
 
+    // sample_channel maps
+    mat4 diffuse_sample_channel_map;
+
     // f32
     float opacity;
     float specular_power;
@@ -240,9 +243,10 @@ void main()
     vec4 diffuse = mat.diffuse_color;
     if(mat.has_diffuse_texture > 0)
     {
-        diffuse *= texture(texSampler, texcoord);
+        diffuse *= mat.diffuse_sample_channel_map * texture(texSampler, texcoord);
     }
-    // TODO(XXX): not working, fix it later
+
+    // TODO(XXX): not working properly, fix it later
     // vec4 specular = mat.specular_color;
     // vec4 ambient = mat.ambient_color;
     // vec4 emissive = mat.emissive_color;

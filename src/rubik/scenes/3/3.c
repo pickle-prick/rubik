@@ -17,17 +17,6 @@ typedef enum S3_CellKind
     S3_CellKind_COUNT,
 } S3_CellKind;
 
-// TODO(XXX): maybe we don't need this
-// typedef enum S3_KernalKind
-// {
-//     S3_KernalKind_2x1Swap,
-//     S3_KernalKind_2x1Or,
-//     S3_KernalKind_1x1Not,
-//     S3_KernalKind_1x1And,
-//     S3_KernalKind_1x1Xor,
-//     S3_KernalKind_COUNT,
-// } S3_KernalKind;
-
 /////////////////////////////////////////////////////////////////////////////////////////
 // Scene types
 
@@ -42,6 +31,7 @@ struct S3_Cell
     B32 is_revealed;
     U64 liberties;
     S3_Grid *grid;
+    RK_Node *node;
 };
 
 typedef struct S3_Kernal S3_Kernal;
@@ -131,11 +121,82 @@ s3_run_grid_kernals(S3_Grid *g)
 RK_NODE_CUSTOM_UPDATE(s3_fn_debug_ui)
 {
     S3_Scene *s = node->custom_data;
+    S3_Grid *grid = s->grid;
+
+    // TODO(XXX): gather some data (only for test, we should cached these values)
+    U64 black_count = 0;
+    U64 white_count = 0;
+    for(U64 i = 0; i < grid->cell_count; i++)
+    {
+        S3_Cell *cell = &grid->cells[i];
+        if(cell->is_revealed)
+        {
+            if(cell->kind == S3_CellKind_Black)
+            {
+                black_count++;
+            }
+            else
+            {
+                white_count++;
+            }
+        }
+    }
+
     RK_UI_Pane(&s->debug_ui.rect, &s->debug_ui.show, str8_lit("GAME3"))
     {
-        if(ui_clicked(ui_buttonf("run")))
+        RK_UI_Tab(str8_lit("scene"), &s->debug_ui.show, ui_em(0.3,0), ui_em(0.3,0))
         {
-            s3_run_grid_kernals(s->grid);
+
+            ui_set_next_flags(UI_BoxFlag_DrawDropShadow);
+            if(ui_clicked(ui_buttonf("reset")))
+            {
+                // TODO(XXX)
+            }
+
+            ui_spacer(ui_em(0.3,0));
+
+            ui_set_next_flags(UI_BoxFlag_DrawDropShadow);
+            if(ui_clicked(ui_buttonf("run")))
+            {
+                s3_run_grid_kernals(s->grid);
+            }
+
+            ui_spacer(ui_em(0.3,0));
+
+            UI_Row
+            {
+                ui_labelf("points");
+                ui_spacer(ui_pct(1.0, 0.0));
+                ui_labelf("%I64u / %I64u", black_count, grid->cell_count);
+                ui_labelf("%.2f / 100", ((F32)black_count*100.0f)/grid->cell_count);
+            }
+        }
+    }
+
+    // highlight current operated cell 
+    {
+        // TODO(XXX): gez, this is cubesome, I wish there is a better way
+        U64 hot_cell_idx = 0;
+        S3_Cell *cell = &grid->cells[hot_cell_idx];
+        Rng2F32 rect = rk_rect_from_sprite2d(cell->node->sprite2d);
+        // NOTE(k): we are assuming orthographic projection here, so we don't divide xyz by w
+        Vec4F32 p0_src = {rect.x0, rect.y0, cell->node->node2d->transform.depth, 1.0};
+        Vec4F32 p0_dst = transform_4x4f32_4f32(proj_view_m, p0_src);
+        // ndc to screen
+        Vec2F32 half_window_dim = scale_2f32(rk_state->window_dim, 0.5);
+        Vec2F32 half_viewport_dim = scale_2f32(v2f32(1800,1800), 0.5);
+        p0_dst.x = p0_dst.x * half_viewport_dim.x + half_viewport_dim.x;
+        p0_dst.y = p0_dst.y * half_viewport_dim.y + half_viewport_dim.y;
+        Vec2F32 off = {p0_src.x-p0_dst.x, p0_src.y-p0_dst.y};
+        off = add_2f32(off, v2f32(half_window_dim.x-half_viewport_dim.x, half_window_dim.y-half_viewport_dim.y));
+        for(U64 i = 0; i < 4; i++)
+        {
+            rect.v[i] = add_2f32(off, rect.v[i]);
+        }
+        UI_Flags(UI_BoxFlag_Floating|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground)
+            UI_Rect(rect)
+        {
+            ui_build_box_from_stringf(0, "hot");
         }
     }
 }
@@ -184,6 +245,88 @@ RK_NODE_CUSTOM_UPDATE(s3_fn_camera)
 
 RK_NODE_CUSTOM_UPDATE(s3_fn_grid)
 {
+    S3_Grid *grid = node->custom_data;
+
+    // for(U64 i = 0; i < grid->cell_count; i++)
+    // {
+    //     S3_Cell *cell = &grid->cells[i];
+    //     if(cell->is_revealed) continue;
+
+    //     S3_CellKind kind = cell->kind;
+    //     B32 revealed = 0;
+    //     U64 row_start_idx = (cell->idx/grid->size.x) * grid->size.x;
+    //     U64 row_end_idx = row_start_idx + grid->size.x - 1;
+
+    //     // check neighbors
+    //     S64 up_idx = (S64)cell->idx - grid->size.x;
+    //     S64 down_idx = (S64)cell->idx + grid->size.x;
+    //     S64 left_idx = (S64)cell->idx - 1;
+    //     S64 right_idx = (S64)cell->idx + 1;
+
+    //     S3_Cell *up = up_idx > 0 ? &grid->cells[up_idx] : 0;
+    //     S3_Cell *down = (down_idx < grid->cell_count) ? &grid->cells[down_idx] : 0;
+    //     S3_Cell *left = (row_start_idx <= left_idx && left_idx <= row_end_idx) ? &grid->cells[left_idx] : 0;
+    //     S3_Cell *right = (row_start_idx <= right_idx && right_idx <= row_end_idx) ? &grid->cells[right_idx] : 0;
+
+    //     S32 black_count = 0;
+    //     S32 white_count = 0;
+    //     if(up && up->is_revealed)
+    //     {
+    //         if(up->kind == S3_CellKind_Black) 
+    //         {
+    //             black_count++;
+    //         }
+    //         else
+    //         {
+    //             white_count++;
+    //         }
+    //     }
+    //     if(down && down->is_revealed)
+    //     {
+    //         if(down->kind == S3_CellKind_Black) 
+    //         {
+    //             black_count++;
+    //         }
+    //         else
+    //         {
+    //             white_count++;
+    //         }
+    //     }
+    //     if(left && left->is_revealed)
+    //     {
+    //         if(left->kind == S3_CellKind_Black) 
+    //         {
+    //             black_count++;
+    //         }
+    //         else
+    //         {
+    //             white_count++;
+    //         }
+    //     }
+    //     if(right && right->is_revealed)
+    //     {
+    //         if(right->kind == S3_CellKind_Black) 
+    //         {
+    //             black_count++;
+    //         }
+    //         else
+    //         {
+    //             white_count++;
+    //         }
+    //     }
+    //     if((black_count-white_count) >= 2)
+    //     {
+    //         kind = S3_CellKind_Black;
+    //         revealed = 1;
+    //     }
+    //     if((white_count-black_count) >= 2)
+    //     {
+    //         kind = S3_CellKind_White;
+    //         revealed = 1;
+    //     }
+    //     cell->kind = kind;
+    //     cell->is_revealed = revealed;
+    // }
 }
 
 RK_NODE_CUSTOM_UPDATE(s3_fn_cell)
@@ -191,6 +334,23 @@ RK_NODE_CUSTOM_UPDATE(s3_fn_cell)
     S3_Scene *scene_data = rk_node_from_handle(scene->root)->custom_data;
     RK_Sprite2D *sprite2d = node->sprite2d;
     S3_Cell *cell = node->custom_data;
+
+    S3_Grid *grid = cell->grid;
+
+    U64 row_start_idx = (cell->idx/grid->size.x) * grid->size.x;
+    U64 row_end_idx = row_start_idx + grid->size.x - 1;
+
+    // check neighbors
+    S64 up_idx = (S64)cell->idx - grid->size.x;
+    S64 down_idx = (S64)cell->idx + grid->size.x;
+    S64 left_idx = (S64)cell->idx - 1;
+    S64 right_idx = (S64)cell->idx + 1;
+
+    S3_Cell *up = up_idx > 0 ? &grid->cells[up_idx] : 0;
+    S3_Cell *down = (down_idx < grid->cell_count) ? &grid->cells[down_idx] : 0;
+    S3_Cell *left = (row_start_idx <= left_idx && left_idx <= row_end_idx) ? &grid->cells[left_idx] : 0;
+    S3_Cell *right = (row_start_idx <= right_idx && right_idx <= row_end_idx) ? &grid->cells[right_idx] : 0;
+    S3_Cell *neighbors[4] = {up,down,left,right};
 
     F32 fast_rate = 1 - pow_f32(2, (-50.f * rk_state->dt_sec));
     F32 vast_rate = 1 - pow_f32(2, (-60.f * rk_state->dt_sec));
@@ -226,22 +386,6 @@ RK_NODE_CUSTOM_UPDATE(s3_fn_cell)
     {
         // node->hot_t = 1;
         S3_CellKind kind = cell->kind;
-
-        S3_Grid *grid = cell->grid;
-
-        U64 row_start_idx = (cell->idx/grid->size.x) * grid->size.x;
-        U64 row_end_idx = row_start_idx + grid->size.x - 1;
-
-        // check neighbors
-        S64 up_idx = (S64)cell->idx - grid->size.x;
-        S64 down_idx = (S64)cell->idx + grid->size.x;
-        S64 left_idx = (S64)cell->idx - 1;
-        S64 right_idx = (S64)cell->idx + 1;
-
-        S3_Cell *up = up_idx > 0 ? &grid->cells[up_idx] : 0;
-        S3_Cell *down = (down_idx < grid->cell_count) ? &grid->cells[down_idx] : 0;
-        S3_Cell *left = (row_start_idx <= left_idx && left_idx <= row_end_idx) ? &grid->cells[left_idx] : 0;
-        S3_Cell *right = (row_start_idx <= right_idx && right_idx <= row_end_idx) ? &grid->cells[right_idx] : 0;
 
         S32 black_count = 0;
         S32 white_count = 0;
@@ -289,17 +433,41 @@ RK_NODE_CUSTOM_UPDATE(s3_fn_cell)
                 white_count++;
             }
         }
-        if((black_count-white_count) >= 2)
-        {
-            kind = S3_CellKind_Black;
-        }
-        if((white_count-black_count) >= 2)
-        {
-            kind = S3_CellKind_White;
-        }
+        // if((black_count-white_count) >= 2)
+        // {
+        //     kind = S3_CellKind_Black;
+        // }
+        // if((white_count-black_count) >= 2)
+        // {
+        //     kind = S3_CellKind_White;
+        // }
         cell->kind = kind;
         cell->is_revealed = 1;
     }
+
+    U64 neighbor_count = 0;
+    for(U64 i = 0; i < 4; i++)
+    {
+        S3_Cell *neighbor = neighbors[i];
+        if(neighbor && neighbor->kind == cell->kind)
+        {
+            neighbor_count++;
+        }
+    }
+
+    Temp scratch = scratch_begin(0,0);
+    if(cell->is_revealed)
+    {
+
+        rk_sprite2d_equip_string(rk_frame_arena(),
+                                sprite2d, push_str8f(scratch.arena, "%I64u", neighbor_count),
+                                rk_state->cfg_font_tags[RK_FontSlot_Game], sprite2d->size.y, v4f32(1,1,1,1), 4, F_RasterFlag_Smooth);
+    }
+    else
+    {
+        sprite2d->string.size = 0;
+    }
+    scratch_end(scratch);
 }
 
 RK_NODE_CUSTOM_UPDATE(fn_player_dino)
@@ -466,6 +634,7 @@ rk_scene_entry__3()
                 cell_data->idx = grid_data->size.x*j + i;
                 cell_data->kind = (rand() % 2) == 1;
                 cell_data->grid = grid_data;
+                cell_data->node = cell;
                 cell->custom_data = cell_data;
             }
             y += cell_size.y;

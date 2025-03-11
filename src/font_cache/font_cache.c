@@ -216,10 +216,11 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
         AssertAlways(string.str[i] >= 32);
         FP_PackedQuad quad = fp_get_packed_quad(hash2style_node->atlas.atlas_handle, string.str[i]-32, &x, &y);
 
-        piece->texture = hash2style_node->atlas.texture;
-        piece->rect    = r2s16p(quad.x0, quad.y0, quad.x1, quad.y1);
-        piece->subrect = r2f32p(quad.s0, quad.t0, quad.s1, quad.t1);
-        piece->advance = x - xpos;
+        piece->texture     = hash2style_node->atlas.texture;
+        piece->texture_dim = hash2style_node->atlas.dim;
+        piece->rect        = r2s16p(quad.x0, quad.y0, quad.x1, quad.y1);
+        piece->subrect     = r2f32p(quad.s0, quad.t0, quad.s1, quad.t1);
+        piece->advance     = x - xpos;
         // TODO: handle unicode later, assume ascii for now
         piece->decode_size = 1;
 
@@ -231,7 +232,8 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
     return ret;
 }
 
-internal Vec2F32 f_dim_from_tag_size_string(F_Tag tag, F32 size, F32 base_align_px, F32 tab_size_px, String8 string)
+internal Vec2F32
+f_dim_from_tag_size_string(F_Tag tag, F32 size, F32 base_align_px, F32 tab_size_px, String8 string)
 {
     Temp scratch = scratch_begin(0,0);
     Vec2F32 result = {0};
