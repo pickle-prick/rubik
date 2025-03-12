@@ -146,7 +146,7 @@ A list of the layers in the codebase and their associated namespaces is below:
 - [X] 2D ui building blocks (immediate mode)
     - [X] basic widges (scroll, button, label, line_edit, expander, ...)
 - [ ] Node tree building
-    - [ ] 2D
+    - [X] 2D
     - [X] 3D
     - [X] basic mesh primitive building block (box, sphere, plane, ...)
 - [X] 3D scene editor UI
@@ -193,12 +193,7 @@ A list of the layers in the codebase and their associated namespaces is below:
     - [X] geo3d pass
     - [ ] other post effects
 - [X] 2D collision detection
-    - [X] GJK impl
-    - [X] EPA impl
 - [ ] 3D collision detection
-    - [ ] GJK impl
-    - [ ] EPA impl
-    - [ ] use compute shader to speed up
     - [ ] binary space partitioning tree
 - [ ] Rendering backend
     - [X] Vulkan

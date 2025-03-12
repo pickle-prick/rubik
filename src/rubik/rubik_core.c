@@ -2614,7 +2614,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         R_Light *lights = geo_back_params->lights;
         U64 *light_count = &geo_back_params->light_count;
 
-        HashSlot *material_slots = push_array(rk_frame_arena(), HashSlot, 3000);
+        HashSlot *material_slots = push_array(rk_frame_arena(), HashSlot, MAX_MATERIALS_PER_PASS);
         R_Material *materials = geo_back_params->materials;
         R_PackedTextures *textures = geo_back_params->textures;
         U64 *material_count = &geo_back_params->material_count;

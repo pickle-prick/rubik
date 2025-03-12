@@ -30,6 +30,7 @@ struct S3_Cell
     S3_CellKind kind;
     B32 is_revealed;
     U64 liberties;
+    U64 strength;
     S3_Grid *grid;
     RK_Node *node;
 };
@@ -247,86 +248,46 @@ RK_NODE_CUSTOM_UPDATE(s3_fn_grid)
 {
     S3_Grid *grid = node->custom_data;
 
-    // for(U64 i = 0; i < grid->cell_count; i++)
-    // {
-    //     S3_Cell *cell = &grid->cells[i];
-    //     if(cell->is_revealed) continue;
+    for(U64 i = 0; i < grid->cell_count; i++)
+    {
+        S3_Cell *cell = &grid->cells[i];
+        if(cell->is_revealed)
+        {
+            S3_CellKind kind = cell->kind;
+            B32 revealed = 0;
+            U64 row_start_idx = (cell->idx/grid->size.x) * grid->size.x;
+            U64 row_end_idx = row_start_idx + grid->size.x - 1;
 
-    //     S3_CellKind kind = cell->kind;
-    //     B32 revealed = 0;
-    //     U64 row_start_idx = (cell->idx/grid->size.x) * grid->size.x;
-    //     U64 row_end_idx = row_start_idx + grid->size.x - 1;
+            // collect neighbors
+            S64 up_idx = (S64)cell->idx - grid->size.x;
+            S64 down_idx = (S64)cell->idx + grid->size.x;
+            S64 left_idx = (S64)cell->idx - 1;
+            S64 right_idx = (S64)cell->idx + 1;
 
-    //     // check neighbors
-    //     S64 up_idx = (S64)cell->idx - grid->size.x;
-    //     S64 down_idx = (S64)cell->idx + grid->size.x;
-    //     S64 left_idx = (S64)cell->idx - 1;
-    //     S64 right_idx = (S64)cell->idx + 1;
+            S3_Cell *up = up_idx > 0 ? &grid->cells[up_idx] : 0;
+            S3_Cell *down = (down_idx < grid->cell_count) ? &grid->cells[down_idx] : 0;
+            S3_Cell *left = (row_start_idx <= left_idx && left_idx <= row_end_idx) ? &grid->cells[left_idx] : 0;
+            S3_Cell *right = (row_start_idx <= right_idx && right_idx <= row_end_idx) ? &grid->cells[right_idx] : 0;
 
-    //     S3_Cell *up = up_idx > 0 ? &grid->cells[up_idx] : 0;
-    //     S3_Cell *down = (down_idx < grid->cell_count) ? &grid->cells[down_idx] : 0;
-    //     S3_Cell *left = (row_start_idx <= left_idx && left_idx <= row_end_idx) ? &grid->cells[left_idx] : 0;
-    //     S3_Cell *right = (row_start_idx <= right_idx && right_idx <= row_end_idx) ? &grid->cells[right_idx] : 0;
-
-    //     S32 black_count = 0;
-    //     S32 white_count = 0;
-    //     if(up && up->is_revealed)
-    //     {
-    //         if(up->kind == S3_CellKind_Black) 
-    //         {
-    //             black_count++;
-    //         }
-    //         else
-    //         {
-    //             white_count++;
-    //         }
-    //     }
-    //     if(down && down->is_revealed)
-    //     {
-    //         if(down->kind == S3_CellKind_Black) 
-    //         {
-    //             black_count++;
-    //         }
-    //         else
-    //         {
-    //             white_count++;
-    //         }
-    //     }
-    //     if(left && left->is_revealed)
-    //     {
-    //         if(left->kind == S3_CellKind_Black) 
-    //         {
-    //             black_count++;
-    //         }
-    //         else
-    //         {
-    //             white_count++;
-    //         }
-    //     }
-    //     if(right && right->is_revealed)
-    //     {
-    //         if(right->kind == S3_CellKind_Black) 
-    //         {
-    //             black_count++;
-    //         }
-    //         else
-    //         {
-    //             white_count++;
-    //         }
-    //     }
-    //     if((black_count-white_count) >= 2)
-    //     {
-    //         kind = S3_CellKind_Black;
-    //         revealed = 1;
-    //     }
-    //     if((white_count-black_count) >= 2)
-    //     {
-    //         kind = S3_CellKind_White;
-    //         revealed = 1;
-    //     }
-    //     cell->kind = kind;
-    //     cell->is_revealed = revealed;
-    // }
+#if 0
+            if(cell->is_revealed)
+            {
+                S3_Cell *neighbors[4] = {up,left,right,down};
+                for(U64 j = 0; j < 4; j++)
+                {
+                    S3_Cell *neighbor = neighbors[j];
+                    if(neighbor &&
+                       neighbor->is_revealed &&
+                       neighbor->kind != cell->kind &&
+                       (neighbor->strength-cell->strength) > 2)
+                    {
+                        cell->kind = neighbor->kind;
+                    }
+                }
+            }
+#endif
+        }
+    }
 }
 
 RK_NODE_CUSTOM_UPDATE(s3_fn_cell)
@@ -449,19 +410,23 @@ RK_NODE_CUSTOM_UPDATE(s3_fn_cell)
     for(U64 i = 0; i < 4; i++)
     {
         S3_Cell *neighbor = neighbors[i];
-        if(neighbor && neighbor->kind == cell->kind)
+        if(neighbor && neighbor->is_revealed && neighbor->kind == cell->kind)
         {
             neighbor_count++;
         }
     }
 
+    U64 strength = neighbor_count+1;
+    cell->strength = strength;
+
     Temp scratch = scratch_begin(0,0);
     if(cell->is_revealed)
     {
 
-        rk_sprite2d_equip_string(rk_frame_arena(),
-                                sprite2d, push_str8f(scratch.arena, "%I64u", neighbor_count),
-                                rk_state->cfg_font_tags[RK_FontSlot_Game], sprite2d->size.y, v4f32(1,1,1,1), 4, F_RasterFlag_Smooth);
+        rk_sprite2d_equip_string(rk_frame_arena(), sprite2d,
+                                 push_str8f(scratch.arena, "%I64u", strength),
+                                 rk_state->cfg_font_tags[RK_FontSlot_Game],
+                                 sprite2d->size.y, v4f32(1,1,1,1), 4, F_RasterFlag_Smooth);
     }
     else
     {
@@ -586,7 +551,7 @@ rk_scene_entry__3()
         }
         ret->active_camera = rk_handle_from_node(main_camera);
 
-        Vec2U32 cell_count = {30,30};
+        Vec2U32 cell_count = {9,9};
         Vec2F32 cell_size = v2f32(300.f/cell_count.x,300.f/cell_count.y);
         Vec2F32 grid_world_size = {cell_size.x*cell_count.x, cell_size.y*cell_count.y};
 
