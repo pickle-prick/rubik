@@ -136,7 +136,7 @@ rk_scene_entry__0()
         rk_push_parent(0);
         RK_PackedScene *dancing_stormtrooper = rk_packed_scene_from_gltf(str8_lit("./models/dancing_stormtrooper/scene.gltf"));
         RK_PackedScene *blackguard = rk_packed_scene_from_gltf(str8_lit("./models/blackguard/scene.gltf"));
-        // RK_Handle droide = rk_packed_scene_from_gltf(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
+        RK_PackedScene *droide = rk_packed_scene_from_gltf(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
         RK_Material *white_mat = rk_material_from_color(str8_lit("white"), v4f32(1,1,1,1));
 
         RK_Material *grid_prototype_material = rk_material_from_image(str8_lit("grid_prototype"), str8_lit("./textures/gridbox-prototype-materials/prototype_512x512_grey2.png"));
@@ -156,13 +156,13 @@ rk_scene_entry__0()
         floor->mesh_inst3d->material_override = grid_prototype_material;
         floor->flags |= RK_NodeFlag_NavigationRoot;
 
-        // RK_Node *n1 = rk_node_from_packed_scene(str8_lit("1"), droide);
-        // {
-        //     // flip y
-        //     n1->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n1->node3d->transform.rotation);
-        //     n1->node3d->transform.position = v3f32(-3,0,0);
-        //     n1->flags |= RK_NodeFlag_NavigationRoot;
-        // }
+        RK_Node *n1 = rk_node_from_packed_scene(str8_lit("1"), droide);
+        {
+            // flip y
+            n1->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n1->node3d->transform.rotation);
+            n1->node3d->transform.position = v3f32(-3,0,0);
+            n1->flags |= RK_NodeFlag_NavigationRoot;
+        }
 
         // directional light
         {
