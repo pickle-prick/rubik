@@ -101,11 +101,33 @@ RK_NODE_CUSTOM_UPDATE(rotating_spot_light)
     node->node3d->transform.rotation = mul_quat_f32(r, node->node3d->transform.rotation);
 }
 
+RK_NODE_CUSTOM_UPDATE(spring_knot)
+{
+    RK_Particle3D *p = node->particle3d;
+    if(p->v.x.y > -0.2)
+    {
+        p->v.x.y = -0.2;
+    }
+}
+
 // default editor scene
 internal RK_Scene *
 rk_scene_entry__0()
 {
     RK_Scene *ret = rk_scene_alloc(str8_lit("default"), str8_lit("./src/rubik/scenes/0/default.rscn"));
+
+    // some initilization for scene
+    {
+        // physics
+        ret->particle3d_system.gravity = (PH_Force3D_Gravity){
+            .g = 9.81f,
+            .dir = v3f32(0,1,0),
+        };
+        ret->particle3d_system.visous_drag = (PH_Force3D_VisousDrag){
+            .kd = 1.f,
+        };
+    }
+
     rk_push_node_bucket(ret->node_bucket);
     rk_push_res_bucket(ret->res_bucket);
 
@@ -136,7 +158,7 @@ rk_scene_entry__0()
         rk_push_parent(0);
         RK_PackedScene *dancing_stormtrooper = rk_packed_scene_from_gltf(str8_lit("./models/dancing_stormtrooper/scene.gltf"));
         RK_PackedScene *blackguard = rk_packed_scene_from_gltf(str8_lit("./models/blackguard/scene.gltf"));
-        RK_PackedScene *droide = rk_packed_scene_from_gltf(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
+        // RK_PackedScene *droide = rk_packed_scene_from_gltf(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
         RK_Material *white_mat = rk_material_from_color(str8_lit("white"), v4f32(1,1,1,1));
 
         RK_Material *grid_prototype_material = rk_material_from_image(str8_lit("grid_prototype"), str8_lit("./textures/gridbox-prototype-materials/prototype_512x512_grey2.png"));
@@ -156,13 +178,13 @@ rk_scene_entry__0()
         floor->mesh_inst3d->material_override = grid_prototype_material;
         floor->flags |= RK_NodeFlag_NavigationRoot;
 
-        RK_Node *n1 = rk_node_from_packed_scene(str8_lit("1"), droide);
-        {
-            // flip y
-            n1->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n1->node3d->transform.rotation);
-            n1->node3d->transform.position = v3f32(-3,0,0);
-            n1->flags |= RK_NodeFlag_NavigationRoot;
-        }
+        // RK_Node *n1 = rk_node_from_packed_scene(str8_lit("1"), droide);
+        // {
+        //     // flip y
+        //     n1->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n1->node3d->transform.rotation);
+        //     n1->node3d->transform.position = v3f32(-3,0,0);
+        //     n1->flags |= RK_NodeFlag_NavigationRoot;
+        // }
 
         // directional light
         {
@@ -227,6 +249,30 @@ rk_scene_entry__0()
             n3->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n3->node3d->transform.rotation);
             n3->node3d->transform.position = v3f32(3,0,0);
             n3->flags |= RK_NodeFlag_NavigationRoot;
+        }
+
+        // TODO(XXX): testing physics
+        {
+            RK_Node *a = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_Particle3D, RK_NodeFlag_NavigationRoot, "particle_1");
+            rk_node_equip_box(a, v3f32(0.3,0.3,0.3), 0,0,0);
+            a->particle3d->v.x = v3f32(-1,0, -1);
+            a->particle3d->v.m = 1;
+            rk_node_push_fn(a, spring_knot);
+
+            RK_Node *b = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_Particle3D, RK_NodeFlag_NavigationRoot, "particle_2");
+            rk_node_equip_box(b, v3f32(0.3,0.3,0.3), 0,0,0);
+            b->particle3d->v.m = 1;
+            a->particle3d->v.x = v3f32(1,0, -1);
+            rk_node_push_fn(b, spring_knot);
+
+            // spring
+            RK_Node *spring = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_HookSpring3D, RK_NodeFlag_NavigationRoot, "spring_1");
+            rk_node_equip_box(spring, v3f32(0.1,2,0.1), 0,0,0);
+            spring->hook_spring3d->a = rk_handle_from_node(a);
+            spring->hook_spring3d->b = rk_handle_from_node(b);
+            spring->hook_spring3d->ks = 39.f;
+            spring->hook_spring3d->kd = 12.f;
+            spring->hook_spring3d->rest = 2.f;
         }
     }
 

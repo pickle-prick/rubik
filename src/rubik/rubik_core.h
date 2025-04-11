@@ -140,6 +140,8 @@ typedef U64                              RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_SpotLight        (RK_NodeTypeFlags)(1ull<<9)
 #define RK_NodeTypeFlag_Sprite2D         (RK_NodeTypeFlags)(1ull<<10)
 #define RK_NodeTypeFlag_AnimatedSprite2D (RK_NodeTypeFlags)(1ull<<11)
+#define RK_NodeTypeFlag_Particle3D       (RK_NodeTypeFlags)(1ull<<12)
+#define RK_NodeTypeFlag_HookSpring3D     (RK_NodeTypeFlags)(1ull<<13)
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ Key
@@ -612,6 +614,24 @@ struct RK_AnimatedSprite2D
     F32 ts_ms;
 };
 
+typedef struct RK_Particle3D RK_Particle3D;
+struct RK_Particle3D
+{
+    RK_Particle3D *next;
+    PH_Particle3D v;
+};
+
+typedef struct RK_HookSpring3D RK_HookSpring3D;
+struct RK_HookSpring3D
+{
+    RK_HookSpring3D *next;
+    F32 kd;
+    F32 ks;
+    F32 rest;
+    RK_Handle a;
+    RK_Handle b;
+};
+
 /////////////////////////////////
 //~ Node Type
 
@@ -679,6 +699,8 @@ struct RK_Node
     RK_SpotLight                  *spot_light;
     RK_Sprite2D                   *sprite2d;
     RK_AnimatedSprite2D           *animated_sprite2d;
+    RK_Particle3D                 *particle3d;
+    RK_HookSpring3D               *hook_spring3d;
 
     // animations
     F32                           hot_t;
@@ -741,6 +763,8 @@ struct RK_NodeBucket
     RK_SpotLight        *first_free_spot_light;
     RK_Sprite2D         *first_free_sprite2d;
     RK_AnimatedSprite2D *first_free_animated_sprite2d;
+    RK_Particle3D       *first_free_particle3d;
+    RK_HookSpring3D     *first_free_hook_spring3d;
 };
 
 typedef struct RK_ResourceBucketSlot RK_ResourceBucketSlot;
@@ -765,36 +789,39 @@ struct RK_ResourceBucket
 typedef struct RK_Scene RK_Scene;
 struct RK_Scene
 {
-    RK_Scene          *next;
+    RK_Scene            *next;
 
-    U64               frame_idx;
+    U64                 frame_idx;
     // Storage
-    Arena             *arena;
-    RK_NodeBucket     *node_bucket;
-    RK_NodeBucket     *res_node_bucket;
-    RK_ResourceBucket *res_bucket;
+    Arena               *arena;
+    RK_NodeBucket       *node_bucket;
+    RK_NodeBucket       *res_node_bucket;
+    RK_ResourceBucket   *res_bucket;
 
-    RK_Handle         root;
-    RK_Handle         active_camera;
+    RK_Handle           root;
+    RK_Handle           active_camera;
 
-    RK_Key            hot_key;
-    RK_Key            active_key;
+    RK_Key              hot_key;
+    RK_Key              active_key;
 
-    RK_Handle         active_node;
+    RK_Handle           active_node;
 
-    B32               omit_grid;
-    B32               omit_gizmo3d;
-    B32               omit_light; 
+    B32                 omit_grid;
+    B32                 omit_gizmo3d;
+    B32                 omit_light;
+
+    // physics states (particle 3d/2d, rigidbody 3d/2d)
+    PH_ParticleSystem3D particle3d_system;
 
     // ambient light
-    Vec4F32           ambient_light;
-    Vec4F32           ambient_scale;
+    Vec4F32             ambient_light;
+    Vec4F32             ambient_scale;
 
     // gizmo
-    RK_Gizmo3DMode    gizmo3d_mode;
+    RK_Gizmo3DMode      gizmo3d_mode;
 
-    String8           name;
-    String8           save_path;
+    String8             name;
+    String8             save_path;
 };
 
 ////////////////////////////////
@@ -1182,6 +1209,9 @@ internal Mat4x4F32 rk_xform_from_trs(Vec3F32 translate, QuatF32 rotation, Vec3F3
 internal F32       rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F32 plane_normal, Vec3F32 plane_point);
 internal Rng2F32   rk_rect_from_sprite2d(RK_Sprite2D *sprite2d);
 internal void      rk_sprite2d_equip_string(Arena *arena, RK_Sprite2D *sprite2d, String8 string, F_Tag font, F32 font_size, Vec4F32 font_color, U64 tab_size, F_RasterFlags text_raster_flags);
+#define rk_text(font, size, base_align_px, tab_size_px, flags, p, color, string) \
+D_BucketScope(rk_state->bucket_rect) {d_text(font,size,base_align_px,tab_size_px,flags,p,color,string);}
+#define rk_debug_gfx(size,p,color,string) rk_text(rk_state->cfg_font_tags[RK_FontSlot_Code], size, 0, 2, 0, p, color, string)
 
 /////////////////////////////////
 //~ Enum to string

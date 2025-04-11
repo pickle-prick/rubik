@@ -27,6 +27,7 @@
 #include "draw/draw.h"
 #include "ui/ui_inc.h"
 #include "serialize/serialize_inc.h"
+#include "./physics/physics_inc.h"
 #include "./rubik_core.h"
 #include "./rubik_ui_widget.h"
 #include "./rubik_asset.h"
@@ -41,6 +42,7 @@
 #include "draw/draw.c"
 #include "ui/ui_inc.c"
 #include "serialize/serialize_inc.c"
+#include "./physics/physics_inc.c"
 #include "./rubik_core.c"
 #include "./rubik_ui_widget.c"
 #include "./rubik_asset.c"
@@ -90,7 +92,7 @@ entry_point(CmdLine *cmd_line)
     rk_state->template_count = ArrayCount(rk_scene_templates);
     rk_state->templates = rk_scene_templates;
 
-    RK_Scene *default_scene = rk_state->templates[3].fn();
+    RK_Scene *default_scene = rk_state->templates[0].fn();
     rk_state->active_scene = default_scene;
 
     // Hot id
