@@ -142,6 +142,7 @@ typedef U64                              RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_AnimatedSprite2D (RK_NodeTypeFlags)(1ull<<11)
 #define RK_NodeTypeFlag_Particle3D       (RK_NodeTypeFlags)(1ull<<12)
 #define RK_NodeTypeFlag_HookSpring3D     (RK_NodeTypeFlags)(1ull<<13)
+#define RK_NodeTypeFlag_Constraint3D     (RK_NodeTypeFlags)(1ull<<14)
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ Key
@@ -632,6 +633,22 @@ struct RK_HookSpring3D
     RK_Handle b;
 };
 
+typedef struct RK_Constraint3D RK_Constraint3D;
+struct RK_Constraint3D
+{
+    RK_Constraint3D *next;
+    PH_Constraint3DKind kind;
+    F32 d; /* distance */
+
+    union
+    {
+        // TODO(XXX): binary & unary for now
+        struct {RK_Handle a; RK_Handle b;};
+        RK_Handle v[2];
+    } targets;
+    U64 target_count;
+};
+
 /////////////////////////////////
 //~ Node Type
 
@@ -701,6 +718,7 @@ struct RK_Node
     RK_AnimatedSprite2D           *animated_sprite2d;
     RK_Particle3D                 *particle3d;
     RK_HookSpring3D               *hook_spring3d;
+    RK_Constraint3D               *constraint3d;
 
     // animations
     F32                           hot_t;
@@ -765,6 +783,7 @@ struct RK_NodeBucket
     RK_AnimatedSprite2D *first_free_animated_sprite2d;
     RK_Particle3D       *first_free_particle3d;
     RK_HookSpring3D     *first_free_hook_spring3d;
+    RK_Constraint3D     *first_free_constraint3d;
 };
 
 typedef struct RK_ResourceBucketSlot RK_ResourceBucketSlot;

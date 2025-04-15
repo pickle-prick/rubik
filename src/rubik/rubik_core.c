@@ -2719,7 +2719,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         RK_Node *node = rk_node_from_handle(scene->root);
 
         /////////////////////////////////////////////////////////////////////////////////
-        // collect artifacts (lights,materials,textures,particles,rigidbodies,force)
+        // collect artifacts (lights,materials,textures,particles,rigidbodies,forces,constraints)
 
         R_Light *lights = geo_back_params->lights;
         U64 *light_count = &geo_back_params->light_count;
@@ -2730,10 +2730,16 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         U64 *material_count = &geo_back_params->material_count;
 
         PH_Particle3D *first_particle3d = 0;
+        PH_Particle3D *last_particle3d = 0;
         U64 particle3d_count = 0;
         
         PH_Force3D *first_force3d = 0;
+        PH_Force3D *last_force3d = 0;
         U64 force3d_count = 0;
+
+        PH_Constraint3D *first_constraint3d = 0;
+        PH_Constraint3D *last_constraint3d = 0;
+        U64 constraint3d_count = 0;
 
         while(node != 0)
         {
@@ -2771,14 +2777,14 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
 
             B32 has_transform = 0;
 
-            if((node->type_flags&RK_NodeTypeFlag_Particle3D) && (node->type_flags&RK_NodeTypeFlag_Node3D))
+            if((node->type_flags & RK_NodeTypeFlag_Particle3D) && (node->type_flags & RK_NodeTypeFlag_Node3D))
             {
                 MemoryCopy(&node->node3d->transform.position, &node->particle3d->v.x, sizeof(Vec3F32));
-                SLLStackPush(first_particle3d, &node->particle3d->v);
-                particle3d_count++;
+                SLLQueuePush(first_particle3d, last_particle3d, &node->particle3d->v);
+                node->particle3d->v.idx = particle3d_count++;
             }
 
-            if((node->type_flags&RK_NodeTypeFlag_HookSpring3D) && (node->type_flags&RK_NodeTypeFlag_Node3D))
+            if(node->type_flags & RK_NodeTypeFlag_HookSpring3D)
             {
                 RK_HookSpring3D *spring = node->hook_spring3d;
 
@@ -2791,20 +2797,45 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                 if(a) { xa = a->node3d->transform.position; }
                 if(b) { xb = b->node3d->transform.position; }
 
-                Vec3F32 pos = scale_3f32(add_3f32(xa,xb), 0.5);
-                node->node3d->transform.position = pos;
-
                 // add force
                 PH_Force3D *force = push_array(rk_frame_arena(), PH_Force3D, 1);
                 force->kind = PH_Force3DKind_HookSpring;
                 force->v.hook_spring.ks = spring->ks;
                 force->v.hook_spring.kd = spring->kd;
                 force->v.hook_spring.rest = spring->rest;
-                force->v.hook_spring.a = &a->particle3d->v;
-                force->v.hook_spring.b = &b->particle3d->v;
+                force->target_count = 2;
+                force->targets.a = &a->particle3d->v;
+                force->targets.b = &b->particle3d->v;
 
-                SLLStackPush(first_force3d, force);
-                force3d_count++;
+                SLLQueuePush(first_force3d, last_force3d, force);
+                force->idx = force3d_count++;
+
+                // update node3d transform
+                if(node->type_flags & RK_NodeTypeFlag_Node3D)
+                {
+                    Vec3F32 pos = scale_3f32(add_3f32(xa,xb), 0.5);
+                    node->node3d->transform.position = pos;
+                }
+            }
+
+            if(node->type_flags & RK_NodeTypeFlag_Constraint3D)
+            {
+                RK_Constraint3D *src = node->constraint3d;
+                PH_Constraint3D *dst = push_array(rk_frame_arena(), PH_Constraint3D, 1);
+                dst->kind = src->kind;
+                dst->v.distance.d = src->d;
+                dst->idx = constraint3d_count++;
+                dst->target_count = src->target_count;
+                for(U64 i = 0; i < src->target_count; i++)
+                {
+                    RK_Node *t = rk_node_from_handle(src->targets.v[i]);
+                    if(t)
+                    {
+                        // TODO(XXX): we want to support rigidbody too
+                        dst->targets.v[i] = &t->particle3d->v;
+                    }
+                }
+                SLLQueuePush(first_constraint3d, last_constraint3d, dst);
             }
 
             if(node->type_flags & RK_NodeTypeFlag_Node2D)
@@ -3269,8 +3300,13 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         {
             scene->particle3d_system.n = particle3d_count;
             scene->particle3d_system.first_p = first_particle3d;
+            scene->particle3d_system.last_p = last_particle3d;
             scene->particle3d_system.force_count = force3d_count;
             scene->particle3d_system.first_force = first_force3d;
+            scene->particle3d_system.last_force = last_force3d;
+            scene->particle3d_system.first_constraint = first_constraint3d;
+            scene->particle3d_system.last_constraint = last_constraint3d;
+            scene->particle3d_system.constraint_count = constraint3d_count;
         }
     }
 
