@@ -143,6 +143,7 @@ typedef U64                              RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_Particle3D       (RK_NodeTypeFlags)(1ull<<12)
 #define RK_NodeTypeFlag_HookSpring3D     (RK_NodeTypeFlags)(1ull<<13)
 #define RK_NodeTypeFlag_Constraint3D     (RK_NodeTypeFlags)(1ull<<14)
+#define RK_NodeTypeFlag_Rigidbody3D      (RK_NodeTypeFlags)(1ull<<15)
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ Key
@@ -649,12 +650,35 @@ struct RK_Constraint3D
     U64 target_count;
 };
 
+typedef struct RK_Rigidbody3D RK_Rigidbody3D;
+struct RK_Rigidbody3D
+{
+    RK_Rigidbody3D *next;
+    PH_Rigidbody3D v;
+};
+
+/////////////////////////////////
+// Other Helper Types
+
+typedef struct RK_FrameContext RK_FrameContext;
+struct RK_FrameContext
+{
+    OS_EventList os_events;
+    F32 dt_sec;
+
+    Vec3F32 eye; /* world position of camera */
+    Mat4x4F32 proj_m;
+    Mat4x4F32 view_m;
+    Mat4x4F32 proj_view_m;
+    Mat4x4F32 proj_view_inv_m;
+};
+
 /////////////////////////////////
 //~ Node Type
 
 struct RK_Node;
 struct RK_Scene;
-#define RK_NODE_CUSTOM_UPDATE(name) void name(struct RK_Node *node, struct RK_Scene *scene, OS_EventList os_events, F32 dt_sec, Mat4x4F32 proj_m, Mat4x4F32 view_m, Mat4x4F32 proj_view_m)
+#define RK_NODE_CUSTOM_UPDATE(name) void name(struct RK_Node *node, struct RK_Scene *scene, RK_FrameContext *ctx)
 typedef RK_NODE_CUSTOM_UPDATE(RK_NodeCustomUpdateFunctionType);
 
 #define RK_NODE_CUSTOM_DRAW(name) void name(struct RK_Node *node, void *node_data)
@@ -719,6 +743,7 @@ struct RK_Node
     RK_Particle3D                 *particle3d;
     RK_HookSpring3D               *hook_spring3d;
     RK_Constraint3D               *constraint3d;
+    RK_Rigidbody3D                *rigidbody3d;
 
     // animations
     F32                           hot_t;
@@ -784,6 +809,7 @@ struct RK_NodeBucket
     RK_Particle3D       *first_free_particle3d;
     RK_HookSpring3D     *first_free_hook_spring3d;
     RK_Constraint3D     *first_free_constraint3d;
+    RK_Rigidbody3D      *first_free_rigidbody3d;
 };
 
 typedef struct RK_ResourceBucketSlot RK_ResourceBucketSlot;
@@ -808,39 +834,40 @@ struct RK_ResourceBucket
 typedef struct RK_Scene RK_Scene;
 struct RK_Scene
 {
-    RK_Scene            *next;
+    RK_Scene             *next;
 
-    U64                 frame_idx;
+    U64                  frame_idx;
     // Storage
-    Arena               *arena;
-    RK_NodeBucket       *node_bucket;
-    RK_NodeBucket       *res_node_bucket;
-    RK_ResourceBucket   *res_bucket;
+    Arena                *arena;
+    RK_NodeBucket        *node_bucket;
+    RK_NodeBucket        *res_node_bucket;
+    RK_ResourceBucket    *res_bucket;
 
-    RK_Handle           root;
-    RK_Handle           active_camera;
+    RK_Handle            root;
+    RK_Handle            active_camera;
 
-    RK_Key              hot_key;
-    RK_Key              active_key;
+    RK_Key               hot_key;
+    RK_Key               active_key;
 
-    RK_Handle           active_node;
+    RK_Handle            active_node;
 
-    B32                 omit_grid;
-    B32                 omit_gizmo3d;
-    B32                 omit_light;
+    B32                  omit_grid;
+    B32                  omit_gizmo3d;
+    B32                  omit_light;
 
     // physics states (particle 3d/2d, rigidbody 3d/2d)
-    PH_ParticleSystem3D particle3d_system;
+    PH_Particle3DSystem  particle3d_system;
+    PH_Rigidbody3DSystem rigidbody3d_system;
 
     // ambient light
-    Vec4F32             ambient_light;
-    Vec4F32             ambient_scale;
+    Vec4F32              ambient_light;
+    Vec4F32              ambient_scale;
 
     // gizmo
-    RK_Gizmo3DMode      gizmo3d_mode;
+    RK_Gizmo3DMode       gizmo3d_mode;
 
-    String8             name;
-    String8             save_path;
+    String8              name;
+    String8              save_path;
 };
 
 ////////////////////////////////
@@ -1123,6 +1150,12 @@ internal Arena*           rk_frame_arena();
 internal RK_DrawList*     rk_frame_drawlist();
 internal RK_FunctionNode* rk_function_from_string(String8 string);
 internal RK_View*         rk_view_from_kind(RK_ViewKind kind);
+internal void             rk_ps_push_particle3d(PH_Particle3D *p);
+internal void             rk_ps_push_force3d(PH_Force3D *force);
+internal void             rk_ps_push_constraint3d(PH_Constraint3D *c);
+internal void             rk_rs_push_rigidbody3d(PH_Rigidbody3D *rb);
+internal void             rk_rs_push_force3d(PH_Force3D *force);
+internal void             rk_rs_push_constraint3d(PH_Constraint3D *c);
 
 /////////////////////////////////
 //~ Node build api

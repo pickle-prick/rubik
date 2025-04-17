@@ -807,6 +807,60 @@ rk_view_from_kind(RK_ViewKind kind)
     return &rk_state->views[kind];
 }
 
+internal void
+rk_ps_push_particle3d(PH_Particle3D *p)
+{
+    RK_Scene *scene = rk_top_scene();
+    PH_Particle3DSystem *system = &scene->particle3d_system;
+    SLLQueuePush(system->first_particle, system->last_particle, p);
+    p->idx = system->particle_count++;
+}
+
+internal void
+rk_ps_push_force3d(PH_Force3D *force)
+{
+    RK_Scene *scene = rk_top_scene();
+    PH_Particle3DSystem *system = &scene->particle3d_system;
+    SLLQueuePush(system->first_force, system->last_force, force);
+    force->idx = system->force_count++;
+}
+
+internal void
+rk_ps_push_constraint3d(PH_Constraint3D *c)
+{
+    RK_Scene *scene = rk_top_scene();
+    PH_Particle3DSystem *system = &scene->particle3d_system;
+    SLLQueuePush(system->first_constraint, system->last_constraint, c);
+    c->idx = system->constraint_count++;
+}
+
+internal void
+rk_rs_push_rigidbody3d(PH_Rigidbody3D *rb)
+{
+    RK_Scene *scene = rk_top_scene();
+    PH_Rigidbody3DSystem *system = &scene->rigidbody3d_system;
+    SLLQueuePush(system->first_body, system->last_body, rb);
+    rb->idx = system->body_count++;
+}
+
+internal void
+rk_rs_push_force3d(PH_Force3D *force)
+{
+    RK_Scene *scene = rk_top_scene();
+    PH_Rigidbody3DSystem *system = &scene->rigidbody3d_system;
+    SLLQueuePush(system->first_force, system->last_force, force);
+    force->idx = system->force_count++;
+}
+
+internal void
+rk_rs_push_constraint3d(PH_Constraint3D *c)
+{
+    RK_Scene *scene = rk_top_scene();
+    PH_Rigidbody3DSystem *system = &scene->rigidbody3d_system;
+    SLLQueuePush(system->first_constraint, system->last_constraint, c);
+    c->idx = system->constraint_count++;
+}
+
 /////////////////////////////////
 //~ Node build api
 
@@ -2396,10 +2450,26 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         rk_drawlist_reset(rk_frame_drawlist());
 
         // clear physics states
-        scene->particle3d_system.n = 0;
-        scene->particle3d_system.first_p = 0;
-        scene->particle3d_system.force_count = 0;
-        scene->particle3d_system.first_force = 0;
+        scene->particle3d_system.first_particle   = 0;
+        scene->particle3d_system.last_particle    = 0;
+        scene->particle3d_system.particle_count   = 0;
+        scene->particle3d_system.first_force      = 0;
+        scene->particle3d_system.last_force       = 0;
+        scene->particle3d_system.force_count      = 0;
+        scene->particle3d_system.first_constraint = 0;
+        scene->particle3d_system.last_constraint  = 0;
+        scene->particle3d_system.constraint_count = 0;
+
+        scene->rigidbody3d_system.first_body       = 0;
+        scene->rigidbody3d_system.last_body        = 0;
+        scene->rigidbody3d_system.body_count       = 0;
+        scene->rigidbody3d_system.first_force      = 0;
+        scene->rigidbody3d_system.last_force       = 0;
+        scene->rigidbody3d_system.force_count      = 0;
+        scene->rigidbody3d_system.first_constraint = 0;
+        scene->rigidbody3d_system.last_constraint  = 0;
+        scene->rigidbody3d_system.constraint_count = 0;
+
 
         arena_clear(rk_frame_arena());
     }
@@ -2424,7 +2494,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
 
     //- view/projection (NOTE(k): behind by one frame)
     Mat4x4F32 view_m = inverse_4x4f32(camera_xform);
-    Mat4x4F32 projection_m;
+    Mat4x4F32 proj_m;
+    Vec3F32 eye = camera_node->fixed_position;
     Rng2F32 viewport = camera->viewport;
     Vec2F32 viewport_dim = dim_2f32(camera->viewport);
     if(viewport_dim.x == 0 || viewport_dim.y == 0)
@@ -2437,14 +2508,16 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     {
         case RK_ProjectionKind_Perspective:
         {
-            projection_m = make_perspective_vulkan_4x4f32(camera->perspective.fov, viewport_dim.x/viewport_dim.y, camera->zn, camera->zf);
+            proj_m = make_perspective_vulkan_4x4f32(camera->perspective.fov, viewport_dim.x/viewport_dim.y, camera->zn, camera->zf);
         }break;
         case RK_ProjectionKind_Orthographic:
         {
-            projection_m = make_orthographic_vulkan_4x4f32(camera->orthographic.left, camera->orthographic.right, camera->orthographic.bottom, camera->orthographic.top, camera->zn, camera->zf);
+            proj_m = make_orthographic_vulkan_4x4f32(camera->orthographic.left, camera->orthographic.right, camera->orthographic.bottom, camera->orthographic.top, camera->zn, camera->zf);
         }break;
         default:{InvalidPath;}break;
     }
+    Mat4x4F32 proj_view_m = mul_4x4f32(proj_m, view_m);
+    Mat4x4F32 proj_view_inv_m = inverse_4x4f32(proj_view_m);
 
     /////////////////////////////////////////////////////////////////////////////////////
     // Remake drawing buckets every frame
@@ -2452,13 +2525,13 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     // rect
     rk_state->bucket_rect = d_bucket_make();
 
-    // geo back
+    // geo back [main]
     {
         D_Bucket **bucket = &rk_state->bucket_geo3d[RK_GeoBucketKind_Back];
         *bucket = d_bucket_make();
         D_BucketScope(*bucket)
         {
-            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, projection_m);
+            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, proj_m);
             pass_params->omit_light = scene->omit_light;
             pass_params->omit_grid = scene->omit_grid;
             pass_params->lights = push_array(rk_frame_arena(), R_Light, MAX_LIGHTS_PER_PASS);
@@ -2472,13 +2545,13 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         }
     }
 
-    // geo front
+    // geo front [gizmo]
     {
         D_Bucket **bucket = &rk_state->bucket_geo3d[RK_GeoBucketKind_Front];
         *bucket = d_bucket_make();
         D_BucketScope(*bucket)
         {
-            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, projection_m);
+            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, proj_m);
             pass_params->omit_light = 1;
             pass_params->omit_grid = 1;
             pass_params->lights = push_array(rk_frame_arena(), R_Light, MAX_LIGHTS_PER_PASS);
@@ -2491,7 +2564,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
             pass_params->material_count = 1;
         }
     }
-    // geo screen
+    // geo screen [ui stuff?]
     {
         D_Bucket **bucket = &rk_state->bucket_geo3d[RK_GeoBucketKind_Screen];
         *bucket = d_bucket_make();
@@ -2500,7 +2573,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
             Rng2F32 viewport = rk_state->window_rect;
             Mat4x4F32 view_m = mat_4x4f32(1.0);
             Mat4x4F32 proj_m = make_orthographic_vulkan_4x4f32(viewport.x0, viewport.x1, viewport.y1, viewport.y0, 0.1, 1.f);
-            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, projection_m);
+            R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, proj_m);
             pass_params->omit_light = 1;
             pass_params->omit_grid = 1;
             pass_params->lights = push_array(rk_frame_arena(), R_Light, MAX_LIGHTS_PER_PASS);
@@ -2705,6 +2778,16 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
 
     ProfScope("update/draw game")
     {
+        RK_FrameContext ctx =
+        {
+            .dt_sec = rk_state->dt_sec,
+            .eye = eye,
+            .proj_m = proj_m,
+            .view_m = view_m,
+            .os_events = os_events,
+            .proj_view_m = proj_view_m,
+            .proj_view_inv_m = proj_view_inv_m,
+        };
         // unpack pass/params
 
         D_Bucket *geo_back_bucket = rk_state->bucket_geo3d[RK_GeoBucketKind_Back];
@@ -2719,7 +2802,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         RK_Node *node = rk_node_from_handle(scene->root);
 
         /////////////////////////////////////////////////////////////////////////////////
-        // collect artifacts (lights,materials,textures,particles,rigidbodies,forces,constraints)
+        // collect artifacts (lights,materials,textures)
 
         R_Light *lights = geo_back_params->lights;
         U64 *light_count = &geo_back_params->light_count;
@@ -2728,18 +2811,6 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         R_Material *materials = geo_back_params->materials;
         R_PackedTextures *textures = geo_back_params->textures;
         U64 *material_count = &geo_back_params->material_count;
-
-        PH_Particle3D *first_particle3d = 0;
-        PH_Particle3D *last_particle3d = 0;
-        U64 particle3d_count = 0;
-        
-        PH_Force3D *first_force3d = 0;
-        PH_Force3D *last_force3d = 0;
-        U64 force3d_count = 0;
-
-        PH_Constraint3D *first_constraint3d = 0;
-        PH_Constraint3D *last_constraint3d = 0;
-        U64 constraint3d_count = 0;
 
         while(node != 0)
         {
@@ -2751,9 +2822,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
 
             for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
             {
-                fn->f(node, scene, os_events, rk_state->dt_sec,
-                      geo_back_params->projection, geo_back_params->view,
-                      mul_4x4f32(geo_back_params->projection, geo_back_params->view));
+                fn->f(node, scene, &ctx);
             }
 
             /////////////////////////////////////////////////////////////////////////////
@@ -2780,63 +2849,75 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
             if((node->type_flags & RK_NodeTypeFlag_Particle3D) && (node->type_flags & RK_NodeTypeFlag_Node3D))
             {
                 MemoryCopy(&node->node3d->transform.position, &node->particle3d->v.x, sizeof(Vec3F32));
-                SLLQueuePush(first_particle3d, last_particle3d, &node->particle3d->v);
-                node->particle3d->v.idx = particle3d_count++;
+                rk_ps_push_particle3d(&node->particle3d->v);
             }
 
-            if(node->type_flags & RK_NodeTypeFlag_HookSpring3D)
+            if((node->type_flags & RK_NodeTypeFlag_Rigidbody3D) && (node->type_flags & RK_NodeTypeFlag_Node3D))
             {
-                RK_HookSpring3D *spring = node->hook_spring3d;
-
-                Vec3F32 xa = v3f32(0,0,0);
-                Vec3F32 xb = v3f32(0,0,0);
-
-                RK_Node *a = rk_node_from_handle(spring->a);
-                RK_Node *b = rk_node_from_handle(spring->b);
-
-                if(a) { xa = a->node3d->transform.position; }
-                if(b) { xb = b->node3d->transform.position; }
-
-                // add force
-                PH_Force3D *force = push_array(rk_frame_arena(), PH_Force3D, 1);
-                force->kind = PH_Force3DKind_HookSpring;
-                force->v.hook_spring.ks = spring->ks;
-                force->v.hook_spring.kd = spring->kd;
-                force->v.hook_spring.rest = spring->rest;
-                force->target_count = 2;
-                force->targets.a = &a->particle3d->v;
-                force->targets.b = &b->particle3d->v;
-
-                SLLQueuePush(first_force3d, last_force3d, force);
-                force->idx = force3d_count++;
-
-                // update node3d transform
-                if(node->type_flags & RK_NodeTypeFlag_Node3D)
-                {
-                    Vec3F32 pos = scale_3f32(add_3f32(xa,xb), 0.5);
-                    node->node3d->transform.position = pos;
-                }
+                MemoryCopy(&node->node3d->transform.position, &node->rigidbody3d->v.x, sizeof(Vec3F32));
+                MemoryCopy(&node->node3d->transform.rotation, &node->rigidbody3d->v.q, sizeof(QuatF32));
+                rk_rs_push_rigidbody3d(&node->rigidbody3d->v);
             }
 
-            if(node->type_flags & RK_NodeTypeFlag_Constraint3D)
-            {
-                RK_Constraint3D *src = node->constraint3d;
-                PH_Constraint3D *dst = push_array(rk_frame_arena(), PH_Constraint3D, 1);
-                dst->kind = src->kind;
-                dst->v.distance.d = src->d;
-                dst->idx = constraint3d_count++;
-                dst->target_count = src->target_count;
-                for(U64 i = 0; i < src->target_count; i++)
-                {
-                    RK_Node *t = rk_node_from_handle(src->targets.v[i]);
-                    if(t)
-                    {
-                        // TODO(XXX): we want to support rigidbody too
-                        dst->targets.v[i] = &t->particle3d->v;
-                    }
-                }
-                SLLQueuePush(first_constraint3d, last_constraint3d, dst);
-            }
+            // if(node->type_flags & RK_NodeTypeFlag_HookSpring3D)
+            // {
+            //     RK_HookSpring3D *spring = node->hook_spring3d;
+
+            //     Vec3F32 xa = v3f32(0,0,0);
+            //     Vec3F32 xb = v3f32(0,0,0);
+
+            //     RK_Node *a = rk_node_from_handle(spring->a);
+            //     RK_Node *b = rk_node_from_handle(spring->b);
+
+            //     if(a) { xa = a->node3d->transform.position; }
+            //     if(b) { xb = b->node3d->transform.position; }
+
+            //     // add force
+            //     PH_Force3D *force = push_array(rk_frame_arena(), PH_Force3D, 1);
+            //     force->kind = PH_Force3DKind_HookSpring;
+            //     force->v.hook_spring.ks = spring->ks;
+            //     force->v.hook_spring.kd = spring->kd;
+            //     force->v.hook_spring.rest = spring->rest;
+            //     force->target_count = 2;
+            //     force->targets.a = &a->particle3d->v;
+            //     force->targets.b = &b->particle3d->v;
+
+            //     if(a->type_flags & RK_NodeTypeFlag_Particle3D)
+            //     {
+            //         rk_ps_push_force3d(force);
+            //     }
+            //     else if (a->type_flags & RK_NodeTypeFlag_Rigidbody3D)
+            //     {
+            //         rk_rs_push_force3d(force);
+            //     }
+
+            //     // update node3d transform
+            //     if(node->type_flags & RK_NodeTypeFlag_Node3D)
+            //     {
+            //         Vec3F32 pos = scale_3f32(add_3f32(xa,xb), 0.5);
+            //         node->node3d->transform.position = pos;
+            //     }
+            // }
+
+            // if(node->type_flags & RK_NodeTypeFlag_Constraint3D)
+            // {
+            //     RK_Constraint3D *src = node->constraint3d;
+            //     PH_Constraint3D *dst = push_array(rk_frame_arena(), PH_Constraint3D, 1);
+            //     dst->kind = src->kind;
+            //     dst->v.distance.d = src->d;
+            //     dst->target_count = src->target_count;
+
+            //     for(U64 i = 0; i < src->target_count; i++)
+            //     {
+            //         RK_Node *t = rk_node_from_handle(src->targets.v[i]);
+            //         if(t)
+            //         {
+            //             // TODO(XXX): we want to support rigidbody too
+            //             dst->targets.v[i] = &t->particle3d->v;
+            //         }
+            //     }
+            //     SLLQueuePush(first_constraint3d, last_constraint3d, dst);
+            // }
 
             if(node->type_flags & RK_NodeTypeFlag_Node2D)
             {
@@ -2889,7 +2970,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
 
                 Vec4F32 direction_ws = {0,0,0,0};
                 MemoryCopy(&direction_ws, &light_src->direction, sizeof(Vec3F32));
-                Vec4F32 direction_vs = transform_4x4f32_4f32(view_m, direction_ws);
+                Vec4F32 direction_vs = transform_4x4f32(view_m, direction_ws);
 
                 Vec4F32 color = {0,0,0, 1};
                 MemoryCopy(&color, &light_src->color, sizeof(Vec3F32));
@@ -2908,7 +2989,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
 
                 Vec4F32 position_ws = {0,0,0,1};
                 MemoryCopy(&position_ws, &node->fixed_position, sizeof(Vec3F32));
-                Vec4F32 position_vs = transform_4x4f32_4f32(view_m, position_ws);
+                Vec4F32 position_vs = transform_4x4f32(view_m, position_ws);
                 
                 Vec4F32 color = {0,0,0, 1};
                 MemoryCopy(&color, &light_src->color, sizeof(Vec3F32));
@@ -2932,12 +3013,12 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
 
                 Vec4F32 position_ws = {0,0,0,1};
                 MemoryCopy(&position_ws, &node->fixed_position, sizeof(Vec3F32));
-                Vec4F32 position_vs = transform_4x4f32_4f32(view_m, position_ws);
+                Vec4F32 position_vs = transform_4x4f32(view_m, position_ws);
 
                 Vec4F32 direction_ws = {0,0,0,0};
                 MemoryCopy(&direction_ws, &light_src->direction, sizeof(Vec3F32));
-                direction_ws = transform_4x4f32_4f32(node->fixed_xform, direction_ws);
-                Vec4F32 direction_vs = transform_4x4f32_4f32(view_m, direction_ws);
+                direction_ws = transform_4x4f32(node->fixed_xform, direction_ws);
+                Vec4F32 direction_vs = transform_4x4f32(view_m, direction_ws);
                 
                 Vec4F32 color = {0,0,0, 1};
                 MemoryCopy(&color, &light_src->color, sizeof(Vec3F32));
@@ -3295,19 +3376,6 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
             }
             node = rec.next;
         }
-
-        // collect particle3d to particle3d system
-        {
-            scene->particle3d_system.n = particle3d_count;
-            scene->particle3d_system.first_p = first_particle3d;
-            scene->particle3d_system.last_p = last_particle3d;
-            scene->particle3d_system.force_count = force3d_count;
-            scene->particle3d_system.first_force = first_force3d;
-            scene->particle3d_system.last_force = last_force3d;
-            scene->particle3d_system.first_constraint = first_constraint3d;
-            scene->particle3d_system.last_constraint = last_constraint3d;
-            scene->particle3d_system.constraint_count = constraint3d_count;
-        }
     }
 
     // NOTE(k): there could be ui elements within node update
@@ -3374,25 +3442,23 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
                 Vec3F32 ray_eye_to_gizmo = normalize_3f32(sub_3f32(gizmo_origin, eye));
                 Vec3F32 ray_eye_to_center;
                 {
-                    Mat4x4F32 view_proj_inv = inverse_4x4f32(mul_4x4f32(projection_m, view_m));
-
                     // ray_eye_to_mouse_end
                     {
                         // mouse ndc pos
                         F32 mox_ndc = (rk_state->cursor.x / rk_state->window_dim.x) * 2.f - 1.f;
                         F32 moy_ndc = (rk_state->cursor.y / rk_state->window_dim.y) * 2.f - 1.f;
                         // unproject
-                        Vec4F32 ray_end = transform_4x4f32_4f32(view_proj_inv, v4f32(mox_ndc, moy_ndc, 1.f, 1.f));
+                        Vec4F32 ray_end = transform_4x4f32(proj_view_inv_m, v4f32(mox_ndc, moy_ndc, 1.f, 1.f));
                         ray_end = scale_4f32(ray_end, 1.f/ray_end.w);
-                        ray_eye_to_mouse_end = v4f32_xyz(ray_end);
+                        ray_eye_to_mouse_end = xyz_from_v4f32(ray_end);
                     }
 
                     // ray_eye_center
                     {
                         // unproject
-                        Vec4F32 ray_end = transform_4x4f32_4f32(view_proj_inv, v4f32(0, 0, 1.f, 1.f));
+                        Vec4F32 ray_end = transform_4x4f32(proj_view_inv_m, v4f32(0, 0, 1.f, 1.f));
                         ray_end = scale_4f32(ray_end, 1.f/ray_end.w);
-                        ray_eye_to_center = normalize_3f32(v4f32_xyz(ray_end));
+                        ray_eye_to_center = normalize_3f32(xyz_from_v4f32(ray_end));
                     }
                 }
 
@@ -3817,7 +3883,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
 
     // particle system
     // TODO(XXX): we should use fixed step to do physics
-    ph_euler_step_for_ps3d(&scene->particle3d_system, rk_state->dt_sec);
+    // ph_step_ps(&scene->particle3d_system, rk_state->dt_sec);
+    ph_step_rs(&scene->rigidbody3d_system, rk_state->dt_sec);
 
     /////////////////////////////////////////////////////////////////////////////////////
     // End of frame
@@ -4004,9 +4071,9 @@ rk_ijk_from_xform(Mat4x4F32 m, Vec3F32 *i, Vec3F32 *j, Vec3F32 *k)
     Vec4F32 i_hat = {1,0,0,0};
     Vec4F32 j_hat = {0,1,0,0};
     Vec4F32 k_hat = {0,0,1,0};
-    i_hat = transform_4x4f32_4f32(m, i_hat);
-    j_hat = transform_4x4f32_4f32(m, j_hat);
-    k_hat = transform_4x4f32_4f32(m, k_hat);
+    i_hat = transform_4x4f32(m, i_hat);
+    j_hat = transform_4x4f32(m, j_hat);
+    k_hat = transform_4x4f32(m, k_hat);
 
     MemoryCopy(i, &i_hat, sizeof(Vec3F32));
     MemoryCopy(j, &j_hat, sizeof(Vec3F32));

@@ -462,7 +462,7 @@ internal Vec2S16 normalize_2s16(Vec2S16 v);
 internal Vec2S16 mix_2s16(Vec2S16 a, Vec2S16 b, F32 t);
 
 #define v3f32(x, y, z) vec_3f32((x), (y), (z))
-#define v4f32_xyz(v) v3f32((v).x, (v).y, (v).z)
+#define xyz_from_v4f32(v) v3f32((v).x, (v).y, (v).z)
 internal Vec3F32 vec_3f32(F32 x, F32 y, F32 z);
 internal Vec3F32 add_3f32(Vec3F32 a, Vec3F32 b);
 internal Vec3F32 sub_3f32(Vec3F32 a, Vec3F32 b);
@@ -525,6 +525,11 @@ internal Mat3x3F32 mat_3x3f32(F32 diagonal);
 internal Mat3x3F32 make_translate_3x3f32(Vec2F32 delta);
 internal Mat3x3F32 make_scale_3x3f32(Vec2F32 scale);
 internal Mat3x3F32 mul_3x3f32(Mat3x3F32 a, Mat3x3F32 b);
+internal Mat3x3F32 mul_3x3f32_rmajor(Mat3x3F32 a, Mat3x3F32 b);
+internal Mat3x3F32 transpose_3x3f32(Mat3x3F32 m);
+internal Vec3F32   transform_3x3f32_rmajor(Mat3x3F32 a, Vec3F32 b);
+internal Mat3x3F32 star_3x3f32_rmajor(Vec3F32 a);
+internal Mat3x3F32 mat3x3f32_from_quat_rmajor(QuatF32 q);
 
 internal Mat4x4F32 mat_4x4f32(F32 diagonal);
 internal Mat4x4F32 make_translate_4x4f32(Vec3F32 delta);
@@ -537,7 +542,7 @@ internal Mat4x4F32 make_look_at_4x4f32(Vec3F32 eye, Vec3F32 center, Vec3F32 up);
 internal Mat4x4F32 make_look_at_vulkan_4x4f32(Vec3F32 eye, Vec3F32 center, Vec3F32 up);
 internal Mat4x4F32 make_rotate_4x4f32(Vec3F32 axis, F32 turns);
 internal Mat4x4F32 mul_4x4f32(Mat4x4F32 a, Mat4x4F32 b);
-internal Vec4F32   transform_4x4f32_4f32(Mat4x4F32 a, Vec4F32 b);
+internal Vec4F32   transform_4x4f32(Mat4x4F32 a, Vec4F32 b);
 internal Mat4x4F32 scale_4x4f32(Mat4x4F32 m, F32 scale);
 internal Mat4x4F32 transpose_4x4f32(Mat4x4F32 m);
 internal Mat4x4F32 inverse_4x4f32(Mat4x4F32 m);

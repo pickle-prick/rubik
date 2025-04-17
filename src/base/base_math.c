@@ -454,16 +454,97 @@ internal Mat3x3F32 make_scale_3x3f32(Vec2F32 scale) {
     return mat;
 }
 
-internal Mat3x3F32 mul_3x3f32(Mat3x3F32 a, Mat3x3F32 b) {
+internal Mat3x3F32 mul_3x3f32(Mat3x3F32 a, Mat3x3F32 b)
+{
     Mat3x3F32 c = {0};
-    for (int j = 0; j < 3; j += 1) {
-        for (int i = 0; i < 3; i += 1) {
-            c.v[i][j] =
-                (a.v[0][j] * b.v[i][0] + a.v[1][j] * b.v[i][1] +
-                 a.v[2][j] * b.v[i][2]);
+    U64 i,j;
+    for(j = 0; j < 3; j += 1)
+    {
+        for(i = 0; i < 3; i += 1)
+        {
+            c.v[i][j] = a.v[0][j] * b.v[i][0] + a.v[1][j] * b.v[i][1] + a.v[2][j] * b.v[i][2];
         }
     }
     return c;
+}
+
+internal Mat3x3F32 mul_3x3f32_rmajor(Mat3x3F32 a, Mat3x3F32 b)
+{
+    Mat3x3F32 ret = {0};
+    U64 i,j;
+    for(i = 0; i < 3; i++)
+    {
+        for(j = 0; j < 3; j++)
+        {
+            ret.v[i][j] = a.v[i][0]*b.v[0][j] +
+                          a.v[i][1]*b.v[1][j] +
+                          a.v[i][2]*b.v[2][j];
+        }
+    }
+    return ret;
+}
+
+internal Mat3x3F32 transpose_3x3f32(Mat3x3F32 m)
+{
+    Mat3x3F32 c = {0};
+    U64 i,j;
+    for(i = 0; i < 3; i++)
+    {
+        for(j = 0; j < 3; j++)
+        {
+            c.v[i][j] = m.v[j][i];
+        }
+    }
+    return c;
+}
+
+internal Vec3F32 transform_3x3f32_rmajor(Mat3x3F32 a, Vec3F32 b)
+{
+    Vec3F32 ret = {0};
+    U64 i,j;
+    for(i = 0; i < 3; i++)
+    {
+        ret.v[i] = a.v[i][0] * b.v[0] + a.v[i][1] * b.v[1] + a.v[i][2] * b.v[2];
+    }
+    return ret;
+}
+
+internal Mat3x3F32 star_3x3f32_rmajor(Vec3F32 a)
+{
+    Mat3x3F32 ret = {0};
+
+    ret.v[0][1] = -a.v[2];
+    ret.v[0][2] = a.v[1];
+
+    ret.v[1][0] = a.v[2];
+    ret.v[1][2] = -a.v[0];
+
+    ret.v[2][0] = -a.v[1];
+    ret.v[2][1] = a.v[0];
+
+    return ret;
+}
+
+internal Mat3x3F32 mat3x3f32_from_quat_rmajor(QuatF32 q)
+{
+    Mat3x3F32 ret = {0};
+    F32 s = q.w;
+    F32 x = q.x;
+    F32 y = q.y;
+    F32 z = q.z;
+
+    ret.v[0][0] = 1 - 2*y*y - 2*z*z;
+    ret.v[0][1] = 2*x*y - 2*s*z;
+    ret.v[0][2] = 2*x*z + 2*s*y;
+
+    ret.v[1][0] = 2*x*y + 2*s*z;
+    ret.v[1][1] = 1 - 2*x*x - 2*z*z;
+    ret.v[1][2] = 2*y*z - 2*s*x;
+
+    ret.v[2][0] = 2*x*z - 2*s*y;
+    ret.v[2][1] = 2*y*z + 2*s*x;
+    ret.v[2][2] = 1 - 2*x*x - 2*y*y;
+    return ret;
 }
 
 internal Mat4x4F32 mat_4x4f32(F32 diagonal) {
@@ -661,11 +742,11 @@ internal Mat4x4F32 mul_4x4f32(Mat4x4F32 a, Mat4x4F32 b) {
     return c;
 }
 
-internal Vec4F32 transform_4x4f32_4f32(Mat4x4F32 a, Vec4F32 b)
+internal Vec4F32 transform_4x4f32(Mat4x4F32 a, Vec4F32 b)
 {
     // clock_t start_time = clock();
     Vec4F32 c = {0};
-    if(0)
+#if 0
     {
         for(U64 i = 0; i < 4; i++)
         {
@@ -677,7 +758,7 @@ internal Vec4F32 transform_4x4f32_4f32(Mat4x4F32 a, Vec4F32 b)
             c.v[i] = acc;
         }
     }
-    else
+#else
     {
         // Store elements of vector b in temporary variables
         F32 b0 = b.v[0];
@@ -691,6 +772,7 @@ internal Vec4F32 transform_4x4f32_4f32(Mat4x4F32 a, Vec4F32 b)
         c.v[2] = a.v[0][2] * b0 + a.v[1][2] * b1 + a.v[2][2] * b2 + a.v[3][2] * b3;
         c.v[3] = a.v[0][3] * b0 + a.v[1][3] * b1 + a.v[2][3] * b2 + a.v[3][3] * b3;
     }
+#endif
     // double time_taken = ((double)(clock()-start_time)) / CLOCKS_PER_SEC;
     return c;
 }

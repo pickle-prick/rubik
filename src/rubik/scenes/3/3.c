@@ -182,7 +182,7 @@ RK_NODE_CUSTOM_UPDATE(s3_fn_debug_ui)
         Rng2F32 rect = rk_rect_from_sprite2d(cell->node->sprite2d);
         // NOTE(k): we are assuming orthographic projection here, so we don't divide xyz by w
         Vec4F32 p0_src = {rect.x0, rect.y0, cell->node->node2d->transform.depth, 1.0};
-        Vec4F32 p0_dst = transform_4x4f32_4f32(proj_view_m, p0_src);
+        Vec4F32 p0_dst = transform_4x4f32(ctx->proj_view_m, p0_src);
         // ndc to screen
         Vec2F32 half_window_dim = scale_2f32(rk_state->window_dim, 0.5);
         Vec2F32 half_viewport_dim = scale_2f32(v2f32(1800,1800), 0.5);

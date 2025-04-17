@@ -45,6 +45,7 @@ if(type_flags & RK_NodeTypeFlag_AnimatedSprite2D) { node->animated_sprite2d = no
 if(type_flags & RK_NodeTypeFlag_Particle3D) { node->particle3d = node_bucket->first_free_particle3d; if(node->particle3d != 0) {SLLStackPop(node_bucket->first_free_particle3d);} else {node->particle3d = push_array_no_zero(node_bucket->arena_ref, RK_Particle3D, 1);} MemoryZeroStruct(node->particle3d); if(0) {(*node->particle3d) = (RK_Particle3D){0};} }\
 if(type_flags & RK_NodeTypeFlag_HookSpring3D) { node->hook_spring3d = node_bucket->first_free_hook_spring3d; if(node->hook_spring3d != 0) {SLLStackPop(node_bucket->first_free_hook_spring3d);} else {node->hook_spring3d = push_array_no_zero(node_bucket->arena_ref, RK_HookSpring3D, 1);} MemoryZeroStruct(node->hook_spring3d); if(0) {(*node->hook_spring3d) = (RK_HookSpring3D){0};} }\
 if(type_flags & RK_NodeTypeFlag_Constraint3D) { node->constraint3d = node_bucket->first_free_constraint3d; if(node->constraint3d != 0) {SLLStackPop(node_bucket->first_free_constraint3d);} else {node->constraint3d = push_array_no_zero(node_bucket->arena_ref, RK_Constraint3D, 1);} MemoryZeroStruct(node->constraint3d); if(0) {(*node->constraint3d) = (RK_Constraint3D){0};} }\
+if(type_flags & RK_NodeTypeFlag_Rigidbody3D) { node->rigidbody3d = node_bucket->first_free_rigidbody3d; if(node->rigidbody3d != 0) {SLLStackPop(node_bucket->first_free_rigidbody3d);} else {node->rigidbody3d = push_array_no_zero(node_bucket->arena_ref, RK_Rigidbody3D, 1);} MemoryZeroStruct(node->rigidbody3d); if(0) {(*node->rigidbody3d) = (RK_Rigidbody3D){0};} }\
 node->type_flags |= type_flags;
 #define RK_UnequipTypeFlagsImpl(node, type_flags) \
 RK_NodeBucket *node_bucket = rk_top_node_bucket(); \
@@ -62,6 +63,7 @@ if(type_flags & RK_NodeTypeFlag_AnimatedSprite2D) { SLLStackPush(node_bucket->fi
 if(type_flags & RK_NodeTypeFlag_Particle3D) { SLLStackPush(node_bucket->first_free_particle3d, node->particle3d); node->particle3d = 0; }\
 if(type_flags & RK_NodeTypeFlag_HookSpring3D) { SLLStackPush(node_bucket->first_free_hook_spring3d, node->hook_spring3d); node->hook_spring3d = 0; }\
 if(type_flags & RK_NodeTypeFlag_Constraint3D) { SLLStackPush(node_bucket->first_free_constraint3d, node->constraint3d); node->constraint3d = 0; }\
+if(type_flags & RK_NodeTypeFlag_Rigidbody3D) { SLLStackPush(node_bucket->first_free_rigidbody3d, node->rigidbody3d); node->rigidbody3d = 0; }\
 node->type_flags & (~type_flags);
 C_LINKAGE_BEGIN
 String8 rk_viewport_shading_kind_display_string_table[3] =

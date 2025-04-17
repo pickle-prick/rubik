@@ -90,14 +90,14 @@ RK_NODE_CUSTOM_UPDATE(rotating_spot_light)
     AnimatedSpotLight *data = node->custom_data;
 
     // Animation rate
-    F32 slow_rate = 1 - pow_f32(2, (-90.f * dt_sec));
-    F32 fast_rate = 1 - pow_f32(2, (-40.f * dt_sec));
+    F32 slow_rate = 1 - pow_f32(2, (-90.f * ctx->dt_sec));
+    F32 fast_rate = 1 - pow_f32(2, (-40.f * ctx->dt_sec));
 
     // animating intensity
     // light->intensity += fast_rate * (light->intensity > 0.999f ? 0 : 1 - light->intensity);
     // light->range += slow_rate * (data->target_range - light->range);
 
-    QuatF32 r = make_rotate_quat_f32(data->rotation_axis, 0.3*dt_sec);
+    QuatF32 r = make_rotate_quat_f32(data->rotation_axis, 0.3*ctx->dt_sec);
     node->node3d->transform.rotation = mul_quat_f32(r, node->node3d->transform.rotation);
 }
 
@@ -124,17 +124,133 @@ RK_NODE_CUSTOM_UPDATE(spring_knot)
         p->v.visous_drag.kd = 0;
     }
 
-    PH_Force3D *f = push_array(rk_frame_arena(), PH_Force3D, 1);
-    f->kind = PH_Force3DKind_Const;
-    f->v.constf.direction = v3f32(1,0,0);
-    f->v.constf.strength = 1.f;
-    f->targets.v = p;
-    f->target_count = 1;
-    // TODO(XXX): maybe we don't need idx for force
-    f->idx = scene->particle3d_system.force_count++;
-    SLLQueuePush(scene->particle3d_system.first_force,
-                 scene->particle3d_system.last_force,
-                 f);
+    // PH_Force3D *f = push_array(rk_frame_arena(), PH_Force3D, 1);
+    // f->kind = PH_Force3DKind_Const;
+    // f->v.constf.direction = v3f32(1,0,0);
+    // f->v.constf.strength = 1.f;
+    // f->targets.v = p;
+    // f->target_count = 1;
+    // // TODO(XXX): maybe we don't need idx for force
+    // f->idx = scene->particle3d_system.force_count++;
+    // SLLQueuePush(scene->particle3d_system.first_force,
+    //              scene->particle3d_system.last_force,
+    //              f);
+}
+
+RK_NODE_CUSTOM_UPDATE(body)
+{
+    RK_Rigidbody3D *rb = node->rigidbody3d;
+    B32 on_ground = 0;
+    if(rb->v.x.y > -0.2)
+    {
+        rb->v.x.y = -0.2;
+        on_ground = 1;
+    }
+
+    if(on_ground)
+    {
+        rb->v.flags |= PH_Rigidbody3DFlag_OmitGravity;
+        rb->v.v.y = 0;
+    }
+    else
+    {
+        rb->v.flags &= ~PH_Particle3DFlag_OmitGravity;
+    }
+
+    if(rk_key_match(scene->hot_key, node->key) && rk_state->sig.f & UI_SignalFlag_LeftPressed)
+    {
+        // TODO(XXX): use zfar here?
+        Vec3F32 intersect = {0,0, 10000};
+        // left,right, top,bottom, front,back in this order
+        Vec4F32 normals[6] =
+        {
+            v4f32(-1,0,0,0),
+            v4f32(1,0,0,0),
+            v4f32(0,-1,0,0),
+            v4f32(0,1,0,0),
+            v4f32(0,0,-1,0),
+            v4f32(0,0,1,0),
+        };
+        Vec4F32 points[6] =
+        {
+            v4f32(-0.5,0,0,1),
+            v4f32(0,0.5,0,0),
+            v4f32(0,-0.5,0,0),
+            v4f32(0,0.5,0,0),
+            v4f32(0,0,-0.5,0),
+            v4f32(0,0,0.5,0),
+        };
+
+        Mat4x4F32 world_m = node->fixed_xform; /* local to world xform */
+        for(U64 i = 0; i < 6; i++)
+        {
+            normals[i] = transform_4x4f32(world_m, normals[i]);
+            points[i] = transform_4x4f32(world_m, points[i]);
+        }
+
+        // mouse ndc pos
+        F32 mox_ndc = (rk_state->cursor.x / rk_state->window_dim.x) * 2.f - 1.f;
+        F32 moy_ndc = (rk_state->cursor.y / rk_state->window_dim.y) * 2.f - 1.f;
+
+        // in world space
+        Vec4F32 _ray_end = transform_4x4f32(ctx->proj_view_inv_m, v4f32(mox_ndc, moy_ndc, 1.0, 1.0));
+        Vec3F32 ray_end = xyz_from_v4f32(_ray_end);
+
+        // TODO(XXX): this produre is not quite right, fix it later
+        for(U64 i = 0; i < 6; i++) 
+        {
+            F32 t = rk_plane_intersect(ctx->eye, ray_end, xyz_from_v4f32(normals[i]), xyz_from_v4f32(points[i]));
+            Vec3F32 i = mix_3f32(ctx->eye, ray_end, t);
+            if(i.z < intersect.z)
+            {
+                intersect = i;
+            }
+        }
+        // printf("intersect: %f %f %f\n", intersect.x, intersect.y, intersect.z);
+
+        PH_Force3D *f = push_array(rk_frame_arena(), PH_Force3D, 1);
+        f->kind = PH_Force3DKind_Constant;
+        f->v.constant.direction = normalize_3f32(sub_3f32(node->fixed_position, intersect));
+        f->v.constant.strength = 100;
+        // f->contact = v3f32(0,0.3,0);
+        f->contact = sub_3f32(intersect, node->fixed_position);
+        f->targets.v = &rb->v;
+        f->target_count = 1;
+        rk_rs_push_force3d(f);
+    }
+
+    PH_Rigidbody3D *anchor = push_array(rk_frame_arena(), PH_Rigidbody3D, 1);
+    anchor->x = v3f32(0,-3,0);
+    anchor->q = make_indentity_quat_f32();
+    anchor->mass = 1.0;
+    anchor->flags |= PH_Rigidbody3DFlag_Static;
+    rk_rs_push_rigidbody3d(anchor);
+
+    PH_Constraint3D *c = push_array(rk_frame_arena(), PH_Constraint3D, 1);
+    c->kind = PH_Constraint3DKind_Distance;
+    c->v.distance.d = 2.f;
+    c->target_count = 2;
+    c->targets.a = &rb->v;
+    c->targets.b = anchor;
+    rk_rs_push_constraint3d(c);
+
+    // visous drag
+    PH_Force3D *drag = push_array(rk_frame_arena(), PH_Force3D, 1);
+    drag->targets.v = &rb->v;
+    drag->target_count = 1;
+    drag->kind = PH_Force3DKind_VisousDrag;
+    drag->v.visous_drag.kd = 0.5;
+    rk_rs_push_force3d(drag);
+
+    D_BucketScope(rk_state->bucket_geo3d[RK_GeoBucketKind_Back])
+    {
+        rk_drawlist_push_line(rk_frame_arena(),
+                              rk_frame_drawlist(),
+                              rk_key_zero(),
+                              v3f32(0,-3,0),
+                              rb->v.x,
+                              v4f32(1,1,1,1), 30, 0);
+    }
 }
 
 // default editor scene
@@ -145,12 +261,24 @@ rk_scene_entry__0()
 
     // some initilization for scene
     {
+        /////////////////////////////////////////////////////////////////////////////////
         // physics
+
+        // particle3d
         ret->particle3d_system.gravity = (PH_Force3D_Gravity){
             .g = 9.81f,
             .dir = v3f32(0,1,0),
         };
         ret->particle3d_system.visous_drag = (PH_Force3D_VisousDrag){
+            .kd = 0.01f,
+        };
+
+        // rigidbody3d
+        ret->rigidbody3d_system.gravity = (PH_Force3D_Gravity){
+            .g = 9.81f,
+            .dir = v3f32(0,1,0),
+        };
+        ret->rigidbody3d_system.visous_drag = (PH_Force3D_VisousDrag){
             .kd = 0.01f,
         };
     }
@@ -280,32 +408,32 @@ rk_scene_entry__0()
 
         // TODO(XXX): testing particle physics
         {
-            RK_Node *a = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_Particle3D, RK_NodeFlag_NavigationRoot, "particle_1");
-            rk_node_equip_box(a, v3f32(0.3,0.3,0.3), 0,0,0);
-            a->particle3d->v.x = v3f32(-1,0, -1);
-            a->particle3d->v.m = 1;
-            rk_node_push_fn(a, spring_knot);
+            // RK_Node *a = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_Particle3D, RK_NodeFlag_NavigationRoot, "particle_1");
+            // rk_node_equip_box(a, v3f32(0.3,0.3,0.3), 0,0,0);
+            // a->particle3d->v.x = v3f32(-1,0, -1);
+            // a->particle3d->v.m = 1;
+            // rk_node_push_fn(a, spring_knot);
 
-            RK_Node *b = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_Particle3D, RK_NodeFlag_NavigationRoot, "particle_2");
-            rk_node_equip_box(b, v3f32(0.3,0.3,0.3), 0,0,0);
-            b->particle3d->v.m = 1;
-            b->particle3d->v.x = v3f32(1,0, -1);
-            rk_node_push_fn(b, spring_knot);
+            // RK_Node *b = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_Particle3D, RK_NodeFlag_NavigationRoot, "particle_2");
+            // rk_node_equip_box(b, v3f32(0.3,0.3,0.3), 0,0,0);
+            // b->particle3d->v.m = 1;
+            // b->particle3d->v.x = v3f32(1,0, -1);
+            // rk_node_push_fn(b, spring_knot);
 
-            RK_Node *c = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_Particle3D, RK_NodeFlag_NavigationRoot, "particle_3");
-            rk_node_equip_box(c, v3f32(0.3,0.3,0.3), 0,0,0);
-            c->particle3d->v.m = 1;
-            c->particle3d->v.x = v3f32(-1,0, -3);
-            rk_node_push_fn(c, spring_knot);
+            // RK_Node *c = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_Particle3D, RK_NodeFlag_NavigationRoot, "particle_3");
+            // rk_node_equip_box(c, v3f32(0.3,0.3,0.3), 0,0,0);
+            // c->particle3d->v.m = 1;
+            // c->particle3d->v.x = v3f32(-1,0, -3);
+            // rk_node_push_fn(c, spring_knot);
 
-            // spring1
-            RK_Node *spring1 = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_HookSpring3D, RK_NodeFlag_NavigationRoot, "spring_1");
-            rk_node_equip_box(spring1, v3f32(0.1,2,0.1), 0,0,0);
-            spring1->hook_spring3d->a = rk_handle_from_node(a);
-            spring1->hook_spring3d->b = rk_handle_from_node(c);
-            spring1->hook_spring3d->ks = 39.f;
-            spring1->hook_spring3d->kd = 12.f;
-            spring1->hook_spring3d->rest = 2.f;
+            // // spring1
+            // RK_Node *spring1 = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_HookSpring3D, RK_NodeFlag_NavigationRoot, "spring_1");
+            // rk_node_equip_box(spring1, v3f32(0.1,2,0.1), 0,0,0);
+            // spring1->hook_spring3d->a = rk_handle_from_node(a);
+            // spring1->hook_spring3d->b = rk_handle_from_node(c);
+            // spring1->hook_spring3d->ks = 39.f;
+            // spring1->hook_spring3d->kd = 12.f;
+            // spring1->hook_spring3d->rest = 2.f;
 
             // spring2
             // RK_Node *spring2 = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_HookSpring3D, RK_NodeFlag_NavigationRoot, "spring_2");
@@ -317,12 +445,27 @@ rk_scene_entry__0()
             // spring2->hook_spring3d->rest = 2.f;
 
             // constraint
-            RK_Node *constraint = rk_build_node_from_stringf(RK_NodeTypeFlag_Constraint3D, 0, "constraint_1");
-            constraint->constraint3d->d = 2.f;
-            constraint->constraint3d->kind = PH_Constraint3DKind_Distance;
-            constraint->constraint3d->target_count = 2;
-            constraint->constraint3d->targets.a = rk_handle_from_node(a);
-            constraint->constraint3d->targets.b = rk_handle_from_node(b);
+            // RK_Node *constraint = rk_build_node_from_stringf(RK_NodeTypeFlag_Constraint3D, 0, "constraint_1");
+            // constraint->constraint3d->d = 2.f;
+            // constraint->constraint3d->kind = PH_Constraint3DKind_Distance;
+            // constraint->constraint3d->target_count = 2;
+            // constraint->constraint3d->targets.a = rk_handle_from_node(a);
+            // constraint->constraint3d->targets.b = rk_handle_from_node(b);
+
+            RK_Node *a = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_Rigidbody3D, RK_NodeFlag_NavigationRoot, "b_1");
+            rk_node_equip_box(a, v3f32(1,1,1), 0,0,0);
+            a->rigidbody3d->v.x = v3f32(0,-1, 0);
+            a->rigidbody3d->v.q = make_indentity_quat_f32();
+            a->rigidbody3d->v.mass = 1;
+            a->rigidbody3d->v.shape = PH_Rigidbody3DShapeKind_Cuboid;
+            a->rigidbody3d->v.dim.v3f32 = v3f32(1,1,1);
+            a->rigidbody3d->v.last_dim.v3f32 = v3f32(1,1,1);
+            a->rigidbody3d->v.Ibody = ph_inertia_from_cuboid(1, v3f32(1,1,1));
+            a->rigidbody3d->v.Ibodyinv = ph_inertiainv_from_cuboid(1, v3f32(1,1,1));
+            // a->rigidbody3d->v.L = v3f32(0.1, 0,0);
+            // a->rigidbody3d->v.P = v3f32(0.3, 0.1,0);
+
+            rk_node_push_fn(a, body);
         }
     }
 

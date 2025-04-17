@@ -1,14 +1,14 @@
 //////////////////////////////
-// Particle System State Functions
+// Particle/System Functions
 
 internal PH_Vector
-ph_state_from_ps3d(Arena *arena, PH_ParticleSystem3D *ps)
+ph_state_from_ps3d(Arena *arena, PH_Particle3DSystem *system)
 {
     // Phase space (position + velocity)
-    PH_Vector ret = ph_vec_from_dim(arena, ps->n*6);
+    PH_Vector ret = ph_vec_from_dim(arena, system->particle_count*6);
 
     F32 *dst = ret.v;
-    for(PH_Particle3D *p = ps->first_p; p != 0; p = p->next)
+    for(PH_Particle3D *p = system->first_particle; p != 0; p = p->next)
     {
         // x
         *(dst++) = p->x.v[0];
@@ -24,10 +24,10 @@ ph_state_from_ps3d(Arena *arena, PH_ParticleSystem3D *ps)
 }
 
 internal void
-ph_set_state_for_ps3d(PH_ParticleSystem3D *ps, PH_Vector state)
+ph_ps3d_state_set(PH_Particle3DSystem *ps, PH_Vector state)
 {
     F32 *src = state.v;
-    for(PH_Particle3D *p = ps->first_p; p != 0; p = p->next)
+    for(PH_Particle3D *p = ps->first_particle; p != 0; p = p->next)
     {
         p->x.v[0] = *(src++);
         p->x.v[1] = *(src++);
@@ -39,15 +39,20 @@ ph_set_state_for_ps3d(PH_ParticleSystem3D *ps, PH_Vector state)
 }
 
 internal PH_Vector
-ph_derivatives_from_ps3d(Arena *arena, PH_ParticleSystem3D *ps)
+ph_dxdt_ps3d(Arena *arena, PH_Vector X, F32 dt, void *_system)
 {
     Temp scratch = scratch_begin(&arena, 1);
+    PH_Particle3DSystem *system = _system;
+
+    // TODO(XXX): some ode will generate X multiple times, some won't, maybe we should pass that information
+    ph_ps3d_state_set(system, X);
 
     // xdot + vdot (vel + acc)
-    PH_Vector ret = ph_vec_from_dim(arena, ps->n*6);
+    Assert(X.dim == system->particle_count*6);
+    PH_Vector ret = ph_vec_from_dim(arena, X.dim);
 
     // zero the force accumulators
-    for(PH_Particle3D *p = ps->first_p; p != 0; p = p->next)
+    for(PH_Particle3D *p = system->first_particle; p != 0; p = p->next)
     {
         MemoryZeroStruct(&p->f);
     }
@@ -56,18 +61,18 @@ ph_derivatives_from_ps3d(Arena *arena, PH_ParticleSystem3D *ps)
     //~ compute forces (applied force + constrained force)
 
     // global forces
-    for(PH_Particle3D *p = ps->first_p; p != 0; p = p->next)
+    for(PH_Particle3D *p = system->first_particle; p != 0; p = p->next)
     {
         // gravity
         Vec3F32 f1 = {0};
         if(!(p->flags & PH_Particle3DFlag_OmitGravity))
         {
-            f1 = scale_3f32(ps->gravity.dir, ps->gravity.g*p->m);
+            f1 = scale_3f32(system->gravity.dir, system->gravity.g*p->m);
         }
         p->f = add_3f32(p->f, f1);
 
         // drag
-        Vec3F32 f2 = scale_3f32(p->v, ps->visous_drag.kd*-1);
+        Vec3F32 f2 = scale_3f32(p->v, system->visous_drag.kd*-1);
         p->f = add_3f32(p->f, f2);
 
         // individual drag
@@ -76,7 +81,7 @@ ph_derivatives_from_ps3d(Arena *arena, PH_ParticleSystem3D *ps)
     }
 
     // unconstraint forces
-    for(PH_Force3D *force = ps->first_force; force != 0; force = force->next)
+    for(PH_Force3D *force = system->first_force; force != 0; force = force->next)
     {
         switch(force->kind)
         {
@@ -111,13 +116,13 @@ ph_derivatives_from_ps3d(Arena *arena, PH_ParticleSystem3D *ps)
     }
 
     // constraint forces
-    if(ps->constraint_count > 0)
+    if(system->constraint_count > 0)
     {
         /////////////////////////////////////////////////////////////////////////////////
         // Collect components
 
-        U64 m = ps->constraint_count;
-        U64 n = ps->n; /* particle count */
+        U64 m = system->constraint_count;
+        U64 n = system->particle_count;
         U64 N = n*3;
 
         // force vector [3n, 1]
@@ -138,7 +143,7 @@ ph_derivatives_from_ps3d(Arena *arena, PH_ParticleSystem3D *ps)
         PH_Matrix W = ph_mat_from_dim(scratch.arena, N,N);
 
         // loop through particles to collect above values
-        for(PH_Particle3D *p = ps->first_p; p != 0; p = p->next)
+        for(PH_Particle3D *p = system->first_particle; p != 0; p = p->next)
         {
             // Q
             *(Q_dst++) = p->f.v[0];
@@ -166,7 +171,7 @@ ph_derivatives_from_ps3d(Arena *arena, PH_ParticleSystem3D *ps)
         // collect J & Jt
         PH_Matrix J = ph_mat_from_dim(scratch.arena, m, N);
         PH_Matrix Jdot = ph_mat_from_dim(scratch.arena, m, N);
-        for(PH_Constraint3D *c = ps->first_constraint; c != 0; c = c->next)
+        for(PH_Constraint3D *c = system->first_constraint; c != 0; c = c->next)
         {
             switch(c->kind)
             {
@@ -207,7 +212,7 @@ ph_derivatives_from_ps3d(Arena *arena, PH_ParticleSystem3D *ps)
         // TODO(XXX): implement this
         PH_Vector Cdot_q = ph_mul_mv(scratch.arena, J, qdot);
         Assert(Cdot_q.dim == C_q.dim);
-        for(PH_Constraint3D *c = ps->first_constraint; c != 0; c = c->next)
+        for(PH_Constraint3D *c = system->first_constraint; c != 0; c = c->next)
         {
             switch(c->kind)
             {
@@ -253,7 +258,7 @@ ph_derivatives_from_ps3d(Arena *arena, PH_ParticleSystem3D *ps)
         rk_debug_gfx(19, v2f32(300, 600), v4f32(1,1,0,1), push_str8f(scratch.arena, "%f %f %f %f %f %f", Q_c.v[0], Q_c.v[1], Q_c.v[2], Q_c.v[3], Q_c.v[4], Q_c.v[5]));
         //- add constraint force to particles
         F32 *src = Q_c.v;
-        for(PH_Particle3D *p = ps->first_p; p != 0; p = p->next)
+        for(PH_Particle3D *p = system->first_particle; p != 0; p = p->next)
         {
             p->f.v[0] += *(src++);
             p->f.v[1] += *(src++);
@@ -265,7 +270,7 @@ ph_derivatives_from_ps3d(Arena *arena, PH_ParticleSystem3D *ps)
     //~ copy result
 
     F32 *dst = ret.v;
-    for(PH_Particle3D *p = ps->first_p; p != 0; p = p->next)
+    for(PH_Particle3D *p = system->first_particle; p != 0; p = p->next)
     {
         *(dst++) = p->v.v[0]; /* xdot = v */
         *(dst++) = p->v.v[1];
@@ -276,6 +281,400 @@ ph_derivatives_from_ps3d(Arena *arena, PH_ParticleSystem3D *ps)
         *(dst++) = p->f.v[2] / p->m;
     }
     scratch_end(scratch);
+    return ret;
+}
+
+//////////////////////////////
+// Rigidbody3D Functions
+
+internal void
+ph_state_from_rb3d(PH_Rigidbody3D *rb, F32 *dst)
+{
+    U64 i,j;
+    // x (position)
+    *(dst++) = rb->x.v[0];
+    *(dst++) = rb->x.v[1];
+    *(dst++) = rb->x.v[2];
+
+    // q (rotation)
+    *(dst++) = rb->q.x;
+    *(dst++) = rb->q.y;
+    *(dst++) = rb->q.z;
+    *(dst++) = rb->q.w;
+
+    // P
+    *(dst++) = rb->P.v[0];
+    *(dst++) = rb->P.v[1];
+    *(dst++) = rb->P.v[2];
+
+    // L
+    *(dst++) = rb->L.v[0];
+    *(dst++) = rb->L.v[1];
+    *(dst++) = rb->L.v[2];
+}
+
+internal void
+ph_rb3d_state_set(PH_Rigidbody3D *b, F32 *src)
+{
+    // x (position)
+    b->x.v[0] = *(src++);
+    b->x.v[1] = *(src++);
+    b->x.v[2] = *(src++);
+
+    // q (rotation)
+    // Assert(length_4f32(b->q) != 0);
+    b->q.v[0] = *(src++);
+    b->q.v[1] = *(src++);
+    b->q.v[2] = *(src++);
+    b->q.v[3] = *(src++);
+    b->q = normalize_4f32(b->q);
+    // Assert(length_4f32(b->q) != 0);
+
+    // P
+    b->P.v[0] = *(src++);
+    b->P.v[1] = *(src++);
+    b->P.v[2] = *(src++);
+
+    // L
+    b->L.v[0] = *(src++);
+    b->L.v[1] = *(src++);
+    b->L.v[2] = *(src++);
+
+    // compute auxiliary variables ...
+
+    // R (rotation matrix)
+    b->R = mat3x3f32_from_quat_rmajor(b->q);
+
+    // Iinv
+    b->Iinv = mul_3x3f32(b->R, mul_3x3f32_rmajor(b->Ibodyinv, transpose_3x3f32(b->R)));
+
+    // v(t)
+    b->v = scale_3f32(b->P, 1.0/b->mass);
+
+    // ω(t) = I−1(t)L(t)
+    b->omega = transform_3x3f32_rmajor(b->Iinv, b->L);
+}
+
+// system
+internal PH_Vector
+ph_state_from_rs3d(Arena *arena, PH_Rigidbody3DSystem *system)
+{
+    PH_Vector ret = ph_vec_from_dim(arena, PH_RB3D_STATE_DIM*system->body_count);
+    U64 stride = PH_RB3D_STATE_DIM;
+    F32 *dst = ret.v;
+    for(PH_Rigidbody3D *b = system->first_body; b != 0; b = b->next)
+    {
+        ph_state_from_rb3d(b, dst);
+        dst += stride;
+    }
+    return ret;
+}
+
+internal void
+ph_rs3d_state_set(PH_Rigidbody3DSystem *system, PH_Vector state)
+{
+    Assert(state.dim == PH_RB3D_STATE_DIM*system->body_count);
+    U64 stride = PH_RB3D_STATE_DIM;
+    F32 *src = state.v;
+    for(PH_Rigidbody3D *b = system->first_body; b != 0; b = b->next)
+    {
+        ph_rb3d_state_set(b, src);
+        src += stride;
+    }
+}
+
+internal PH_Vector
+ph_dxdt_rs3d(Arena *arena, PH_Vector X, F32 t, void *_system)
+{
+    Temp scratch = scratch_begin(&arena, 1);
+    PH_Rigidbody3DSystem *system = _system;
+    PH_Vector ret = ph_vec_from_dim(arena, X.dim);
+
+    // TODO(XXX): some ode will generate X multiple times, some won't, we should pass that information
+    ph_rs3d_state_set(system, X);
+
+    // zero out the force accumulators
+    for(PH_Rigidbody3D *rb = system->first_body; rb != 0; rb = rb->next)
+    {
+        rb->force = v3f32(0,0,0);
+        rb->torque = v3f32(0,0,0);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    //~ compute forces (applied force/torque + constrained force)
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    //- global forces (uniform force field)
+    for(PH_Rigidbody3D* rb = system->first_body; rb != 0; rb = rb->next)
+    {
+        // don't apply force if body is static 
+        if(rb->flags & PH_Rigidbody3DFlag_Static) continue;
+
+        // gravity
+        Vec3F32 f1 = {0};
+        if(!(rb->flags & PH_Rigidbody3DFlag_OmitGravity))
+        {
+            f1 = scale_3f32(system->gravity.dir, system->gravity.g*rb->mass);
+        }
+        rb->force = add_3f32(rb->force, f1);
+
+        // global drag (add little bit to reduce numerical drift)
+        Vec3F32 f2 = scale_3f32(rb->v, system->visous_drag.kd*-1);
+        rb->force = add_3f32(rb->force, f2);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    //- unconstraint force/torque (contact position dependent)
+    for(PH_Force3D *f = system->first_force; f != 0; f = f->next)
+    {
+        switch(f->kind)
+        {
+            case PH_Force3DKind_Constant:
+            {
+                Assert(f->target_count == 1);
+                PH_Rigidbody3D *rb = f->targets.v;
+                
+                Vec3F32 F = scale_3f32(f->v.constant.direction, f->v.constant.strength);
+
+                // linear
+                rb->force = add_3f32(rb->force, F);
+
+                // torque
+                Vec3F32 torque = cross_3f32(f->contact, F);
+                rb->torque = add_3f32(rb->torque, torque);
+            }break;
+            case PH_Force3DKind_VisousDrag:
+            {
+                // drag (air, water, fog, e.g.)
+                Assert(f->target_count == 1);
+                PH_Rigidbody3D *rb = f->targets.v;
+                Vec3F32 F = scale_3f32(rb->v, f->v.visous_drag.kd*-1);
+                rb->force = add_3f32(rb->force, F);
+            }break;
+            default:{InvalidPath;}break;
+        }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    //- constrant force/torque (contact position dependent)
+    if(system->constraint_count > 0)
+    {
+        /////////////////////////////////////////////////////////////////////////////////
+        // Collect components
+
+        U64 m = system->constraint_count;
+        U64 n = system->body_count;
+        U64 N = n*3; // only position
+
+        // force vector [3n, 1]
+        PH_Vector Q = ph_vec_from_dim(scratch.arena, N);
+        F32 *Q_dst = Q.v;
+
+        // velocity vector [3n, 1]
+        // Unless phase space, q only contains positions, qdot only contains velocities
+        PH_Vector qdot = ph_vec_from_dim(scratch.arena, N);
+        F32 *qdot_dst = qdot.v;
+        // TODO(XXX): we don't need q, just for testing, delete it later
+        // PH_Vector q = ph_vec_from_dim(scratch.arena, N);
+        // F32 *q_dst = q.v;
+
+        // mass matrix [3n, 3n]
+        // TODO(XXX): if we were going to use cg, mass matrix could be stored as vector for easier computation
+        // W is just the reciprocal of M
+        PH_Matrix W = ph_mat_from_dim(scratch.arena, N,N);
+
+        // loop through particles to collect above values
+        for(PH_Rigidbody3D *rb = system->first_body; rb != 0; rb = rb->next)
+        {
+            // Q
+            *(Q_dst++) = rb->force.v[0];
+            *(Q_dst++) = rb->force.v[1];
+            *(Q_dst++) = rb->force.v[2];
+
+            // qdot
+            *(qdot_dst++) = rb->v.v[0];
+            *(qdot_dst++) = rb->v.v[1];
+            *(qdot_dst++) = rb->v.v[2];
+
+            // q
+            // *(q_dst++) = rb->x.v[0];
+            // *(q_dst++) = rb->x.v[1];
+            // *(q_dst++) = rb->x.v[2];
+
+            // W
+            U64 i = rb->idx*3;
+            W.v[i+0][i+0] = 1.0/rb->mass;
+            W.v[i+1][i+1] = 1.0/rb->mass;
+            W.v[i+2][i+2] = 1.0/rb->mass;
+        }
+
+        // jacobian of C(q) [m, 3n]
+        // collect J & Jt
+        PH_Matrix J = ph_mat_from_dim(scratch.arena, m, N);
+        PH_Matrix Jdot = ph_mat_from_dim(scratch.arena, m, N);
+        for(PH_Constraint3D *c = system->first_constraint; c != 0; c = c->next)
+        {
+            switch(c->kind)
+            {
+                case PH_Constraint3DKind_Distance:
+                {
+                    PH_Rigidbody3D *a = c->targets.a;
+                    PH_Rigidbody3D *b = c->targets.b;
+                    Assert(a&&b);
+
+                    U64 i,j;
+
+                    // J & Jdot
+                    i = c->idx;
+                    j = a->idx*3;
+                    for(U64 k = 0; k < 3; k++)
+                    {
+                        U64 jj = j+k;
+                        J.v[i][jj] = a->x.v[k] - b->x.v[k];
+                        Jdot.v[i][jj] = a->v.v[k] - b->v.v[k];
+                    }
+
+                    j = b->idx*3;
+                    for(U64 k = 0; k < 3; k++)
+                    {
+                        U64 jj = j+k;
+                        J.v[i][jj] = -(a->x.v[k] - b->x.v[k]);
+                        Jdot.v[i][jj] = -(a->v.v[k] - b->v.v[k]);
+                    }
+                }break;
+                default: {InvalidPath;}break;
+            }
+        }
+        // transpose of J
+        PH_Matrix Jt = ph_trp_mat(scratch.arena, J);
+
+        // C(q) Cdot(q)
+        PH_Vector C_q = ph_vec_from_dim(scratch.arena, m);
+        Assert(C_q.dim == m);
+        PH_Vector Cdot_q = ph_mul_mv(scratch.arena, J, qdot);
+        Assert(Cdot_q.dim == C_q.dim);
+        for(PH_Constraint3D *c = system->first_constraint; c != 0; c = c->next)
+        {
+            switch(c->kind)
+            {
+                case PH_Constraint3DKind_Distance:
+                {
+                    PH_Rigidbody3D *a = c->targets.a;
+                    PH_Rigidbody3D *b = c->targets.b;
+                    C_q.v[c->idx] = 0.5 * (pow_f32(a->x.x-b->x.x,2) + pow_f32(a->x.y-b->x.y,2) + pow_f32(a->x.z-b->x.z,2) - pow_f32(c->v.distance.d,2));
+                }break;
+                default: {InvalidPath;}break;
+            }
+        }
+        rk_debug_gfx(19, v2f32(300, 100), v4f32(1,1,0,1), push_str8f(scratch.arena, "C_q: %f", C_q.v[0]));
+
+        /////////////////////////////////////////////////////////////////////////////////
+        //~ Compute
+
+        //- solve Lagrange multipliers
+        // [m, 3n] [3n, 1] => [m, 1]
+        PH_Vector Jdot_qdot = ph_mul_mv(scratch.arena, Jdot, qdot); /* Jdot * qdot */
+        // [3n, 1]
+        PH_Vector WQ = ph_mul_mv(scratch.arena, W, Q);
+        // [m, 3n] [3n, 1] => [m, 1]
+        PH_Vector JWQ = ph_mul_mv(scratch.arena, J, WQ);
+        PH_Vector b = ph_add_vec(scratch.arena, Jdot_qdot, JWQ);
+        b = ph_add_vec(scratch.arena, b, ph_scale_vec(scratch.arena,C_q, 1000)); // ks * C
+        b = ph_add_vec(scratch.arena, b, ph_scale_vec(scratch.arena,Cdot_q, 64)); // kd * Cdot
+        b = ph_negate_vec(scratch.arena, b);
+
+        //- solve the linear system
+        // [m, 1]
+        PH_Matrix A = ph_mul_mm(scratch.arena, J, W);
+        A = ph_mul_mm(scratch.arena, A, Jt);
+        PH_Vector lambda = ph_vec_copy(scratch.arena, b);
+        Assert(lambda.dim == m);
+        Assert(A.i_dim == A.j_dim);
+        gaussj2(A.v, A.i_dim, lambda.v);
+
+        rk_debug_gfx(19, v2f32(300, 200), v4f32(1,1,0,1), push_str8f(scratch.arena, "lambda: %f", lambda.v[0]));
+        // constraint forces
+        // [3n, m] [m, 1] => [3n, 1]
+        PH_Vector Q_c = ph_mul_mv(scratch.arena, Jt, lambda);
+        Assert(Q_c.dim == N);
+        rk_debug_gfx(19, v2f32(300, 600), v4f32(1,1,0,1), push_str8f(scratch.arena, "%f %f %f %f %f %f", Q_c.v[0], Q_c.v[1], Q_c.v[2], Q_c.v[3], Q_c.v[4], Q_c.v[5]));
+        //- add constraint force to rb
+        F32 *src = Q_c.v;
+        for(PH_Rigidbody3D *rb = system->first_body; rb != 0; rb = rb->next)
+        {
+            if(!(rb->flags&PH_Rigidbody3DFlag_Static))
+            {
+                // TODO(XXX): apply force/torque
+                rb->force.v[0] += *(src++);
+                rb->force.v[1] += *(src++);
+                rb->force.v[2] += *(src++);
+            }
+            else
+            {
+                src+=3;
+            }
+        }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    //~ gather result
+
+    F32 *dst = ret.v;
+    for(PH_Rigidbody3D *rb = system->first_body; rb != 0; rb = rb->next)
+    {
+        // v(t) (linear velocity)
+        *(dst++) = rb->v.v[0];
+        *(dst++) = rb->v.v[1];
+        *(dst++) = rb->v.v[2];
+
+        // qdot
+        QuatF32 qdot = mul_quat_f32((QuatF32){rb->omega.x, rb->omega.y, rb->omega.z, 0}, rb->q);
+        qdot = scale_4f32(qdot, .5);
+        *(dst++) = qdot.x;
+        *(dst++) = qdot.y;
+        *(dst++) = qdot.z;
+        *(dst++) = qdot.w;
+
+        // Pdot(t) = F(t)
+        *(dst++) = rb->force.v[0];
+        *(dst++) = rb->force.v[1];
+        *(dst++) = rb->force.v[2];
+
+        // Ldot(t) = τ(t)
+        *(dst++) = rb->torque.v[0];
+        *(dst++) = rb->torque.v[1];
+        *(dst++) = rb->torque.v[2];
+    }
+
+    scratch_end(scratch);
+    return ret;
+}
+
+internal Mat3x3F32
+ph_inertia_from_cuboid(F32 M, Vec3F32 dim)
+{
+    Mat3x3F32 ret = {0};
+
+    F32 x0 = dim.x;
+    F32 y0 = dim.y;
+    F32 z0 = dim.z;
+    ret.v[0][0] = (y0*y0+z0*z0) * (M/12);
+    ret.v[1][1] = (x0*x0+z0*z0) * (M/12);
+    ret.v[2][2] = (x0*x0+y0*y0) * (M/12);
+    return ret;
+}
+
+internal Mat3x3F32
+ph_inertiainv_from_cuboid(F32 M, Vec3F32 dim)
+{
+    Mat3x3F32 ret = {0};
+
+    F32 x0 = dim.x;
+    F32 y0 = dim.y;
+    F32 z0 = dim.z;
+    ret.v[0][0] = 12.0 / ((y0*y0+z0*z0)*M);
+    ret.v[1][1] = 12.0 / ((x0*x0+z0*z0)*M);
+    ret.v[2][2] = 12.0 / ((x0*x0+y0*y0)*M);
     return ret;
 }
 
@@ -441,7 +840,9 @@ ph_length_vec(PH_Vector v)
     return ret;
 }
 
-// matrix
+//////////////////////////////
+// matrix (row major)
+
 internal PH_Matrix
 ph_mul_mm(Arena *arena, PH_Matrix A, PH_Matrix B)
 {
@@ -504,127 +905,126 @@ ph_trp_mat(Arena *arena, PH_Matrix A)
 //////////////////////////////
 // Sparse Matrix Computation
 
-internal PH_Vector
-ph_mul_sm_vec(Arena *arena, PH_SparseMatrix *m, PH_Vector v)
-{
-    // TODO(XXX): row col may be flipped
-    U64 i_dim = m->i_dim;
-    U64 j_dim = m->j_dim;
-    Assert(j_dim == v.dim);
-    PH_Vector ret = ph_vec_from_dim(arena, i_dim);
+// internal PH_Vector
+// ph_mul_sm_vec(Arena *arena, PH_SparseMatrix *m, PH_Vector v)
+// {
+//     // TODO(XXX): row col may be flipped
+//     U64 i_dim = m->i_dim;
+//     U64 j_dim = m->j_dim;
+//     Assert(j_dim == v.dim);
+//     PH_Vector ret = ph_vec_from_dim(arena, i_dim);
     
-    for(U64 i = 0; i < i_dim; i++)
-    {
-        F32 *dst = &ret.v[i];
-        for(PH_SparseBlock *b = m->col_heads[i]; b != 0; b = b->col_next)
-        {
-            (*dst) += b->v * v.v[b->j];
-        }
-    }
-    return ret;
-}
+//     for(U64 i = 0; i < i_dim; i++)
+//     {
+//         F32 *dst = &ret.v[i];
+//         for(PH_SparseBlock *b = m->col_heads[i]; b != 0; b = b->col_next)
+//         {
+//             (*dst) += b->v * v.v[b->j];
+//         }
+//     }
+//     return ret;
+// }
 
-internal PH_Vector
-ph_mul_smt_vec(Arena *arena, PH_SparseMatrix *m, PH_Vector v)
-{
-    // TODO(XXX): row col may be flipped
-    U64 i_dim = m->i_dim;
-    U64 j_dim = m->j_dim;
-    Assert(i_dim == v.dim);
-    PH_Vector ret = ph_vec_from_dim(arena, j_dim);
+// internal PH_Vector
+// ph_mul_smt_vec(Arena *arena, PH_SparseMatrix *m, PH_Vector v)
+// {
+//     // TODO(XXX): row col may be flipped
+//     U64 i_dim = m->i_dim;
+//     U64 j_dim = m->j_dim;
+//     Assert(i_dim == v.dim);
+//     PH_Vector ret = ph_vec_from_dim(arena, j_dim);
     
-    for(U64 j = 0; j < j_dim; j++)
-    {
-        F32 *dst = &ret.v[j];
-        for(PH_SparseBlock *b = m->row_heads[j]; b != 0; b = b->row_next)
-        {
-            (*dst) += b->v * v.v[b->i];
-        }
-    }
-    return ret;
-}
-
+//     for(U64 j = 0; j < j_dim; j++)
+//     {
+//         F32 *dst = &ret.v[j];
+//         for(PH_SparseBlock *b = m->row_heads[j]; b != 0; b = b->row_next)
+//         {
+//             (*dst) += b->v * v.v[b->i];
+//         }
+//     }
+//     return ret;
+// }
 
 //////////////////////////////
 // Linear System Solver
 
 // conjugate gradient
-internal PH_Vector
-ph_ls_cg(Arena *arena, PH_SparseMatrix *J, PH_Vector W, PH_Vector b)
-{
-    PH_Vector ret = ph_vec_from_dim(arena, b.dim);
-    Temp scratch = scratch_begin(&arena, 1);
-    F32 norm_b = ph_length_vec(b);
+// internal PH_Vector
+// ph_ls_cg(Arena *arena, PH_SparseMatrix *J, PH_Vector W, PH_Vector b)
+// {
+//     PH_Vector ret = ph_vec_from_dim(arena, b.dim);
+//     Temp scratch = scratch_begin(&arena, 1);
+//     F32 norm_b = ph_length_vec(b);
 
-    // first guess (starts with all 0)
-    PH_Vector xk = ph_vec_from_dim(scratch.arena, b.dim);
+//     // first guess (starts with all 0)
+//     PH_Vector xk = ph_vec_from_dim(scratch.arena, b.dim);
 
-    PH_Vector Axk = ph_mul_smt_vec(scratch.arena, J, xk);
-    Axk = ph_eemul_vec(scratch.arena, W, Axk);
-    Axk = ph_mul_sm_vec(scratch.arena, J, Axk);
+//     PH_Vector Axk = ph_mul_smt_vec(scratch.arena, J, xk);
+//     Axk = ph_eemul_vec(scratch.arena, W, Axk);
+//     Axk = ph_mul_sm_vec(scratch.arena, J, Axk);
 
-    // initialize residual vector
-    // residual = b - A * x
-    PH_Vector rk = ph_sub_vec(scratch.arena, b, Axk);
-    B32 reached = 0;
-    if(ph_length_vec(rk) < 1e-6*norm_b)
-    {
-        reached = 1;
-    }
-    PH_Vector pk = rk;
-    const U64 max_iter = 300;
-    U64 i;
-    for(i = 0; i < max_iter && !reached; i++)
-    {
-        PH_Vector Apk = ph_mul_smt_vec(scratch.arena, J, pk);
-        Assert(!isnan(Apk.v[0]));
-        Apk = ph_eemul_vec(scratch.arena, W, Apk);
-        Assert(!isnan(Apk.v[0]));
-        Apk = ph_mul_sm_vec(scratch.arena, J, Apk);
-        Assert(!isnan(Apk.v[0]));
-        // // add regularization: Apk += epsilon*pk
-        // PH_Vector reg_term = ph_scale_vec(scratch.arena, pk, 1e-6);
-        // Apk = ph_add_vec(scratch.arena, Apk, reg_term);
+//     // initialize residual vector
+//     // residual = b - A * x
+//     PH_Vector rk = ph_sub_vec(scratch.arena, b, Axk);
+//     B32 reached = 0;
+//     if(ph_length_vec(rk) < 1e-6*norm_b)
+//     {
+//         reached = 1;
+//     }
+//     PH_Vector pk = rk;
+//     const U64 max_iter = 300;
+//     U64 i;
+//     for(i = 0; i < max_iter && !reached; i++)
+//     {
+//         PH_Vector Apk = ph_mul_smt_vec(scratch.arena, J, pk);
+//         Assert(!isnan(Apk.v[0]));
+//         Apk = ph_eemul_vec(scratch.arena, W, Apk);
+//         Assert(!isnan(Apk.v[0]));
+//         Apk = ph_mul_sm_vec(scratch.arena, J, Apk);
+//         Assert(!isnan(Apk.v[0]));
+//         // // add regularization: Apk += epsilon*pk
+//         // PH_Vector reg_term = ph_scale_vec(scratch.arena, pk, 1e-6);
+//         // Apk = ph_add_vec(scratch.arena, Apk, reg_term);
 
-        F32 rk_dot = ph_dot_vec(rk, rk);
-        Assert(isfinite(rk_dot));
-        F32 pk_Apk = ph_dot_vec(pk, Apk);
-        // TODO(XXX): don't know if we should do this
-        if(abs_f32(pk_Apk) < 1e-12) 
-        {
-            reached = 1;
-            break;
-        }
-        Assert(pk_Apk != 0);
-        F32 alpha = rk_dot / pk_Apk;
+//         F32 rk_dot = ph_dot_vec(rk, rk);
+//         Assert(isfinite(rk_dot));
+//         F32 pk_Apk = ph_dot_vec(pk, Apk);
+//         // TODO(XXX): don't know if we should do this
+//         if(abs_f32(pk_Apk) < 1e-12) 
+//         {
+//             reached = 1;
+//             break;
+//         }
+//         Assert(pk_Apk != 0);
+//         F32 alpha = rk_dot / pk_Apk;
 
-        PH_Vector xk1 = ph_add_vec(scratch.arena, xk, ph_scale_vec(scratch.arena, pk, alpha));
-        PH_Vector rk1 = ph_sub_vec(scratch.arena, rk, ph_scale_vec(scratch.arena, Apk, alpha));
-        if(ph_length_vec(rk1) < 1e-6*norm_b)
-        {
-            reached = 1;
-            xk = xk1;
-            break;
-        }
-        Assert(rk_dot != 0);
-        F32 beta = ph_dot_vec(rk1, rk1) / rk_dot;
-        PH_Vector pk1 = ph_add_vec(scratch.arena, rk1, ph_scale_vec(scratch.arena, pk, beta));
-        Assert(!isnan(pk1.v[0]));
+//         PH_Vector xk1 = ph_add_vec(scratch.arena, xk, ph_scale_vec(scratch.arena, pk, alpha));
+//         PH_Vector rk1 = ph_sub_vec(scratch.arena, rk, ph_scale_vec(scratch.arena, Apk, alpha));
+//         if(ph_length_vec(rk1) < 1e-6*norm_b)
+//         {
+//             reached = 1;
+//             xk = xk1;
+//             break;
+//         }
+//         Assert(rk_dot != 0);
+//         F32 beta = ph_dot_vec(rk1, rk1) / rk_dot;
+//         PH_Vector pk1 = ph_add_vec(scratch.arena, rk1, ph_scale_vec(scratch.arena, pk, beta));
+//         Assert(!isnan(pk1.v[0]));
 
-        xk = xk1;
-        pk = pk1;
-        rk = rk1;
-    }
-    Assert(i<max_iter);
-    if(reached)
-    {
-        MemoryCopy(ret.v, xk.v, sizeof(F32)*xk.dim);
-        ret.dim = xk.dim;
-    }
+//         xk = xk1;
+//         pk = pk1;
+//         rk = rk1;
+//     }
+//     Assert(i<max_iter);
+//     if(reached)
+//     {
+//         MemoryCopy(ret.v, xk.v, sizeof(F32)*xk.dim);
+//         ret.dim = xk.dim;
+//     }
 
-    scratch_end(scratch);
-    return ret;
-}
+//     scratch_end(scratch);
+//     return ret;
+// }
 
 internal void gaussj2(F32 **a, U64 n, F32 *b)
 {
@@ -809,41 +1209,72 @@ internal void gaussj_test(void)
     bb[1] = 4;
     bb[2] = 28;
     gaussj2(a, n, bb);
-    Trap();
 }
 
 //////////////////////////////
-// Diffeq Solver (Particle System)
+// Diffeq Solver
 
-internal void ph_euler_step_for_ps3d(PH_ParticleSystem3D *ps, F32 delta_t)
+internal PH_Vector
+ph_ode_euler(Arena *arena, PH_Vector X, DxDt dxdt, F32 t, void *args)
+{
+    Temp scratch = scratch_begin(&arena,1);
+    PH_Vector ret = ph_vec_from_dim(arena, X.dim);
+    U64 i;
+
+    // dxdt
+    // {xdot, vdot} (for particle3d system)
+    // {v(t), ω(t)∗q(t), F(t), τ(t)} (for rigidbody3d system)
+
+    PH_Vector Xdot = dxdt(scratch.arena, X, t, args);
+
+    // scale
+    for(i = 0; i < X.dim; i++)
+    {
+        Xdot.v[i] *= t;
+    }
+
+    // add
+    for(i = 0; i < X.dim; i++)
+    {
+        ret.v[i] = X.v[i] + Xdot.v[i];
+    }
+
+    scratch_end(scratch);
+    return ret;
+}
+
+//////////////////////////////
+// Step Functions
+
+internal void
+ph_step_ps(PH_Particle3DSystem *system, F32 dt)
 {
     Temp scratch = scratch_begin(0,0);
 
-    U64 dim = 6*ps->n;
+    // TODO(XXX): use fixed time step to update the system
 
-    // compute/eval derivatives (xdot + vdot)
-    PH_Vector derivs = ph_derivatives_from_ps3d(scratch.arena, ps);
+    // get state
+    PH_Vector X = ph_state_from_ps3d(scratch.arena, system);
+    PH_Vector X_next = ph_ode_euler(scratch.arena, X, ph_dxdt_ps3d, dt, system);
+    ph_ps3d_state_set(system, X_next);
 
-    // scale it based on delta_t
-    for(U64 i = 0; i < dim; i++)
-    {
-        derivs.v[i] *= delta_t;
-    }
+    system->t += dt;
+    scratch_end(scratch);
+}
 
-    // get state (phase space) (x + xdot)
-    PH_Vector phase_old = ph_state_from_ps3d(scratch.arena, ps);
-    PH_Vector phase_new = ph_vec_from_dim(scratch.arena, dim);
+internal void
+ph_step_rs(PH_Rigidbody3DSystem *system, F32 dt)
+{
+    Temp scratch = scratch_begin(0,0);
 
-    // add
-    for(U64 i = 0; i < dim; i++)
-    {
-        phase_new.v[i] = phase_old.v[i] + derivs.v[i];
-    }
+    // TODO(XXX): use fixed time step to update the system
 
-    // update state
-    ph_set_state_for_ps3d(ps, phase_new);
+    // {x(t), q(t), P(t), L(t)}
+    PH_Vector X = ph_state_from_rs3d(scratch.arena, system);
+    PH_Vector X_next = ph_ode_euler(scratch.arena, X, ph_dxdt_rs3d, dt, system);
+    ph_rs3d_state_set(system, X_next);
+    PH_Vector X_temp = ph_state_from_rs3d(scratch.arena, system);
 
-    // update clock
-    ps->t += delta_t;
+    system->t += dt;
     scratch_end(scratch);
 }

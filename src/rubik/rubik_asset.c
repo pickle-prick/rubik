@@ -2702,6 +2702,7 @@ rk_drawlist_push_line(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 s
 {
     RK_DrawNode *ret = rk_drawlist_push(arena, drawlist);
     D_Bucket *bucket = d_top_bucket();
+    Assert(bucket != 0);
 
     R_Vertex *vertices = push_array(arena, R_Vertex, 2);
     vertices[0].pos = start;
