@@ -10,7 +10,7 @@ run_full:
 	./build/rubik
 clean:
 	rm -rf ./build
-	rm ./src/api/vulkan/*.spv || true
+	rm ./src/render/vulkan/shader/*.spv || true
 debug:
 	make build_debug
 	gdb -q --tui ./build/rubik

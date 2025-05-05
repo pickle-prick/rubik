@@ -126,6 +126,8 @@ RK_NodeEquipmentTable:
   { RK_NodeTypeFlag_SpotLight        spot_light        `RK_SpotLight`        0 0                                                                             }
   { RK_NodeTypeFlag_Sprite2D         sprite2d          `RK_Sprite2D`         0 0                                                                             }
   { RK_NodeTypeFlag_AnimatedSprite2D animated_sprite2d `RK_AnimatedSprite2D` 0 0                                                                             }
+  { RK_NodeTypeFlag_TileMapLayer     tilemap_layer     `RK_TileMapLayer`     0 0                                                                             }
+  { RK_NodeTypeFlag_TileMap          tilemap           `RK_TileMap`          0 0                                                                             }
   { RK_NodeTypeFlag_Particle3D       particle3d        `RK_Particle3D`       0 0                                                                             }
   { RK_NodeTypeFlag_HookSpring3D     hook_spring3d     `RK_HookSpring3D`     0 0                                                                             }
   { RK_NodeTypeFlag_Constraint3D     constraint3d      `RK_Constraint3D`     0 0                                                                             }
@@ -144,7 +146,7 @@ RK_NodeEquipmentTable:
 @gen @c_file
 {
     `#define RK_UnequipTypeFlagsImpl(node, type_flags) \\`
-    `RK_NodeBucket *node_bucket = rk_top_node_bucket(); \\`
+    `RK_NodeBucket *node_bucket = node->owner_bucket; \\`
     @expand(RK_NodeEquipmentTable a)
         `if(type_flags & $(a.flag)) { SLLStackPush(node_bucket->first_free_$(a.name_lower), node->$(a.name_lower)); node->$(a.name_lower) = 0; }\\`;
     `node->type_flags & (~type_flags);`

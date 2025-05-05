@@ -5,7 +5,7 @@ layout(location = 0)  in vec3   pos;
 layout(location = 1)  in vec3   nor;
 layout(location = 2)  in vec2   tex;
 layout(location = 3)  in vec3   tan;
-layout(location = 4)  in vec3   col;
+layout(location = 4)  in vec4   col;
 layout(location = 5)  in uvec4  joints;
 layout(location = 6)  in vec4   weights;
 

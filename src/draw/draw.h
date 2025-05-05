@@ -163,19 +163,25 @@ internal F32                        d_top_transparency(void);
 // (Apply to the calling thread's currently selected bucket)
 
 //- rjf: rectangles
-internal inline R_Rect2DInst *d_rect(Rng2F32 dst, Vec4F32 color, F32 corner_radius, F32 border_thickness, F32 edge_softness);
+internal inline R_Rect2DInst* d_rect(Rng2F32 dst, Vec4F32 color, F32 corner_radius, F32 border_thickness, F32 edge_softness);
 
 //- rjf: images
-internal inline R_Rect2DInst *d_img(Rng2F32 dst, Rng2F32 src, R_Handle texture, Vec4F32 color, F32 corner_radius, F32 border_thickness, F32 edge_softness);
+internal inline R_Rect2DInst* d_img(Rng2F32 dst, Rng2F32 src, R_Handle texture, Vec4F32 color, F32 corner_radius, F32 border_thickness, F32 edge_softness);
 
 //- rjf: blurs
 // internal R_PassParams_Blur *d_blur(Rng2F32 rect, F32 blur_size, F32 corner_radius);
 
 //- rjf: 3d rendering pass params
-internal R_PassParams_Geo3D *d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection);
+internal R_PassParams_Geo3D* d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection);
+
+//- k: 2d rendering pass params
+internal R_PassParams_Geo2D* d_geo2d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection);
 
 //- rjf: meshes
-internal R_Mesh3DInst * d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, U64 vertex_buffer_offset, U64 indice_buffer_offset, U64 indice_count, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags, Mat4x4F32 *joint_xforms, U64 joint_count, U64 mat_idx, F32 line_width, B32 retain_order);
+internal R_Mesh3DInst* d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, U64 vertex_buffer_offset, U64 indice_buffer_offset, U64 indice_count, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags, Mat4x4F32 *joint_xforms, U64 joint_count, U64 mat_idx, F32 line_width, B32 retain_order);
+
+//- k: sprite(2d)
+internal R_Mesh2DInst* d_sprite(R_Handle mesh_vertices, R_Handle mesh_indices, U64 vertex_buffer_offset, U64 indice_buffer_offset, U64 indice_count, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags vertex_flags, R_Handle tex, F32 line_width);
 
 //- rjf: collating one pre-prepped bucket into parent bucket
 internal void d_sub_bucket(D_Bucket *bucket, B32 merge_pass);

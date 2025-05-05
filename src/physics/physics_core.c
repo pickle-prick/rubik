@@ -346,7 +346,7 @@ ph_rb3d_state_set(PH_Rigidbody3D *b, F32 *src)
     b->R = mat3x3f32_from_quat_rmajor(b->q);
 
     // Iinv
-    b->Iinv = mul_3x3f32(b->R, mul_3x3f32_rmajor(b->Ibodyinv, transpose_3x3f32(b->R)));
+    b->Iinv = mul_3x3f32_rmajor(b->R, mul_3x3f32_rmajor(b->Ibodyinv, transpose_3x3f32(b->R)));
 
     // v(t)
     b->v = scale_3f32(b->P, 1.0/b->mass);
@@ -425,6 +425,7 @@ ph_dxdt_rs3d(Arena *arena, PH_Vector X, F32 t, void *_system)
 
     /////////////////////////////////////////////////////////////////////////////////////
     //- unconstraint force/torque (contact position dependent)
+
     for(PH_Force3D *f = system->first_force; f != 0; f = f->next)
     {
         switch(f->kind)
@@ -450,6 +451,8 @@ ph_dxdt_rs3d(Arena *arena, PH_Vector X, F32 t, void *_system)
                 PH_Rigidbody3D *rb = f->targets.v;
                 Vec3F32 F = scale_3f32(rb->v, f->v.visous_drag.kd*-1);
                 rb->force = add_3f32(rb->force, F);
+
+                // TODO(XXX): apply torque
             }break;
             default:{InvalidPath;}break;
         }
@@ -483,7 +486,7 @@ ph_dxdt_rs3d(Arena *arena, PH_Vector X, F32 t, void *_system)
         // W is just the reciprocal of M
         PH_Matrix W = ph_mat_from_dim(scratch.arena, N,N);
 
-        // loop through particles to collect above values
+        // loop through all bodies to collect above values
         for(PH_Rigidbody3D *rb = system->first_body; rb != 0; rb = rb->next)
         {
             // Q
@@ -550,7 +553,6 @@ ph_dxdt_rs3d(Arena *arena, PH_Vector X, F32 t, void *_system)
 
         // C(q) Cdot(q)
         PH_Vector C_q = ph_vec_from_dim(scratch.arena, m);
-        Assert(C_q.dim == m);
         PH_Vector Cdot_q = ph_mul_mv(scratch.arena, J, qdot);
         Assert(Cdot_q.dim == C_q.dim);
         for(PH_Constraint3D *c = system->first_constraint; c != 0; c = c->next)
@@ -658,9 +660,9 @@ ph_inertia_from_cuboid(F32 M, Vec3F32 dim)
     F32 x0 = dim.x;
     F32 y0 = dim.y;
     F32 z0 = dim.z;
-    ret.v[0][0] = (y0*y0+z0*z0) * (M/12);
-    ret.v[1][1] = (x0*x0+z0*z0) * (M/12);
-    ret.v[2][2] = (x0*x0+y0*y0) * (M/12);
+    ret.v[0][0] = (y0*y0+z0*z0) * (M/12.0);
+    ret.v[1][1] = (x0*x0+z0*z0) * (M/12.0);
+    ret.v[2][2] = (x0*x0+y0*y0) * (M/12.0);
     return ret;
 }
 
@@ -1036,7 +1038,7 @@ internal void gaussj2(F32 **a, U64 n, F32 *b)
     indxc = push_array(scratch.arena, int, n);
     indxr = push_array(scratch.arena, int, n);
     ipiv = push_array(scratch.arena, int, n);
-    for(j = 0; j < n; j++) ipiv[j] = 0;
+    // for(j = 0; j < n; j++) ipiv[j] = 0;
     for(i = 0; i < n; i++)
     {
         big = 0.0f;
@@ -1273,8 +1275,6 @@ ph_step_rs(PH_Rigidbody3DSystem *system, F32 dt)
     PH_Vector X = ph_state_from_rs3d(scratch.arena, system);
     PH_Vector X_next = ph_ode_euler(scratch.arena, X, ph_dxdt_rs3d, dt, system);
     ph_rs3d_state_set(system, X_next);
-    PH_Vector X_temp = ph_state_from_rs3d(scratch.arena, system);
-
     system->t += dt;
     scratch_end(scratch);
 }

@@ -270,7 +270,7 @@ struct PH_Rigidbody3D
     Mat3x3F32 R; /* rotation matrix computed from q */
     Mat3x3F32 Iinv; /* inverse of inertia(world) */
     Vec3F32 v; /* linear velocity */
-    Vec3F32 omega; /* angular velocity w(t) */
+    Vec3F32 omega; /* angular velocity ω(t) */
 
     // computed quantities(artifacts)
     Vec3F32 force;

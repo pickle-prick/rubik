@@ -20,6 +20,7 @@ internal RK_Animation*   rk_animation_from_gltf_animation(cgltf_data *data, cglt
 //~ Other resources
 
 internal RK_Texture2D*   rk_tex2d_from_image(String8 path);
+internal RK_Texture2D*   rk_tex2d_from_dir(String8 dir, U64 *count);
 internal RK_SpriteSheet* rk_spritesheet_from_image(String8 path, String8 meta_path);
 internal RK_Material*    rk_material_from_color(String8 name, Vec4F32 color);
 internal RK_Material*    rk_material_from_image(String8 name, String8 path);
@@ -53,14 +54,14 @@ internal void rk_node_equip_torus(RK_Node *node, F32 inner_radius, F32 outer_rad
 
 //~ Drawlist building helper
 
-internal RK_DrawNode* rk_drawlist_push_rect(Arena *arena, RK_DrawList *drawlist, Rng2F32 dst, Rng2F32 src, F32 depth);
-internal RK_DrawNode* rk_drawlist_push_string(Arena *arena, RK_DrawList *drawlist, Rng2F32 dst, F32 depth, String8 string, D_FancyRunList *fancy_run_list, F_Tag font, F32 font_size, Vec4F32 font_color, U64 tab_size, F_RasterFlags text_raster_flags);
-internal RK_DrawNode* rk_drawlist_push_plane_filled(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec2F32 size, B32 both_face, Vec3F32 origin, Vec3F32 i_hat, Vec3F32 j_hat, Vec4F32 clr, B32 draw_edge, B32 omit_light);
-internal RK_DrawNode* rk_drawlist_push_box_filled(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 size, Vec3F32 origin, Vec3F32 i_hat, Vec3F32 j_hat, Vec4F32 clr, B32 draw_edge, B32 omit_light);
-internal RK_DrawNode* rk_drawlist_push_sphere(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 origin, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere, Vec4F32 clr, B32 draw_edge, B32 omit_light);
-internal RK_DrawNode* rk_drawlist_push_cone(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 origin, Vec3F32 normal, F32 radius, F32 height, U64 radial_segments, Vec4F32 clr, B32 draw_edge, B32 omit_light);
-internal RK_DrawNode* rk_drawlist_push_line(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 start, Vec3F32 end, Vec4F32 clr, F32 line_width, B32 draw_edge);
-internal RK_DrawNode* rk_drawlist_push_circle(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 origin, Vec3F32 normal, F32 radius, U64 segments, Vec4F32 clr, F32 line_width, B32 draw_edge);
-internal RK_DrawNode* rk_drawlist_push_arc_filled(Arena *arena, RK_DrawList *drawlist, RK_Key key, Vec3F32 origin, Vec3F32 a, Vec3F32 b, U64 segments, B32 both_face, Vec4F32 clr, F32 line_width, B32 draw_edge, Mat4x4F32 xform);
+internal RK_DrawNode* rk_drawlist_push_rect(Arena *arena, RK_DrawList *drawlist, Rng2F32 dst, Rng2F32 src);
+internal RK_DrawNode* rk_drawlist_push_string(Arena *arena, RK_DrawList *drawlist, Rng2F32 dst, String8 string, D_FancyRunList *fancy_run_list, F_Tag font, F32 font_size, U64 tab_size, F_RasterFlags text_raster_flags);
+internal RK_DrawNode* rk_drawlist_push_plane(Arena *arena, RK_DrawList *drawlist, Vec2F32 size, B32 both_face);
+internal RK_DrawNode* rk_drawlist_push_box(Arena *arena, RK_DrawList *drawlist, Vec3F32 size);
+internal RK_DrawNode* rk_drawlist_push_sphere(Arena *arena, RK_DrawList *drawlist, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere);
+internal RK_DrawNode* rk_drawlist_push_cone(Arena *arena, RK_DrawList *drawlist, F32 radius, F32 height, U64 radial_segments);
+internal RK_DrawNode* rk_drawlist_push_line(Arena *arena, RK_DrawList *drawlist, Vec3F32 start, Vec3F32 end);
+internal RK_DrawNode* rk_drawlist_push_circle(Arena *arena, RK_DrawList *drawlist, F32 radius, U64 segments);
+internal RK_DrawNode* rk_drawlist_push_arc(Arena *arena, RK_DrawList *drawlist, Vec3F32 origin, Vec3F32 a, Vec3F32 b, U64 segments, B32 both_face);
 
 #endif

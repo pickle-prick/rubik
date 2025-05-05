@@ -6,6 +6,7 @@ RK_ScenesTable:
     {1, entropy}
     {2, go}
     {3, 2d}
+    {4, isometric}
 }
 
 @gen

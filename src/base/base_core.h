@@ -788,6 +788,16 @@ Dir2;
 #define axis2_from_dir2(d) (((d) & 1) ? Axis2_Y : Axis2_X)
 #define side_from_dir2(d) (((d) < Dir2_Right) ? Side_Min : Side_Max)
 
+typedef U64 Dir2Flags;
+#define Dir2Flag_Left      (Dir2Flags)(1ull<<0)
+#define Dir2Flag_Right     (Dir2Flags)(1ull<<1)
+#define Dir2Flag_Up        (Dir2Flags)(1ull<<2)
+#define Dir2Flag_Down      (Dir2Flags)(1ull<<3)
+#define Dir2Flag_UpLeft    (Dir2Flag_Up|Dir2Flag_Left)
+#define Dir2Flag_UpRight   (Dir2Flag_Up|Dir2Flag_Right)
+#define Dir2Flag_DownLeft  (Dir2Flag_Down|Dir2Flag_Left)
+#define Dir2Flag_DownRight (Dir2Flag_Down|Dir2Flag_Right)
+
 ////////////////////////////////
 //~ rjf: Toolchain/Environment Enums
 

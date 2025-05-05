@@ -4,13 +4,16 @@
 ////////////////////////////////
 //~ rjf: Generated Code
 
-U8 r_pass_kind_batch_table[3] = {1, 0, 1};
+U8 r_pass_kind_batch_table[4] = {1, 0, 1, 1};
 
-U64 r_pass_kind_params_size_table[3] = {
+U64 r_pass_kind_params_size_table[4] = {
     sizeof(R_PassParams_UI),
     sizeof(R_PassParams_Blur),
+    sizeof(R_PassParams_Geo2D),
     sizeof(R_PassParams_Geo3D),
 };
+StaticAssert(ArrayCount(r_pass_kind_batch_table) == R_PassKind_COUNT, r_pass_size_check);
+StaticAssert(ArrayCount(r_pass_kind_params_size_table) == R_PassKind_COUNT, r_pass_size_check);
 
 ////////////////////////////////
 //~ rjf: Basic Type Functions

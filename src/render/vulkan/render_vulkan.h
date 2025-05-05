@@ -23,7 +23,7 @@
 // frames in flight, the CPU could get ahead of the GPU, because the work load
 // of the GPU could be too larger for it to handle, so the CPU would end up
 // waiting a lot, adding frames of latency Generally extra latency isn't desired
-#define MAX_FRAMES_IN_FLIGHT 2
+#define MAX_FRAMES_IN_FLIGHT 1
 // support max 4K with 32x32 sized tile
 #define TILE_SIZE 32
 #define MAX_TILES_PER_PASS ((3840*2160)/(TILE_SIZE*TILE_SIZE))
@@ -36,10 +36,12 @@ typedef enum R_Vulkan_VShadKind
 {
     R_Vulkan_VShadKind_Rect,
     // R_Vulkan_VShadKind_Blur,
-    R_Vulkan_VShadKind_Geo3dZPre,
-    R_Vulkan_VShadKind_Geo3dDebug,
-    R_Vulkan_VShadKind_Geo3dForward,
-    R_Vulkan_VShadKind_Geo3dComposite,
+    R_Vulkan_VShadKind_Geo2D_Forward,
+    R_Vulkan_VShadKind_Geo2D_Composite,
+    R_Vulkan_VShadKind_Geo3D_ZPre,
+    R_Vulkan_VShadKind_Geo3D_Debug,
+    R_Vulkan_VShadKind_Geo3D_Forward,
+    R_Vulkan_VShadKind_Geo3D_Composite,
     R_Vulkan_VShadKind_Finalize,
     R_Vulkan_VShadKind_COUNT,
 } R_Vulkan_VShadKind;
@@ -48,18 +50,20 @@ typedef enum R_Vulkan_FShadKind
 {
     R_Vulkan_FShadKind_Rect,
     // R_Vulkan_FShadKind_Blur,
-    R_Vulkan_FShadKind_Geo3dZPre,
-    R_Vulkan_FShadKind_Geo3dDebug,
-    R_Vulkan_FShadKind_Geo3dForward,
-    R_Vulkan_FShadKind_Geo3dComposite,
+    R_Vulkan_FShadKind_Geo2D_Forward,
+    R_Vulkan_FShadKind_Geo2D_Composite,
+    R_Vulkan_FShadKind_Geo3D_ZPre,
+    R_Vulkan_FShadKind_Geo3D_Debug,
+    R_Vulkan_FShadKind_Geo3D_Forward,
+    R_Vulkan_FShadKind_Geo3D_Composite,
     R_Vulkan_FShadKind_Finalize,
     R_Vulkan_FShadKind_COUNT,
 } R_Vulkan_FShadKind;
 
 typedef enum R_Vulkan_CShadKind
 {
-    R_Vulkan_CShadKind_TileFrustum,
-    R_Vulkan_CShadKind_LightCulling,
+    R_Vulkan_CShadKind_Geo3D_TileFrustum,
+    R_Vulkan_CShadKind_Geo3D_LightCulling,
     R_Vulkan_CShadKind_COUNT,
 } R_Vulkan_CShadKind;
 
@@ -67,52 +71,61 @@ typedef enum R_Vulkan_UBOTypeKind
 {
     R_Vulkan_UBOTypeKind_Rect,
     // R_Vulkan_UBOTypeKind_Blur,
-    R_Vulkan_UBOTypeKind_Geo3d,
-    R_Vulkan_UBOTypeKind_TileFrustum,
-    R_Vulkan_UBOTypeKind_LightCulling,
+    R_Vulkan_UBOTypeKind_Geo2D,
+    R_Vulkan_UBOTypeKind_Geo3D,
+    R_Vulkan_UBOTypeKind_Geo3D_TileFrustum,
+    R_Vulkan_UBOTypeKind_Geo3D_LightCulling,
     R_Vulkan_UBOTypeKind_COUNT,
 } R_Vulkan_UBOTypeKind;
 
 typedef enum R_Vulkan_SBOTypeKind
 {
-    R_Vulkan_SBOTypeKind_Joints,
-    R_Vulkan_SBOTypeKind_Materials,
-    R_Vulkan_SBOTypeKind_Tiles,
-    R_Vulkan_SBOTypeKind_Lights,
-    R_Vulkan_SBOTypeKind_LightIndices,
-    R_Vulkan_SBOTypeKind_TileLights,
+    R_Vulkan_SBOTypeKind_Geo3D_Joints,
+    R_Vulkan_SBOTypeKind_Geo3D_Materials,
+    R_Vulkan_SBOTypeKind_Geo3D_Tiles,
+    R_Vulkan_SBOTypeKind_Geo3D_Lights,
+    R_Vulkan_SBOTypeKind_Geo3D_LightIndices,
+    R_Vulkan_SBOTypeKind_Geo3D_TileLights,
     R_Vulkan_SBOTypeKind_COUNT,
 } R_Vulkan_SBOTypeKind;
 
 typedef enum R_Vulkan_DescriptorSetKind
 {
-    R_Vulkan_DescriptorSetKind_UBO_Rect,
-    R_Vulkan_DescriptorSetKind_UBO_Geo3d,
-    R_Vulkan_DescriptorSetKind_UBO_TileFrustum,
-    R_Vulkan_DescriptorSetKind_UBO_LightCulling,
     R_Vulkan_DescriptorSetKind_Tex2D,
-    R_Vulkan_DescriptorSetKind_SBO_Joints,
-    R_Vulkan_DescriptorSetKind_SBO_Materials,
-    R_Vulkan_DescriptorSetKind_SBO_Tiles,
-    R_Vulkan_DescriptorSetKind_SBO_Lights,
-    R_Vulkan_DescriptorSetKind_SBO_LightIndices,
-    R_Vulkan_DescriptorSetKind_SBO_TileLights,
+    // ui
+    R_Vulkan_DescriptorSetKind_UBO_Rect,
+    // 2d
+    R_Vulkan_DescriptorSetKind_UBO_Geo2D,
+    // 3d
+    R_Vulkan_DescriptorSetKind_UBO_Geo3D,
+    R_Vulkan_DescriptorSetKind_UBO_Geo3D_TileFrustum,
+    R_Vulkan_DescriptorSetKind_UBO_Geo3D_LightCulling,
+    R_Vulkan_DescriptorSetKind_SBO_Geo3D_Joints,
+    R_Vulkan_DescriptorSetKind_SBO_Geo3D_Materials,
+    R_Vulkan_DescriptorSetKind_SBO_Geo3D_Tiles,
+    R_Vulkan_DescriptorSetKind_SBO_Geo3D_Lights,
+    R_Vulkan_DescriptorSetKind_SBO_Geo3D_LightIndices,
+    R_Vulkan_DescriptorSetKind_SBO_Geo3D_TileLights,
     R_Vulkan_DescriptorSetKind_COUNT,
 } R_Vulkan_DescriptorSetKind;
 
 typedef enum R_Vulkan_PipelineKind
 {
     // gfx pipeline
-    R_Vulkan_PipelineKind_Rect,
+    R_Vulkan_PipelineKind_GFX_Rect,
     // R_Vulkan_PipelineKind_Blur,
-    R_Vulkan_PipelineKind_Geo3dZPre,
-    R_Vulkan_PipelineKind_Geo3dDebug,
-    R_Vulkan_PipelineKind_Geo3dForward,
-    R_Vulkan_PipelineKind_Geo3dComposite,
-    R_Vulkan_PipelineKind_Finalize,
+    // 2d
+    R_Vulkan_PipelineKind_GFX_Geo2D_Forward,
+    R_Vulkan_PipelineKind_GFX_Geo2D_Composite,
+    // 3d
+    R_Vulkan_PipelineKind_GFX_Geo3D_ZPre,
+    R_Vulkan_PipelineKind_GFX_Geo3D_Debug,
+    R_Vulkan_PipelineKind_GFX_Geo3D_Forward,
+    R_Vulkan_PipelineKind_GFX_Geo3D_Composite,
+    R_Vulkan_PipelineKind_GFX_Finalize,
     // compute pipeline
-    R_Vulkan_PipelineKind_TileFrustum,
-    R_Vulkan_PipelineKind_LightCulling,
+    R_Vulkan_PipelineKind_CMP_Geo3D_TileFrustum,
+    R_Vulkan_PipelineKind_CMP_Geo3D_LightCulling,
     R_Vulkan_PipelineKind_COUNT,
 } R_Vulkan_PipelineKind;
 
@@ -120,20 +133,22 @@ typedef enum R_Vulkan_RenderPassKind
 {
     R_Vulkan_RenderPassKind_Rect,
     // R_Vulkan_RenderPassKind_Blur,
-    R_Vulkan_RenderPassKind_Geo3dZPre,
-    R_Vulkan_RenderPassKind_Geo3d,
-    R_Vulkan_RenderPassKind_Geo3dComposite,
+    R_Vulkan_RenderPassKind_Geo2D,
+    R_Vulkan_RenderPassKind_Geo2D_Composite,
+    R_Vulkan_RenderPassKind_Geo3D_ZPre,
+    R_Vulkan_RenderPassKind_Geo3D,
+    R_Vulkan_RenderPassKind_Geo3D_Composite,
     R_Vulkan_RenderPassKind_Finalize,
     R_Vulkan_RenderPassKind_COUNT,
 } R_Vulkan_RenderPassKind;
 
-typedef enum R_Vulkan_LightKind
+typedef enum R_Vulkan_Light3DKind
 {
-    R_Vulkan_LightKind_Directional,
-    R_Vulkan_LightKind_Point,
-    R_Vulkan_LightKind_Spot,
-    R_Vulkan_LightKind_COUNT,
-} R_Vulkan_LightKind;
+    R_Vulkan_Light3DKind_Directional,
+    R_Vulkan_Light3DKind_Point,
+    R_Vulkan_Light3DKind_Spot,
+    R_Vulkan_Light3DKind_COUNT,
+} R_Vulkan_Light3DKind;
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ Some basic types
@@ -188,8 +203,17 @@ struct R_Vulkan_UBO_Rect
 //   Vec4F32 kernel[32];
 // };
 
-typedef struct R_Vulkan_UBO_Geo3d R_Vulkan_UBO_Geo3d;
-struct R_Vulkan_UBO_Geo3d
+typedef struct R_Vulkan_UBO_Geo2D R_Vulkan_UBO_Geo2D;
+struct R_Vulkan_UBO_Geo2D
+{
+    Mat4x4F32 proj;
+    Mat4x4F32 proj_inv;
+    Mat4x4F32 view;
+    Mat4x4F32 view_inv;
+};
+
+typedef struct R_Vulkan_UBO_Geo3D R_Vulkan_UBO_Geo3D;
+struct R_Vulkan_UBO_Geo3D
 {
     Mat4x4F32 view;
     Mat4x4F32 view_inv;
@@ -201,16 +225,16 @@ struct R_Vulkan_UBO_Geo3d
     U32       _padding_0[3];
 };
 
-typedef struct R_Vulkan_UBO_TileFrustum R_Vulkan_UBO_TileFrustum;
-struct R_Vulkan_UBO_TileFrustum
+typedef struct R_Vulkan_UBO_Geo3D_TileFrustum R_Vulkan_UBO_Geo3D_TileFrustum;
+struct R_Vulkan_UBO_Geo3D_TileFrustum
 {
     Mat4x4F32 proj_inv;
     Vec2U32 grid_size;
     U32 _padding_0[2];
 };
 
-typedef struct R_Vulkan_UBO_LightCulling R_Vulkan_UBO_LightCulling;
-struct R_Vulkan_UBO_LightCulling
+typedef struct R_Vulkan_UBO_Geo3D_LightCulling R_Vulkan_UBO_Geo3D_LightCulling;
+struct R_Vulkan_UBO_Geo3D_LightCulling
 {
     Mat4x4F32 proj_inv;
     U32 light_count;
@@ -219,8 +243,8 @@ struct R_Vulkan_UBO_LightCulling
 
 // push
 
-typedef struct R_Vulkan_PUSH_Geo3dForward R_Vulkan_PUSH_Geo3dForward;
-struct R_Vulkan_PUSH_Geo3dForward
+typedef struct R_Vulkan_PUSH_Geo3D_Forward R_Vulkan_PUSH_Geo3D_Forward;
+struct R_Vulkan_PUSH_Geo3D_Forward
 {
     Vec2F32 viewport;
     Vec2U32 light_grid_size;
@@ -228,29 +252,29 @@ struct R_Vulkan_PUSH_Geo3dForward
 
 // sbo
 
-#define R_Vulkan_SBO_Joint Mat4x4F32
+#define R_Vulkan_SBO_Geo3D_Joint Mat4x4F32
 
-typedef struct R_Vulkan_SBO_Tile R_Vulkan_SBO_Tile;
-struct R_Vulkan_SBO_Tile
+typedef struct R_Vulkan_SBO_Geo3D_Tile R_Vulkan_SBO_Geo3D_Tile;
+struct R_Vulkan_SBO_Geo3D_Tile
 {
     R_Vulkan_Frustum frustum;
 };
 
-#define R_Vulkan_SBO_Light R_Light
+#define R_Vulkan_SBO_Geo3D_Light R_Light3D
 
 // NOTE(k): first element will be used as indice_count
 // NOTE(K): we are using std140, so packed it to 16 bytes boundary
-#define R_Vulkan_SBO_LightIndice U32[4]
+#define R_Vulkan_SBO_Geo3D_LightIndice U32[4]
 
-typedef struct R_Vulkan_SBO_TileLights R_Vulkan_SBO_TileLights;
-struct R_Vulkan_SBO_TileLights
+typedef struct R_Vulkan_SBO_Geo3D_TileLights R_Vulkan_SBO_Geo3D_TileLights;
+struct R_Vulkan_SBO_Geo3D_TileLights
 {
     U32 offset;  
     U32 light_count;
     F32 _padding_0[2];
 };
 
-#define R_Vulkan_SBO_Material R_Material
+#define R_Vulkan_SBO_Geo3D_Material R_Material3D
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Vulkan types
@@ -365,6 +389,11 @@ struct R_Vulkan_RenderPass
     union
     {
         R_Vulkan_Pipeline rect;
+        struct
+        {
+            R_Vulkan_Pipeline forward[R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT];
+        } geo2d;
+        R_Vulkan_Pipeline geo2d_composite;
         // NOTE(k): we are forced to use a dedicated renderpass for z pre
         //          since compute shader can only run outside of the renderpass
         R_Vulkan_Pipeline z_pre[R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT];
@@ -442,6 +471,10 @@ struct R_Vulkan_Bag
     R_Vulkan_DescriptorSet stage_color_ds;
     R_Vulkan_Image         stage_id_image;
     R_Vulkan_Buffer        stage_id_cpu;
+    // 2d
+    R_Vulkan_Image         geo2d_color_image;
+    R_Vulkan_DescriptorSet geo2d_color_ds;
+    // 3d
     R_Vulkan_Image         geo3d_color_image;
     R_Vulkan_DescriptorSet geo3d_color_ds;
     R_Vulkan_Image         geo3d_normal_depth_image;
@@ -474,7 +507,8 @@ typedef struct
 
     // Instance buffer
     R_Vulkan_Buffer          inst_buffer_rect[MAX_RECT_PASS];
-    R_Vulkan_Buffer          inst_buffer_mesh[MAX_GEO3D_PASS];
+    R_Vulkan_Buffer          inst_buffer_mesh2d[MAX_GEO2D_PASS];
+    R_Vulkan_Buffer          inst_buffer_mesh3d[MAX_GEO3D_PASS];
 } R_Vulkan_Frame;
 
 

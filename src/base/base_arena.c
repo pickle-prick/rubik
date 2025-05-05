@@ -122,8 +122,8 @@ arena_push(Arena *arena, U64 size, U64 align)
                 cmt_size = AlignPow2(size + ARENA_HEADER_SIZE, align);
             }
             new_block = arena_alloc(.reserve_size = res_size,
-                    .commit_size  = cmt_size,
-                    .flags        = current->flags);
+                                    .commit_size  = cmt_size,
+                                    .flags        = current->flags);
         }
 
         new_block->base_pos = current->base_pos + current->res;
