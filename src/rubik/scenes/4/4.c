@@ -105,15 +105,17 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_person)
       }
     }
     sprite2d->loop = 1;
+    sprite2d->is_animating = 1;
   }
   else
   {
+    // NOTE(k): we don't have idle animation for now
     // stop animation
-    // sprite2d->loop = 0;
+    sprite2d->is_animating = 0;
   }
 
-  Vec2F32 v = {1.0, 1.0};
-  Vec2F32 dist = {v.x*dir.x, v.y*dir.y};
+  F32 v = 1.0;
+  Vec2F32 dist = {v*dir.x, v*dir.y};
   transform->position = add_2f32(transform->position, dist);
 }
 
@@ -195,29 +197,28 @@ RK_NODE_CUSTOM_UPDATE(s4_tile)
 {
   if(rk_key_match(scene->hot_key, node->key))
   {
-    if(node->first == 0) 
+    RK_Parent_Scope(node)
     {
-      RK_Parent_Scope(node)
-      {
-        RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D, 0, "tile_hover");
-        n->sprite2d->anchor = node->sprite2d->anchor;
-        n->sprite2d->size = node->sprite2d->size;
-        n->sprite2d->color = v4f32(1,1,0,0.3);
-        n->sprite2d->omit_texture = 1;
-        n->node2d->transform = node->node2d->transform;
-        n->node2d->z_index = -1;
-        n->flags |= RK_NodeFlag_Float;
-      }
+      RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
+                                              RK_NodeFlag_Transient|RK_NodeFlag_Float,
+                                              "tile_hover");
+      n->sprite2d->anchor = node->sprite2d->anchor;
+      n->sprite2d->size = node->sprite2d->size;
+      n->sprite2d->color = v4f32(1,1,0,0.6);
+      n->sprite2d->color.w = mix_1f32(0., 0.3, node->hot_t);
+      n->sprite2d->omit_texture = 1;
+      n->node2d->transform = node->node2d->transform;
+      n->node2d->z_index = -1;
     }
   }
-  else
-  {
-    if(node->first != 0)
-    {
-      RK_NodeBucket *node_bucket = rk_top_node_bucket();
-      SLLStackPush(node_bucket->first_to_free_node, node->first);
-    }
-  }
+  // else
+  // {
+  //   if(node->first != 0)
+  //   {
+  //     RK_NodeBucket *node_bucket = rk_top_node_bucket();
+  //     SLLStackPush(node_bucket->first_to_free_node, node->first);
+  //   }
+  // }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

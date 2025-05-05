@@ -876,7 +876,7 @@ rk_node_alloc(RK_NodeTypeFlags type_flags)
     U64 generation = ret->generation;
     MemoryZeroStruct(ret);
     ret->generation = generation;
-    SLLStackPop(node_bucket->first_free_node);
+    SLLStackPop_N(node_bucket->first_free_node, free_next);
   }
   else
   {
@@ -914,12 +914,13 @@ rk_node_release(RK_Node *node)
     DLLRemove(node->parent->first, node->parent->last, node);
   }
 
-  // Remove from node bucket
-  {
-    U64 slot_idx = node->key.u64[0] % bucket->hash_table_size;
-    RK_NodeBucketSlot *slot = &bucket->hash_table[slot_idx];
-    DLLRemove_NP(slot->first, slot->last, node, hash_next, hash_prev);
-  }
+  // Remove from node bucket cache map
+  U64 slot_idx = node->key.u64[0] % bucket->hash_table_size;
+  RK_NodeBucketSlot *slot = &bucket->hash_table[slot_idx];
+  DLLRemove_NP(slot->first, slot->last, node, hash_next, hash_prev);
+  bucket->node_count--;
+
+  // TODO(MemoryLeak): free custom data
 
   // free equipments
   rk_node_unequip_type_flags(node, node->type_flags);
@@ -930,8 +931,8 @@ rk_node_release(RK_Node *node)
     SLLStackPush(bucket->first_free_update_fn_node, fn_node);
   }
 
-  // free node
-  SLLStackPush(bucket->first_free_node, node);
+  // add it to free list
+  SLLStackPush_N(bucket->first_free_node, node, free_next);
 }
 
 internal void
@@ -1510,6 +1511,12 @@ internal void rk_ui_stats(void)
         ui_labelf("fps");
         ui_spacer(ui_pct(1.0, 0.0));
         ui_labelf("%.2f", 1 / (rk_state->debug.frame_dt_us/1000000.0));
+      }
+      UI_Row
+      {
+        ui_labelf("node_count");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%lu", rk_top_node_bucket()->node_count);
       }
       UI_Row
       {
@@ -2428,8 +2435,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
       RK_Node *n = scene->node_bucket->first_to_free_node;
       while(n != 0)
       {
-        RK_Node *next = n->next;
-        SLLStackPop(scene->node_bucket->first_to_free_node);
+        RK_Node *next = n->free_next;
+        SLLStackPop_N(scene->node_bucket->first_to_free_node, free_next);
         rk_node_release(n);
         n = next;
       }
@@ -2437,8 +2444,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
       n = rk_state->node_bucket->first_to_free_node;
       while(n != 0)
       {
-        RK_Node *next = n->next;
-        SLLStackPop(rk_state->node_bucket->first_to_free_node);
+        RK_Node *next = n->free_next;
+        SLLStackPop_N(rk_state->node_bucket->first_to_free_node, free_next);
         rk_node_release(n);
         n = next;
       }
@@ -2836,11 +2843,27 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     // R_Pass *geo_screen_pass = r_pass_from_kind(d_thread_ctx->arena, &geo_screen_bucket->passes, R_PassKind_Geo3D, 1);
     // R_PassParams_Geo3D *geo_screen_params = geo_screen_pass->params_geo3d;
 
-    RK_Node *node = rk_node_from_handle(scene->root);
-
     /////////////////////////////////////////////////////////////////////////////////
-    // collect artifacts (lights,materials,textures)
+    // Update passes
+    // NOTE(k): we need two update passes (1: update_fn, 2: the rest of update)
+    //          the reason is update_fn could modify the node tree which makes transient not working
 
+    RK_Node *root = rk_node_from_handle(scene->root);
+
+    // Pass 1
+    RK_Node *node = root;
+    while(node != 0)
+    {
+      RK_NodeRec rec = rk_node_df_pre(node, 0, 0);
+      for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
+      {
+        fn->f(node, scene, &ctx);
+      }
+      node = rec.next;
+    }
+
+    // Pass 2
+    node = root;
     R_Light3D *lights = geo_back_params->lights;
     U64 *light_count = &geo_back_params->light_count;
 
@@ -2853,19 +2876,21 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     U64 drawable_count = 0;
     U64 drawable_cap = 1000;
     RK_Node **nodes_to_draw = push_array(scratch.arena, RK_Node*, drawable_cap);
-    // update node, collect drawable nodes
+    // TODO(XXX): debug only
+    U64 node_count = 0;
     while(node != 0)
     {
+      node_count++;
       AssertAlways(*light_count < MAX_LIGHTS_PER_PASS);
       AssertAlways(*material_count < MAX_MATERIALS_PER_PASS);
 
       RK_NodeRec rec = rk_node_df_pre(node, 0, 0);
       RK_Node *parent = node->parent;
 
-      for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
-      {
-        fn->f(node, scene, &ctx);
-      }
+      // for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
+      // {
+      //   fn->f(node, scene, &ctx);
+      // }
 
       /////////////////////////////////////////////////////////////////////////////
       // update animation t(s)
@@ -2900,66 +2925,6 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         MemoryCopy(&node->node3d->transform.rotation, &node->rigidbody3d->v.q, sizeof(QuatF32));
         rk_rs_push_rigidbody3d(&node->rigidbody3d->v);
       }
-
-      // if(node->type_flags & RK_NodeTypeFlag_HookSpring3D)
-      // {
-      //     RK_HookSpring3D *spring = node->hook_spring3d;
-
-      //     Vec3F32 xa = v3f32(0,0,0);
-      //     Vec3F32 xb = v3f32(0,0,0);
-
-      //     RK_Node *a = rk_node_from_handle(spring->a);
-      //     RK_Node *b = rk_node_from_handle(spring->b);
-
-      //     if(a) { xa = a->node3d->transform.position; }
-      //     if(b) { xb = b->node3d->transform.position; }
-
-      //     // add force
-      //     PH_Force3D *force = push_array(rk_frame_arena(), PH_Force3D, 1);
-      //     force->kind = PH_Force3DKind_HookSpring;
-      //     force->v.hook_spring.ks = spring->ks;
-      //     force->v.hook_spring.kd = spring->kd;
-      //     force->v.hook_spring.rest = spring->rest;
-      //     force->target_count = 2;
-      //     force->targets.a = &a->particle3d->v;
-      //     force->targets.b = &b->particle3d->v;
-
-      //     if(a->type_flags & RK_NodeTypeFlag_Particle3D)
-      //     {
-      //         rk_ps_push_force3d(force);
-      //     }
-      //     else if (a->type_flags & RK_NodeTypeFlag_Rigidbody3D)
-      //     {
-      //         rk_rs_push_force3d(force);
-      //     }
-
-      //     // update node3d transform
-      //     if(node->type_flags & RK_NodeTypeFlag_Node3D)
-      //     {
-      //         Vec3F32 pos = scale_3f32(add_3f32(xa,xb), 0.5);
-      //         node->node3d->transform.position = pos;
-      //     }
-      // }
-
-      // if(node->type_flags & RK_NodeTypeFlag_Constraint3D)
-      // {
-      //     RK_Constraint3D *src = node->constraint3d;
-      //     PH_Constraint3D *dst = push_array(rk_frame_arena(), PH_Constraint3D, 1);
-      //     dst->kind = src->kind;
-      //     dst->v.distance.d = src->d;
-      //     dst->target_count = src->target_count;
-
-      //     for(U64 i = 0; i < src->target_count; i++)
-      //     {
-      //         RK_Node *t = rk_node_from_handle(src->targets.v[i]);
-      //         if(t)
-      //         {
-      //             // TODO(XXX): we want to support rigidbody too
-      //             dst->targets.v[i] = &t->particle3d->v;
-      //         }
-      //     }
-      //     SLLQueuePush(first_constraint3d, last_constraint3d, dst);
-      // }
 
       if(node->type_flags & RK_NodeTypeFlag_Node2D)
       {
@@ -3174,12 +3139,19 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         nodes_to_draw[drawable_count++] = node;
       }
 
+      if(node->flags & RK_NodeFlag_Transient)
+      {
+        RK_NodeBucket *node_bucket = node->owner_bucket;
+        SLLStackPush_N(node_bucket->first_to_free_node, node, free_next);
+      }
+
       // pop stacks
       {
         // TODO(k): we may have some stacks here
       }
       node = rec.next;
     }
+    AssertAlways(rk_top_node_bucket()->node_count == node_count);
 
     // sorting if needed
     qsort(nodes_to_draw, drawable_count, sizeof(RK_Node*), rk_node2d_cmp_z_rev);

@@ -126,6 +126,7 @@ typedef U64 RK_NodeFlags;
 #define RK_NodeFlag_Float                (RK_NodeFlags)(1ull<<1)
 #define RK_NodeFlag_DrawHotEffects       (RK_NodeFlags)(1ull<<2)
 #define RK_NodeFlag_DrawBorder           (RK_NodeFlags)(1ull<<2)
+#define RK_NodeFlag_Transient            (RK_NodeFlags)(1ull<<3) /* NOTE(k): don't use it recursily */
 
 typedef U64                              RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_Node2D           (RK_NodeTypeFlags)(1ull<<0)
@@ -743,6 +744,9 @@ struct RK_Node
   //~ Bucket links
   RK_Node                       *hash_next;
   RK_Node                       *hash_prev;
+
+  //~ Free list links (next_to_free or next_free)
+  RK_Node                       *free_next;
 
   struct RK_NodeBucket          *owner_bucket;
 
