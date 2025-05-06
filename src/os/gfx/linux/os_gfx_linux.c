@@ -605,53 +605,73 @@ os_get_modifiers(void)
 internal B32
 os_key_is_down(OS_Key key)
 {
-    char keys_return[32];
-    XQueryKeymap(os_lnx_gfx_state->display, keys_return);
+  char keys_return[32];
+  XQueryKeymap(os_lnx_gfx_state->display, keys_return);
 
-    U32 keysym = 0;
-    // TODO: we better write a table for mapping
-    switch(key) {
-        case OS_Key_Left:  { keysym = XK_Left; }break;
-        case OS_Key_Right: { keysym = XK_Right; }break;
-        case OS_Key_Up:    { keysym = XK_Up; }break;
-        case OS_Key_Down:  { keysym = XK_Down; }break;
-        case OS_Key_W:     { keysym = XK_W; }break;
-        case OS_Key_S:     { keysym = XK_S; }break;
-        case OS_Key_A:     { keysym = XK_A; }break;
-        case OS_Key_D:     { keysym = XK_D; }break;
-        case OS_Key_Space: { keysym = XK_space; }break;
-        default:           { InvalidPath; }break;
-    }
-    
-    U32 result = 0;
+  // NOTE(k): we have two kinds of key (mouse/pointer, keyboard)
+  B32 is_pointer = 0;
+  U32 keysym = 0;
+  U32 pointer_btn_mask = 0;
+  // TODO: we better write a table for mapping
+  switch(key)
+  {
+    case OS_Key_LeftMouseButton: {is_pointer = 1; pointer_btn_mask = Button1Mask;}break;
+    case OS_Key_Left:            {keysym = XK_Left;}break;
+    case OS_Key_Right:           {keysym = XK_Right;}break;
+    case OS_Key_Up:              {keysym = XK_Up;}break;
+    case OS_Key_Down:            {keysym = XK_Down;}break;
+    case OS_Key_W:               {keysym = XK_W;}break;
+    case OS_Key_S:               {keysym = XK_S;}break;
+    case OS_Key_A:               {keysym = XK_A;}break;
+    case OS_Key_D:               {keysym = XK_D;}break;
+    case OS_Key_Space:           {keysym = XK_space;}break;
+    default:                     {InvalidPath; }break;
+  }
+
+  U32 ret = 0;
+  if(!is_pointer)
+  {
     KeyCode kc2 = XKeysymToKeycode(os_lnx_gfx_state->display, keysym);
-    if(kc2 != NoSymbol) {
-        result = (keys_return[kc2 >> 3] & (1 << (kc2 & 7))) != 0;
+    if(kc2 != NoSymbol)
+    {
+      ret = (keys_return[kc2 >> 3] & (1 << (kc2 & 7))) != 0;
     }
-    return result;
+  }
+  else
+  {
+    Window root_return, child_return;
+    int root_x, root_y, win_x, win_y;
+    unsigned int mask_return;
+    XQueryPointer(os_lnx_gfx_state->display,
+                  DefaultRootWindow(os_lnx_gfx_state->display),
+                  &root_return, &child_return,
+                  &root_x, &root_y, &win_x, &win_y, &mask_return);
+    ret = (mask_return & Button1Mask) != 0;
+  }
+  return ret;
 }
 
 internal Vec2F32
 os_mouse_from_window(OS_Handle handle)
 {
-    Vec2F32 mouse = {0};
-    OS_LNX_Window *w = (OS_LNX_Window *)handle.u64[0];
+  Vec2F32 mouse = {0};
+  OS_LNX_Window *w = (OS_LNX_Window *)handle.u64[0];
 
-    if (!os_handle_match(handle, os_handle_zero())) {
-        Window root_return, child_return;
-        int root_x_return,root_y_return;
-        int win_x_return,win_y_return;
-        unsigned int mask_return;
+  if (!os_handle_match(handle, os_handle_zero())) {
+    Window root_return, child_return;
+    int root_x_return,root_y_return;
+    int win_x_return,win_y_return;
+    unsigned int mask_return;
 
-        XQueryPointer(os_lnx_gfx_state->display, w->window,
-                      &root_return, &child_return,
-                      &root_x_return, &root_y_return,
-                      &win_x_return, &win_y_return, &mask_return);
-        mouse.x = win_x_return;
-        mouse.y = win_y_return;
-    }
+    XQueryPointer(os_lnx_gfx_state->display, w->window,
+                  &root_return, &child_return,
+                  &root_x_return, &root_y_return,
+                  &win_x_return, &win_y_return, &mask_return);
+    mouse.x = win_x_return;
+    mouse.y = win_y_return;
+  }
 
-    return mouse;
+  return mouse;
 }
 
 ////////////////////////////////
@@ -660,26 +680,26 @@ os_mouse_from_window(OS_Handle handle)
 internal void
 os_set_cursor(OS_Cursor cursor)
 {
-    String8 cursor_name = {0};
-    Cursor c;
-    // = XcursorLibraryLoadCursor(dpy, "sb_v_double_arrow");
-    switch(cursor)
-    {
-        case OS_Cursor_Pointer:         {cursor_name = str8_lit("arrow");}break;
-        case OS_Cursor_IBar:            {cursor_name = str8_lit("xterm");}break;
-        case OS_Cursor_LeftRight:       {cursor_name = str8_lit("sb_h_double_arrow");}break;
-        case OS_Cursor_UpDown:          {cursor_name = str8_lit("sb_v_double_arrow");}break;
-        case OS_Cursor_DownRight:       {cursor_name = str8_lit("bottom_right_corner");}break;
-        case OS_Cursor_DownLeft:        {cursor_name = str8_lit("bottom_left_corner");}break;
-        case OS_Cursor_UpRight:         {cursor_name = str8_lit("top_right_corner");}break;
-        case OS_Cursor_UpLeft:          {cursor_name = str8_lit("top_left_corner");}break;
-        case OS_Cursor_UpDownLeftRight: {cursor_name = str8_lit("move");}break;
-        case OS_Cursor_HandPoint:       {cursor_name = str8_lit("hand2");}break;
-        default:                        {cursor_name = str8_lit("arrow");}break;
-    }
+  String8 cursor_name = {0};
+  Cursor c;
+  // = XcursorLibraryLoadCursor(dpy, "sb_v_double_arrow");
+  switch(cursor)
+  {
+    case OS_Cursor_Pointer:         {cursor_name = str8_lit("arrow");}break;
+    case OS_Cursor_IBar:            {cursor_name = str8_lit("xterm");}break;
+    case OS_Cursor_LeftRight:       {cursor_name = str8_lit("sb_h_double_arrow");}break;
+    case OS_Cursor_UpDown:          {cursor_name = str8_lit("sb_v_double_arrow");}break;
+    case OS_Cursor_DownRight:       {cursor_name = str8_lit("bottom_right_corner");}break;
+    case OS_Cursor_DownLeft:        {cursor_name = str8_lit("bottom_left_corner");}break;
+    case OS_Cursor_UpRight:         {cursor_name = str8_lit("top_right_corner");}break;
+    case OS_Cursor_UpLeft:          {cursor_name = str8_lit("top_left_corner");}break;
+    case OS_Cursor_UpDownLeftRight: {cursor_name = str8_lit("move");}break;
+    case OS_Cursor_HandPoint:       {cursor_name = str8_lit("hand2");}break;
+    default:                        {cursor_name = str8_lit("arrow");}break;
+  }
 
-    c = XcursorLibraryLoadCursor(os_lnx_gfx_state->display, (char *)cursor_name.str);
-    os_lnx_gfx_state->next_cursor = c;
+  c = XcursorLibraryLoadCursor(os_lnx_gfx_state->display, (char *)cursor_name.str);
+  os_lnx_gfx_state->next_cursor = c;
 }
 
 internal void 

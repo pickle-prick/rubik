@@ -136,19 +136,19 @@ RK_NodeEquipmentTable:
 
 @gen @c_file
 {
-    `#define RK_EquipTypeFlagsImpl(node, type_flags) \\`
-    `RK_NodeBucket *node_bucket = rk_top_node_bucket(); \\`
-    @expand(RK_NodeEquipmentTable a)
-        `if(type_flags & $(a.flag)) { node->$(a.name_lower) = node_bucket->first_free_$(a.name_lower); if(node->$(a.name_lower) != 0) {SLLStackPop(node_bucket->first_free_$(a.name_lower));} else {node->$(a.name_lower) = push_array_no_zero(node_bucket->arena_ref, $(a.type), 1);} MemoryZeroStruct(node->$(a.name_lower)); if($(a.has_default_value)) {(*node->$(a.name_lower)) = ($(a.type)){$(a.default_value)};} }\\`;
+  `#define RK_EquipTypeFlagsImpl(node, type_flags) \\`
+  `RK_NodeBucket *node_bucket = rk_top_node_bucket(); \\`
+  @expand(RK_NodeEquipmentTable a)
+    `if(type_flags & $(a.flag)) { node->$(a.name_lower) = node_bucket->first_free_$(a.name_lower); if(node->$(a.name_lower) != 0) {SLLStackPop(node_bucket->first_free_$(a.name_lower));} else {node->$(a.name_lower) = push_array_fat_no_zero(node_bucket->arena_ref, $(a.type));} MemoryZeroStruct(node->$(a.name_lower)); if($(a.has_default_value)) {(*node->$(a.name_lower)) = ($(a.type)){$(a.default_value)};} *(U8**)((U8*)node->$(a.name_lower)-8) = (U8*)node; }\\`;
     `node->type_flags |= type_flags;`
 }
 
 @gen @c_file
 {
-    `#define RK_UnequipTypeFlagsImpl(node, type_flags) \\`
-    `RK_NodeBucket *node_bucket = node->owner_bucket; \\`
-    @expand(RK_NodeEquipmentTable a)
-        `if(type_flags & $(a.flag)) { SLLStackPush(node_bucket->first_free_$(a.name_lower), node->$(a.name_lower)); node->$(a.name_lower) = 0; }\\`;
+  `#define RK_UnequipTypeFlagsImpl(node, type_flags) \\`
+  `RK_NodeBucket *node_bucket = node->owner_bucket; \\`
+  @expand(RK_NodeEquipmentTable a)
+    `if(type_flags & $(a.flag)) { SLLStackPush(node_bucket->first_free_$(a.name_lower), node->$(a.name_lower)); node->$(a.name_lower) = 0; }\\`;
     `node->type_flags & (~type_flags);`
 }
 
@@ -158,14 +158,14 @@ RK_NodeEquipmentTable:
 @table(display_string)
 RK_ViewportShadingKindTable:
 {
-    { "wireframe" }
-    { "solid"     }
-    { "material"  }
+  { "wireframe" }
+  { "solid"     }
+  { "material"  }
 }
 
 @data(String8) rk_viewport_shading_kind_display_string_table:
 {
-    @expand(RK_ViewportShadingKindTable a) `str8_lit_comp("$(a.display_string)")`,
+  @expand(RK_ViewportShadingKindTable a) `str8_lit_comp("$(a.display_string)")`,
 }
 
 @table(display_string)

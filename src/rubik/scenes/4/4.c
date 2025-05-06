@@ -1,6 +1,21 @@
 typedef struct S4_Scene S4_Scene;
 struct S4_Scene
 {
+  RK_Texture2D *textures[S3_Texture2DKind_COUNT];
+  S3_Grid *grid;
+
+  RK_Texture2D *tile_textures;
+  U64 tile_texture_count;
+  U64 curr_tile_texture_idx;
+
+  RK_TileMap *tilemap;
+
+  // editor view
+  struct
+  {
+    Rng2F32 rect;
+    B32 show;
+  } debug_ui;
 };
 
 typedef struct S4_Camera S4_Camera;
@@ -8,6 +23,120 @@ struct S4_Camera
 {
   Rng2F32 viewport_world;
 };
+
+internal Vec2U32
+tile_coord_from_mouse(Mat4x4F32 proj_view_inv_m, Mat2x2F32 mat_inv, Vec2F32 tilemap_origin)
+{
+  // mouse ndc pos
+  F32 mox_ndc = (rk_state->cursor.x / rk_state->window_dim.x) * 2.f - 1.f;
+  F32 moy_ndc = (rk_state->cursor.y / rk_state->window_dim.y) * 2.f - 1.f;
+  Vec4F32 mouse_in_world_4 = transform_4x4f32(proj_view_inv_m, v4f32(mox_ndc, moy_ndc, 1., 1.));
+  Vec2F32 mouse_in_world = v2f32(mouse_in_world_4.x, mouse_in_world_4.y);
+
+  Vec2F32 mouse_relative = sub_2f32(mouse_in_world, tilemap_origin);
+  Vec2F32 map_coord_src = transform_2x2f32(mat_inv, mouse_relative);
+  Vec2U32 ret = {(U32)round_f32(map_coord_src.x), (U32)round_f32(map_coord_src.y)};
+  return ret;
+}
+
+RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
+{
+  S4_Scene *s = scene->custom_data;
+  RK_Node *tilemap_node = rk_node_from_equipment(s->tilemap);
+  RK_TileMap *tilemap = tilemap_node->tilemap;
+  Vec2U32 tile_coord = tile_coord_from_mouse(ctx->proj_view_inv_m, s->tilemap->mat_inv, tilemap_node->node2d->transform.position);
+  RK_UI_Pane(&s->debug_ui.rect, &s->debug_ui.show, str8_lit("TileEditor"))
+  {
+    RK_UI_Tab(str8_lit("tile"), &s->debug_ui.show, ui_em(0.3,0), ui_em(0.3,0))
+    {
+
+      ui_set_next_flags(UI_BoxFlag_DrawDropShadow);
+      if(ui_clicked(ui_buttonf("reset")))
+      {
+        // TODO(XXX)
+      }
+
+      ui_spacer(ui_em(0.3,0));
+
+      ui_set_next_flags(UI_BoxFlag_DrawDropShadow);
+      if(ui_clicked(ui_buttonf("run")))
+      {
+        s3_run_grid_kernals(s->grid);
+      }
+
+      ui_spacer(ui_em(0.3,0));
+
+      UI_Row
+      {
+        ui_labelf("textures");
+        ui_spacer(ui_pct(1.0, 0.0));
+        rk_ui_dropdown_begin(s->tile_textures[s->curr_tile_texture_idx].name);
+        for(U64 i = 0; i < s->tile_texture_count; i++)
+        {
+          if(ui_clicked(ui_button(s->tile_textures[i].name)))
+          {
+            rk_ui_dropdown_hide();
+            s->curr_tile_texture_idx = i;
+          }
+        }
+        rk_ui_dropdown_end();
+      }
+
+      UI_Row
+      {
+        ui_labelf("coord");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%u %u", tile_coord.x, tile_coord.y);
+      }
+    }
+  }
+
+  // set hot_key
+  if(tile_coord.x >= 0 && tile_coord.x < tilemap->size.x && tile_coord.y >= 0 && tile_coord.y < tilemap->size.y)
+  {
+    U64 idx = (tile_coord.y*tilemap->size.x + tile_coord.x);
+    // TODO: we only have one layer for now
+    RK_Node *tile = node->first->first;
+    for(U64 i = 0; i < idx && tile != 0; i++)
+    {
+      tile = tile->next;
+    }
+    if(tile)
+    {
+      scene->hot_key = tile->key;
+    }
+
+    RK_Texture2D *tex = &s->tile_textures[s->curr_tile_texture_idx];
+    U64 tile_idx = tile_coord.y*tilemap->size.x + tile_coord.x;
+    RK_Node *tile_node = tilemap_node->first->first;
+    // TODO(XXX): we should store these into array stored in tilemap
+    for(U64 i = 0; i < idx; i++,tile_node=tile_node->next);
+
+    RK_Parent_Scope(tile_node)
+    {
+      Vec2F32 pos = transform_2x2f32(tilemap->mat, v2f32(tile_coord.x, tile_coord.y));
+
+      RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
+                                              RK_NodeFlag_Transient|RK_NodeFlag_Float,
+                                              "tile_hover");
+      n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
+      n->sprite2d->size = tilemap->tile_size;
+      // n->sprite2d->color = v4f32(1,1,0,0.6);
+      // n->sprite2d->color.w = mix_1f32(0., 0.3, node->hot_t);
+      n->sprite2d->tex = tex;
+      n->sprite2d->omit_texture = 0;
+      n->node2d->transform.position = pos;
+      // n->node2d->z_index = -1;
+    }
+
+    // if(rk_state->sig.f & UI_SignalFlag_Clicked)
+    if(os_key_is_down(OS_Key_LeftMouseButton))
+    {
+      tile_node->sprite2d->tex = tex;
+    }
+  }
+
+}
 
 RK_NODE_CUSTOM_UPDATE(s4_fn_person)
 {
@@ -115,6 +244,7 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_person)
   }
 
   F32 v = 1.0;
+  if(dir.x != 0 && dir.y != 0) dir = normalize_2f32(dir);
   Vec2F32 dist = {v*dir.x, v*dir.y};
   transform->position = add_2f32(transform->position, dist);
 }
@@ -124,31 +254,6 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tilemap)
   ProfBeginFunction();
   RK_TileMap *tilemap = node->tilemap;
   RK_Transform2D transform = node->node2d->transform;
-
-  // mouse ndc pos
-  F32 mox_ndc = (rk_state->cursor.x / rk_state->window_dim.x) * 2.f - 1.f;
-  F32 moy_ndc = (rk_state->cursor.y / rk_state->window_dim.y) * 2.f - 1.f;
-  Vec4F32 mouse_in_world_4 = transform_4x4f32(ctx->proj_view_inv_m, v4f32(mox_ndc, moy_ndc, 1., 1.));
-  Vec2F32 mouse_in_world = v2f32(mouse_in_world_4.x, mouse_in_world_4.y);
-
-  Vec2F32 mouse_relative = sub_2f32(mouse_in_world, transform.position);
-  Vec2F32 map_coord_src = transform_2x2f32(tilemap->mat_inv, mouse_relative);
-  Vec2U32 map_coord = {(U32)round_f32(map_coord_src.x), (U32)round_f32(map_coord_src.y)};
-
-  if(map_coord.x >= 0 && map_coord.x < tilemap->size.x && map_coord.y >= 0 && map_coord.y < tilemap->size.y)
-  {
-    U64 idx = (map_coord.y*tilemap->size.x + map_coord.x);
-    // TODO: we only have one layer for now
-    RK_Node *tile = node->first->first;
-    for(U64 i = 0; i < idx && tile != 0; i++)
-    {
-      tile = tile->next;
-    }
-    if(tile)
-    {
-      scene->hot_key = tile->key;
-    }
-  }
   ProfEnd();
 }
 
@@ -169,9 +274,8 @@ RK_NODE_CUSTOM_UPDATE(s4_camera_fn)
   }
   if(rk_state->sig.scroll.x != 0 || rk_state->sig.scroll.y != 0)
   {
+    // TODO(XXX): padding won't keep the ratio intact
     camera->viewport_world = pad_2f32(camera->viewport_world, -30.*rk_state->sig.scroll.y);
-    // Vec3F32 dist = scale_3f32(f, rk_state->sig.scroll.y/3.f);
-    // transform->position = add_3f32(dist, transform->position);
     node->camera3d->orthographic.top    = camera->viewport_world.y0;
     node->camera3d->orthographic.bottom = camera->viewport_world.y1;
     node->camera3d->orthographic.left   = camera->viewport_world.x0;
@@ -195,30 +299,6 @@ RK_NODE_CUSTOM_UPDATE(s4_camera_fn)
 
 RK_NODE_CUSTOM_UPDATE(s4_tile)
 {
-  if(rk_key_match(scene->hot_key, node->key))
-  {
-    RK_Parent_Scope(node)
-    {
-      RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
-                                              RK_NodeFlag_Transient|RK_NodeFlag_Float,
-                                              "tile_hover");
-      n->sprite2d->anchor = node->sprite2d->anchor;
-      n->sprite2d->size = node->sprite2d->size;
-      n->sprite2d->color = v4f32(1,1,0,0.6);
-      n->sprite2d->color.w = mix_1f32(0., 0.3, node->hot_t);
-      n->sprite2d->omit_texture = 1;
-      n->node2d->transform = node->node2d->transform;
-      n->node2d->z_index = -1;
-    }
-  }
-  // else
-  // {
-  //   if(node->first != 0)
-  //   {
-  //     RK_NodeBucket *node_bucket = rk_top_node_bucket();
-  //     SLLStackPush(node_bucket->first_to_free_node, node->first);
-  //   }
-  // }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -241,6 +321,17 @@ rk_scene_entry__4()
   ret->omit_gizmo3d = 1;
   ret->omit_light = 1;
 
+  // scene data
+  S4_Scene *scene = rk_push_custom_data(S4_Scene, 1);
+  {
+    scene->debug_ui.rect = r2f32p(rk_state->window_rect.x1/2.0,
+                                  rk_state->window_rect.y1/2.0,
+                                  rk_state->window_rect.x1/2.0 + 900,
+                                  rk_state->window_rect.y1/2.0 + 600);
+    scene->debug_ui.show = 1;
+  }
+  ret->custom_data = scene;
+
   // 2d viewport
   // Rng2F32 viewport_screen = {0,0,600,600};
   // Vec2F32 viewport_screen_dim = dim_2f32(viewport_screen);
@@ -248,20 +339,23 @@ rk_scene_entry__4()
   // Vec2F32 viewport_world_dim = dim_2f32(viewport_world);
 
   RK_Node *root = rk_build_node3d_from_stringf(0,0, "root");
+  rk_node_push_fn(root, s4_fn_tile_editor);
 
   /////////////////////////////////////////////////////////////////////////////////////
   // load resource
 
   U64 tile_texture_count = 0;
-  RK_Texture2D *tile_textures = rk_tex2d_from_dir(str8_lit("./textures/isometric-tiles/"), &tile_texture_count);
+  RK_Texture2D *tile_textures = rk_tex2d_from_dir(str8_lit("./textures/isometric-tiles-2/"), &tile_texture_count);
   RK_Texture2D *floor_texture = 0;
   for(U64 i = 0; i < tile_texture_count; i++)
   {
-    if(str8_ends_with(tile_textures[i].name, str8_lit("tile-1.png"), 0))
+    if(str8_ends_with(tile_textures[i].name, str8_lit("tile_000.png"), 0))
     {
       floor_texture = &tile_textures[i];
     }
   }
+  scene->tile_textures = tile_textures;
+  scene->tile_texture_count = tile_texture_count;
 
   RK_SpriteSheet *character_sheet = rk_spritesheet_from_image(str8_lit("./textures/Chibi-character/Chibi-character-template_skin3_part1_by_AxulArt.png"), str8_lit("./textures/Chibi-character/Chibi-character-template_skin3_part1_by_AxulArt.json"));
 
@@ -288,7 +382,7 @@ rk_scene_entry__4()
       main_camera->camera3d->orthographic.right  = viewport_world.x1;
 
       main_camera->node3d->transform.position = v3f32(0,0,0);
-      main_camera->custom_data = rk_node_push_custom_data(S4_Camera, 1);
+      main_camera->custom_data = rk_push_custom_data(S4_Camera, 1);
       ((S4_Camera*)main_camera->custom_data)->viewport_world = viewport_world;
       rk_node_push_fn(main_camera, s4_camera_fn);
     }
@@ -302,26 +396,24 @@ rk_scene_entry__4()
       p->animated_sprite2d->is_animating = 1;
       p->animated_sprite2d->curr_tag = 0; // idle
       p->animated_sprite2d->loop = 1;
+      p->animated_sprite2d->size = v2f32(character_sheet->size.x*0.3,character_sheet->size.y*0.3);
       p->node2d->z_index = -1;
       rk_node_push_fn(p, s4_fn_person);
-      // S3_Dino *dino_data = (dino->custom_data = rk_node_push_custom_data(S3_Dino, 1));
-      // dino_data->face_direction = Dir2_Right;
     }
 
     // tilemap
-    Vec2F32 tile_size = v2f32(64, 32);
+    Vec2F32 tile_size = v2f32(100, 100); /* 2:1 ratio */
     Vec2U32 tilemap_size = {30,30};
-    RK_Node *tilemap_node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D|RK_NodeTypeFlag_TileMap, 0, "tilemap");
+    RK_Node *tilemap_node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_TileMap, 0, "tilemap");
     rk_node_push_fn(tilemap_node, s4_fn_tilemap);
-    tilemap_node->sprite2d->color = v4f32(1.,0.,0.,1.);
-    tilemap_node->sprite2d->size = v2f32(tile_size.x*tilemap_size.x, tile_size.y*tilemap_size.y);
     RK_TileMap *tilemap = tilemap_node->tilemap;
+    scene->tilemap = tilemap;
     {
       Mat2x2F32 mat = mat_2x2f32(0.);
-      mat.v[0][0] = 0.5*tile_size.x;
-      mat.v[0][1] = 0.5*tile_size.y;
+      mat.v[0][0] =  0.5*tile_size.x;
+      mat.v[0][1] =  0.25*tile_size.y;
       mat.v[1][0] = -0.5*tile_size.x;
-      mat.v[1][1] = 0.5*tile_size.y;
+      mat.v[1][1] =  0.25*tile_size.y;
 
       tilemap->size = tilemap_size;
       tilemap->tile_size = tile_size;
@@ -334,12 +426,13 @@ rk_scene_entry__4()
       RK_Parent_Scope(layer_node)
       {
         U64 i,j;
-        U64 idx = 0;
         for(j = 0; j < tilemap->size.y; j++)
         {
           for(i = 0; i < tilemap->size.x; i++)
           {
             Vec2F32 pos = transform_2x2f32(tilemap->mat, v2f32(i, j));
+            // Vec2F32 pos = {0};
+            // Vec2F32 origin = {0,0};
             // pos.x = origin.x + i*(tile_size.x/2.0) - j*(tile_size.x/2.0);
             // pos.y = origin.y + i*(tile_size.y/2.0) + j*(tile_size.y/2.0);
 
@@ -349,11 +442,11 @@ rk_scene_entry__4()
             RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D, 0, "tile-%I64d-%I64d", i, j);
             n->sprite2d->tex = tex;
             n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
-            n->sprite2d->size = tilemap->tile_size;
+            n->sprite2d->size = tile_size;
             n->sprite2d->color = v4f32(0.3,0.3,0.3,1);
             n->node2d->transform.position = pos;
+            // TODO(XXX): won't work for now
             n->flags |= RK_NodeFlag_DrawBorder|RK_NodeFlag_DrawHotEffects;
-            idx++;
             rk_node_push_fn(n, s4_tile);
           }
         }

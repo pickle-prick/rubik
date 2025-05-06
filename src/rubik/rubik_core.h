@@ -623,6 +623,7 @@ struct RK_AnimatedSprite2D
 
   // animations
   RK_SpriteSheet *sheet;
+  Vec2F32 size;
   U64 curr_tag;
   U64 next_tag;
   B32 loop;
@@ -883,10 +884,10 @@ struct RK_Scene
 
   U64                  frame_idx;
   // Storage
-  Arena                *arena;
-  RK_NodeBucket        *node_bucket;
-  RK_NodeBucket        *res_node_bucket;
-  RK_ResourceBucket    *res_bucket;
+  Arena*               arena;
+  RK_NodeBucket*       node_bucket;
+  RK_NodeBucket*       res_node_bucket;
+  RK_ResourceBucket*   res_bucket;
 
   RK_Handle            root;
   RK_Handle            active_camera;
@@ -910,6 +911,9 @@ struct RK_Scene
 
   // gizmo
   RK_Gizmo3DMode       gizmo3d_mode;
+
+  // custom data
+  void*                custom_data;
 
   String8              name;
   String8              save_path;
@@ -1243,7 +1247,7 @@ internal RK_NodeRec rk_node_df(RK_Node *n, RK_Node *root, U64 sib_member_off, U6
 
 internal void      rk_node_push_fn(RK_Node *n, RK_NodeCustomUpdateFunctionType *fn);
 // TODO(XXX): rename this function later, remove "node"
-#define  rk_node_push_custom_data(T, s) (push_array(rk_top_node_bucket()->arena_ref, T, s))
+#define  rk_push_custom_data(T, s) (push_array(rk_top_node_bucket()->arena_ref, T, s))
 internal RK_Handle rk_handle_from_node(RK_Node *n);
 internal RK_Node*  rk_node_from_handle(RK_Handle handle);
 internal B32       rk_node_is_active(RK_Node *node);
@@ -1314,6 +1318,7 @@ internal F32       rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F3
 internal Rng2F32   rk_rect_from_sprite2d(RK_Sprite2D *sprite2d);
 internal void      rk_sprite2d_equip_string(Arena *arena, RK_Sprite2D *sprite2d, String8 string, F_Tag font, F32 font_size, Vec4F32 font_color, U64 tab_size, F_RasterFlags text_raster_flags);
 internal int       rk_node2d_cmp_z_rev(const void *left, const void *right);
+internal RK_Node*  rk_node_from_equipment(void *equipment);
 
 #define rk_text(font, size, base_align_px, tab_size_px, flags, p, color, string) \
 D_BucketScope(rk_state->bucket_rect) {d_text(font,size,base_align_px,tab_size_px,flags,p,color,string);}

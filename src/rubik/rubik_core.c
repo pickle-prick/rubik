@@ -3260,8 +3260,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         AssertAlways(frame != 0);
 
         Rng2F32 dst = {0};
-        dst.x1 = frame->w;
-        dst.y1 = frame->h;
+        dst.x1 = sprite->size.x;
+        dst.y1 = sprite->size.y;
         Rng2F32 src = {0};
         src.x0 = frame->x / sheet->size.x;
         src.y0 = frame->y / sheet->size.y;
@@ -4257,6 +4257,15 @@ rk_node2d_cmp_z_rev(const void *a, const void *b)
     ret = (*right)->node2d->z_index - (*left)->node2d->z_index;
   }
   return ret;
+}
+
+internal RK_Node *
+rk_node_from_equipment(void *equipment)
+{
+  RK_Node *ret;
+  RK_Node **ptr = (RK_Node**)((U8*)equipment-8);
+  Assert(*ptr != 0);
+  return *ptr;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

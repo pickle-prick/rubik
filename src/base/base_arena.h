@@ -87,5 +87,8 @@ internal void temp_end(Temp temp);
 #define push_array_aligned(a, T, c, align) (T *)MemoryZero(push_array_no_zero_aligned(a, T, c, align), sizeof(T)*(c))
 #define push_array_no_zero(a, T, c) push_array_no_zero_aligned(a, T, c, Max(8, AlignOf(T)))
 #define push_array(a, T, c) push_array_aligned(a, T, c, Max(8, AlignOf(T)))
+// NOTE(k): only works on x64, fat pointer contains a header (which is a void*), can only do singular allocation, no array is allowed
+#define push_array_fat_no_zero(a, T) (T*)((U8 *)arena_push((a), 8+sizeof(T), 16)+8)
+#define push_array_fat(a, T) (T*)((U8*)MemoryZero(arena_push((a), 8+sizeof(T), 16), sizeof(T)+8) + 8)
 
 #endif // BASE_ARENA_H
