@@ -19,6 +19,7 @@ internal void      rk_ui_dropdown_hide(void);
 internal UI_Signal rk_ui_checkbox(B32 *b);
 internal UI_Box*   rk_ui_tab_begin(String8 string, B32 *open, UI_Size padding_x, UI_Size padding_y);
 internal UI_Signal rk_ui_tab_end();
+internal UI_Box*   rk_ui_img(String8 string, Vec2F32 size, R_Handle albedo_tex, Vec2F32 img_size);
 
 ////////////////////////////////
 //~ k: Macro Loop Wrappers

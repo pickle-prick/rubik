@@ -185,6 +185,12 @@ rk_ui_draw()
       d_truncated_fancy_run_list(text_position, &box->display_string_runs, max_x, ellipses_run);
     }
 
+    // Draw image
+    if(box->flags & UI_BoxFlag_DrawImage)
+    {
+      d_img(box->rect, box->src, box->albedo_tex, v4f32(1,1,1,1), 0., 0., 0.);
+    }
+
     // NOTE(k): draw focus viz
     if(1)
     {

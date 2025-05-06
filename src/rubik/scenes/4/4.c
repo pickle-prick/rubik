@@ -73,7 +73,19 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
         rk_ui_dropdown_begin(s->tile_textures[s->curr_tile_texture_idx].name);
         for(U64 i = 0; i < s->tile_texture_count; i++)
         {
-          if(ui_clicked(ui_button(s->tile_textures[i].name)))
+
+          UI_Signal sig = ui_button(s->tile_textures[i].name);
+          if(ui_hovering(sig))
+          {
+            UI_FixedX(sig.box->fixed_position.x+sig.box->fixed_size.x*(3./4.))
+            UI_FixedY(sig.box->fixed_position.y+sig.box->fixed_size.y+1.0)
+            UI_Flags(UI_BoxFlag_Floating)
+            {
+              rk_ui_img(str8_lit("preview"), v2f32(sig.box->fixed_size.x/4.0, sig.box->fixed_size.x/4.0), s->tile_textures[i].tex, s->tile_textures[i].size);
+            }
+          }
+
+          if(ui_clicked(sig))
           {
             rk_ui_dropdown_hide();
             s->curr_tile_texture_idx = i;

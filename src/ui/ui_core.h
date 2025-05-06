@@ -325,16 +325,17 @@ typedef U64 UI_BoxFlags;
 # define UI_BoxFlag_DrawActiveEffects         (UI_BoxFlags)(1ull<<39)
 # define UI_BoxFlag_DrawOverlay               (UI_BoxFlags)(1ull<<40)
 # define UI_BoxFlag_DrawBucket                (UI_BoxFlags)(1ull<<41)
-# define UI_BoxFlag_Clip                      (UI_BoxFlags)(1ull<<42)
-# define UI_BoxFlag_AnimatePosX               (UI_BoxFlags)(1ull<<43)
-# define UI_BoxFlag_AnimatePosY               (UI_BoxFlags)(1ull<<44)
-# define UI_BoxFlag_DisableTextTrunc          (UI_BoxFlags)(1ull<<45)
-# define UI_BoxFlag_DisableIDString           (UI_BoxFlags)(1ull<<46)
-# define UI_BoxFlag_DisableFocusBorder        (UI_BoxFlags)(1ull<<47)
-# define UI_BoxFlag_DisableFocusOverlay       (UI_BoxFlags)(1ull<<48)
-# define UI_BoxFlag_HasDisplayString          (UI_BoxFlags)(1ull<<49)
-# define UI_BoxFlag_HasFuzzyMatchRanges       (UI_BoxFlags)(1ull<<50)
-# define UI_BoxFlag_RoundChildrenByParent     (UI_BoxFlags)(1ull<<51)
+# define UI_BoxFlag_DrawImage                 (UI_BoxFlags)(1ull<<42)
+# define UI_BoxFlag_Clip                      (UI_BoxFlags)(1ull<<43)
+# define UI_BoxFlag_AnimatePosX               (UI_BoxFlags)(1ull<<44)
+# define UI_BoxFlag_AnimatePosY               (UI_BoxFlags)(1ull<<45)
+# define UI_BoxFlag_DisableTextTrunc          (UI_BoxFlags)(1ull<<46)
+# define UI_BoxFlag_DisableIDString           (UI_BoxFlags)(1ull<<47)
+# define UI_BoxFlag_DisableFocusBorder        (UI_BoxFlags)(1ull<<48)
+# define UI_BoxFlag_DisableFocusOverlay       (UI_BoxFlags)(1ull<<49)
+# define UI_BoxFlag_HasDisplayString          (UI_BoxFlags)(1ull<<50)
+# define UI_BoxFlag_HasFuzzyMatchRanges       (UI_BoxFlags)(1ull<<51)
+# define UI_BoxFlag_RoundChildrenByParent     (UI_BoxFlags)(1ull<<52)
 
 //- rjf: bundles
 # define UI_BoxFlag_Clickable           (UI_BoxFlag_MouseClickable|UI_BoxFlag_KeyboardClickable)
@@ -349,158 +350,161 @@ typedef U64 UI_BoxFlags;
 //}
 
 typedef struct UI_Box UI_Box;
-struct UI_Box {
-    // Persistent links for map
-    UI_Box                       *hash_next;
-    UI_Box                       *hash_prev;
+struct UI_Box
+{
+  // Persistent links for map
+  UI_Box                       *hash_next;
+  UI_Box                       *hash_prev;
 
-    // Children
-    UI_Box                       *first;
-    UI_Box                       *last;
-    // Siblings
-    UI_Box                       *next;
-    UI_Box                       *prev;
+  // Children
+  UI_Box                       *first;
+  UI_Box                       *last;
+  // Siblings
+  UI_Box                       *next;
+  UI_Box                       *prev;
 
-    UI_Box                       *parent;
+  UI_Box                       *parent;
 
-    // Per-build equipment
-    UI_Key                       key;
-    String8                      string;
-    String8                      indentifier;
-    UI_TextAlign                 text_align;
-    UI_BoxFlags                  flags;
-    Vec2F32                      fixed_position;
-    Vec2F32                      fixed_size;
-    UI_Size                      pref_size[Axis2_COUNT];
-    Axis2                        child_layout_axis;
-    U64                          child_count;
-    F_Tag                        font;
-    U64                          font_size;
-    U64                          tab_size;
-    F_RasterFlags                text_raster_flags;
-    F32                          corner_radii[Corner_COUNT];
-    F32                          transparency;
-    F32                          text_padding;
-    UI_Palette                   *palette;
-    D_Bucket                     *draw_bucket;
-    UI_BoxCustomDrawFunctionType *custom_draw;
-    void                         *custom_draw_user_data;
-    OS_Cursor                    hover_cursor;
+  // Per-build equipment
+  UI_Key                       key;
+  String8                      string;
+  String8                      indentifier;
+  UI_TextAlign                 text_align;
+  UI_BoxFlags                  flags;
+  Vec2F32                      fixed_position;
+  Vec2F32                      fixed_size;
+  UI_Size                      pref_size[Axis2_COUNT];
+  Axis2                        child_layout_axis;
+  U64                          child_count;
+  F_Tag                        font;
+  U64                          font_size;
+  U64                          tab_size;
+  F_RasterFlags                text_raster_flags;
+  F32                          corner_radii[Corner_COUNT];
+  F32                          transparency;
+  F32                          text_padding;
+  UI_Palette                   *palette;
+  D_Bucket                     *draw_bucket;
+  UI_BoxCustomDrawFunctionType *custom_draw;
+  void                         *custom_draw_user_data;
+  OS_Cursor                    hover_cursor;
 
-    // Per-build artifacts
-    Rng2F32                      rect;
-    D_FancyRunList               display_string_runs;
-    Vec2F32                      fixed_position_animated;
-    Vec2F32                      position_delta;
+  // Per-build artifacts
+  Rng2F32                      rect;
+  D_FancyRunList               display_string_runs;
+  Vec2F32                      fixed_position_animated;
+  Vec2F32                      position_delta;
+  R_Handle                     albedo_tex;
+  Rng2F32                      src;
 
-    // Persistent data
-    U64                          first_touched_build_index;
-    U64                          last_touched_build_index;
-    U64                          first_disabled_build_index;
-    F32                          hot_t;
-    F32                          active_t;
-    F32                          disabled_t;
-    F32                          focus_hot_t;
-    F32                          focus_active_t;
-    F32                          focus_active_disabled_t;
-    Vec2F32                      view_off;
-    Vec2F32                      view_off_target;
-    Vec2F32                      view_bounds;
-    UI_Key                       default_nav_focus_next_hot_key;
-    UI_Key                       default_nav_focus_next_active_key;
-    UI_Key                       default_nav_focus_hot_key;
-    UI_Key                       default_nav_focus_active_key;
+  // Persistent data
+  U64                          first_touched_build_index;
+  U64                          last_touched_build_index;
+  U64                          first_disabled_build_index;
+  F32                          hot_t;
+  F32                          active_t;
+  F32                          disabled_t;
+  F32                          focus_hot_t;
+  F32                          focus_active_t;
+  F32                          focus_active_disabled_t;
+  Vec2F32                      view_off;
+  Vec2F32                      view_off_target;
+  Vec2F32                      view_bounds;
+  UI_Key                       default_nav_focus_next_hot_key;
+  UI_Key                       default_nav_focus_next_active_key;
+  UI_Key                       default_nav_focus_hot_key;
+  UI_Key                       default_nav_focus_active_key;
 };
 
 typedef struct UI_BoxRec UI_BoxRec;
 struct UI_BoxRec
 {
-    UI_Box *next;
-    S32 push_count;
-    S32 pop_count;
+  UI_Box *next;
+  S32 push_count;
+  S32 pop_count;
 };
 
 typedef struct UI_BoxNode UI_BoxNode;
 struct UI_BoxNode {
-    UI_BoxNode *next;
-    UI_Box *box;
+  UI_BoxNode *next;
+  UI_Box *box;
 };
 
 typedef struct UI_BoxList UI_BoxList;
 struct UI_BoxList {
-    UI_BoxNode *first;
-    UI_BoxNode *last;
-    U64        count;
+  UI_BoxNode *first;
+  UI_BoxNode *last;
+  U64        count;
 };
 
 typedef U32 UI_SignalFlags;
 enum
 {
-    // rjf: mouse press -> box was pressed while hovering
-    UI_SignalFlag_LeftPressed         = (1<<0),
-    UI_SignalFlag_MiddlePressed       = (1<<1),
-    UI_SignalFlag_RightPressed        = (1<<2),
+  // rjf: mouse press -> box was pressed while hovering
+  UI_SignalFlag_LeftPressed         = (1<<0),
+  UI_SignalFlag_MiddlePressed       = (1<<1),
+  UI_SignalFlag_RightPressed        = (1<<2),
 
-    // rjf: dragging -> box was previously pressed, user is still holding button
-    UI_SignalFlag_LeftDragging        = (1<<3),
-    UI_SignalFlag_MiddleDragging      = (1<<4),
-    UI_SignalFlag_RightDragging       = (1<<5),
+  // rjf: dragging -> box was previously pressed, user is still holding button
+  UI_SignalFlag_LeftDragging        = (1<<3),
+  UI_SignalFlag_MiddleDragging      = (1<<4),
+  UI_SignalFlag_RightDragging       = (1<<5),
 
-    // rjf: double-dragging -> box was previously double-clicked, user is still holding button
-    UI_SignalFlag_LeftDoubleDragging  = (1<<6),
-    UI_SignalFlag_MiddleDoubleDragging= (1<<7),
-    UI_SignalFlag_RightDoubleDragging = (1<<8),
+  // rjf: double-dragging -> box was previously double-clicked, user is still holding button
+  UI_SignalFlag_LeftDoubleDragging  = (1<<6),
+  UI_SignalFlag_MiddleDoubleDragging= (1<<7),
+  UI_SignalFlag_RightDoubleDragging = (1<<8),
 
-    // rjf: triple-dragging -> box was previously triple-clicked, user is still holding button
-    UI_SignalFlag_LeftTripleDragging  = (1<<9),
-    UI_SignalFlag_MiddleTripleDragging= (1<<10),
-    UI_SignalFlag_RightTripleDragging = (1<<11),
+  // rjf: triple-dragging -> box was previously triple-clicked, user is still holding button
+  UI_SignalFlag_LeftTripleDragging  = (1<<9),
+  UI_SignalFlag_MiddleTripleDragging= (1<<10),
+  UI_SignalFlag_RightTripleDragging = (1<<11),
 
-    // rjf: released -> box was previously pressed & user released, in or out of bounds
-    UI_SignalFlag_LeftReleased        = (1<<12),
-    UI_SignalFlag_MiddleReleased      = (1<<13),
-    UI_SignalFlag_RightReleased       = (1<<14),
+  // rjf: released -> box was previously pressed & user released, in or out of bounds
+  UI_SignalFlag_LeftReleased        = (1<<12),
+  UI_SignalFlag_MiddleReleased      = (1<<13),
+  UI_SignalFlag_RightReleased       = (1<<14),
 
-    // rjf: clicked -> box was previously pressed & user released, in bounds
-    UI_SignalFlag_LeftClicked         = (1<<15),
-    UI_SignalFlag_MiddleClicked       = (1<<16),
-    UI_SignalFlag_RightClicked        = (1<<17),
+  // rjf: clicked -> box was previously pressed & user released, in bounds
+  UI_SignalFlag_LeftClicked         = (1<<15),
+  UI_SignalFlag_MiddleClicked       = (1<<16),
+  UI_SignalFlag_RightClicked        = (1<<17),
 
-    // rjf: double clicked -> box was previously clicked, pressed again
-    UI_SignalFlag_LeftDoubleClicked   = (1<<18),
-    UI_SignalFlag_MiddleDoubleClicked = (1<<19),
-    UI_SignalFlag_RightDoubleClicked  = (1<<20),
+  // rjf: double clicked -> box was previously clicked, pressed again
+  UI_SignalFlag_LeftDoubleClicked   = (1<<18),
+  UI_SignalFlag_MiddleDoubleClicked = (1<<19),
+  UI_SignalFlag_RightDoubleClicked  = (1<<20),
 
-    // rjf: triple clicked -> box was previously clicked twice, pressed again
-    UI_SignalFlag_LeftTripleClicked   = (1<<21),
-    UI_SignalFlag_MiddleTripleClicked = (1<<22),
-    UI_SignalFlag_RightTripleClicked  = (1<<23),
+  // rjf: triple clicked -> box was previously clicked twice, pressed again
+  UI_SignalFlag_LeftTripleClicked   = (1<<21),
+  UI_SignalFlag_MiddleTripleClicked = (1<<22),
+  UI_SignalFlag_RightTripleClicked  = (1<<23),
 
-    // rjf: keyboard pressed -> box had focus, user activated via their keyboard
-    UI_SignalFlag_KeyboardPressed     = (1<<24),
+  // rjf: keyboard pressed -> box had focus, user activated via their keyboard
+  UI_SignalFlag_KeyboardPressed     = (1<<24),
 
-    // rjf: passive mouse info
-    UI_SignalFlag_Hovering            = (1<<25), // hovering specifically this box
-    UI_SignalFlag_MouseOver           = (1<<26), // mouse is over, but may be occluded
+  // rjf: passive mouse info
+  UI_SignalFlag_Hovering            = (1<<25), // hovering specifically this box
+  UI_SignalFlag_MouseOver           = (1<<26), // mouse is over, but may be occluded
 
-    // rjf: committing state changes via user interaction
-    UI_SignalFlag_Commit              = (1<<27),
+  // rjf: committing state changes via user interaction
+  UI_SignalFlag_Commit              = (1<<27),
 
-    // rjf: high-level combos
-    UI_SignalFlag_Pressed = UI_SignalFlag_LeftPressed|UI_SignalFlag_KeyboardPressed,
-    UI_SignalFlag_Released = UI_SignalFlag_LeftReleased,
-    UI_SignalFlag_Clicked = UI_SignalFlag_LeftClicked|UI_SignalFlag_KeyboardPressed,
-    UI_SignalFlag_DoubleClicked = UI_SignalFlag_LeftDoubleClicked,
-    UI_SignalFlag_TripleClicked = UI_SignalFlag_LeftTripleClicked,
-    UI_SignalFlag_Dragging = UI_SignalFlag_LeftDragging,
+  // rjf: high-level combos
+  UI_SignalFlag_Pressed = UI_SignalFlag_LeftPressed|UI_SignalFlag_KeyboardPressed,
+  UI_SignalFlag_Released = UI_SignalFlag_LeftReleased,
+  UI_SignalFlag_Clicked = UI_SignalFlag_LeftClicked|UI_SignalFlag_KeyboardPressed,
+  UI_SignalFlag_DoubleClicked = UI_SignalFlag_LeftDoubleClicked,
+  UI_SignalFlag_TripleClicked = UI_SignalFlag_LeftTripleClicked,
+  UI_SignalFlag_Dragging = UI_SignalFlag_LeftDragging,
 };
 
 typedef struct UI_Signal UI_Signal;
 struct UI_Signal {
-    UI_Box *box;
-    OS_Modifiers event_flags;
-    Vec2S16 scroll;
-    UI_SignalFlags f;
+  UI_Box *box;
+  OS_Modifiers event_flags;
+  Vec2S16 scroll;
+  UI_SignalFlags f;
 };
 
 #define ui_pressed(s)        !!((s).f&UI_SignalFlag_Pressed)
