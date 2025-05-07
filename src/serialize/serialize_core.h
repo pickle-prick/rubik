@@ -6,15 +6,15 @@
 
 typedef enum SE_NodeKind
 {
-    SE_NodeKind_Invalid,
-    SE_NodeKind_Int,
-    SE_NodeKind_Uint,
-    SE_NodeKind_Float,
-    SE_NodeKind_String,
-    SE_NodeKind_Boolean,
-    SE_NodeKind_Array,
-    SE_NodeKind_Struct,
-    SE_NodeKind_COUNT,
+  SE_NodeKind_Invalid,
+  SE_NodeKind_Int,
+  SE_NodeKind_Uint,
+  SE_NodeKind_Float,
+  SE_NodeKind_String,
+  SE_NodeKind_Boolean,
+  SE_NodeKind_Array,
+  SE_NodeKind_Struct,
+  SE_NodeKind_COUNT,
 } SE_NodeKind;
 
 typedef S64     SE_Int;
@@ -26,25 +26,25 @@ typedef B32     SE_Boolean;
 typedef struct SE_Node SE_Node;
 struct SE_Node
 {
-    SE_Node *next;
-    SE_Node *prev;
-    SE_Node *first;
-    SE_Node *last;
-    SE_Node *parent;
+  SE_Node *next;
+  SE_Node *prev;
+  SE_Node *first;
+  SE_Node *last;
+  SE_Node *parent;
 
-    U64 children_count;
+  U64 children_count;
 
-    SE_NodeKind kind; 
-    String8 tag;
+  SE_NodeKind kind; 
+  String8 tag;
 
-    union
-    {
-        SE_Int     se_int;
-        SE_Uint    se_uint;
-        SE_Float   se_float;
-        SE_String  se_string;
-        SE_Boolean se_boolean;
-    } v;
+  union
+  {
+    SE_Int     se_int;
+    SE_Uint    se_uint;
+    SE_Float   se_float;
+    SE_String  se_string;
+    SE_Boolean se_boolean;
+  } v;
 };
 
 ////////////////////////////////
@@ -52,8 +52,8 @@ struct SE_Node
 typedef struct SE_ParentNode SE_ParentNode;
 struct SE_ParentNode
 {
-    SE_ParentNode *next;
-    SE_Node       *v;
+  SE_ParentNode *next;
+  SE_Node       *v;
 };
 
 //- k: Stack globals

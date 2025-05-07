@@ -7,8 +7,8 @@
 typedef struct SE_YML_IndentNode SE_YML_IndentNode;
 struct SE_YML_IndentNode
 {
-    SE_YML_IndentNode *next;
-    S64               v;
+  SE_YML_IndentNode *next;
+  S64               v;
 };
 
 //- k: Stack globals

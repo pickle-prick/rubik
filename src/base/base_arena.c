@@ -246,3 +246,12 @@ temp_end(Temp temp)
 {
   arena_pop_to(temp.arena, temp.pos);
 }
+
+//- k: fat pointer allocation
+internal void *
+fat_finalize(Arena *arena, void* base, void* ptr, U64 size)
+{
+  *(U8**)base = ptr;
+  *(U64*)((U8*)base+8) = size;
+  return (U8*)base + 16;
+}

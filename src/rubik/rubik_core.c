@@ -4265,15 +4265,6 @@ rk_node2d_cmp_z_rev(const void *a, const void *b)
   return ret;
 }
 
-internal RK_Node *
-rk_node_from_equipment(void *equipment)
-{
-  RK_Node *ret;
-  RK_Node **ptr = (RK_Node**)((U8*)equipment-8);
-  Assert(*ptr != 0);
-  return *ptr;
-}
-
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ Enum to string
 

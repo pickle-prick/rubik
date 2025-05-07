@@ -385,9 +385,8 @@ rk_scene_entry__0()
       l->spot_light->angle = radians_from_turns_f32(0.09);
       rk_node_push_fn(l, rotating_spot_light);
 
-      AnimatedSpotLight *data = rk_node_custom_data_alloc(AnimatedSpotLight);
+      AnimatedSpotLight *data = rk_node_push_custom_data(l, AnimatedSpotLight);
       data->rotation_axis.v[i] = 1;
-      l->custom_data = data;
     }
 
     RK_Node *n2 = rk_node_from_packed_scene(str8_lit("2"), blackguard);

@@ -1,3 +1,31 @@
+typedef U64 S4_TileFlags;
+#define S4_TileFlag_Water (S4_TileFlags)(1ull<<0)
+#define S4_TileFlag_Ice   (S4_TileFlags)(1ull<<1)
+#define S4_TileFlag_Dirty (S4_TileFlags)(1ull<<2)
+
+typedef struct S4_Guy S4_Guy;
+struct S4_Guy
+{
+  // states
+  F32 social_drive;
+  // basic needs
+  F32 hunger;
+  F32 thirsty;
+  // wealth
+  F32 money;
+  F32 iq;
+  F32 integraty;
+  F32 ennery;
+};
+
+typedef struct S4_Tile S4_Tile;
+struct S4_Tile
+{
+  S4_TileFlags flag;
+  U64 i;
+  U64 j;
+};
+
 typedef struct S4_Scene S4_Scene;
 struct S4_Scene
 {
@@ -8,7 +36,14 @@ struct S4_Scene
   U64 tile_texture_count;
   U64 curr_tile_texture_idx;
 
+  S4_Guy *guys;
+  U64 guy_count;
+
   RK_TileMap *tilemap;
+  RK_TileMapLayer *tilemap_layers;
+  U64 *tilemap_layer_count;
+  S4_Tile **tiles;
+  U64 tile_count;
 
   // editor view
   struct
@@ -42,27 +77,24 @@ tile_coord_from_mouse(Mat4x4F32 proj_view_inv_m, Mat2x2F32 mat_inv, Vec2F32 tile
 RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
 {
   S4_Scene *s = scene->custom_data;
-  RK_Node *tilemap_node = rk_node_from_equipment(s->tilemap);
+  RK_Node *tilemap_node = rk_ptr_from_fat(s->tilemap);
   RK_TileMap *tilemap = tilemap_node->tilemap;
   Vec2U32 tile_coord = tile_coord_from_mouse(ctx->proj_view_inv_m, s->tilemap->mat_inv, tilemap_node->node2d->transform.position);
   RK_UI_Pane(&s->debug_ui.rect, &s->debug_ui.show, str8_lit("TileEditor"))
   {
     RK_UI_Tab(str8_lit("tile"), &s->debug_ui.show, ui_em(0.3,0), ui_em(0.3,0))
     {
+      // ui_set_next_flags(UI_BoxFlag_DrawDropShadow);
+      // if(ui_clicked(ui_buttonf("reset")))
+      // {
+      // }
 
-      ui_set_next_flags(UI_BoxFlag_DrawDropShadow);
-      if(ui_clicked(ui_buttonf("reset")))
-      {
-        // TODO(XXX)
-      }
+      // ui_spacer(ui_em(0.3,0));
 
-      ui_spacer(ui_em(0.3,0));
-
-      ui_set_next_flags(UI_BoxFlag_DrawDropShadow);
-      if(ui_clicked(ui_buttonf("run")))
-      {
-        s3_run_grid_kernals(s->grid);
-      }
+      // ui_set_next_flags(UI_BoxFlag_DrawDropShadow);
+      // if(ui_clicked(ui_buttonf("run")))
+      // {
+      // }
 
       ui_spacer(ui_em(0.3,0));
 
@@ -128,21 +160,39 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
     {
       Vec2F32 pos = transform_2x2f32(tilemap->mat, v2f32(tile_coord.x, tile_coord.y));
 
-      RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
-                                              RK_NodeFlag_Transient|RK_NodeFlag_Float,
-                                              "tile_hover");
-      n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
-      n->sprite2d->size = tilemap->tile_size;
-      // n->sprite2d->color = v4f32(1,1,0,0.6);
-      // n->sprite2d->color.w = mix_1f32(0., 0.3, node->hot_t);
-      n->sprite2d->tex = tex;
-      n->sprite2d->omit_texture = 0;
-      n->node2d->transform.position = pos;
-      // n->node2d->z_index = -1;
+      // TODO(XXX): still won't work
+      // draw an overlay
+      // {
+      //   RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
+      //                                           RK_NodeFlag_Transient|RK_NodeFlag_Float,
+      //                                           "tile_hover_overlay");
+      //   n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
+      //   n->sprite2d->size = tilemap->tile_size;
+      //   n->sprite2d->color = v4f32(0,0,0,1);
+      //   // n->sprite2d->color.w = mix_1f32(0., 0.3, node->hot_t);
+      //   n->sprite2d->omit_texture = 1;
+      //   n->node2d->transform.position = pos;
+      //   n->node2d->z_index = n->node2d->z_index;
+      // }
+
+      // draw current tile selection
+      {
+        RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
+                                                RK_NodeFlag_Transient|RK_NodeFlag_Float,
+                                                "tile_hover");
+        n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
+        n->sprite2d->size = tilemap->tile_size;
+        // n->sprite2d->color = v4f32(1,1,0,0.6);
+        // n->sprite2d->color.w = mix_1f32(0., 0.3, node->hot_t);
+        n->sprite2d->tex = tex;
+        n->sprite2d->omit_texture = 0;
+        n->node2d->transform.position = pos;
+        n->node2d->z_index = n->node2d->z_index;
+      }
     }
 
     // if(rk_state->sig.f & UI_SignalFlag_Clicked)
-    if(os_key_is_down(OS_Key_LeftMouseButton))
+    if(os_key_is_down(OS_Key_LeftMouseButton) && rk_state->sig.f&UI_SignalFlag_Hovering)
     {
       tile_node->sprite2d->tex = tex;
     }
@@ -150,31 +200,13 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
 
 }
 
-RK_NODE_CUSTOM_UPDATE(s4_fn_person)
+internal void s4_move_guy(RK_Node *node, Vec2F32 dir, F32 delta_secs)
 {
   RK_AnimatedSprite2D *sprite2d = node->animated_sprite2d;
   RK_SpriteSheet *sheet = sprite2d->sheet;
   RK_Transform2D *transform = &node->node2d->transform;
 
-  Vec2F32 dir = {0};
   Dir2Flags dir_flag = 0;
-  if(os_key_is_down(OS_Key_Left))
-  {
-    dir.x += -1.0;
-  }
-  if(os_key_is_down(OS_Key_Right))
-  {
-    dir.x += 1.0;
-  }
-  if(os_key_is_down(OS_Key_Up))
-  {
-    dir.y += -1.0;
-  }
-  if(os_key_is_down(OS_Key_Down))
-  {
-    dir.y += 1.0;
-  }
-
   if(dir.x > 0)
   {
     dir_flag |= Dir2Flag_Right;
@@ -209,12 +241,10 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_person)
     }
     else if(dir_flag == Dir2Flag_Up)
     {
-
       tag_name = str8_lit("running_up");
     }
     else if(dir_flag == Dir2Flag_Down)
     {
-
       tag_name = str8_lit("running_down");
     }
     else if(dir_flag == Dir2Flag_UpLeft)
@@ -224,7 +254,6 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_person)
     }
     else if(dir_flag == Dir2Flag_UpRight)
     {
-
       tag_name = str8_lit("running_upright");
     }
     else if(dir_flag == Dir2Flag_DownLeft)
@@ -233,7 +262,6 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_person)
     }
     else if(dir_flag== Dir2Flag_DownRight)
     {
-
       tag_name = str8_lit("running_downright");
     }
     else {assert(0);}
@@ -255,10 +283,43 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_person)
     sprite2d->is_animating = 0;
   }
 
-  F32 v = 1.0;
+  F32 v = 100;
   if(dir.x != 0 && dir.y != 0) dir = normalize_2f32(dir);
-  Vec2F32 dist = {v*dir.x, v*dir.y};
+  Vec2F32 dist = {v*dir.x*delta_secs, v*dir.y*delta_secs};
   transform->position = add_2f32(transform->position, dist);
+}
+
+RK_NODE_CUSTOM_UPDATE(s4_fn_guy)
+{
+  RK_AnimatedSprite2D *sprite2d = node->animated_sprite2d;
+  RK_SpriteSheet *sheet = sprite2d->sheet;
+  RK_Transform2D *transform = &node->node2d->transform;
+  // s4_move_guy(node, dir, ctx->dt_sec);
+}
+
+RK_NODE_CUSTOM_UPDATE(s4_fn_guy_controlled)
+{
+  RK_AnimatedSprite2D *sprite2d = node->animated_sprite2d;
+  RK_SpriteSheet *sheet = sprite2d->sheet;
+  RK_Transform2D *transform = &node->node2d->transform;
+
+  Vec2F32 dir = {0};
+  if(os_key_is_down(OS_Key_Left))
+  {
+    dir.x += -1.0;
+  }
+  if(os_key_is_down(OS_Key_Right))
+  {
+    dir.x += 1.0;
+  }
+  if(os_key_is_down(OS_Key_Up))
+  {
+    dir.y += -1.0;
+  }
+  if(os_key_is_down(OS_Key_Down))
+  {
+    dir.y += 1.0;
+  }
 }
 
 RK_NODE_CUSTOM_UPDATE(s4_fn_tilemap)
@@ -334,7 +395,7 @@ rk_scene_entry__4()
   ret->omit_light = 1;
 
   // scene data
-  S4_Scene *scene = rk_push_custom_data(S4_Scene, 1);
+  S4_Scene *scene = rk_scene_push_custom_data(ret, S4_Scene);
   {
     scene->debug_ui.rect = r2f32p(rk_state->window_rect.x1/2.0,
                                   rk_state->window_rect.y1/2.0,
@@ -342,7 +403,6 @@ rk_scene_entry__4()
                                   rk_state->window_rect.y1/2.0 + 600);
     scene->debug_ui.show = 1;
   }
-  ret->custom_data = scene;
 
   // 2d viewport
   // Rng2F32 viewport_screen = {0,0,600,600};
@@ -394,32 +454,21 @@ rk_scene_entry__4()
       main_camera->camera3d->orthographic.right  = viewport_world.x1;
 
       main_camera->node3d->transform.position = v3f32(0,0,0);
-      main_camera->custom_data = rk_push_custom_data(S4_Camera, 1);
+      rk_node_push_custom_data(main_camera, S4_Camera);
       ((S4_Camera*)main_camera->custom_data)->viewport_world = viewport_world;
       rk_node_push_fn(main_camera, s4_camera_fn);
     }
     ret->active_camera = rk_handle_from_node(main_camera);
-
-    // create people
-    {
-      RK_Node *p = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_AnimatedSprite2D, 0, "person_1");
-      p->node2d->transform.position = v2f32(3,3);
-      p->animated_sprite2d->sheet = character_sheet;
-      p->animated_sprite2d->is_animating = 1;
-      p->animated_sprite2d->curr_tag = 0; // idle
-      p->animated_sprite2d->loop = 1;
-      p->animated_sprite2d->size = v2f32(character_sheet->size.x*0.3,character_sheet->size.y*0.3);
-      p->node2d->z_index = -1;
-      rk_node_push_fn(p, s4_fn_person);
-    }
-
     // tilemap
-    Vec2F32 tile_size = v2f32(100, 100); /* 2:1 ratio */
     Vec2U32 tilemap_size = {30,30};
+    U64 tile_count = tilemap_size.x*tilemap_size.y;
+    Vec2F32 tile_size = v2f32(100, 100); /* 2:1 ratio */
     RK_Node *tilemap_node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_TileMap, 0, "tilemap");
     rk_node_push_fn(tilemap_node, s4_fn_tilemap);
     RK_TileMap *tilemap = tilemap_node->tilemap;
     scene->tilemap = tilemap;
+    scene->tiles = push_array(ret->arena, S4_Tile*, tile_count);
+    scene->tile_count = tile_count;
     {
       Mat2x2F32 mat = mat_2x2f32(0.);
       mat.v[0][0] =  0.5*tile_size.x;
@@ -438,6 +487,7 @@ rk_scene_entry__4()
       RK_Parent_Scope(layer_node)
       {
         U64 i,j;
+        U64 tile_idx = 0;
         for(j = 0; j < tilemap->size.y; j++)
         {
           for(i = 0; i < tilemap->size.x; i++)
@@ -460,10 +510,42 @@ rk_scene_entry__4()
             // TODO(XXX): won't work for now
             n->flags |= RK_NodeFlag_DrawBorder|RK_NodeFlag_DrawHotEffects;
             rk_node_push_fn(n, s4_tile);
+            S4_Tile *tile = rk_node_push_custom_data(n, S4_Tile);
+            tile->i = i;
+            tile->j = j;
+
+            scene->tiles[i] = tile;
+            tile_idx++;
           }
         }
       }
     }
+
+    // create people
+    for(U64 k = 0; k < 19; k++)
+    {
+      F32 i = ceil_f32(rand() % tilemap_size.x);
+      F32 j = ceil_f32(rand() % tilemap_size.y);
+      Vec2F32 pos = transform_2x2f32(tilemap->mat, v2f32(i, j));
+
+      RK_Node *p = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_AnimatedSprite2D, 0, "person_1");
+      p->node2d->transform.position = pos;
+      p->animated_sprite2d->sheet = character_sheet;
+      p->animated_sprite2d->is_animating = 1;
+      p->animated_sprite2d->curr_tag = 0; // idle
+      p->animated_sprite2d->loop = 1;
+      p->animated_sprite2d->size = v2f32(character_sheet->size.x*0.3,character_sheet->size.y*0.3);
+      p->node2d->z_index = -1;
+      rk_node_push_fn(p, s4_fn_guy);
+      S4_Guy *guy = rk_node_push_custom_data(p, S4_Guy);
+      guy->hunger = 0;
+      guy->integraty = 0;
+      guy->iq = 0;
+      guy->money = 0;
+      guy->social_drive = 0;
+      guy->thirsty = 0;
+    }
+
   }
 
   ret->root = rk_handle_from_node(root);

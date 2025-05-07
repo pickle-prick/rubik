@@ -1223,8 +1223,6 @@ internal RK_Node* rk_build_node_from_string(RK_NodeTypeFlags type_flags, RK_Node
 internal RK_Node* rk_build_node_from_stringf(RK_NodeTypeFlags type_flags, RK_NodeFlags flags, char *fmt, ...);
 internal RK_Node* rk_build_node_from_key(RK_NodeTypeFlags type_flags, RK_NodeFlags flags, RK_Key key);
 internal void     rk_node_equip_display_string(RK_Node* node, String8 string);
-// TODO(XXX): make a hash table to store those block for reuse
-#define rk_node_custom_data_alloc(type) push_array(rk_top_node_bucket()->arena_ref, type, 1)
 
 #define rk_build_node2d_from_string(tf,f,s)              rk_build_node_from_string(((tf)|RK_NodeTypeFlag_Node2D), (f), s)
 #define rk_build_node2d_from_stringf(tf,f,...)           rk_build_node_from_stringf(((tf)|RK_NodeTypeFlag_Node2D), (f), __VA_ARGS__)
@@ -1247,10 +1245,12 @@ internal RK_NodeRec rk_node_df(RK_Node *n, RK_Node *root, U64 sib_member_off, U6
 
 internal void      rk_node_push_fn(RK_Node *n, RK_NodeCustomUpdateFunctionType *fn);
 // TODO(XXX): rename this function later, remove "node"
-#define  rk_push_custom_data(T, s) (push_array(rk_top_node_bucket()->arena_ref, T, s))
 internal RK_Handle rk_handle_from_node(RK_Node *n);
 internal RK_Node*  rk_node_from_handle(RK_Handle handle);
 internal B32       rk_node_is_active(RK_Node *node);
+
+#define rk_scene_push_custom_data(s, T) (T*)(s->custom_data = push_array_fat(s->arena, T, s))
+#define rk_node_push_custom_data(n, T) (T*)(n->custom_data = push_array_fat(n->owner_bucket->arena_ref, T, n))
 
 /////////////////////////////////
 //~ Magic
@@ -1318,7 +1318,9 @@ internal F32       rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F3
 internal Rng2F32   rk_rect_from_sprite2d(RK_Sprite2D *sprite2d);
 internal void      rk_sprite2d_equip_string(Arena *arena, RK_Sprite2D *sprite2d, String8 string, F_Tag font, F32 font_size, Vec4F32 font_color, U64 tab_size, F_RasterFlags text_raster_flags);
 internal int       rk_node2d_cmp_z_rev(const void *left, const void *right);
-internal RK_Node*  rk_node_from_equipment(void *equipment);
+
+#define rk_ptr_from_fat(payload_ptr)  *(void**)((U8*)payload_ptr-16)
+#define rk_size_from_fat(payload_ptr) *(U64*)((U8*)payload_ptr-8)
 
 #define rk_text(font, size, base_align_px, tab_size_px, flags, p, color, string) \
 D_BucketScope(rk_state->bucket_rect) {d_text(font,size,base_align_px,tab_size_px,flags,p,color,string);}

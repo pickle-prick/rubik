@@ -512,7 +512,7 @@ rk_scene_entry__3()
   RK_Texture2D *black_stone_tex = rk_tex2d_from_image(str8_lit("./textures/black_stone.png"));
 
   RK_Node *root = rk_build_node3d_from_stringf(0,0, "root");
-  S3_Scene *scene_data = (root->custom_data = rk_push_custom_data(S3_Scene, 1));
+  S3_Scene *scene_data = rk_node_push_custom_data(root, S3_Scene);
   scene_data->textures[S3_Texture2DKind_BlackStone] = black_stone_tex;
   scene_data->textures[S3_Texture2DKind_WhiteStone] = white_stone_tex;
   scene_data->debug_ui.rect = r2f32p(rk_state->window_rect.x1/2.0,
@@ -563,9 +563,9 @@ rk_scene_entry__3()
     grid->sprite2d->omit_texture = 1;
     grid->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
     rk_node_push_fn(grid, s3_fn_grid);
-    S3_Grid *grid_data = (grid->custom_data = rk_push_custom_data(S3_Grid, 1));
+    S3_Grid *grid_data = rk_node_push_custom_data(grid, S3_Grid);
     grid_data->size = cell_count;
-    grid_data->cells = rk_push_custom_data(S3_Cell, cell_count.x*cell_count.y);
+    grid_data->cells = push_array(ret->arena, S3_Cell, cell_count.x*cell_count.y);
     grid_data->cell_count = cell_count.x * cell_count.y;
 
     {
@@ -612,7 +612,7 @@ rk_scene_entry__3()
     dino->animated_sprite2d->loop = 0;
     dino->node2d->z_index = -1;
     rk_node_push_fn(dino, fn_player_dino);
-    S3_Dino *dino_data = (dino->custom_data = rk_push_custom_data(S3_Dino, 1));
+    S3_Dino *dino_data = rk_node_push_custom_data(dino, S3_Dino);
     dino_data->face_direction = Dir2_Right;
   }
 
