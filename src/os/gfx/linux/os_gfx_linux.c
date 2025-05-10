@@ -615,17 +615,19 @@ os_key_is_down(OS_Key key)
   // TODO: we better write a table for mapping
   switch(key)
   {
-    case OS_Key_LeftMouseButton: {is_pointer = 1; pointer_btn_mask = Button1Mask;}break;
-    case OS_Key_Left:            {keysym = XK_Left;}break;
-    case OS_Key_Right:           {keysym = XK_Right;}break;
-    case OS_Key_Up:              {keysym = XK_Up;}break;
-    case OS_Key_Down:            {keysym = XK_Down;}break;
-    case OS_Key_W:               {keysym = XK_W;}break;
-    case OS_Key_S:               {keysym = XK_S;}break;
-    case OS_Key_A:               {keysym = XK_A;}break;
-    case OS_Key_D:               {keysym = XK_D;}break;
-    case OS_Key_Space:           {keysym = XK_space;}break;
-    default:                     {InvalidPath; }break;
+    case OS_Key_LeftMouseButton:   {is_pointer = 1; pointer_btn_mask = Button1Mask;}break;
+    case OS_Key_MiddleMouseButton: {is_pointer = 1; pointer_btn_mask = Button2Mask;}break;
+    case OS_Key_RightMouseButton:  {is_pointer = 1; pointer_btn_mask = Button3Mask;}break;
+    case OS_Key_Left:              {keysym = XK_Left;}break;
+    case OS_Key_Right:             {keysym = XK_Right;}break;
+    case OS_Key_Up:                {keysym = XK_Up;}break;
+    case OS_Key_Down:              {keysym = XK_Down;}break;
+    case OS_Key_W:                 {keysym = XK_W;}break;
+    case OS_Key_S:                 {keysym = XK_S;}break;
+    case OS_Key_A:                 {keysym = XK_A;}break;
+    case OS_Key_D:                 {keysym = XK_D;}break;
+    case OS_Key_Space:             {keysym = XK_space;}break;
+    default:                       {InvalidPath; }break;
   }
 
   U32 ret = 0;

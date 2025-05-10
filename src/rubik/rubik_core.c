@@ -2478,7 +2478,14 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     rk_state->window_rect        = os_client_rect_from_window(rk_state->os_wnd, 0);
     rk_state->window_dim         = dim_2f32(rk_state->window_rect);
     rk_state->last_cursor        = rk_state->cursor;
-    rk_state->cursor             = os_mouse_from_window(rk_state->os_wnd);
+    {
+      Vec2F32 cursor = os_mouse_from_window(rk_state->os_wnd);
+      if(cursor.x >= 0 && cursor.x <= rk_state->window_dim.x &&
+         cursor.y >= 0 && cursor.y <= rk_state->window_dim.y)
+      {
+        rk_state->cursor = cursor;
+      }
+    }
     rk_state->cursor_delta       = sub_2f32(rk_state->cursor, rk_state->last_cursor);
     rk_state->last_dpi           = rk_state->dpi;
     rk_state->dpi                = os_dpi_from_window(rk_state->os_wnd);

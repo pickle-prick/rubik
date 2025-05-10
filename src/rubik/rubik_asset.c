@@ -1,6 +1,39 @@
 /////////////////////////////////
 // Scene serialization/deserialization
 
+internal String8
+rk_scene_to_tscn(RK_Scene *scene)
+{
+  // TODO
+  String8 ret = scene->save_path;
+  RK_ResourceBucket *res_bucket = scene->res_bucket;
+
+  // serialize resource
+  for(U64 slot_idx = 0; slot_idx < res_bucket->hash_table_size; slot_idx++)
+  {
+    RK_ResourceBucketSlot *slot = &res_bucket->hash_table[slot_idx];
+    for(RK_Resource *res = slot->first; res != 0; res = res->hash_next)
+    {
+      RK_Key key = res->key;
+      switch(res->kind)
+      {
+        case RK_ResourceKind_Skin:
+        case RK_ResourceKind_Mesh:
+        case RK_ResourceKind_PackedScene:
+        case RK_ResourceKind_Material:
+        case RK_ResourceKind_Animation:
+        case RK_ResourceKind_Texture2D:
+        case RK_ResourceKind_SpriteSheet:
+        default: {InvalidPath;}break;
+      }
+    }
+  }
+
+  // serialize node tree
+
+  return ret;
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 // GLTF2.0
 

@@ -4,9 +4,7 @@
 /////////////////////////////////
 // Scene serialization/deserialization
 
-// internal RK_Scene*       rk_scene_from_rscn(String8 path);
-// internal void            rk_scene_to_rscn(RK_Scene *scene, String8 path);
-// internal RK_PackedScene* rk_packed_scene_from_rscn(String8 path);
+internal String8 rk_scene_to_tscn(RK_Scene *scene);
 
 /////////////////////////////////
 //~ GLTF2.0
