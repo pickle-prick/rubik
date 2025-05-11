@@ -254,7 +254,7 @@ RK_NODE_CUSTOM_UPDATE(body)
 }
 
 // default editor scene
-  internal RK_Scene *
+internal RK_Scene *
 rk_scene_entry__0()
 {
   RK_Scene *ret = rk_scene_alloc(str8_lit("default"), str8_lit("./src/rubik/scenes/0/default.rscn"));
@@ -311,15 +311,14 @@ rk_scene_entry__0()
 
     rk_push_node_bucket(ret->res_node_bucket);
     rk_push_parent(0);
-    RK_PackedScene *dancing_stormtrooper = rk_packed_scene_from_gltf(str8_lit("./models/dancing_stormtrooper/scene.gltf"));
-    RK_PackedScene *blackguard = rk_packed_scene_from_gltf(str8_lit("./models/blackguard/scene.gltf"));
+    RK_Handle dancing_stormtrooper = rk_packed_scene_from_gltf(str8_lit("./models/dancing_stormtrooper/scene.gltf"));
+    RK_Handle blackguard = rk_packed_scene_from_gltf(str8_lit("./models/blackguard/scene.gltf"));
     // RK_PackedScene *droide = rk_packed_scene_from_gltf(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
-    RK_Material *white_mat = rk_material_from_color(str8_lit("white"), v4f32(1,1,1,1));
-
-    RK_Material *grid_prototype_material = rk_material_from_image(str8_lit("grid_prototype"), str8_lit("./textures/gridbox-prototype-materials/prototype_512x512_grey2.png"));
-
     rk_pop_parent();
     rk_pop_node_bucket();
+
+    RK_Handle white_mat = rk_material_from_color(str8_lit("white"), v4f32(1,1,1,1));
+    RK_Handle grid_prototype_material = rk_material_from_image(str8_lit("grid_prototype"), str8_lit("./textures/gridbox-prototype-materials/prototype_512x512_grey2.png"));
 
     /////////////////////////////////////////////////////////////////////////////////
     // spwan node
@@ -330,7 +329,7 @@ rk_scene_entry__0()
 
     floor->node3d->transform.position.y -= 0.01;
     floor->mesh_inst3d->material_override = white_mat;
-    floor->mesh_inst3d->material_override = grid_prototype_material;
+    // floor->mesh_inst3d->material_override = grid_prototype_material;
     floor->flags |= RK_NodeFlag_NavigationRoot;
 
     // RK_Node *n1 = rk_node_from_packed_scene(str8_lit("1"), droide);
@@ -389,7 +388,7 @@ rk_scene_entry__0()
       data->rotation_axis.v[i] = 1;
     }
 
-    RK_Node *n2 = rk_node_from_packed_scene(str8_lit("2"), blackguard);
+    RK_Node *n2 = rk_node_from_packed_scene(str8_lit("2"), rk_packed_from_handle(blackguard));
     {
       // flip y
       n2->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n2->node3d->transform.rotation);
@@ -397,7 +396,7 @@ rk_scene_entry__0()
       n2->flags |= RK_NodeFlag_NavigationRoot;
     }
 
-    RK_Node *n3 = rk_node_from_packed_scene(str8_lit("3"), dancing_stormtrooper);
+    RK_Node *n3 = rk_node_from_packed_scene(str8_lit("3"), rk_packed_from_handle(dancing_stormtrooper));
     {
       // flip y
       n3->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n3->node3d->transform.rotation);

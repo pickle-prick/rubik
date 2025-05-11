@@ -163,7 +163,7 @@ struct S4_Tile
 typedef struct S4_Scene S4_Scene;
 struct S4_Scene
 {
-  RK_Texture2D *tileset;
+  RK_Handle *tileset;
   U64 tileset_size;
   RK_TileMap *tilemap;
   RK_TileMapLayer *tilemap_layers;
@@ -227,13 +227,13 @@ tile_coord_from_mouse(Mat4x4F32 proj_view_inv_m, Mat2x2F32 mat_inv, Vec2F32 tile
 }
 
 internal U64
-no_from_path(String8 path)
+no_from_filename(String8 filename)
 {
   U64 ret = 0;
-  U64 start = str8_find_needle(path, 0, str8_lit("_"), 0);
+  U64 start = str8_find_needle(filename, 0, str8_lit("_"), 0);
   start++;
-  U64 end = str8_find_needle(path, 0, str8_lit("."), 0);
-  String8 no_str = str8_substr(path, r1u64(start, end));
+  U64 end = str8_find_needle(filename, 0, str8_lit("."), 0);
+  String8 no_str = str8_substr(filename, r1u64(start, end));
   ret = u64_from_str8(no_str, 10);
   return ret;
 }
@@ -241,15 +241,15 @@ no_from_path(String8 path)
 internal int
 texture_cmp(const void *left_, const void *right_)
 {
-  RK_Texture2D *left = (RK_Texture2D*)left_;
-  RK_Texture2D *right = (RK_Texture2D*)right_;
-  return no_from_path(left->name) - no_from_path(right->name);
+  RK_Handle left = *(RK_Handle*)left_;
+  RK_Handle right = *(RK_Handle*)right_;
+  return no_from_filename(rk_res_from_handle(left)->name) - no_from_filename(rk_res_from_handle(right)->name);
 }
 
 internal void s4_move_guy(RK_Node *node, Vec2F32 dir, F32 delta_secs)
 {
   RK_AnimatedSprite2D *sprite2d = node->animated_sprite2d;
-  RK_SpriteSheet *sheet = sprite2d->sheet;
+  RK_SpriteSheet *sheet = rk_sheet_from_handle(sprite2d->sheet);
   RK_Transform2D *transform = &node->node2d->transform;
 
   Dir2Flags dir_flag = 0;
@@ -344,6 +344,7 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
   RK_Node *tilemap_node = rk_ptr_from_fat(s->tilemap);
   RK_TileMap *tilemap = tilemap_node->tilemap;
   Vec2U32 tile_coord = tile_coord_from_mouse(ctx->proj_view_inv_m, s->tilemap->mat_inv, tilemap_node->node2d->transform.position);
+
   RK_UI_Pane(&s->debug_ui.rect, &s->debug_ui.show, str8_lit("TileEditor"))
   {
     RK_UI_Tab(str8_lit("tile"), &s->debug_ui.show, ui_em(0.3,0), ui_em(0.3,0))
@@ -369,18 +370,20 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
       {
         ui_labelf("textures");
         ui_spacer(ui_pct(1.0, 0.0));
-        rk_ui_dropdown_begin(s->tileset[s->picked_idx].name);
+        rk_ui_dropdown_begin(rk_res_from_handle(s->tileset[s->picked_idx])->name);
         for(U64 i = 0; i < s->tileset_size; i++)
         {
 
-          UI_Signal sig = ui_button(s->tileset[i].name);
+          RK_Resource *res = rk_res_from_handle(s->tileset[i]);
+          RK_Texture2D *tex2d = (RK_Texture2D*)&res->v;
+          UI_Signal sig = ui_button(res->name);
           if(ui_hovering(sig))
           {
             UI_FixedX(sig.box->fixed_position.x+sig.box->fixed_size.x*(3./4.))
             UI_FixedY(sig.box->fixed_position.y+sig.box->fixed_size.y+1.0)
             UI_Flags(UI_BoxFlag_Floating)
             {
-              rk_ui_img(str8_lit("preview"), v2f32(sig.box->fixed_size.x/4.0, sig.box->fixed_size.x/4.0), s->tileset[i].tex, s->tileset[i].size);
+              rk_ui_img(str8_lit("preview"), v2f32(sig.box->fixed_size.x/4.0, sig.box->fixed_size.x/4.0), tex2d->tex, tex2d->size);
             }
           }
 
@@ -436,7 +439,7 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
                                                 "tile_hover");
         n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
         n->sprite2d->size = tilemap->tile_size;
-        n->sprite2d->tex = &s->tileset[s->picked_idx];
+        n->sprite2d->tex = s->tileset[s->picked_idx];
         n->sprite2d->omit_texture = 0;
         n->node2d->transform.position = pos;
         n->node2d->z_index = tile_node->node2d->z_index;
@@ -450,7 +453,7 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
         n->sprite2d->size = v2f32(100,50);
         n->sprite2d->color = v4f32(1,1,0,0.1);
         n->sprite2d->color.w = mix_1f32(0., 0.1, tile_node->hot_t);
-        n->sprite2d->tex = &s->tileset[s->picked_idx];
+        n->sprite2d->tex = s->tileset[s->picked_idx];
         n->sprite2d->omit_texture = 1;
         n->node2d->transform.position = pos;
         n->node2d->z_index = -10;
@@ -463,7 +466,7 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
         n->sprite2d->size = tilemap->tile_size;
         n->sprite2d->color = v4f32(0,1,1,0.1);
         n->sprite2d->color.w = mix_1f32(0., 0.1, tile_node->hot_t);
-        n->sprite2d->tex = &s->tileset[s->picked_idx];
+        n->sprite2d->tex = s->tileset[s->picked_idx];
         n->sprite2d->omit_texture = 1;
         n->node2d->transform.position = pos;
         n->node2d->z_index = -10;
@@ -567,26 +570,26 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile)
   S4_Tile *tile = node->custom_data;
 
   RK_Sprite2D *sprite = node->sprite2d;
-  RK_Texture2D *back = 0;
-  RK_Texture2D *front = 0;
+  RK_Handle back = {0};
+  RK_Handle front = {0};
   S4_TileFlags tile_flag = 0;
 
   S64 back_idx = tile->tiles[S4_TexturePickerKind_Back];
   S64 front_idx = tile->tiles[S4_TexturePickerKind_Front];
   if(back_idx >= 0)
   {
-    back = &s->tileset[(U64)back_idx];
+    back = s->tileset[(U64)back_idx];
     tile_flag |= s4_texture_flags_table[back_idx];
   }
   if(front_idx >= 0)
   {
-    front = &s->tileset[(U64)front_idx];
+    front = s->tileset[(U64)front_idx];
     tile_flag |= s4_texture_flags_table[front_idx];
   }
 
   node->sprite2d->tex = back;
 
-  if(front) RK_Parent_Scope(node)
+  if(!rk_handle_is_zero(front)) RK_Parent_Scope(node)
   {
     RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
                                             RK_NodeFlag_Transient|RK_NodeFlag_Float,
@@ -620,7 +623,7 @@ RK_NODE_CUSTOM_UPDATE(s4_system)
 RK_NODE_CUSTOM_UPDATE(s4_fn_guy)
 {
   RK_AnimatedSprite2D *sprite2d = node->animated_sprite2d;
-  RK_SpriteSheet *sheet = sprite2d->sheet;
+  RK_SpriteSheet *sheet = rk_sheet_from_handle(sprite2d->sheet);
   RK_Transform2D *transform = &node->node2d->transform;
 
   S4_Scene *s = scene->custom_data;
@@ -655,7 +658,7 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_guy)
 RK_NODE_CUSTOM_UPDATE(s4_fn_guy_controlled)
 {
   RK_AnimatedSprite2D *sprite2d = node->animated_sprite2d;
-  RK_SpriteSheet *sheet = sprite2d->sheet;
+  RK_SpriteSheet *sheet = rk_sheet_from_handle(sprite2d->sheet);
   RK_Transform2D *transform = &node->node2d->transform;
 
   Vec2F32 dir = {0};
@@ -719,22 +722,23 @@ rk_scene_entry__4()
   // load resource
 
   U64 tile_texture_count = 0;
-  RK_Texture2D *tile_textures = rk_tex2d_from_dir(str8_lit("./textures/isometric-tiles-2"), &tile_texture_count);
+  RK_Handle *tile_textures = rk_tex2d_from_dir(ret->arena, str8_lit("./textures/isometric-tiles-2"), &tile_texture_count);
   // sort based on _number
-  qsort(tile_textures, tile_texture_count, sizeof(RK_Texture2D), texture_cmp);
+  qsort(tile_textures, tile_texture_count, sizeof(RK_Handle), texture_cmp);
 
-  RK_Texture2D *floor_texture = 0;
+  RK_Handle floor_texture = {0};
   for(U64 i = 0; i < tile_texture_count; i++)
   {
-    if(str8_ends_with(tile_textures[i].name, str8_lit("tile_000.png"), 0))
+    RK_Resource *res = rk_res_from_handle(tile_textures[i]);
+    if(str8_ends_with(res->name, str8_lit("tile_000.png"), 0))
     {
-      floor_texture = &tile_textures[i];
+      floor_texture = tile_textures[i];
     }
   }
   scene->tileset = tile_textures;
   scene->tileset_size = tile_texture_count;
 
-  RK_SpriteSheet *character_sheet = rk_spritesheet_from_image(str8_lit("./textures/Chibi-character/Chibi-character-template_skin3_part1_by_AxulArt.png"), str8_lit("./textures/Chibi-character/Chibi-character-template_skin3_part1_by_AxulArt.json"));
+  RK_Handle character_sheet = rk_spritesheet_from_image(str8_lit("./textures/Chibi-character/Chibi-character-template_skin3_part1_by_AxulArt.png"), str8_lit("./textures/Chibi-character/Chibi-character-template_skin3_part1_by_AxulArt.json"));
 
   /////////////////////////////////////////////////////////////////////////////////////
   // build node tree
@@ -809,7 +813,7 @@ rk_scene_entry__4()
             // pos.y = origin.y + i*(tile_size.y/2.0) + j*(tile_size.y/2.0);
 
             // RK_Texture2D *tex = &tile_textures[idx%tile_texture_count];
-            RK_Texture2D *tex = floor_texture;
+            RK_Handle tex = floor_texture;
 
             RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D, 0, "tile-%I64d-%I64d", i, j);
             n->sprite2d->tex = tex;
@@ -837,6 +841,7 @@ rk_scene_entry__4()
     // create people
     for(U64 k = 0; k < guy_count; k++)
     {
+      RK_SpriteSheet *character_sheet_dst = rk_sheet_from_handle(character_sheet);
       F32 i = ceil_f32(rand() % tilemap_size.x);
       F32 j = ceil_f32(rand() % tilemap_size.y);
       Vec2F32 pos = transform_2x2f32(tilemap->mat, v2f32(i, j));
@@ -847,7 +852,7 @@ rk_scene_entry__4()
       p->animated_sprite2d->is_animating = 1;
       p->animated_sprite2d->curr_tag = 0; // idle
       p->animated_sprite2d->loop = 1;
-      p->animated_sprite2d->size = v2f32(character_sheet->size.x*0.3,character_sheet->size.y*0.3);
+      p->animated_sprite2d->size = v2f32(character_sheet_dst->size.x*0.3,character_sheet_dst->size.y*0.3);
       p->node2d->z_index = -1;
       rk_node_push_fn(p, s4_fn_guy);
       S4_Guy *guy = rk_node_push_custom_data(p, S4_Guy);

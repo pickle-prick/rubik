@@ -7,8 +7,5 @@
 #define RUBIK_SCENES_META_H
 
 #include "../0/0.h"
-#include "../1/1.h"
-#include "../2/2.h"
-#include "../3/3.h"
 #include "../4/4.h"
 #endif // RUBIK_SCENES_META_H

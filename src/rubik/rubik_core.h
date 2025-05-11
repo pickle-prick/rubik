@@ -243,8 +243,8 @@ struct RK_Animation;
 typedef struct RK_AnimationPlayback RK_AnimationPlayback;
 struct RK_AnimationPlayback
 {
-  struct RK_Animation *curr;
-  struct RK_Animation *next;
+  RK_Handle curr;
+  RK_Handle next;
   B32 loop;
   F32 speed_scale;
 
@@ -256,31 +256,19 @@ struct RK_AnimationPlayback
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ Resource
 
-typedef struct RK_Resource RK_Resource;
-struct RK_Resource;
-
 typedef struct RK_Texture2D RK_Texture2D;
 struct RK_Texture2D
 {
   R_Tex2DSampleKind sample_kind;
   R_Handle          tex;
   Vec2F32           size;
-
-  // for serialize/deserialize
-  String8           path;
-  String8           name;
 };
 
 // PBR material
 typedef struct RK_Material RK_Material;
 struct RK_Material
 {
-  String8      name;
-  // NOTE(k): for serialization
-  String8      path;
-
-  RK_Texture2D *textures[R_GeoTexKind_COUNT];
-
+  RK_Handle textures[R_GeoTexKind_COUNT];
   R_Material3D v;
 };
 
@@ -300,7 +288,7 @@ struct RK_Mesh
   U64               indice_count;
   U64               vertex_count;
 
-  RK_Material       *material;
+  RK_Handle         material;
 
   // TODO(k): make use of morph targets
   RK_MorphTarget    morph_targets[RK_MAX_MORPH_TARGET_COUNT];
@@ -361,13 +349,6 @@ struct RK_Mesh
       U64 ring_segments;
     }
     torus_primitive;
-    // external mesh (obj format maybe?)
-    struct
-    {
-
-      String8 path;
-    }
-    ext;
   } src;
 };
 
@@ -379,8 +360,6 @@ struct RK_Animation
 
   RK_Track *tracks;
   U64 track_count;
-
-  String8 path;
 };
 
 typedef struct RK_SpriteSheetFrame RK_SpriteSheetFrame;
@@ -424,11 +403,8 @@ struct RK_SpriteSheetTag
 typedef struct RK_SpriteSheet RK_SpriteSheet;
 struct RK_SpriteSheet
 {
-  RK_Texture2D        *tex;
+  RK_Handle           tex;
   Vec2F32             size;
-
-  // for serialize/deserialize
-  String8             path;
 
   // animations
   U64                 frame_count;
@@ -437,37 +413,41 @@ struct RK_SpriteSheet
   RK_SpriteSheetTag   *tags;
 };
 
-// TODO
-// typedef struct RK_TileSet RK_TileSet;
-// struct RK_TileSet
-// {
-// 
-// };
-
-struct RK_Node;
-struct RK_ResourceBucket;
 typedef struct RK_PackedScene RK_PackedScene;
 struct RK_PackedScene
 {
-  struct RK_Node           *root;
-
-  // for serialize/deserialize
-  String8                  path;
+  struct RK_Node *root;
 };
 
-struct RK_ResourceBucket;
 typedef struct RK_Resource RK_Resource;
 struct RK_Resource
 {
   // Hash link (storage)
-  RK_Resource     *hash_next;
-  RK_Resource     *hash_prev;
+  RK_Resource *hash_next;
+  RK_Resource *hash_prev;
 
+  RK_Resource *next;
+
+  U64 generation;
   RK_ResourceKind kind;
-  RK_Key          key;
+  RK_Key key;
 
-  struct          RK_ResourceBucket *owner_bucket;
-  void            *data;
+  B32 is_sub;
+  String8 path;
+  String8 name;
+
+  struct RK_ResourceBucket *owner_bucket;
+
+  union
+  {
+    RK_Texture2D tex2d;
+    RK_Material mat;
+    RK_Skin skin;
+    RK_Mesh mesh;
+    RK_Animation anim;
+    RK_SpriteSheet spritesheet;
+    RK_PackedScene packed;
+  } v;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -531,10 +511,10 @@ struct RK_MeshInstance3D
   // allocation link
   RK_MeshInstance3D *next;
 
-  RK_Mesh           *mesh;
-  RK_Skin           *skin;
+  RK_Handle         mesh;
+  RK_Handle         skin;
   RK_Key            skin_seed;
-  RK_Material       *material_override;
+  RK_Handle         material_override;
   B32               omit_depth_test;
   B32               omit_light;
   B32               draw_edge;
@@ -551,7 +531,7 @@ typedef struct RK_AnimationPlayer RK_AnimationPlayer;
 struct RK_AnimationPlayer
 {
   RK_AnimationPlayer *next;
-  RK_Animation **animations;
+  RK_Handle *animations;
   U64 animation_count;
 
   RK_Key target_seed;
@@ -597,7 +577,7 @@ typedef struct RK_Sprite2D RK_Sprite2D;
 struct RK_Sprite2D
 {
   RK_Sprite2D *next;
-  RK_Texture2D *tex;
+  RK_Handle tex;
   Vec2F32 size;
   RK_Sprite2DAnchorKind anchor;
   // TODO(XXX): it's weird to put color here
@@ -622,7 +602,7 @@ struct RK_AnimatedSprite2D
   B32 flipped;
 
   // animations
-  RK_SpriteSheet *sheet;
+  RK_Handle sheet;
   Vec2F32 size;
   U64 curr_tag;
   U64 next_tag;
@@ -793,9 +773,16 @@ struct RK_Node
   //~ Custom update/draw functions
   // TODO(k): reuse custom_data memory block based on its size
   void                          *custom_data;
+
+  // function pointers
+  RK_UpdateFnNode               *first_setup_fn;
+  RK_UpdateFnNode               *last_setup_fn;
   RK_UpdateFnNode               *first_update_fn;
   RK_UpdateFnNode               *last_update_fn;
-  RK_NodeCustomDrawFunctionType *custom_draw;
+  RK_UpdateFnNode               *first_fixed_update_fn;
+  RK_UpdateFnNode               *last_fixed_update_fn;
+
+  // RK_NodeCustomDrawFunctionType *custom_draw;
 
   //~ Artifacts (global xform,position,rotation,scale)
   Mat4x4F32                     fixed_xform;
@@ -868,10 +855,11 @@ struct RK_ResourceBucketSlot
 typedef struct RK_ResourceBucket RK_ResourceBucket;
 struct RK_ResourceBucket
 {
-  Arena                 *arena_ref;
+  Arena *arena_ref;
   RK_ResourceBucketSlot *hash_table;
-  U64                   hash_table_size;
-  U64                   res_count;
+  U64 hash_table_size;
+  U64 res_count;
+  RK_Resource *first_free_resource;
 };
 
 /////////////////////////////////
@@ -1190,9 +1178,22 @@ internal RK_Node*           rk_node_from_key(RK_Key key);
 internal RK_Key       rk_res_key_from_string(RK_ResourceKind kind, RK_Key seed, String8 string);
 internal RK_Key       rk_res_key_from_stringf(RK_ResourceKind kind, RK_Key seed, char* fmt, ...);
 
+internal RK_Resource* rk_res_alloc(RK_Key key);
+internal void         rk_res_release(RK_Resource *res);
 internal RK_Resource* rk_res_store(RK_Key key, void *data);
-internal void         rk_res_free(RK_Resource *ses);
-internal RK_Resource* rk_res_from_key(RK_Key key);
+internal RK_Handle    rk_res_from_key(RK_Key key);
+internal RK_Handle    rk_handle_from_res(RK_Resource *res);
+internal RK_Resource* rk_res_from_handle(RK_Handle h);
+#define rk_res_unwrap(res) (res != 0 ? &res->v : 0)
+#define rk_res_from_inner(inner) CastFromMember(RK_Resource,v,inner)
+#define rk_res_inner_from_handle(h) (rk_res_unwrap(rk_res_from_handle((h)))) 
+
+#define rk_tex2d_from_handle(h)  ((RK_Texture2D*)rk_res_inner_from_handle((h)))
+#define rk_sheet_from_handle(h)  ((RK_SpriteSheet*)rk_res_inner_from_handle((h)))
+#define rk_mesh_from_handle(h)   ((RK_Mesh*)rk_res_inner_from_handle((h)))
+#define rk_skin_from_handle(h)   ((RK_Skin*)rk_res_inner_from_handle((h)))
+#define rk_mat_from_handle(h)    ((RK_Material*)rk_res_inner_from_handle((h)))
+#define rk_packed_from_handle(h) ((RK_PackedScene*)rk_res_inner_from_handle((h)))
 
 /////////////////////////////////
 //- Resourcea Building Helpers (subresource management etc...)

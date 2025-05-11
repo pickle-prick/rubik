@@ -517,9 +517,10 @@ rk_res_bucket_release(RK_ResourceBucket *res_bucket)
       {
         case RK_ResourceKind_Mesh:
         {
-          RK_Mesh *mesh = res->data;
-          r_buffer_release(mesh->vertices);
-          r_buffer_release(mesh->indices);
+          // RK_Mesh *mesh = res->data;
+          // r_buffer_release(mesh->vertices);
+          // r_buffer_release(mesh->indices);
+          // TODO
         }break;
         case RK_ResourceKind_Material:
         case RK_ResourceKind_Skin:
@@ -531,8 +532,8 @@ rk_res_bucket_release(RK_ResourceBucket *res_bucket)
         }break;
         case RK_ResourceKind_Texture2D:
         {
-          RK_Texture2D *tex2d = res->data;
-          r_tex2d_release(tex2d->tex);
+          // RK_Texture2D *tex2d = res->data;
+          // r_tex2d_release(tex2d->tex);
         }break;
         default:{InvalidPath;}break;
       }
@@ -563,7 +564,7 @@ internal RK_Key
 rk_res_key_from_string(RK_ResourceKind kind, RK_Key seed, String8 string)
 {
   RK_Key ret = rk_key_from_string(seed, string);
-  ret.u64[1] = kind;
+  ret.u64[1] = (U64)kind;
   return ret;
 }
 
@@ -583,41 +584,54 @@ rk_res_key_from_stringf(RK_ResourceKind kind, RK_Key seed, char* fmt, ...)
 }
 
 internal RK_Resource *
-rk_res_store(RK_Key key, void *data)
+rk_res_alloc(RK_Key key)
 {
+  RK_Resource *ret = 0;
   RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-  RK_Resource *ret = push_array(res_bucket->arena_ref, RK_Resource, 1);
 
-  // fill info
+  if(res_bucket->first_free_resource != 0)
+  {
+    ret = res_bucket->first_free_resource;
+    U64 generation = ret->generation;
+    MemoryZeroStruct(ret);
+    ret->generation = generation;
+    SLLStackPop(res_bucket->first_free_resource);
+  }
+  else
+  {
+    ret = push_array(res_bucket->arena_ref, RK_Resource, 1);
+  }
   ret->kind = key.u64[1];
-  ret->key  = key;
-  ret->data = data;
+  ret->owner_bucket = res_bucket;
+  ret->key = key;
 
-  // insert into hash table
-  U64 slot_idx = key.u64[0] % res_bucket->hash_table_size;
+  U64 slot_idx = ret->key.u64[0] % res_bucket->hash_table_size;
   RK_ResourceBucketSlot *slot = &res_bucket->hash_table[slot_idx];
+#if BUILD_DEBUG
+  for(RK_Resource *r = slot->first; r != 0; r = r->hash_next)
+  {
+    if(rk_key_match(r->key, ret->key))
+    {
+      Assert(false && "resource key collision");
+    }
+  }
+#endif
   DLLPushBack_NP(slot->first, slot->last, ret, hash_next, hash_prev);
   res_bucket->res_count++;
   return ret;
 }
 
 internal void
-rk_res_free(RK_Resource *res)
+rk_res_release(RK_Resource *res)
 {
-  RK_ResourceBucket *res_bucket = 0;
-  if(res != 0)
-  {
-    res_bucket = res->owner_bucket;
-  }
-
-  // TODO(XXX): release based on the res kind
+  RK_ResourceBucket *res_bucket = res->owner_bucket;
   NotImplemented;
 }
 
-internal RK_Resource *
+internal RK_Handle
 rk_res_from_key(RK_Key key)
 {
-  RK_Resource *ret = 0;
+  RK_Handle ret = {0};
   RK_ResourceBucket *res_bucket = rk_top_res_bucket();
   U64 slot_idx = key.u64[0] % res_bucket->hash_table_size;
   RK_ResourceBucketSlot *slot = &res_bucket->hash_table[slot_idx];
@@ -625,9 +639,31 @@ rk_res_from_key(RK_Key key)
   {
     if(rk_key_match(key, r->key))
     {
-      ret = r;
+      ret = rk_handle_from_res(r);
       break;
     }
+  }
+  return ret;
+}
+
+internal RK_Handle
+rk_handle_from_res(RK_Resource *res)
+{
+  RK_Handle ret = {0};
+  ret.u64[0] = (U64)res;
+  ret.u64[1] = res->generation;
+  return ret;
+}
+
+internal RK_Resource *
+rk_res_from_handle(RK_Handle handle)
+{
+  RK_Resource *ret = 0;
+  RK_Resource *dst = (RK_Resource*)handle.u64[0];
+  U64 generation = handle.u64[1];
+  if(dst != 0 && dst->generation == generation)
+  {
+    ret = dst;
   }
   return ret;
 }
@@ -3063,17 +3099,17 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
       {
         RK_AnimationPlayer *anim_player = node->animation_player;
         // TODO(XXX): test for now, play the first animation
-        if(anim_player->playback.curr == 0)
+        if(rk_handle_is_zero(anim_player->playback.curr))
         {
           anim_player->playback.curr = anim_player->animations[0]; 
           anim_player->playback.loop = 1;
         }
 
         // play animation if there is any
-        if(anim_player->playback.curr != 0)
+        if(!rk_handle_is_zero(anim_player->playback.curr))
         {
           anim_player->playback.pos += rk_state->dt_sec;
-          RK_Animation *animation = anim_player->playback.curr;
+          RK_Animation *animation = (RK_Animation*)rk_res_unwrap(rk_res_from_handle(anim_player->playback.curr));
           if(anim_player->playback.pos > animation->duration_sec && anim_player->playback.loop)
           {
             anim_player->playback.pos = mod_f32(anim_player->playback.pos, animation->duration_sec);
@@ -3181,7 +3217,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
 
         RK_Transform2D *transform2d = &node->node2d->transform;
         RK_Sprite2D *sprite = node->sprite2d;
-        RK_Texture2D *tex2d = sprite->tex;
+        RK_Texture2D *tex2d = rk_tex2d_from_handle(sprite->tex);
         R_Handle tex = tex2d ? tex2d->tex : r_handle_zero();
 
         /////////////////////////////////////////////////////////////////////////
@@ -3222,7 +3258,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
       {
         RK_Transform2D *transform2d = &node->node2d->transform;
         RK_AnimatedSprite2D *sprite = node->animated_sprite2d;
-        RK_SpriteSheet *sheet = sprite->sheet;
+        RK_SpriteSheet *sheet = (RK_SpriteSheet*)rk_res_unwrap(rk_res_from_handle(sprite->sheet));
 
         /////////////////////////////////////////////////////////////////////////////////
         // draw mesh
@@ -3236,7 +3272,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         RK_SpriteSheetTag *tag = 0;
         while(tag == 0)
         {
-          RK_SpriteSheetTag *curr_tag = &sprite->sheet->tags[sprite->curr_tag];
+          RK_SpriteSheetTag *curr_tag = &sheet->tags[sprite->curr_tag];
 
           if(sprite->ts_ms > curr_tag->duration)
           {
@@ -3263,10 +3299,10 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         // TODO(XXX): linear search for now, we can do better
         for(U64 i = tag->from; i <= tag->to; i++)
         {
-          frame_duration_acc += sprite->sheet->frames[i].duration;
+          frame_duration_acc += sheet->frames[i].duration;
           if(sprite->ts_ms < frame_duration_acc)
           {
-            frame = &sprite->sheet->frames[i];
+            frame = &sheet->frames[i];
             break;
           }
         }
@@ -3287,7 +3323,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         }
 
         RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), dst, src);
-        R_Mesh2DInst *inst = d_sprite(n->vertices, n->indices, n->vertices_buffer_offset, n->indices_buffer_offset, n->indice_count, R_GeoTopologyKind_Triangles, R_GeoPolygonKind_Fill, 0, sheet->tex->tex, 1.);
+        R_Mesh2DInst *inst = d_sprite(n->vertices, n->indices, n->vertices_buffer_offset, n->indices_buffer_offset, n->indice_count, R_GeoTopologyKind_Triangles, R_GeoPolygonKind_Fill, 0, rk_tex2d_from_handle(sheet->tex)->tex, 1.);
         inst->key = node->key.u64[0];
         inst->xform = node->fixed_xform;
         inst->xform_inv = inverse_4x4f32(node->fixed_xform);
@@ -3299,8 +3335,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
       D_BucketScope(geo3d_back_bucket) if(node->type_flags & RK_NodeTypeFlag_MeshInstance3D)
       {
         RK_MeshInstance3D *mesh_inst3d = node->mesh_inst3d;
-        RK_Mesh *mesh = mesh_inst3d->mesh;
-        RK_Skin *skin = mesh_inst3d->skin;
+        RK_Mesh *mesh = rk_mesh_from_handle(mesh_inst3d->mesh);
+        RK_Skin *skin = rk_skin_from_handle(mesh_inst3d->skin);
         RK_Key skin_seed = mesh_inst3d->skin_seed;
         U64 joint_count = 0;
         Mat4x4F32 *joint_xforms = 0;
@@ -3327,11 +3363,11 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         U64 mat_idx = 0; // 0 is the default material
         if(camera->viewport_shading == RK_ViewportShadingKind_Material)
         {
-          RK_Material *mat = mesh_inst3d->material_override;
+          RK_Material *mat = rk_mat_from_handle(mesh_inst3d->material_override);
           // load mesh material if no override is provided
           if(mat == 0)
           {
-            mat = mesh->material;
+            mat = rk_mat_from_handle(mesh->material);
           }
 
           if(mat)
@@ -3359,7 +3395,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
               MemoryCopy(mat_dst, &mat_src->v, sizeof(R_Material3D));
               for(U64 kind = 0; kind < R_GeoTexKind_COUNT; kind++)
               {
-                RK_Texture2D *tex = mat_src->textures[kind];
+                RK_Texture2D *tex = rk_tex2d_from_handle(mat_src->textures[kind]);
                 if(tex) textures[*material_count].array[kind] = tex->tex;
               }
 

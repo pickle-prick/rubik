@@ -9,19 +9,19 @@ internal String8 rk_scene_to_tscn(RK_Scene *scene);
 /////////////////////////////////
 //~ GLTF2.0
 
-internal RK_Texture2D*   rk_tex2d_from_gltf_tex(cgltf_texture *tex_src, String8 gltf_directory);
-internal RK_Node*        rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String8 gltf_directory);
-internal RK_PackedScene* rk_packed_scene_from_gltf(String8 path);
-internal RK_Animation*   rk_animation_from_gltf_animation(cgltf_data *data, cgltf_animation *animation_src ,RK_Key seed);
+internal RK_Handle rk_tex2d_from_gltf_tex(cgltf_texture *tex_src, String8 gltf_directory);
+internal RK_Node*  rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String8 gltf_directory);
+internal RK_Handle rk_packed_scene_from_gltf(String8 path);
+internal RK_Handle rk_animation_from_gltf_animation(cgltf_data *data, cgltf_animation *animation_src ,RK_Key seed);
 
 /////////////////////////////////
 //~ Other resources
 
-internal RK_Texture2D*   rk_tex2d_from_image(String8 path);
-internal RK_Texture2D*   rk_tex2d_from_dir(String8 dir, U64 *count);
-internal RK_SpriteSheet* rk_spritesheet_from_image(String8 path, String8 meta_path);
-internal RK_Material*    rk_material_from_color(String8 name, Vec4F32 color);
-internal RK_Material*    rk_material_from_image(String8 name, String8 path);
+internal RK_Handle  rk_tex2d_from_path(String8 path);
+internal RK_Handle* rk_tex2d_from_dir(Arena *arena, String8 dir, U64 *count);
+internal RK_Handle  rk_spritesheet_from_image(String8 path, String8 meta_path);
+internal RK_Handle  rk_material_from_color(String8 name, Vec4F32 color);
+internal RK_Handle  rk_material_from_image(String8 name, String8 path);
 
 //~ Node building helper
 

@@ -5,6 +5,7 @@ internal String8
 rk_scene_to_tscn(RK_Scene *scene)
 {
   // TODO
+  NotImplemented;
   String8 ret = scene->save_path;
   RK_ResourceBucket *res_bucket = scene->res_bucket;
 
@@ -15,6 +16,7 @@ rk_scene_to_tscn(RK_Scene *scene)
     for(RK_Resource *res = slot->first; res != 0; res = res->hash_next)
     {
       RK_Key key = res->key;
+      // TODO(XXX): the order here should be important here, we should do PackedScene => Texture2D => the rest
       switch(res->kind)
       {
         case RK_ResourceKind_Skin:
@@ -30,17 +32,17 @@ rk_scene_to_tscn(RK_Scene *scene)
   }
 
   // serialize node tree
-
+  // TODO
   return ret;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // GLTF2.0
 
-internal RK_Texture2D *
+internal RK_Handle
 rk_tex2d_from_gltf_tex(cgltf_texture *tex_src, String8 gltf_directory)
 {
-  RK_Texture2D* ret = 0;
+  RK_Handle ret = {0};
 
   // tex2d path
   Temp scratch = scratch_begin(0,0);
@@ -48,8 +50,7 @@ rk_tex2d_from_gltf_tex(cgltf_texture *tex_src, String8 gltf_directory)
   str8_list_push(scratch.arena, &path_parts, gltf_directory);
   str8_list_push(scratch.arena, &path_parts, str8_cstring(tex_src->image->uri));
   String8 path = str8_path_list_join_by_style(scratch.arena, &path_parts, PathStyle_Relative);
-
-  ret = rk_tex2d_from_image(path);
+  ret = rk_tex2d_from_path(path);
   scratch_end(scratch);
   return ret;
 }
@@ -126,21 +127,23 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
   // TODO(k): mesh gpu instancing
 
   // mesh
-  RK_Skin *skin = 0;
+  RK_Handle skin = {0};
   if(mesh_src != 0) RK_Parent_Scope(ret)
   {
     if(skin_src != 0)
     {
       U64 skin_idx = cgltf_skin_index(data, skin_src);
       RK_Key skin_key = rk_res_key_from_stringf(RK_ResourceKind_Skin, seed_key, "skin_%d", skin_idx);
+      skin = rk_res_from_key(skin_key);
 
-      if(rk_res_from_key(skin_key) == 0)
+      if(rk_handle_is_zero(skin))
       {
-        skin = push_array(res_bucket->arena_ref, RK_Skin, 1);
-        rk_res_from_key(skin_key);
+        RK_Resource *res = rk_res_alloc(skin_key);
+        skin = rk_handle_from_res(res);
+        RK_Skin *skin_dst = (RK_Skin*)&res->v;
 
-        skin->bind_count = skin_src->joints_count;
-        skin->binds = push_array(res_bucket->arena_ref, RK_Bind, skin_src->joints_count);
+        skin_dst->bind_count = skin_src->joints_count;
+        skin_dst->binds = push_array(res_bucket->arena_ref, RK_Bind, skin_src->joints_count);
         Mat4x4F32 *inverse_bind_matrices = 0;
         {
           cgltf_accessor *accessor = cn->skin->inverse_bind_matrices;
@@ -150,12 +153,12 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
           inverse_bind_matrices = (Mat4x4F32 *)(((U8 *)accessor->buffer_view->buffer->data)+offset);
         }
 
-        for(U64 i = 0; i < skin->bind_count; i++)
+        for(U64 i = 0; i < skin_dst->bind_count; i++)
         {
           U64 joint_idx = cgltf_node_index(data, skin_src->joints[i]);
           RK_Key joint_key = rk_key_from_stringf(seed_key, "node_%d", joint_idx);
-          skin->binds[i].joint = joint_key;
-          skin->binds[i].inverse_bind_matrix = inverse_bind_matrices[i];
+          skin_dst->binds[i].joint = joint_key;
+          skin_dst->binds[i].inverse_bind_matrix = inverse_bind_matrices[i];
         }
       }
     }
@@ -166,22 +169,25 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
     {
       RK_Key mesh_key = rk_res_key_from_stringf(RK_ResourceKind_Mesh, seed_key, "mesh_%d_%d", mesh_idx, pi);
 
-      RK_Mesh *mesh = 0;
-      RK_Resource *mesh_res = rk_res_from_key(mesh_key);
-      if(mesh_res == 0)
+      RK_Handle mesh = {0};
+      mesh = rk_res_from_key(mesh_key);
+      RK_Mesh *mesh_dst = 0;
+
+      if(rk_handle_is_zero(mesh))
       {
-        mesh = push_array(res_bucket->arena_ref, RK_Mesh, 1);
-        mesh_res = rk_res_store(mesh_key, mesh);
+        RK_Resource *res = rk_res_alloc(mesh_key);
+        mesh = rk_handle_from_res(res);
+        mesh_dst = (RK_Mesh*)&res->v;
 
         cgltf_primitive *primitive = &mesh_src->primitives[pi];
 
         // topology
         switch(primitive->type)
         {
-          case cgltf_primitive_type_lines:          {mesh->topology = R_GeoTopologyKind_Lines; }break;
-          case cgltf_primitive_type_line_strip:     {mesh->topology = R_GeoTopologyKind_LineStrip; }break;
-          case cgltf_primitive_type_triangles:      {mesh->topology = R_GeoTopologyKind_Triangles; }break;
-          case cgltf_primitive_type_triangle_strip: {mesh->topology = R_GeoTopologyKind_TriangleStrip; }break;
+          case cgltf_primitive_type_lines:          {mesh_dst->topology = R_GeoTopologyKind_Lines; }break;
+          case cgltf_primitive_type_line_strip:     {mesh_dst->topology = R_GeoTopologyKind_LineStrip; }break;
+          case cgltf_primitive_type_triangles:      {mesh_dst->topology = R_GeoTopologyKind_Triangles; }break;
+          case cgltf_primitive_type_triangle_strip: {mesh_dst->topology = R_GeoTopologyKind_TriangleStrip; }break;
           case cgltf_primitive_type_points:
           case cgltf_primitive_type_line_loop:
           case cgltf_primitive_type_triangle_fan:
@@ -198,8 +204,8 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
           void *indices_src = (U8 *)accessor->buffer_view->buffer->data+offset;
           U64 size = sizeof(U32) * accessor->count;
           R_Handle indices = r_buffer_alloc(R_ResourceKind_Static, size, indices_src, size);
-          mesh->indices = indices;
-          mesh->indice_count = accessor->count;
+          mesh_dst->indices = indices;
+          mesh_dst->indice_count = accessor->count;
         }
 
         // mesh vertex attributes
@@ -262,22 +268,23 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
               }
             }
           }
-          mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, size, (void*)vertices_src, size);
-          mesh->vertex_count = vertex_count;
+          mesh_dst->vertices = r_buffer_alloc(R_ResourceKind_Static, size, (void*)vertices_src, size);
+          mesh_dst->vertex_count = vertex_count;
         }
 
         // load material
-        RK_Material *material = 0;
+        RK_Handle mat = {0};
         {
-          cgltf_material *material_src = primitive->material;
-          U64 material_idx = cgltf_material_index(data, material_src);
-          RK_Key material_key = rk_res_key_from_stringf(RK_ResourceKind_Material, seed_key, "material_%d", material_idx);
-          RK_Resource *mat_res = rk_res_from_key(material_key);
+          cgltf_material *mat_src = primitive->material;
+          U64 mat_idx = cgltf_material_index(data, mat_src);
+          RK_Key mat_key = rk_res_key_from_stringf(RK_ResourceKind_Material, seed_key, "material_%d", mat_idx);
+          mat = rk_res_from_key(mat_key);
 
-          if(mat_res == 0)
+          if(rk_handle_is_zero(mat))
           {
-            material = push_array(res_bucket->arena_ref, RK_Material, 1);
-            mat_res = rk_res_store(material_key, material);
+            RK_Resource *res = rk_res_alloc(mat_key);
+            mat = rk_handle_from_res(res);
+            RK_Material *mat_dst = (RK_Material*)&res->v;
 
             // NOTE(k): GLTF supports 2 PBR workflows
             // 1. Metallic-Roughness workflow (Modern) (has_pbr_emtallic_roughness)
@@ -286,48 +293,39 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
             // use environment maps instead of GlobalAmbient/AmbientColor
             // focus on DiffuseColor (albedo), Reflectance (metallic), and SpecularPower (roughness/glossiness) for core PBR behavior
             {
-              material->name = push_str8_copy(res_bucket->arena_ref, str8_cstring(material_src->name));
-
+              res->name = push_str8_copy(res_bucket->arena_ref, str8_cstring(mat_src->name));
               // textures
-              material->textures[R_GeoTexKind_Emissive]      = 0;
-              material->textures[R_GeoTexKind_Diffuse]       = rk_tex2d_from_gltf_tex(material_src->pbr_metallic_roughness.base_color_texture.texture, gltf_directory);
-              material->textures[R_GeoTexKind_Specular]      = 0;
-              material->textures[R_GeoTexKind_SpecularPower] = 0;
-              material->textures[R_GeoTexKind_Ambient]       = 0;
-              material->textures[R_GeoTexKind_Opacity]       = 0;
-              material->textures[R_GeoTexKind_Normal]        = 0;
-              material->textures[R_GeoTexKind_Bump]          = 0;
+              mat_dst->textures[R_GeoTexKind_Emissive]      = rk_handle_zero();
+              mat_dst->textures[R_GeoTexKind_Diffuse]       = rk_tex2d_from_gltf_tex(mat_src->pbr_metallic_roughness.base_color_texture.texture, gltf_directory);
+              mat_dst->textures[R_GeoTexKind_Specular]      = rk_handle_zero();
+              mat_dst->textures[R_GeoTexKind_SpecularPower] = rk_handle_zero();
+              mat_dst->textures[R_GeoTexKind_Ambient]       = rk_handle_zero();
+              mat_dst->textures[R_GeoTexKind_Opacity]       = rk_handle_zero();
+              mat_dst->textures[R_GeoTexKind_Normal]        = rk_handle_zero();
+              mat_dst->textures[R_GeoTexKind_Bump]          = rk_handle_zero();
 
-              material->v.has_emissive_texture           = material->textures[R_GeoTexKind_Emissive] != 0;
-              material->v.has_diffuse_texture            = material->textures[R_GeoTexKind_Diffuse] != 0;
-              material->v.has_specular_texture           = material->textures[R_GeoTexKind_Specular] != 0;
-              material->v.has_specular_power_texture     = material->textures[R_GeoTexKind_SpecularPower] != 0;
-              material->v.has_ambient_texture            = material->textures[R_GeoTexKind_Ambient] != 0;
-              material->v.has_opacity_texture            = material->textures[R_GeoTexKind_Opacity] != 0;
-              material->v.has_normal_texture             = material->textures[R_GeoTexKind_Normal] != 0;
-              material->v.has_bump_texture               = material->textures[R_GeoTexKind_Bump] != 0;
+              mat_dst->v.has_emissive_texture           = rk_handle_is_zero(mat_dst->textures[R_GeoTexKind_Emissive]);
+              mat_dst->v.has_diffuse_texture            = rk_handle_is_zero(mat_dst->textures[R_GeoTexKind_Diffuse]);
+              mat_dst->v.has_specular_texture           = rk_handle_is_zero(mat_dst->textures[R_GeoTexKind_Specular]);
+              mat_dst->v.has_specular_power_texture     = rk_handle_is_zero(mat_dst->textures[R_GeoTexKind_SpecularPower]);
+              mat_dst->v.has_ambient_texture            = rk_handle_is_zero(mat_dst->textures[R_GeoTexKind_Ambient]);
+              mat_dst->v.has_opacity_texture            = rk_handle_is_zero(mat_dst->textures[R_GeoTexKind_Opacity]);
+              mat_dst->v.has_normal_texture             = rk_handle_is_zero(mat_dst->textures[R_GeoTexKind_Normal]);
+              mat_dst->v.has_bump_texture               = rk_handle_is_zero(mat_dst->textures[R_GeoTexKind_Bump]);
 
               // colors
-              material->v.diffuse_color = *(Vec4F32*)material_src->pbr_metallic_roughness.base_color_factor;
-              material->v.ambient_color = material->v.diffuse_color;
+              mat_dst->v.diffuse_color = *(Vec4F32*)mat_src->pbr_metallic_roughness.base_color_factor;
+              mat_dst->v.ambient_color = mat_dst->v.diffuse_color;
 
               // f32
-              material->v.opacity = material->v.diffuse_color.w;
-              material->v.specular_power = 0;
-              material->v.index_of_refraction = material_src->ior.ior;
-              material->v.alpha_cutoff = material_src->alpha_cutoff;
+              mat_dst->v.opacity = mat_dst->v.diffuse_color.w;
+              mat_dst->v.specular_power = 0;
+              mat_dst->v.index_of_refraction = mat_src->ior.ior;
+              mat_dst->v.alpha_cutoff = mat_src->alpha_cutoff;
             }
           }
-          else
-          {
-            material = mat_res->data;
-          }
         }
-        mesh->material = material;
-      }
-      else
-      {
-        mesh = mesh_res->data;
+        mesh_dst->material = mat;
       }
 
       // create mesh_inst3d for every primitive
@@ -354,18 +352,20 @@ rk_node_from_gltf_node(cgltf_node *cn, cgltf_data *data, RK_Key seed_key, String
   return ret;
 }
 
-internal RK_PackedScene *
+internal RK_Handle
 rk_packed_scene_from_gltf(String8 gltf_path)
 {
-  RK_PackedScene *ret = 0;
+  RK_Handle ret = {0};
   RK_Key key = rk_res_key_from_string(RK_ResourceKind_PackedScene, rk_key_zero(), gltf_path);
-  RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-  RK_Resource *res = rk_res_from_key(key);
 
-  if(res == 0)
+  Arena *arena = rk_top_res_bucket()->arena_ref;
+  ret = rk_res_from_key(key);
+
+  if(rk_handle_is_zero(ret))
   {
-    ret = push_array(res_bucket->arena_ref, RK_PackedScene, 1);
-    rk_res_store(key, ret);
+    RK_Resource *res = rk_res_alloc(key);
+    RK_PackedScene *packed = (RK_PackedScene*)rk_res_unwrap(res);
+    ret = rk_handle_from_res(res);
 
     cgltf_options opts = {0};
     cgltf_data *data;
@@ -384,11 +384,11 @@ rk_packed_scene_from_gltf(String8 gltf_path)
     cgltf_node *cgltf_root = root_scene->nodes[0];
 
     // fill info
-    ret->root = rk_node_from_gltf_node(cgltf_root, data, key, str8_chop_last_slash(gltf_path));
-    ret->path = push_str8_copy(res_bucket->arena_ref, gltf_path);
+    packed->root = rk_node_from_gltf_node(cgltf_root, data, key, str8_chop_last_slash(gltf_path));
+    res->path = push_str8_copy(arena, gltf_path);
 
     //- Load skeleton animations after model is loaded
-    if(data->animations_count > 0) RK_Parent_Scope(ret->root)
+    if(data->animations_count > 0) RK_Parent_Scope(packed->root)
     {
       // create AnimationPlayer node
       RK_Key node_key = rk_key_from_stringf(key, "animation_player");
@@ -397,7 +397,7 @@ rk_packed_scene_from_gltf(String8 gltf_path)
 
       // fill info
       n->animation_player->animation_count = data->animations_count;
-      n->animation_player->animations = push_array(res_bucket->arena_ref, RK_Animation*, data->animations_count);
+      n->animation_player->animations = push_array(arena, RK_Handle, data->animations_count);
 
       for(U64 i = 0; i < data->animations_count; i++)
       {
@@ -407,29 +407,25 @@ rk_packed_scene_from_gltf(String8 gltf_path)
 
     cgltf_free(data); 
   }
-  else
-  {
-    ret = res->data;
-  }
   return ret;
 }
 
-internal RK_Animation *
+internal RK_Handle
 rk_animation_from_gltf_animation(cgltf_data *data, cgltf_animation *animation_src, RK_Key seed)
 {
-  RK_Animation *ret = 0;
-  RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-  Arena *arena = res_bucket->arena_ref;
+  RK_Handle ret = {0};
+  Arena *arena = rk_top_res_bucket()->arena_ref;
 
   // NOTE(k): animation is unique in gltf, so we don't fetch from cache
   U64 animation_idx = cgltf_animation_index(data, animation_src);
   RK_Key key = rk_res_key_from_stringf(RK_ResourceKind_Animation, seed, "animation_%d", animation_idx);
-  RK_Resource *res = rk_res_from_key(key);
+  ret = rk_res_from_key(key);
 
-  if(res == 0)
+  if(rk_handle_is_zero(ret))
   {
-    ret = push_array(arena, RK_Animation, 1);
-    rk_res_store(key, ret);
+    RK_Resource *res = rk_res_alloc(key);
+    ret = rk_handle_from_res(res);
+    RK_Animation *anim = (RK_Animation*)&res->v;
 
     U64 track_count = animation_src->channels_count;
     F32 max_track_duration_sec = 0;
@@ -533,14 +529,12 @@ rk_animation_from_gltf_animation(cgltf_data *data, cgltf_animation *animation_sr
       track->frame_count   = frame_count;
     }
 
-    ret->name = push_str8_copy(arena, str8_cstring(animation_src->name));
-    ret->duration_sec = max_track_duration_sec;
-    ret->track_count = animation_src->channels_count;
-    ret->tracks = tracks;
-  }
-  else
-  {
-    ret = res->data;
+    String8 name = push_str8_copy(arena, str8_cstring(animation_src->name));
+    res->name = name;
+    anim->name = name;
+    anim->duration_sec = max_track_duration_sec;
+    anim->track_count = animation_src->channels_count;
+    anim->tracks = tracks;
   }
   return ret;
 }
@@ -548,47 +542,41 @@ rk_animation_from_gltf_animation(cgltf_data *data, cgltf_animation *animation_sr
 /////////////////////////////////
 //~ Other resources
 
-internal RK_Texture2D *
-rk_tex2d_from_image(String8 path)
+internal RK_Handle
+rk_tex2d_from_path(String8 path)
 {
+  RK_Handle ret = {0};
   // TODO(XXX): we should consider sampler kind here
-  RK_Texture2D *ret = 0;
+
+  // TODO(XXX): we should use relative path here, verify if that's case later 
   RK_Key key = rk_res_key_from_string(RK_ResourceKind_Texture2D, rk_key_zero(), path);
-  RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-  Arena *arena = res_bucket->arena_ref;
-  RK_Resource *res = rk_res_from_key(key);
+  RK_Handle res = rk_res_from_key(key);
 
-  if(res == 0)
+  Arena *arena = rk_top_res_bucket()->arena_ref;
+  if(rk_handle_is_zero(ret))
   {
-    ret = push_array(res_bucket->arena_ref, RK_Texture2D, 1);
-
+    RK_Resource *res = rk_res_alloc(key);
+    ret = rk_handle_from_res(res);
+    RK_Texture2D *tex2d = (RK_Texture2D*)&res->v;
     R_Tex2DSampleKind sample_kind = R_Tex2DSampleKind_Nearest;
     {
       int x,y,n;
       U8 *image_data = stbi_load((char*)path.str, &x, &y, &n, 4);
 
-      ret->tex = r_tex2d_alloc(R_ResourceKind_Static, sample_kind, v2s32(x,y), R_Tex2DFormat_RGBA8, image_data);
-      ret->sample_kind = sample_kind;
-      ret->path = push_str8_copy(arena, path);
-      ret->size.x = x;
-      ret->size.y = y;
-
+      tex2d->tex = r_tex2d_alloc(R_ResourceKind_Static, sample_kind, v2s32(x,y), R_Tex2DFormat_RGBA8, image_data);
+      tex2d->sample_kind = sample_kind;
+      tex2d->size.x = x;
+      tex2d->size.y = y;
+      res->path = push_str8_copy(arena, path);
+      res->name = str8_skip_last_slash(res->path);
       stbi_image_free(image_data);
     }
-
-    // cache
-    rk_res_store(key, ret);
   }
-  else
-  {
-    ret = res->data;
-  }
-
   return ret;
 }
 
-internal RK_Texture2D *
-rk_tex2d_from_dir(String8 dir, U64 *count)
+internal RK_Handle *
+rk_tex2d_from_dir(Arena *arena, String8 dir, U64 *count)
 {
   // TODO(XXX): the resouce caching system is not easy to use, may have to change
   //            for now, we just do the allocation, ignore any caching
@@ -613,10 +601,8 @@ rk_tex2d_from_dir(String8 dir, U64 *count)
     }
   }
 
-  RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-  Arena *arena = res_bucket->arena_ref;
-  RK_Texture2D *ret = push_array(arena, RK_Texture2D, *count);
-  RK_Texture2D *dst = ret;
+  RK_Handle *ret = push_array(arena, RK_Handle, *count);
+  RK_Handle *dst = ret;
 
   it = os_file_iter_begin(scratch.arena, dir, OS_FileIterFlag_SkipFolders);
   for(OS_FileInfo info = {0}; os_file_iter_next(scratch.arena, it, &info);)
@@ -626,24 +612,12 @@ rk_tex2d_from_dir(String8 dir, U64 *count)
 
     if(is_file && is_png)
     {
-      // TODO(XXX): BAD, we did it twice
       String8List parts = {0};
       str8_list_push(scratch.arena, &parts, dir);
       str8_list_push(scratch.arena, &parts, info.name);
       String8 path = str8_path_list_join_by_style(scratch.arena, &parts, PathStyle_Relative);
-
-      R_Tex2DSampleKind sample_kind = R_Tex2DSampleKind_Nearest;
-      int x,y,n;
-      U8 *image_data = stbi_load((char*)path.str, &x, &y, &n, 4);
-
-      dst->tex = r_tex2d_alloc(R_ResourceKind_Static, sample_kind, v2s32(x,y), R_Tex2DFormat_RGBA8, image_data);
-      dst->sample_kind = sample_kind;
-      dst->path = push_str8_copy(arena, path);
-      dst->name = push_str8_copy(arena, info.name);
-      dst->size.x = x;
-      dst->size.y = y;
-      stbi_image_free(image_data);
-      dst++; 
+      *dst = rk_tex2d_from_path(path);
+      dst++;
     }
   }
   scratch_end(scratch);
@@ -729,19 +703,21 @@ rk_token_pass(jsmntok_t *tokens, U64 *i)
   }
 }
 
-internal RK_SpriteSheet *
+internal RK_Handle
 rk_spritesheet_from_image(String8 path, String8 meta_path)
 {
-  RK_SpriteSheet *ret = 0;
+  RK_Handle ret = {0};
+
   Temp scratch = scratch_begin(0,0);
   RK_Key key = rk_res_key_from_string(RK_ResourceKind_SpriteSheet, rk_key_zero(), push_str8_cat(scratch.arena, path, meta_path));
   Arena *arena = rk_top_res_bucket()->arena_ref;
-  RK_Resource *res = rk_res_from_key(key);
+  ret = rk_res_from_key(key);
 
-  if(res == 0)
+  if(rk_handle_is_zero(ret))
   {
-    ret = push_array(arena, RK_SpriteSheet, 1);
-    res = rk_res_store(key, ret);
+    RK_Resource *res = rk_res_alloc(key);
+    ret = rk_handle_from_res(res);
+    RK_SpriteSheet *sheet = (RK_SpriteSheet*)&res->v;
 
     /////////////////////////////////////////////////////////////////////////////////
     // load meta
@@ -1053,92 +1029,66 @@ rk_spritesheet_from_image(String8 path, String8 meta_path)
       tag->duration = duration;
     }
 
-    ret->tex         = rk_tex2d_from_image(path);
-    ret->size        = sheet_size;
-    ret->path        = push_str8_copy(arena, meta_path);
-    ret->frames      = frames;
-    ret->frame_count = frame_count;
-    ret->tags        = tags;
-    ret->tag_count   = tag_count;
+    sheet->tex         = rk_tex2d_from_path(path);
+    sheet->size        = sheet_size;
+    sheet->frames      = frames;
+    sheet->frame_count = frame_count;
+    sheet->tags        = tags;
+    sheet->tag_count   = tag_count;
+
+    res->path = push_str8_copy(arena, meta_path);
   }
 
   scratch_end(scratch);
-  ret = res->data;
   return ret;
 }
 
-internal RK_Material *
+internal RK_Handle
 rk_material_from_color(String8 name, Vec4F32 color)
 {
-  RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-  Arena *arena = res_bucket->arena_ref;
-  RK_Key res_key = rk_res_key_from_string(RK_ResourceKind_Material, rk_key_zero(), name);
+  RK_Handle ret = {0};
+  Arena *arena = rk_top_res_bucket()->arena_ref;
+  RK_Key key = rk_res_key_from_string(RK_ResourceKind_Material, rk_key_zero(), name);
+  ret = rk_res_from_key(key);
 
-  RK_Material *ret = 0;
-  RK_Resource *res = rk_res_from_key(res_key);
-  if(res == 0)
+  if(rk_handle_is_zero(ret))
   {
-    ret = push_array(arena, RK_Material, 1);
-    res = rk_res_store(res_key, ret);
+    RK_Resource *res = rk_res_alloc(key);
+    ret = rk_handle_from_res(res);
+    RK_Material *mat = (RK_Material*)&res->v;
 
-    ret->v.diffuse_color = color;
-    ret->v.opacity = 1.0f;
-    ret->name = push_str8_copy(arena, name);
+    mat->v.diffuse_color = color;
+    mat->v.opacity = 1.0f;
+
+    res->name = push_str8_copy(arena, name);
+    res->is_sub = 1;
   }
-
-  ret = res->data;
   return ret;
 }
 
-internal RK_Material *
+internal RK_Handle
 rk_material_from_image(String8 name, String8 path)
 {
-  RK_Material *ret = 0;
+  RK_Handle ret = {0};
   RK_Key key = rk_res_key_from_string(RK_ResourceKind_Material, rk_key_zero(), name);
-  RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-  Arena *arena = res_bucket->arena_ref;
-  RK_Resource *res = rk_res_from_key(key);
+  Arena *arena = rk_top_res_bucket()->arena_ref;
+  ret = rk_res_from_key(key);
 
-  if(res == 0)
+  if(rk_handle_is_zero(ret))
   {
-    ret = push_array(arena, RK_Material, 1);
-    res = rk_res_store(key, ret);
+    RK_Resource *res = rk_res_alloc(key);
+    ret = rk_handle_from_res(res);
+    RK_Material *mat = (RK_Material*)&res->v;
 
-    // load tex
-    RK_Key tex_key = rk_res_key_from_string(RK_ResourceKind_Texture2D, rk_key_zero(), path);
-    RK_Texture2D *tex = 0;
-    RK_Resource *tex_res = rk_res_from_key(tex_key);
-    R_Tex2DSampleKind sample_kind = R_Tex2DSampleKind_Nearest;
-    if(tex_res == 0)
-    {
-      tex = push_array(arena, RK_Texture2D, 1);
-      rk_res_store(tex_key, tex);
+    String8 _name = push_str8_copy(arena, name);
 
-      int x,y,n;
-      U8 *image_data = stbi_load((char*)path.str, &x, &y, &n, 4);
-
-      tex->tex = r_tex2d_alloc(R_ResourceKind_Static, sample_kind, v2s32(x,y), R_Tex2DFormat_RGBA8, image_data);
-      tex->sample_kind = sample_kind;
-      tex->path = push_str8_copy(arena, path);
-
-      stbi_image_free(image_data);
-    }
-    else
-    {
-      tex = tex_res->data;
-    }
-
-    ret->name = push_str8_copy(arena, name);
-    ret->textures[R_GeoTexKind_Diffuse] = tex;
-    ret->v.opacity = 1.0;
-    ret->v.diffuse_color = v4f32(1,1,1,1);
-    ret->v.has_diffuse_texture = 1;
+    mat->textures[R_GeoTexKind_Diffuse] = rk_tex2d_from_path(path);
+    mat->v.opacity = 1.0;
+    mat->v.diffuse_color = v4f32(1,1,1,1);
+    mat->v.has_diffuse_texture = 1;
+    res->name = push_str8_copy(arena, name);
+    res->is_sub = 1;
   }
-  else
-  {
-    ret = res->data;
-  }
-
   return ret;
 }
 
@@ -2146,9 +2096,8 @@ rk_mesh_primitive_arc_filled(Arena *arena, F32 radius, F32 pct, U64 segments, B3
 internal void
 rk_node_equip_box(RK_Node *n, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U64 subdivide_d)
 {
-  RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-  Arena *arena = res_bucket->arena_ref;
-  RK_Key res_key;
+  Arena *arena = rk_top_res_bucket()->arena_ref;
+  RK_Key mesh_key;
   {
     F64 sizex_f64 = size.x;
     F64 sizey_f64 = size.y;
@@ -2163,15 +2112,15 @@ rk_node_equip_box(RK_Node *n, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U6
       subdivide_h,
       subdivide_d,
     };
-    res_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
+    mesh_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
   }
 
-  RK_Resource *res = rk_res_from_key(res_key);
-  if(res == 0)
+  RK_Handle mesh = rk_res_from_key(mesh_key);
+  if(rk_handle_is_zero(mesh))
   {
-    RK_Mesh *mesh = push_array(arena, RK_Mesh, 1);
-    res = rk_res_store(res_key, mesh);
-
+    RK_Resource *res = rk_res_alloc(mesh_key);
+    mesh = rk_handle_from_res(res);
+    RK_Mesh *mesh_dst = (RK_Mesh*)&res->v;
     {
       Temp scratch = scratch_begin(0,0);
       R_Vertex *vertices;
@@ -2182,30 +2131,29 @@ rk_node_equip_box(RK_Node *n, Vec3F32 size, U64 subdivide_w, U64 subdivide_h, U6
       U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
       U64 indice_buffer_size = sizeof(U32) * indice_count;
 
-      mesh->topology = R_GeoTopologyKind_Triangles;
-      mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
-      mesh->vertex_count = vertex_count;
-      mesh->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
-      mesh->indice_count = indice_count;
-      mesh->src_kind = RK_MeshSourceKind_BoxPrimitive;            
-      mesh->src.box_primitive.subdivide_w = subdivide_w;
-      mesh->src.box_primitive.subdivide_h = subdivide_h;
-      mesh->src.box_primitive.subdivide_d = subdivide_d;
-      mesh->src.box_primitive.size = size;
+      mesh_dst->topology = R_GeoTopologyKind_Triangles;
+      mesh_dst->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
+      mesh_dst->vertex_count = vertex_count;
+      mesh_dst->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
+      mesh_dst->indice_count = indice_count;
+      mesh_dst->src_kind = RK_MeshSourceKind_BoxPrimitive;            
+      mesh_dst->src.box_primitive.subdivide_w = subdivide_w;
+      mesh_dst->src.box_primitive.subdivide_h = subdivide_h;
+      mesh_dst->src.box_primitive.subdivide_d = subdivide_d;
+      mesh_dst->src.box_primitive.size = size;
       scratch_end(scratch);
     }
   }
   rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
-  n->mesh_inst3d->mesh = res->data;
+  n->mesh_inst3d->mesh = mesh;
 }
 
 internal void
 rk_node_equip_plane(RK_Node *n, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
 {
-  RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-  Arena *arena = res_bucket->arena_ref;
+  Arena *arena = rk_top_res_bucket()->arena_ref;
 
-  RK_Key res_key;
+  RK_Key mesh_key;
   {
     F64 sizex_f64 = size.x;
     F64 sizey_f64 = size.y;
@@ -2217,14 +2165,15 @@ rk_node_equip_plane(RK_Node *n, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
       subdivide_w,
       subdivide_d,
     };
-    res_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
+    mesh_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
   }
 
-  RK_Resource *res = rk_res_from_key(res_key);
-  if(res == 0)
+  RK_Handle mesh = rk_res_from_key(mesh_key);
+  if(rk_handle_is_zero(mesh))
   {
-    RK_Mesh *mesh = push_array(arena, RK_Mesh, 1);
-    res = rk_res_store(res_key, mesh);
+    RK_Resource *res = rk_res_alloc(mesh_key);
+    mesh = rk_handle_from_res(res);
+    RK_Mesh *mesh_dst = (RK_Mesh*)&res->v;
 
     {
       Temp scratch = scratch_begin(0,0);
@@ -2236,30 +2185,28 @@ rk_node_equip_plane(RK_Node *n, Vec2F32 size, U64 subdivide_w, U64 subdivide_d)
       U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
       U64 indice_buffer_size = sizeof(U32) * indice_count;
 
-      mesh->topology = R_GeoTopologyKind_Triangles;
-      mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
-      mesh->vertex_count = vertex_count;
-      mesh->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
-      mesh->indice_count = indice_count;
-      mesh->src_kind = RK_MeshSourceKind_BoxPrimitive;            
-      mesh->src.plane_primitive.subdivide_w = subdivide_w;
-      mesh->src.plane_primitive.subdivide_d = subdivide_d;
-      mesh->src.plane_primitive.size = size;
+      mesh_dst->topology = R_GeoTopologyKind_Triangles;
+      mesh_dst->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
+      mesh_dst->vertex_count = vertex_count;
+      mesh_dst->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
+      mesh_dst->indice_count = indice_count;
+      mesh_dst->src_kind = RK_MeshSourceKind_BoxPrimitive;            
+      mesh_dst->src.plane_primitive.subdivide_w = subdivide_w;
+      mesh_dst->src.plane_primitive.subdivide_d = subdivide_d;
+      mesh_dst->src.plane_primitive.size = size;
       scratch_end(scratch);
     }
   }
 
   rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
-  n->mesh_inst3d->mesh = res->data;
+  n->mesh_inst3d->mesh = mesh;
 }
 
 internal void
 rk_node_equip_sphere(RK_Node *n, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere)
 {
-  RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-  Arena *arena = res_bucket->arena_ref;
-
-  RK_Key res_key;
+  Arena *arena = rk_top_res_bucket()->arena_ref;
+  RK_Key mesh_key;
   {
     F64 radius_f64 = radius;
     F64 height_f64 = height;
@@ -2273,14 +2220,15 @@ rk_node_equip_sphere(RK_Node *n, F32 radius, F32 height, U64 radial_segments, U6
       rings,
       *(U64*)&is_hemisphere,
     };
-    res_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
+    mesh_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
   }
 
-  RK_Resource *res = rk_res_from_key(res_key);
-  if(res == 0)
+  RK_Handle mesh = rk_res_from_key(mesh_key);
+  if(rk_handle_is_zero(mesh))
   {
-    RK_Mesh *mesh = push_array(arena, RK_Mesh, 1);
-    res = rk_res_store(res_key, mesh);
+    RK_Resource *res = rk_res_alloc(mesh_key);
+    mesh = rk_handle_from_res(res);
+    RK_Mesh *mesh_dst = (RK_Mesh*)&res->v;
 
     {
       Temp scratch = scratch_begin(0,0);
@@ -2292,32 +2240,30 @@ rk_node_equip_sphere(RK_Node *n, F32 radius, F32 height, U64 radial_segments, U6
       U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
       U64 indice_buffer_size = sizeof(U32) * indice_count;
 
-      mesh->topology = R_GeoTopologyKind_Triangles;
-      mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
-      mesh->vertex_count = vertex_count;
-      mesh->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
-      mesh->indice_count = indice_count;
-      mesh->src_kind = RK_MeshSourceKind_SpherePrimitive;
-      mesh->src.sphere_primitive.radius = radius;
-      mesh->src.sphere_primitive.height = height;
-      mesh->src.sphere_primitive.radial_segments = radial_segments;
-      mesh->src.sphere_primitive.rings = rings;
-      mesh->src.sphere_primitive.is_hemisphere = is_hemisphere;
+      mesh_dst->topology = R_GeoTopologyKind_Triangles;
+      mesh_dst->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
+      mesh_dst->vertex_count = vertex_count;
+      mesh_dst->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
+      mesh_dst->indice_count = indice_count;
+      mesh_dst->src_kind = RK_MeshSourceKind_SpherePrimitive;
+      mesh_dst->src.sphere_primitive.radius = radius;
+      mesh_dst->src.sphere_primitive.height = height;
+      mesh_dst->src.sphere_primitive.radial_segments = radial_segments;
+      mesh_dst->src.sphere_primitive.rings = rings;
+      mesh_dst->src.sphere_primitive.is_hemisphere = is_hemisphere;
       scratch_end(scratch);
     }
   }
 
   rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
-  n->mesh_inst3d->mesh = res->data;
+  n->mesh_inst3d->mesh = mesh;
 }
 
 internal void
 rk_node_equip_cylinder(RK_Node *n, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 cap_top, B32 cap_bottom)
 {
-  RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-  Arena *arena = res_bucket->arena_ref;
-
-  RK_Key res_key;
+  Arena *arena = rk_top_res_bucket()->arena_ref;
+  RK_Key mesh_key;
   {
     F64 radius_f64 = radius;
     F64 height_f64 = height;
@@ -2333,15 +2279,15 @@ rk_node_equip_cylinder(RK_Node *n, F32 radius, F32 height, U64 radial_segments, 
       *(U64*)&cap_top,
       *(U64*)&cap_bottom,
     };
-    res_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
+    mesh_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
   }
 
-  RK_Resource *res = rk_res_from_key(res_key);
-  if(res == 0)
+  RK_Handle mesh = rk_res_from_key(mesh_key);
+  if(rk_handle_is_zero(mesh))
   {
-    RK_Mesh *mesh = push_array(arena, RK_Mesh, 1);
-    res = rk_res_store(res_key, mesh);
-
+    RK_Resource *res = rk_res_alloc(mesh_key);
+    mesh = rk_handle_from_res(res);
+    RK_Mesh *mesh_dst = (RK_Mesh*)&res->v;
     {
       Temp scratch = scratch_begin(0,0);
       R_Vertex *vertices;
@@ -2352,33 +2298,31 @@ rk_node_equip_cylinder(RK_Node *n, F32 radius, F32 height, U64 radial_segments, 
       U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
       U64 indice_buffer_size = sizeof(U32) * indice_count;
 
-      mesh->topology = R_GeoTopologyKind_Triangles;
-      mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
-      mesh->vertex_count = vertex_count;
-      mesh->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
-      mesh->indice_count = indice_count;
-      mesh->src_kind = RK_MeshSourceKind_CylinderPrimitive;
-      mesh->src.cylinder_primitive.radius = radius;
-      mesh->src.cylinder_primitive.height = height;
-      mesh->src.cylinder_primitive.radial_segments = radial_segments;
-      mesh->src.cylinder_primitive.rings = rings;
-      mesh->src.cylinder_primitive.cap_top = cap_top;
-      mesh->src.cylinder_primitive.cap_bottom = cap_bottom;
+      mesh_dst->topology = R_GeoTopologyKind_Triangles;
+      mesh_dst->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
+      mesh_dst->vertex_count = vertex_count;
+      mesh_dst->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
+      mesh_dst->indice_count = indice_count;
+      mesh_dst->src_kind = RK_MeshSourceKind_CylinderPrimitive;
+      mesh_dst->src.cylinder_primitive.radius = radius;
+      mesh_dst->src.cylinder_primitive.height = height;
+      mesh_dst->src.cylinder_primitive.radial_segments = radial_segments;
+      mesh_dst->src.cylinder_primitive.rings = rings;
+      mesh_dst->src.cylinder_primitive.cap_top = cap_top;
+      mesh_dst->src.cylinder_primitive.cap_bottom = cap_bottom;
       scratch_end(scratch);
     }
   }
 
   rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
-  n->mesh_inst3d->mesh = res->data;
+  n->mesh_inst3d->mesh = mesh;
 }
 
 internal void
 rk_node_equip_capsule_(RK_Node *n, F32 radius, F32 height, U64 radial_segments, U64 rings)
 {
-  RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-  Arena *arena = res_bucket->arena_ref;
-
-  RK_Key res_key;
+  Arena *arena = rk_top_res_bucket()->arena_ref;
+  RK_Key mesh_key;
   {
     F64 radius_f64 = radius;
     F64 height_f64 = height;
@@ -2390,15 +2334,15 @@ rk_node_equip_capsule_(RK_Node *n, F32 radius, F32 height, U64 radial_segments, 
       radial_segments,
       rings,
     };
-    res_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
+    mesh_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
   }
 
-  RK_Resource *res = rk_res_from_key(res_key);
-  if(res == 0)
+  RK_Handle mesh = rk_res_from_key(mesh_key);
+  if(rk_handle_is_zero(mesh))
   {
-    RK_Mesh *mesh = push_array(arena, RK_Mesh, 1);
-    res = rk_res_store(res_key, mesh);
-
+    RK_Resource *res = rk_res_alloc(mesh_key);
+    mesh = rk_handle_from_res(res);
+    RK_Mesh *mesh_dst = (RK_Mesh*)&res->v;
     {
       Temp scratch = scratch_begin(0,0);
       R_Vertex *vertices;
@@ -2409,31 +2353,29 @@ rk_node_equip_capsule_(RK_Node *n, F32 radius, F32 height, U64 radial_segments, 
       U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
       U64 indice_buffer_size = sizeof(U32) * indice_count;
 
-      mesh->topology = R_GeoTopologyKind_Triangles;
-      mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
-      mesh->vertex_count = vertex_count;
-      mesh->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
-      mesh->indice_count = indice_count;
-      mesh->src_kind = RK_MeshSourceKind_CapsulePrimitive;
-      mesh->src.cylinder_primitive.radius = radius;
-      mesh->src.cylinder_primitive.height = height;
-      mesh->src.cylinder_primitive.radial_segments = radial_segments;
-      mesh->src.cylinder_primitive.rings = rings;
+      mesh_dst->topology = R_GeoTopologyKind_Triangles;
+      mesh_dst->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
+      mesh_dst->vertex_count = vertex_count;
+      mesh_dst->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
+      mesh_dst->indice_count = indice_count;
+      mesh_dst->src_kind = RK_MeshSourceKind_CapsulePrimitive;
+      mesh_dst->src.cylinder_primitive.radius = radius;
+      mesh_dst->src.cylinder_primitive.height = height;
+      mesh_dst->src.cylinder_primitive.radial_segments = radial_segments;
+      mesh_dst->src.cylinder_primitive.rings = rings;
       scratch_end(scratch);
     }
   }
 
   rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
-  n->mesh_inst3d->mesh = res->data;
+  n->mesh_inst3d->mesh = mesh;
 }
 
 internal void
 rk_node_equip_torus(RK_Node *n, F32 inner_radius, F32 outer_radius, U64 rings, U64 ring_segments)
 {
-  RK_ResourceBucket *res_bucket = rk_top_res_bucket();
-  Arena *arena = res_bucket->arena_ref;
-
-  RK_Key res_key;
+  Arena *arena = rk_top_res_bucket()->arena_ref;
+  RK_Key mesh_key;
   {
     F64 inner_radius_f64 = inner_radius;
     F64 outer_radius_f64 = outer_radius;
@@ -2445,15 +2387,15 @@ rk_node_equip_torus(RK_Node *n, F32 inner_radius, F32 outer_radius, U64 rings, U
       rings,
       ring_segments,
     };
-    res_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
+    mesh_key = rk_res_key_from_string(RK_ResourceKind_Mesh, rk_key_zero(), str8((U8*)hash_part, sizeof(hash_part)));
   }
 
-  RK_Resource *res = rk_res_from_key(res_key);
-  if(res == 0)
+  RK_Handle mesh = rk_res_from_key(mesh_key);
+  if(rk_handle_is_zero(mesh))
   {
-    RK_Mesh *mesh = push_array(arena, RK_Mesh, 1);
-    res = rk_res_store(res_key, mesh);
-
+    RK_Resource *res = rk_res_alloc(mesh_key);
+    mesh = rk_handle_from_res(res);
+    RK_Mesh *mesh_dst = (RK_Mesh*)&res->v;
     {
       Temp scratch = scratch_begin(0,0);
       R_Vertex *vertices;
@@ -2464,22 +2406,22 @@ rk_node_equip_torus(RK_Node *n, F32 inner_radius, F32 outer_radius, U64 rings, U
       U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
       U64 indice_buffer_size = sizeof(U32) * indice_count;
 
-      mesh->topology = R_GeoTopologyKind_Triangles;
-      mesh->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
-      mesh->vertex_count = vertex_count;
-      mesh->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
-      mesh->indice_count = indice_count;
-      mesh->src_kind = RK_MeshSourceKind_TorusPrimitive;
-      mesh->src.torus_primitive.inner_radius = inner_radius;
-      mesh->src.torus_primitive.outer_radius = outer_radius;
-      mesh->src.torus_primitive.rings = rings;
-      mesh->src.torus_primitive.ring_segments = ring_segments;
+      mesh_dst->topology = R_GeoTopologyKind_Triangles;
+      mesh_dst->vertices = r_buffer_alloc(R_ResourceKind_Static, vertex_buffer_size, vertices, vertex_buffer_size);
+      mesh_dst->vertex_count = vertex_count;
+      mesh_dst->indices = r_buffer_alloc(R_ResourceKind_Static, indice_buffer_size, indices, indice_buffer_size);
+      mesh_dst->indice_count = indice_count;
+      mesh_dst->src_kind = RK_MeshSourceKind_TorusPrimitive;
+      mesh_dst->src.torus_primitive.inner_radius = inner_radius;
+      mesh_dst->src.torus_primitive.outer_radius = outer_radius;
+      mesh_dst->src.torus_primitive.rings = rings;
+      mesh_dst->src.torus_primitive.ring_segments = ring_segments;
       scratch_end(scratch);
     }
   }
 
   rk_node_equip_type_flags(n, RK_NodeTypeFlag_MeshInstance3D);
-  n->mesh_inst3d->mesh = res->data;
+  n->mesh_inst3d->mesh = mesh;
 }
 
 internal RK_DrawNode *

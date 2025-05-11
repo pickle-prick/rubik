@@ -2,25 +2,22 @@
 @table(id,name)
 RK_ScenesTable:
 {
-    {0, default3d}
-    {1, entropy}
-    {2, go}
-    {3, 2d}
-    {4, isometric}
+  {0, default}
+  {4, isometric}
 }
 
 @gen
 {
-    @expand(RK_ScenesTable a)
-        `#include "../$(a.id)/$(a.id).h"`
+  @expand(RK_ScenesTable a)
+    `#include "../$(a.id)/$(a.id).h"`
 }
 @gen @c_file {
-    @expand(RK_ScenesTable a)
-        `#include "../$(a.id)/$(a.id).c"`
+  @expand(RK_ScenesTable a)
+    `#include "../$(a.id)/$(a.id).c"`
 }
 
 @data(RK_SceneTemplate) @c_file rk_scene_templates:
 {
-    @expand(RK_ScenesTable a)
-      ```{str8_lit_comp("$(a.id)"), rk_scene_entry__$(a.id), }```;
+  @expand(RK_ScenesTable a)
+    ```{str8_lit_comp("$(a.id)"), rk_scene_entry__$(a.id), }```;
 }
