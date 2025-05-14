@@ -399,6 +399,22 @@ str8_skip_chop_whitespace(String8 string){
   return(result);
 }
 
+internal String8
+str8_chop_next_whitespace(String8 string)
+{
+  U8 *opl = string.str;
+  for(U64 i = 0; i < string.size; i++,opl++)
+  {
+    if(char_is_space(*opl))
+    {
+      opl--;
+      break;
+    }
+  }
+  String8 ret = str8_range(string.str, opl);
+  return ret;
+}
+
 ////////////////////////////////
 //~ rjf: String Formatting & Copying
 

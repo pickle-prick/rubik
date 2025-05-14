@@ -4,7 +4,8 @@
 /////////////////////////////////
 // Scene serialization/deserialization
 
-internal String8 rk_scene_to_tscn(RK_Scene *scene);
+internal String8   rk_scene_to_tscn(RK_Scene *scene);
+internal RK_Scene* rk_scene_from_tscn(String8 path);
 
 /////////////////////////////////
 //~ GLTF2.0
@@ -17,8 +18,8 @@ internal RK_Handle rk_animation_from_gltf_animation(cgltf_data *data, cgltf_anim
 /////////////////////////////////
 //~ Other resources
 
-internal RK_Handle  rk_tex2d_from_path(String8 path);
-internal RK_Handle* rk_tex2d_from_dir(Arena *arena, String8 dir, U64 *count);
+internal RK_Handle  rk_tex2d_from_path(String8 path, B32 is_bundled);
+internal RK_Handle* rk_tex2d_from_dir(Arena *arena, String8 dir, U64 *count, B32 is_bundled);
 internal RK_Handle  rk_spritesheet_from_image(String8 path, String8 meta_path);
 internal RK_Handle  rk_material_from_color(String8 name, Vec4F32 color);
 internal RK_Handle  rk_material_from_image(String8 name, String8 path);

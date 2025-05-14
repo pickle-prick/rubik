@@ -478,7 +478,9 @@ rk_handle_zero()
 internal B32
 rk_handle_match(RK_Handle a, RK_Handle b)
 {
-  return a.u64[0] == b.u64[0] && a.u64[1] == b.u64[1];
+  return a.u64[0] == b.u64[0] && a.u64[1] == b.u64[1] &&
+         a.u64[2] == b.u64[2] && a.u64[3] == b.u64[3] &&
+         a.u64[4] == b.u64[4];
 }
 
 /////////////////////////////////
@@ -628,10 +630,10 @@ rk_res_release(RK_Resource *res)
   NotImplemented;
 }
 
-internal RK_Handle
+internal RK_Resource *
 rk_res_from_key(RK_Key key)
 {
-  RK_Handle ret = {0};
+  RK_Resource *ret = 0;
   RK_ResourceBucket *res_bucket = rk_top_res_bucket();
   U64 slot_idx = key.u64[0] % res_bucket->hash_table_size;
   RK_ResourceBucketSlot *slot = &res_bucket->hash_table[slot_idx];
@@ -639,7 +641,7 @@ rk_res_from_key(RK_Key key)
   {
     if(rk_key_match(key, r->key))
     {
-      ret = rk_handle_from_res(r);
+      ret = r;
       break;
     }
   }
@@ -651,16 +653,32 @@ rk_handle_from_res(RK_Resource *res)
 {
   RK_Handle ret = {0};
   ret.u64[0] = (U64)res;
-  ret.u64[1] = res->generation;
+  if(res != 0)
+  {
+    ret.u64[1] = res->generation;
+    ret.u64[2] = res->key.u64[0];
+    ret.u64[3] = res->key.u64[1];
+    ret.u64[4] = rk_state->run_seed;
+  }
   return ret;
 }
 
 internal RK_Resource *
-rk_res_from_handle(RK_Handle handle)
+rk_res_from_handle(RK_Handle *handle)
 {
   RK_Resource *ret = 0;
-  RK_Resource *dst = (RK_Resource*)handle.u64[0];
-  U64 generation = handle.u64[1];
+
+  U64 run_seed = handle->u64[4];
+  if(run_seed != rk_state->run_seed)
+  {
+    // update
+    RK_Key key = rk_key_make(handle->u64[2], handle->u64[3]);
+    RK_Handle new = rk_handle_from_res(rk_res_from_key(key));
+    MemoryCopy(handle, &new, sizeof(RK_Handle));
+  }
+
+  RK_Resource *dst = (RK_Resource*)handle->u64[0];
+  U64 generation = handle->u64[1];
   if(dst != 0 && dst->generation == generation)
   {
     ret = dst;
@@ -685,6 +703,7 @@ rk_init(OS_Handle os_wnd)
     {
       rk_state->frame_arenas[i] = arena_alloc();
     }
+    rk_state->run_seed        = (U64)rand();
     rk_state->node_bucket     = rk_node_bucket_make(arena, 4096-1);
     rk_state->res_node_bucket = rk_node_bucket_make(arena, 4096-1);
     rk_state->res_bucket      = rk_res_bucket_make(arena, 4096-1);
@@ -788,9 +807,8 @@ rk_init(OS_Handle os_wnd)
     view->arena = arena_alloc();
   }
 
-  // TODO(XXX): not used for now, too many stuffs to fix
-  rk_state->function_hash_table_size = 1000;
-  rk_state->function_hash_table = push_array(arena, RK_FunctionSlot, rk_state->function_hash_table_size);
+  rk_state->function_registry_size = 1000;
+  rk_state->function_registry = push_array(arena, RK_FunctionSlot, rk_state->function_registry_size);
 
   RK_InitStacks(rk_state)
   RK_InitStackNils(rk_state)
@@ -808,19 +826,19 @@ rk_frame_drawlist()
   return rk_state->drawlists[rk_state->frame_counter % ArrayCount(rk_state->drawlists)];
 }
 
-internal void 
-rk_register_function(String8 string, void *ptr)
+internal void
+rk_register_function(String8 name, RK_NodeCustomUpdateFunctionType *ptr)
 {
-  RK_Key key = rk_key_from_string(rk_key_zero(), string);
+  RK_Key key = rk_key_from_string(rk_key_zero(), name);
   RK_FunctionNode *node = push_array(rk_state->arena, RK_FunctionNode, 1);
   {
     node->key   = key;
-    node->alias = push_str8_copy(rk_state->arena, string);
+    node->name  = push_str8_copy(rk_state->arena, name);
     node->ptr   = ptr;
   }
 
-  U64 slot_idx = key.u64[0] % rk_state->function_hash_table_size;
-  RK_FunctionSlot *slot = &rk_state->function_hash_table[slot_idx];
+  U64 slot_idx = key.u64[0] % rk_state->function_registry_size;
+  RK_FunctionSlot *slot = &rk_state->function_registry[slot_idx];
   DLLPushBack(slot->first, slot->last, node);
 }
 
@@ -829,8 +847,8 @@ rk_function_from_string(String8 string)
 {
   RK_FunctionNode *ret = 0;
   RK_Key key = rk_key_from_string(rk_key_zero(), string);
-  U64 slot_idx = key.u64[0] % rk_state->function_hash_table_size;
-  RK_FunctionSlot *slot = &rk_state->function_hash_table[slot_idx];
+  U64 slot_idx = key.u64[0] % rk_state->function_registry_size;
+  RK_FunctionSlot *slot = &rk_state->function_registry[slot_idx];
 
   for(RK_FunctionNode *n = slot->first; n != 0; n = n->next)
   {
@@ -1112,7 +1130,7 @@ rk_node_df(RK_Node *n, RK_Node* root, U64 sib_member_off, U64 child_member_off, 
 // }
 
 internal void
-rk_node_push_fn(RK_Node *n, RK_NodeCustomUpdateFunctionType *fn)
+rk_node_push_fn(RK_Node *n, String8 fn_name)
 {
   RK_NodeBucket *node_bucket = n->owner_bucket;
   Arena *arena = node_bucket->arena_ref;
@@ -1129,25 +1147,45 @@ rk_node_push_fn(RK_Node *n, RK_NodeCustomUpdateFunctionType *fn)
   }
   MemoryZeroStruct(fn_node);
 
-  fn_node->f = fn;
+  RK_FunctionNode *src = rk_function_from_string(fn_name);
+
+  AssertAlways(src != 0 && "add function to state registry please");
+  fn_node->f = src->ptr;
+  fn_node->name = src->name;
   DLLPushBack(n->first_update_fn, n->last_update_fn, fn_node);
 }
 
 internal RK_Handle
-rk_handle_from_node(RK_Node *n)
+rk_handle_from_node(RK_Node *node)
 {
   RK_Handle ret = {0};
-  ret.u64[0] = (U64)n;
-  if(n) ret.u64[1] = n->generation;
+  ret.u64[0] = (U64)node;
+  if(node != 0)
+  {
+    ret.u64[1] = node->generation;
+    ret.u64[2] = node->key.u64[0];
+    ret.u64[3] = node->key.u64[1];
+    ret.u64[4] = rk_state->run_seed;
+  }
   return ret;
 }
 
 internal RK_Node*
-rk_node_from_handle(RK_Handle handle)
+rk_node_from_handle(RK_Handle *handle)
 {
   RK_Node *ret = 0;
-  RK_Node *node = (RK_Node*)handle.u64[0];
-  U64 generation = handle.u64[1];
+
+  U64 run_seed = handle->u64[4];
+  if(run_seed != rk_state->run_seed)
+  {
+    // update
+    RK_Key key = rk_key_make(handle->u64[2], handle->u64[3]);
+    RK_Handle new = rk_handle_from_node(rk_node_from_key(key));
+    MemoryCopy(handle, &new, sizeof(RK_Handle));
+  }
+
+  RK_Node *node = (RK_Node*)handle->u64[0];
+  U64 generation = handle->u64[1];
   if(node != 0 && node->generation == generation) ret = node;
   return ret;
 }
@@ -1159,7 +1197,7 @@ rk_node_is_active(RK_Node *node)
   RK_Scene *scene = rk_top_scene();
   for(; node != 0 && !(node->flags & RK_NodeFlag_NavigationRoot); node = node->parent) {}
 
-  if(node && node == rk_node_from_handle(scene->active_node))
+  if(node && node == rk_node_from_handle(&scene->active_node))
   {
     ret = 1;
   }
@@ -1623,14 +1661,14 @@ internal void rk_ui_inspector(void)
   RK_Scene *scene = rk_top_scene();
 
   // unpack active camera
-  RK_Node *camera_node = rk_node_from_handle(scene->active_camera);
+  RK_Node *camera_node = rk_node_from_handle(&scene->active_camera);
   AssertAlways(camera_node != 0 && "No active camera was found");
   RK_Camera3D *camera = camera_node->camera3d;
   RK_Transform3D *camera_transform = &camera_node->node3d->transform;
   Mat4x4F32 camera_xform = camera_node->fixed_xform;
 
   // unpack active node
-  RK_Node *active_node = rk_node_from_handle(scene->active_node);
+  RK_Node *active_node = rk_node_from_handle(&scene->active_node);
 
   typedef struct RK_Inspector_State RK_Inspector_State;
   struct RK_Inspector_State
@@ -1713,6 +1751,15 @@ internal void rk_ui_inspector(void)
   local_persist B32 o = 1;
   RK_UI_Tab(str8_lit("scene"), &inspector->show_scene_cfg, ui_em(0.1,0), ui_em(0.1,0))
   {
+    // scene path
+    UI_Flags(UI_BoxFlag_ClickToFocus)
+    {
+      if(ui_committed(ui_line_edit(&inspector->txt_cursor, &inspector->txt_mark, inspector->scene_path_to_save.str, inspector->scene_path_to_save_buffer_size, &inspector->txt_edit_string_size, inspector->scene_path_to_save, str8_lit("###scene_path"))))
+      {
+        inspector->scene_path_to_save.size = inspector->txt_edit_string_size;                        
+      }
+    }
+
     UI_Row
     {
       // templates selection
@@ -1737,12 +1784,13 @@ internal void rk_ui_inspector(void)
         rk_ui_dropdown_end();
       }
 
-      UI_Flags(UI_BoxFlag_ClickToFocus)
+      if(ui_clicked(ui_buttonf("save")))
       {
-        if(ui_committed(ui_line_edit(&inspector->txt_cursor, &inspector->txt_mark, inspector->scene_path_to_save.str, inspector->scene_path_to_save_buffer_size, &inspector->txt_edit_string_size, inspector->scene_path_to_save, str8_lit("###scene_path"))))
-        {
-          inspector->scene_path_to_save.size = inspector->txt_edit_string_size;                        
-        }
+        // rk_scene_to_tscn(scene);
+
+        // TODO(XXX): TEST
+        // rk_scene_from_tscn(scene->save_path);
+        se_yml_node_from_file(scene->arena, scene->save_path);
       }
     }
 
@@ -1799,7 +1847,7 @@ internal void rk_ui_inspector(void)
 
     UI_Parent(container_box) UI_ScrollList(&scroll_list_params, &scroller, 0, 0, &visible_row_rng, &scroll_list_sig)
     {
-      RK_Node *root = rk_node_from_handle(scene->root);
+      RK_Node *root = rk_node_from_handle(&scene->root);
       U64 row_idx = 0;
       S64 active_row = -1;
       U64 level = 0;
@@ -2556,7 +2604,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
   /////////////////////////////////////////////////////////////////////////////////////
   // Unpack active camera
 
-  RK_Node *camera_node = rk_node_from_handle(scene->active_camera);
+  RK_Node *camera_node = rk_node_from_handle(&scene->active_camera);
   AssertAlways(camera_node != 0 && "No active camera was found");
   RK_Camera3D *camera = camera_node->camera3d;
   Mat4x4F32 camera_xform = camera_node->fixed_xform;
@@ -2851,7 +2899,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
   ui_set_next_rect(rk_state->window_rect);
   UI_Box *overlay = ui_build_box_from_string(UI_BoxFlag_MouseClickable|UI_BoxFlag_ClickToFocus|UI_BoxFlag_Scroll|UI_BoxFlag_DisableFocusOverlay, str8_lit("###game_overlay"));
 
-  RK_Node *active_node = rk_node_from_handle(scene->active_node);
+  RK_Node *active_node = rk_node_from_handle(&scene->active_node);
 
   /////////////////////////////////////////////////////////////////////////////////////
   //~ Update/draw node in the scene tree
@@ -2897,7 +2945,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     // NOTE(k): we need two update passes (1: update_fn, 2: the rest of update)
     //          the reason is update_fn could modify the node tree which makes transient not working
 
-    RK_Node *root = rk_node_from_handle(scene->root);
+    RK_Node *root = rk_node_from_handle(&scene->root);
 
     // Pass 1
     RK_Node *node = root;
@@ -3109,7 +3157,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         if(!rk_handle_is_zero(anim_player->playback.curr))
         {
           anim_player->playback.pos += rk_state->dt_sec;
-          RK_Animation *animation = (RK_Animation*)rk_res_unwrap(rk_res_from_handle(anim_player->playback.curr));
+          RK_Animation *animation = (RK_Animation*)rk_res_unwrap(rk_res_from_handle(&anim_player->playback.curr));
           if(anim_player->playback.pos > animation->duration_sec && anim_player->playback.loop)
           {
             anim_player->playback.pos = mod_f32(anim_player->playback.pos, animation->duration_sec);
@@ -3217,7 +3265,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
 
         RK_Transform2D *transform2d = &node->node2d->transform;
         RK_Sprite2D *sprite = node->sprite2d;
-        RK_Texture2D *tex2d = rk_tex2d_from_handle(sprite->tex);
+        RK_Texture2D *tex2d = rk_tex2d_from_handle(&sprite->tex);
         R_Handle tex = tex2d ? tex2d->tex : r_handle_zero();
 
         /////////////////////////////////////////////////////////////////////////
@@ -3258,7 +3306,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
       {
         RK_Transform2D *transform2d = &node->node2d->transform;
         RK_AnimatedSprite2D *sprite = node->animated_sprite2d;
-        RK_SpriteSheet *sheet = (RK_SpriteSheet*)rk_res_unwrap(rk_res_from_handle(sprite->sheet));
+        RK_SpriteSheet *sheet = (RK_SpriteSheet*)rk_res_unwrap(rk_res_from_handle(&sprite->sheet));
 
         /////////////////////////////////////////////////////////////////////////////////
         // draw mesh
@@ -3323,7 +3371,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         }
 
         RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), dst, src);
-        R_Mesh2DInst *inst = d_sprite(n->vertices, n->indices, n->vertices_buffer_offset, n->indices_buffer_offset, n->indice_count, R_GeoTopologyKind_Triangles, R_GeoPolygonKind_Fill, 0, rk_tex2d_from_handle(sheet->tex)->tex, 1.);
+        R_Mesh2DInst *inst = d_sprite(n->vertices, n->indices, n->vertices_buffer_offset, n->indices_buffer_offset, n->indice_count, R_GeoTopologyKind_Triangles, R_GeoPolygonKind_Fill, 0, rk_tex2d_from_handle(&sheet->tex)->tex, 1.);
         inst->key = node->key.u64[0];
         inst->xform = node->fixed_xform;
         inst->xform_inv = inverse_4x4f32(node->fixed_xform);
@@ -3335,8 +3383,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
       D_BucketScope(geo3d_back_bucket) if(node->type_flags & RK_NodeTypeFlag_MeshInstance3D)
       {
         RK_MeshInstance3D *mesh_inst3d = node->mesh_inst3d;
-        RK_Mesh *mesh = rk_mesh_from_handle(mesh_inst3d->mesh);
-        RK_Skin *skin = rk_skin_from_handle(mesh_inst3d->skin);
+        RK_Mesh *mesh = rk_mesh_from_handle(&mesh_inst3d->mesh);
+        RK_Skin *skin = rk_skin_from_handle(&mesh_inst3d->skin);
         RK_Key skin_seed = mesh_inst3d->skin_seed;
         U64 joint_count = 0;
         Mat4x4F32 *joint_xforms = 0;
@@ -3363,11 +3411,11 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         U64 mat_idx = 0; // 0 is the default material
         if(camera->viewport_shading == RK_ViewportShadingKind_Material)
         {
-          RK_Material *mat = rk_mat_from_handle(mesh_inst3d->material_override);
+          RK_Material *mat = rk_mat_from_handle(&mesh_inst3d->material_override);
           // load mesh material if no override is provided
           if(mat == 0)
           {
-            mat = rk_mat_from_handle(mesh->material);
+            mat = rk_mat_from_handle(&mesh->material);
           }
 
           if(mat)
@@ -3395,7 +3443,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
               MemoryCopy(mat_dst, &mat_src->v, sizeof(R_Material3D));
               for(U64 kind = 0; kind < R_GeoTexKind_COUNT; kind++)
               {
-                RK_Texture2D *tex = rk_tex2d_from_handle(mat_src->textures[kind]);
+                RK_Texture2D *tex = rk_tex2d_from_handle(&mat_src->textures[kind]);
                 if(tex) textures[*material_count].array[kind] = tex->tex;
               }
 
@@ -3895,7 +3943,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     // draw lights gizmos
     D_BucketScope(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front])
     {
-      RK_Node *node = rk_node_from_handle(scene->root);
+      RK_Node *node = rk_node_from_handle(&scene->root);
       while(node != 0)
       {
         RK_NodeRec rec = rk_node_df_pre(node, 0, 0);
@@ -4357,7 +4405,7 @@ rk_string_from_polygon_kind(RK_ViewportShadingKind kind)
 // Scene creation and destruction
 
 internal RK_Scene *
-rk_scene_alloc(String8 name, String8 save_path)
+rk_scene_alloc()
 {
   Arena *arena = arena_alloc();
   RK_Scene *ret = push_array(arena, RK_Scene, 1);
@@ -4366,8 +4414,6 @@ rk_scene_alloc(String8 name, String8 save_path)
     ret->node_bucket     = rk_node_bucket_make(arena, 4096-1);
     ret->res_node_bucket = rk_node_bucket_make(arena, 4096-1);
     ret->res_bucket      = rk_res_bucket_make(arena, 4096-1);
-    ret->name            = push_str8_copy(arena, name);
-    ret->save_path       = push_str8_copy(arena, save_path);
   }
   return ret;
 }
@@ -4382,7 +4428,7 @@ rk_scene_release(RK_Scene *s)
 internal void
 rk_scene_active_camera_set(RK_Scene *s, RK_Node *camera_node)
 {
-  RK_Node *old_camera = rk_node_from_handle(s->active_camera);
+  RK_Node *old_camera = rk_node_from_handle(&s->active_camera);
   if(old_camera != 0 && old_camera != camera_node)
   {
     old_camera->camera3d->is_active = 0;

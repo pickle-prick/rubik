@@ -413,6 +413,8 @@ internal F64 mix_1f64(F64 a, F64 b, F64 t);
 ////////////////////////////////
 //~ rjf: Vector Ops
 
+#define v2u64(x, y) (Vec2U64){(x), (y)}
+
 #define v2f32(x, y) vec_2f32((x), (y))
 internal Vec2F32 vec_2f32(F32 x, F32 y);
 internal Vec2F32 add_2f32(Vec2F32 a, Vec2F32 b);

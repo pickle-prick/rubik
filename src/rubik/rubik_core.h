@@ -120,6 +120,17 @@ typedef enum RK_ResourceKind
   RK_ResourceKind_COUNT,
 } RK_ResourceKind;
 
+typedef enum RK_ResourceSrcKind
+{
+  RK_ResourceSrcKind_Invalid,
+  // internal resource, created using internal description, no external resource is needed
+  RK_ResourceSrcKind_Sub,
+  // load directly from a file (e.g., .png, .mat, .glTF)
+  RK_ResourceSrcKind_External,
+  // came from a packed/bundled source (e.g., glTF)
+  RK_ResourceSrcKind_Bundled,
+} RK_ResourceSrcKind;
+
 // NOTE(k): we have 63 flags to use, don't exceed that 
 typedef U64 RK_NodeFlags;
 #define RK_NodeFlag_NavigationRoot       (RK_NodeFlags)(1ull<<0)
@@ -165,9 +176,14 @@ struct RK_Key
 typedef union RK_Handle RK_Handle;
 union RK_Handle
 {
-  U64 u64[2];
-  U32 u32[4];
-  U16 u16[8];
+  // 0 ptr
+  // 1 generation,
+  // 2 key_0,
+  // 3 key_1,
+  // 4 run_seed
+  U64 u64[6];
+  U32 u32[12];
+  U16 u16[24];
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -430,9 +446,9 @@ struct RK_Resource
 
   U64 generation;
   RK_ResourceKind kind;
+  RK_ResourceSrcKind src_kind;
   RK_Key key;
 
-  B32 is_sub;
   String8 path;
   String8 name;
 
@@ -584,7 +600,7 @@ struct RK_Sprite2D
   Vec4F32 color;
   B32 omit_texture;
 
-  // string
+  // string stuffs
   String8 string;
   D_FancyRunList fancy_run_list;
   F_Tag font;
@@ -614,6 +630,7 @@ struct RK_AnimatedSprite2D
 typedef struct RK_TileMapLayer RK_TileMapLayer;
 struct RK_TileMapLayer
 {
+  String8 name;
   RK_TileMapLayer *next;
 };
 
@@ -691,7 +708,6 @@ struct RK_FrameContext
 /////////////////////////////////
 //~ Node Type
 
-struct RK_Node;
 struct RK_Scene;
 #define RK_NODE_CUSTOM_UPDATE(name) void name(struct RK_Node *node, struct RK_Scene *scene, RK_FrameContext *ctx)
 typedef RK_NODE_CUSTOM_UPDATE(RK_NodeCustomUpdateFunctionType);
@@ -702,12 +718,12 @@ typedef RK_NODE_CUSTOM_DRAW(RK_NodeCustomDrawFunctionType);
 typedef struct RK_UpdateFnNode RK_UpdateFnNode;
 struct RK_UpdateFnNode
 {
-  RK_UpdateFnNode                 *next;
-  RK_UpdateFnNode                 *prev;
+  String8 name; 
+  RK_UpdateFnNode *next;
+  RK_UpdateFnNode *prev;
   RK_NodeCustomUpdateFunctionType *f;
 };
 
-struct RK_NodeBucket;
 typedef struct RK_Node RK_Node;
 struct RK_Node
 {
@@ -758,7 +774,6 @@ struct RK_Node
   RK_SpotLight                  *spot_light;
   RK_Sprite2D                   *sprite2d;
   RK_AnimatedSprite2D           *animated_sprite2d;
-  RK_TileMapLayer               *first_tilemap_layer;
   RK_TileMapLayer               *tilemap_layer;
   RK_TileMap                    *tilemap;
   RK_Particle3D                 *particle3d;
@@ -982,8 +997,8 @@ struct RK_FunctionNode
   RK_FunctionNode *next;
   RK_FunctionNode *prev;
   RK_Key          key;
-  String8        alias;
-  void           *ptr;
+  String8         name;
+  void            *ptr;
 };
 
 typedef struct RK_FunctionSlot RK_FunctionSlot;
@@ -993,11 +1008,20 @@ struct RK_FunctionSlot
   RK_FunctionNode *last;
 };
 
+// for mdesk
 typedef struct RK_SceneTemplate RK_SceneTemplate;
 struct RK_SceneTemplate
 {
   String8 name;
   RK_Scene*(*fn)(void);
+};
+
+// for mdesk
+typedef struct RK_FunctionEntry RK_FunctionEntry;
+struct RK_FunctionEntry
+{
+  String8 name;
+  RK_NodeCustomUpdateFunctionType *fn;
 };
 
 /////////////////////////////////
@@ -1057,6 +1081,8 @@ struct RK_State
   RK_Scene              *active_scene;
   Arena                 *frame_arenas[2];
   U64                   frame_counter;
+  // NOTE(k): used to indicate if a RK_Handle is relevant for current app sesstion
+  U64                   run_seed;
 
   //- Interaction
   OS_Handle             os_wnd;
@@ -1100,8 +1126,8 @@ struct RK_State
 
   // TODO(k): for serilization, kind weird, find a better way
   //- Functions
-  RK_FunctionSlot       *function_hash_table;
-  U64                   function_hash_table_size;
+  RK_FunctionSlot       *function_registry;
+  U64                   function_registry_size;
 
   //- Scene templates
   RK_SceneTemplate      *templates;
@@ -1181,9 +1207,9 @@ internal RK_Key       rk_res_key_from_stringf(RK_ResourceKind kind, RK_Key seed,
 internal RK_Resource* rk_res_alloc(RK_Key key);
 internal void         rk_res_release(RK_Resource *res);
 internal RK_Resource* rk_res_store(RK_Key key, void *data);
-internal RK_Handle    rk_res_from_key(RK_Key key);
+internal RK_Resource* rk_res_from_key(RK_Key key);
 internal RK_Handle    rk_handle_from_res(RK_Resource *res);
-internal RK_Resource* rk_res_from_handle(RK_Handle h);
+internal RK_Resource* rk_res_from_handle(RK_Handle *h);
 #define rk_res_unwrap(res) (res != 0 ? &res->v : 0)
 #define rk_res_from_inner(inner) CastFromMember(RK_Resource,v,inner)
 #define rk_res_inner_from_handle(h) (rk_res_unwrap(rk_res_from_handle((h)))) 
@@ -1204,6 +1230,7 @@ internal RK_Resource* rk_res_from_handle(RK_Handle h);
 internal void             rk_init(OS_Handle os_wnd);
 internal Arena*           rk_frame_arena();
 internal RK_DrawList*     rk_frame_drawlist();
+internal void             rk_register_function(String8 name, RK_NodeCustomUpdateFunctionType *ptr);
 internal RK_FunctionNode* rk_function_from_string(String8 string);
 internal RK_View*         rk_view_from_kind(RK_ViewKind kind);
 internal void             rk_ps_push_particle3d(PH_Particle3D *p);
@@ -1244,10 +1271,10 @@ internal RK_NodeRec rk_node_df(RK_Node *n, RK_Node *root, U64 sib_member_off, U6
 #define rk_node_df_pre(node, root, force_leaf) rk_node_df(node, root, OffsetOf(RK_Node, next), OffsetOf(RK_Node, first), force_leaf)
 #define rk_node_df_post(node, root, force_leaf) rk_node_df(node, root, OffsetOf(RK_Node, prev), OffsetOf(RK_Node, last), force_leaf)
 
-internal void      rk_node_push_fn(RK_Node *n, RK_NodeCustomUpdateFunctionType *fn);
+internal void      rk_node_push_fn(RK_Node *n, String8 fn_name);
 // TODO(XXX): rename this function later, remove "node"
 internal RK_Handle rk_handle_from_node(RK_Node *n);
-internal RK_Node*  rk_node_from_handle(RK_Handle handle);
+internal RK_Node*  rk_node_from_handle(RK_Handle *handle);
 internal B32       rk_node_is_active(RK_Node *node);
 
 #define rk_scene_push_custom_data(s, T) (T*)(s->custom_data = push_array_fat(s->arena, T, s))
@@ -1337,7 +1364,7 @@ internal String8 rk_string_from_polygon_kind(RK_ViewportShadingKind kind);
 /////////////////////////////////
 // Scene Type Functions
 
-internal RK_Scene* rk_scene_alloc(String8 namee, String8 save_path);
+internal RK_Scene* rk_scene_alloc();
 internal void      rk_scene_release(RK_Scene *s);
 internal void      rk_scene_active_camera_set(RK_Scene *s, RK_Node *camera_node);
 internal void      rk_scene_active_node_set(RK_Scene *s, RK_Key key, B32 only_navigation_root);

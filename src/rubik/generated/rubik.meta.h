@@ -250,6 +250,7 @@ internal RK_Scene *                 rk_set_next_scene(RK_Scene * v);
 C_LINKAGE_BEGIN
 extern String8 rk_viewport_shading_kind_display_string_table[3];
 extern String8 rk_gizmo3d_mode_display_string_table[3];
+extern String8 rk_resource_kind_display_string_table[7];
 extern String8 rk_icon_kind_text_table[69];
 extern String8 rk_theme_preset_display_string_table[9];
 extern String8 rk_theme_preset_code_string_table[9];

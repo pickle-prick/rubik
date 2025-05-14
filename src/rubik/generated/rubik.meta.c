@@ -84,6 +84,17 @@ str8_lit_comp("rotation"),
 str8_lit_comp("scale"),
 };
 
+String8 rk_resource_kind_display_string_table[7] =
+{
+str8_lit_comp("RK_ResourceKind_Skin"),
+str8_lit_comp("RK_ResourceKind_Mesh"),
+str8_lit_comp("RK_ResourceKind_PackedScene"),
+str8_lit_comp("RK_ResourceKind_Material"),
+str8_lit_comp("RK_ResourceKind_Animation"),
+str8_lit_comp("RK_ResourceKind_Texture2D"),
+str8_lit_comp("RK_ResourceKind_SpriteSheet"),
+};
+
 String8 rk_icon_kind_text_table[69] =
 {
 str8_lit_comp(""),

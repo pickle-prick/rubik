@@ -92,7 +92,13 @@ entry_point(CmdLine *cmd_line)
   rk_state->template_count = ArrayCount(rk_scene_templates);
   rk_state->templates = rk_scene_templates;
 
-  RK_Scene *default_scene = rk_state->templates[0].fn();
+  // Load scene function table
+  for(U64 i = 0; i < ArrayCount(rk_scene_function_table); i++)
+  {
+    rk_register_function(rk_scene_function_table[i].name, rk_scene_function_table[i].fn);
+  }
+
+  RK_Scene *default_scene = rk_state->templates[1].fn();
   rk_state->active_scene = default_scene;
 
   // Hot id

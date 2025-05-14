@@ -1,4 +1,4 @@
-//~ k: Scenes table
+//~ k: Scenes Table
 @table(id,name)
 RK_ScenesTable:
 {
@@ -20,4 +20,23 @@ RK_ScenesTable:
 {
   @expand(RK_ScenesTable a)
     ```{str8_lit_comp("$(a.id)"), rk_scene_entry__$(a.id), }```;
+}
+
+//~ k: Scene Function Table
+@table(name)
+RK_FunctionTable:
+{
+  {s4_fn_tile_editor}
+  {s4_fn_tilemap}
+  {s4_fn_system}
+  {s4_fn_camera}
+  {s4_fn_tile}
+  {s4_fn_guy}
+  {s4_fn_guy_controlled}
+}
+
+@data(RK_FunctionEntry) @c_file rk_scene_function_table:
+{
+  @expand(RK_FunctionTable a)
+    ```{str8_lit_comp("$(a.name)"), $(a.name), }```;
 }

@@ -171,14 +171,31 @@ RK_ViewportShadingKindTable:
 @table(display_string)
 RK_Gizmo3dModeTable:
 {
-    { "translate" }
-    { "rotation"  }
-    { "scale"     }
+  { "translate" }
+  { "rotation"  }
+  { "scale"     }
 }
 
 @data(String8) rk_gizmo3d_mode_display_string_table:
 {
-    @expand(RK_Gizmo3dModeTable a) `str8_lit_comp("$(a.display_string)")`,
+  @expand(RK_Gizmo3dModeTable a) `str8_lit_comp("$(a.display_string)")`,
+}
+
+@table(kind)
+RK_ResourceKindTable:
+{
+  { RK_ResourceKind_Skin }
+  { RK_ResourceKind_Mesh }
+  { RK_ResourceKind_PackedScene }
+  { RK_ResourceKind_Material }
+  { RK_ResourceKind_Animation }
+  { RK_ResourceKind_Texture2D }
+  { RK_ResourceKind_SpriteSheet }
+}
+
+@data(String8) rk_resource_kind_display_string_table:
+{
+  @expand(RK_ResourceKindTable a) `str8_lit_comp("$(a.kind)")`,
 }
 
 ////////////////////////////////

@@ -1,0 +1,15 @@
+path: str(./src/rubik/scenes/4/default.tscn)
+name: str(isometric)
+ext_resources: 
+ - 
+  path: str(./textures/isometric-tiles-2/tile_042.png)
+  name: str(tile_042.png)
+  kind: u64(8589934597)
+  key: v2u64(591726266739566792, 5)
+  sample_kind: u64(0)
+ - 
+  path: str(./textures/isometric-tiles-2/tile_033.png)
+  name: str(tile_033.png)
+  kind: u64(8589934597)
+  key: v2u64(7286230206961298988, 5)
+  sample_kind: u64(0)

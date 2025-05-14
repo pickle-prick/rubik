@@ -1,5 +1,8 @@
 # A "Unnamed" Game Engine built for understanding how 3D graphics work
 
+> [!WARNING]
+> This software is unfinished. Keep your expectations low.
+
 ![Screenshot of a 3D scene](./screenshots/003.gif)
 
 ## Development Setup Instructions

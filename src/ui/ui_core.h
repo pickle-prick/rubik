@@ -426,13 +426,15 @@ struct UI_BoxRec
 };
 
 typedef struct UI_BoxNode UI_BoxNode;
-struct UI_BoxNode {
+struct UI_BoxNode
+{
   UI_BoxNode *next;
   UI_Box *box;
 };
 
 typedef struct UI_BoxList UI_BoxList;
-struct UI_BoxList {
+struct UI_BoxList
+{
   UI_BoxNode *first;
   UI_BoxNode *last;
   U64        count;

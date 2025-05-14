@@ -257,7 +257,7 @@ RK_NODE_CUSTOM_UPDATE(body)
 internal RK_Scene *
 rk_scene_entry__0()
 {
-  RK_Scene *ret = rk_scene_alloc(str8_lit("default"), str8_lit("./src/rubik/scenes/0/default.rscn"));
+  RK_Scene *ret = rk_scene_alloc(str8_lit("default"), str8_lit("./src/rubik/scenes/0/default.tscn"));
 
   // some initilization for scene
   {
@@ -301,7 +301,7 @@ rk_scene_entry__0()
       main_camera->camera3d->zn = 0.1;
       main_camera->camera3d->zf = 200.f;
       main_camera->camera3d->perspective.fov = 0.25f;
-      rk_node_push_fn(main_camera, editor_camera_fn);
+      rk_node_push_fn(main_camera, str8_lit("editor_camera_fn"));
       main_camera->node3d->transform.position = v3f32(0,-3,0);
     }
     ret->active_camera = rk_handle_from_node(main_camera);
@@ -382,13 +382,13 @@ rk_scene_entry__0()
       l->spot_light->direction = normalize_3f32(v3f32(1,1,0));
       l->spot_light->range = 9.9;
       l->spot_light->angle = radians_from_turns_f32(0.09);
-      rk_node_push_fn(l, rotating_spot_light);
+      rk_node_push_fn(l, str8_lit("rotating_spot_light"));
 
       AnimatedSpotLight *data = rk_node_push_custom_data(l, AnimatedSpotLight);
       data->rotation_axis.v[i] = 1;
     }
 
-    RK_Node *n2 = rk_node_from_packed_scene(str8_lit("2"), rk_packed_from_handle(blackguard));
+    RK_Node *n2 = rk_node_from_packed_scene(str8_lit("2"), rk_packed_from_handle(&blackguard));
     {
       // flip y
       n2->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n2->node3d->transform.rotation);
@@ -396,7 +396,7 @@ rk_scene_entry__0()
       n2->flags |= RK_NodeFlag_NavigationRoot;
     }
 
-    RK_Node *n3 = rk_node_from_packed_scene(str8_lit("3"), rk_packed_from_handle(dancing_stormtrooper));
+    RK_Node *n3 = rk_node_from_packed_scene(str8_lit("3"), rk_packed_from_handle(&dancing_stormtrooper));
     {
       // flip y
       n3->node3d->transform.rotation = mul_quat_f32(make_rotate_quat_f32(v3f32(1,0,0), 0.5f), n3->node3d->transform.rotation);
@@ -462,7 +462,7 @@ rk_scene_entry__0()
       a->rigidbody3d->v.Ibodyinv = ph_inertiainv_from_cuboid(1, v3f32(1,1,1));
       // a->rigidbody3d->v.L = v3f32(0.1, 0,0);
       // a->rigidbody3d->v.P = v3f32(0.3, 0.1,0);
-      rk_node_push_fn(a, body);
+      rk_node_push_fn(a, str8_lit("body"));
     }
   }
   ret->root = rk_handle_from_node(root);
