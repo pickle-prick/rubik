@@ -20,7 +20,7 @@ internal RK_Handle rk_animation_from_gltf_animation(cgltf_data *data, cgltf_anim
 
 internal RK_Image   rk_image_from_path(Arena *arena, String8 path);
 internal RK_Handle  rk_tex2d_from_path(String8 path, B32 is_bundled, RK_Key key_override);
-internal RK_Handle* rk_tex2d_from_dir(Arena *arena, String8 dir, U64 *count, B32 is_bundled);
+internal RK_Handle* rk_tex2d_from_dir(Arena *arena, String8 dir, U64 *count, B32 is_bundled, B32 sort);
 internal RK_Handle  rk_spritesheet_from_image(String8 path, String8 meta_path, RK_Key key_override);
 internal RK_Handle  rk_tileset_from_dir(String8 dir, RK_Key key_override);
 internal RK_Handle  rk_material_from_color(String8 name, Vec4F32 color);

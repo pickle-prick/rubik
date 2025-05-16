@@ -22,6 +22,7 @@ rk_scene_to_tscn(RK_Scene *scene)
     // scene info
 
     se_str_with_tag(str8_lit("name"), scene->name);
+    if(scene->reset_fn.size) se_str_with_tag(str8_lit("reset_fn"), scene->reset_fn);
     se_v2u64_with_tag(str8_lit("hot_key"), v2u64(scene->hot_key.u64[0], scene->hot_key.u64[1]));
     se_v2u64_with_tag(str8_lit("active_key"), v2u64(scene->active_key.u64[0], scene->active_key.u64[1]));
     se_b32_with_tag(str8_lit("omit_grid"), scene->omit_grid);
@@ -318,6 +319,7 @@ rk_scene_from_tscn(String8 path)
   String8 name = se_str_from_tag(se_node, str8_lit("name"));
   ret->name = push_str8_copy(arena, name);
   ret->save_path = push_str8_copy(arena, path);
+  ret->reset_fn = push_str8_copy(arena, se_str_from_tag(se_node, str8_lit("reset_fn")));
   ret->hot_key = rk_key_from_v2u64(se_v2u64_from_tag(se_node, str8_lit("hot_key")));
   ret->active_key = rk_key_from_v2u64(se_v2u64_from_tag(se_node, str8_lit("active_key")));
   ret->omit_grid = se_b32_from_tag(se_node, str8_lit("omit_grid"));
@@ -1135,16 +1137,14 @@ rk_tex2d_from_path(String8 path, B32 is_bundled, RK_Key key_override)
 }
 
 internal RK_Handle *
-rk_tex2d_from_dir(Arena *arena, String8 dir, U64 *count, B32 is_bundled)
+rk_tex2d_from_dir(Arena *arena, String8 dir, U64 *count, B32 is_bundled, B32 sort)
 {
-  // TODO(XXX): the resouce caching system is not easy to use, may have to change
-  //            for now, we just do the allocation, ignore any caching
-  // TODO(XXX): one more fun thought, we can use the same technique for Arena header to include
-  //            extra information for resource
   Temp scratch = scratch_begin(0,0);
   OS_FileIter *it = os_file_iter_begin(scratch.arena, dir, OS_FileIterFlag_SkipFolders);
 
-  // first iteration to find count
+  String8List files = {0};
+
+  // first iteration to find count & do the allocation
   for(OS_FileInfo info = {0}; os_file_iter_next(scratch.arena, it, &info);)
   {
     B32 is_file = !(info.props.flags & FilePropertyFlag_IsFolder);
@@ -1156,28 +1156,25 @@ rk_tex2d_from_dir(Arena *arena, String8 dir, U64 *count, B32 is_bundled)
       str8_list_push(scratch.arena, &parts, dir);
       str8_list_push(scratch.arena, &parts, info.name);
       String8 path = str8_path_list_join_by_style(scratch.arena, &parts, PathStyle_Relative);
-      (*count)++;
+      str8_list_push(scratch.arena, &files, path);
     }
   }
+  *count = files.node_count;
 
-  RK_Handle *ret = push_array(arena, RK_Handle, *count);
-  RK_Handle *dst = ret;
-
-  it = os_file_iter_begin(scratch.arena, dir, OS_FileIterFlag_SkipFolders);
-  for(OS_FileInfo info = {0}; os_file_iter_next(scratch.arena, it, &info);)
+  String8 *files_sorted = push_array(scratch.arena, String8, files.node_count);
+  U64 i = 0;
+  for(String8Node *n = files.first; n != 0; n = n->next, i++)
   {
-    B32 is_file = !(info.props.flags & FilePropertyFlag_IsFolder);
-    B32 is_png = str8_ends_with(info.name, str8_lit(".png"), 0);
+    files_sorted[i] = n->string;
+  }
+  // sorted based on trailling number (_number)
+  if(sort) qsort(files_sorted, files.node_count, sizeof(String8), rk_path_cmp);
 
-    if(is_file && is_png)
-    {
-      String8List parts = {0};
-      str8_list_push(scratch.arena, &parts, dir);
-      str8_list_push(scratch.arena, &parts, info.name);
-      String8 path = str8_path_list_join_by_style(scratch.arena, &parts, PathStyle_Relative);
-      *dst = rk_tex2d_from_path(path, is_bundled, rk_key_zero());
-      dst++;
-    }
+  RK_Handle *ret = push_array(arena, RK_Handle, files.node_count);
+  for(i = 0; i < files.node_count; i++)
+  {
+    String8 path = files_sorted[i];
+    ret[i] = rk_tex2d_from_path(path, is_bundled, rk_key_zero());
   }
   scratch_end(scratch);
   return ret;
@@ -1611,9 +1608,6 @@ rk_spritesheet_from_image(String8 path, String8 meta_path, RK_Key key_override)
 internal RK_Handle
 rk_tileset_from_dir(String8 dir, RK_Key key_override)
 {
-  // TODO(XXX): we should sort the filename
-  // sort based on _number
-  // qsort(tile_textures, tile_texture_count, sizeof(RK_Handle), texture_cmp);
   RK_Handle ret = {0};
   RK_Key key = key_override;
   if(rk_key_match(key, rk_key_zero()))
@@ -1627,7 +1621,7 @@ rk_tileset_from_dir(String8 dir, RK_Key key_override)
     RK_Resource *res = rk_res_alloc(key);
     ret = rk_handle_from_res(res);
     RK_TileSet *tileset = (RK_TileSet*)&res->v;
-    tileset->textures = rk_tex2d_from_dir(arena, dir, &tileset->texture_count, 1);
+    tileset->textures = rk_tex2d_from_dir(arena, dir, &tileset->texture_count, 1, 1);
 
     res->path = push_str8_copy(arena, dir);
     res->name = push_str8_copy(arena, str8_skip_last_slash(dir));

@@ -100,7 +100,8 @@ entry_point(CmdLine *cmd_line)
     rk_register_function(rk_scene_function_table[i].name, rk_scene_function_table[i].fn);
   }
 
-  RK_Scene *default_scene = rk_state->templates[1].fn();
+  // RK_Scene *default_scene = rk_state->templates[1].fn();
+  RK_Scene *default_scene = rk_scene_from_tscn(str8_lit("./src/rubik/scenes/4/default.tscn"));
   rk_state->active_scene = default_scene;
 
   // Hot id

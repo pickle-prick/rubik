@@ -221,26 +221,6 @@ tile_coord_from_mouse(Mat4x4F32 proj_view_inv_m, Mat2x2F32 mat_inv, Vec2F32 tile
   return ret;
 }
 
-internal U64
-no_from_filename(String8 filename)
-{
-  U64 ret = 0;
-  U64 start = str8_find_needle(filename, 0, str8_lit("_"), 0);
-  start++;
-  U64 end = str8_find_needle(filename, 0, str8_lit("."), 0);
-  String8 no_str = str8_substr(filename, r1u64(start, end));
-  ret = u64_from_str8(no_str, 10);
-  return ret;
-}
-
-internal int
-texture_cmp(const void *left_, const void *right_)
-{
-  RK_Handle left = *(RK_Handle*)left_;
-  RK_Handle right = *(RK_Handle*)right_;
-  return no_from_filename(rk_res_from_handle(&left)->name) - no_from_filename(rk_res_from_handle(&right)->name);
-}
-
 internal void s4_move_guy(RK_Node *node, Vec2F32 dir, F32 delta_secs)
 {
   RK_AnimatedSprite2D *sprite2d = node->animated_sprite2d;
@@ -707,6 +687,7 @@ rk_scene_entry__4()
   RK_Scene *ret = rk_scene_alloc();
   ret->name = str8_lit("isometric");
   ret->save_path = str8_lit("./src/rubik/scenes/4/default.tscn");
+  ret->reset_fn = str8_lit("rk_scene_entry__4");
   rk_push_scene(ret);
   rk_push_node_bucket(ret->node_bucket);
   rk_push_res_bucket(ret->res_bucket);

@@ -31,6 +31,7 @@ RK_FunctionTable:
   {s4_fn_system}
   {s4_fn_camera}
   {s4_fn_tile}
+  {rk_scene_entry__4}
   // {s4_fn_guy}
   // {s4_fn_guy_controlled}
 }

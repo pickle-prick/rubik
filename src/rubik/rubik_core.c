@@ -1793,6 +1793,19 @@ internal void rk_ui_inspector(void)
         rk_scene_to_tscn(scene);
       }
 
+      if(ui_clicked(ui_buttonf("reset")))
+      {
+        RK_FunctionNode *src = rk_function_from_string(scene->reset_fn);
+        if(src)
+        {
+          RK_UpdateFnNode *fn_node = src->ptr;
+          RK_Scene*(*fn)(void) = src->ptr;
+          RK_Scene *new = fn();
+          SLLStackPush(rk_state->first_to_free_scene, scene);
+          rk_state->next_active_scene = new;
+        }
+      }
+
       if(ui_clicked(ui_buttonf("reload")))
       {
         SLLStackPush(rk_state->first_to_free_scene, scene);
@@ -2882,26 +2895,20 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
   }
 
   // Process events for game logic
-  // OS_Event *os_evt_first = os_events.first;
-  // OS_Event *os_evt_opl = os_events.last + 1;
-  // for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
-  // {
-  //     if(os_evt == 0) continue;
-  //     // if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
-  //     if(os_evt->kind == OS_EventKind_Press)
-  //     {
-  //         U64 camera_idx = os_evt->key - OS_Key_F1;
-  //         U64 i = 0;
-  //         for(RK_CameraNode *cn = scene->first_camera; cn != 0; cn = cn->next, i++)
-  //         {
-  //             if(i == camera_idx)
-  //             {
-  //                 scene->active_camera = cn;
-  //                 break;
-  //             }
-  //         }
-  //     }
-  // }
+  {
+
+    OS_Event *os_evt_first = os_events.first;
+    OS_Event *os_evt_opl = os_events.last + 1;
+    for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
+    {
+        if(os_evt == 0) continue;
+        // if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
+        if(os_evt->key == OS_Key_S && os_evt->kind == OS_EventKind_Press)
+        {
+          rk_scene_to_tscn(scene);
+        }
+    }
+  }
 
   // UI Box for game viewport (handle user interaction)
   ui_set_next_rect(rk_state->window_rect);
@@ -4362,6 +4369,26 @@ rk_node2d_cmp_z_rev(const void *a, const void *b)
   {
     ret = (*right)->node2d->z_index - (*left)->node2d->z_index;
   }
+  return ret;
+}
+
+internal int
+rk_path_cmp(const void *left_, const void *right_)
+{
+  String8 left = *(String8*)left_;
+  String8 right = *(String8*)right_;
+  return rk_no_from_filename(str8_skip_last_slash(left))-rk_no_from_filename(str8_skip_last_slash(right));
+}
+
+internal U64
+rk_no_from_filename(String8 filename)
+{
+  U64 ret = 0;
+  U64 start = str8_find_needle(filename, 0, str8_lit("_"), 0);
+  start++;
+  U64 end = str8_find_needle(filename, 0, str8_lit("."), 0);
+  String8 no_str = str8_substr(filename, r1u64(start, end));
+  ret = u64_from_str8(no_str, 10);
   return ret;
 }
 

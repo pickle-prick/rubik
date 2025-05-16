@@ -953,6 +953,7 @@ struct RK_Scene
   // custom data
   void*                custom_data;
 
+  String8              reset_fn;
   String8              name;
   String8              save_path;
 
@@ -1058,7 +1059,8 @@ typedef struct RK_FunctionEntry RK_FunctionEntry;
 struct RK_FunctionEntry
 {
   String8 name;
-  RK_NodeCustomUpdateFunctionType *fn;
+  // RK_NodeCustomUpdateFunctionType *fn;
+  void *fn;
 };
 
 /////////////////////////////////
@@ -1383,6 +1385,8 @@ internal F32       rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F3
 internal Rng2F32   rk_rect_from_sprite2d(RK_Sprite2D *sprite2d);
 internal void      rk_sprite2d_equip_string(Arena *arena, RK_Sprite2D *sprite2d, String8 string, F_Tag font, F32 font_size, Vec4F32 font_color, U64 tab_size, F_RasterFlags text_raster_flags);
 internal int       rk_node2d_cmp_z_rev(const void *left, const void *right);
+internal int       rk_path_cmp(const void *left_, const void *right_);
+internal U64       rk_no_from_filename(String8 filename);
 #define rk_handle_from_se(h) ((RK_Handle){ .u64 = {h.u64[0], h.u64[1], h.u64[2], h.u64[3], h.u64[4], h.u64[5]} })
 
 #define rk_ptr_from_fat(payload_ptr)  *(void**)((U8*)payload_ptr-16)
