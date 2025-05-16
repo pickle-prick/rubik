@@ -27,8 +27,24 @@ typedef enum SE_NodeKind
   // ?
   SE_NodeKind_Array,
   SE_NodeKind_Struct,
+
+  // special
+  SE_NodeKind_Handle,
   SE_NodeKind_COUNT,
 } SE_NodeKind;
+
+typedef union SE_Handle SE_Handle;
+union SE_Handle
+{
+  // 0 ptr
+  // 1 generation,
+  // 2 key_0,
+  // 3 key_1,
+  // 4 run_seed
+  U64 u64[6];
+  U32 u32[12];
+  U16 u16[24];
+};
 
 typedef struct SE_Node SE_Node;
 struct SE_Node
@@ -57,6 +73,7 @@ struct SE_Node
     Mat2x2F32 se_2x2f32;
     Mat3x3F32 se_3x3f32;
     Mat4x4F32 se_4x4f32;
+    SE_Handle se_handle;
   } v;
 };
 
@@ -110,6 +127,7 @@ internal SE_Node* se_str_with_tag(String8 tag, String8 v);
 #define se_2x2f32_with_tag(tag,v) se_push_node(SE_NodeKind_Mat2x2F32, tag, 1, &v, sizeof(Mat2x2F32))
 #define se_3x3f32_with_tag(tag,v) se_push_node(SE_NodeKind_Mat3x3F32, tag, 1, &v, sizeof(Mat3x3F32))
 #define se_4x4f32_with_tag(tag,v) se_push_node(SE_NodeKind_Mat4x4F32, tag, 1, &v, sizeof(Mat4x4F32))
+#define se_handle_with_tag(tag,v) se_push_node(SE_NodeKind_Handle, tag, 1, &v, sizeof(SE_Handle))
 
 #define se_array_with_tag(tag)  se_push_node(SE_NodeKind_Array, tag, 0, 0, 0)
 #define se_struct_with_tag(tag) se_push_node(SE_NodeKind_Struct, tag, 0, 0, 0)
@@ -126,6 +144,7 @@ internal SE_Node* se_str_with_tag(String8 tag, String8 v);
 #define se_2x2f32(v) se_2x2f32_with_tag(str8_lit(""), (v))
 #define se_3x3f32(v) se_3x3f32_with_tag(str8_lit(""), (v))
 #define se_4x4f32(v) se_4x4f32_with_tag(str8_lit(""), (v))
+#define se_handle(v) se_handle_with_tag(str8_lit(""), (v))
 
 #define se_array(v) se_array_with_tag(str8_lit(""))
 #define se_struct() se_struct_with_tag(str8_lit(""))
@@ -143,11 +162,21 @@ internal SE_NodeRec se_node_rec_df(SE_Node *node, SE_Node *root, U64 sib_member_
 #define se_node_rec_df_pre(node,  root) se_node_rec_df(node, root, OffsetOf(SE_Node, next), OffsetOf(SE_Node, first))
 #define se_node_rec_df_post(node, root) se_node_rec_df(node, root, OffsetOf(SE_Node, prev), OffsetOf(SE_Node, last))
 
-// internal SE_Node* se_node_from_tag(SE_Node *first_node, String8 tag);
-// internal S64      se_s64_from_struct(SE_Node *s, String8 tag);
-// internal U64      se_u64_from_struct(SE_Node *s, String8 tag);
-// internal F64      se_f64_from_struct(SE_Node *s, String8 tag);
-// internal B32      se_b32_from_struct(SE_Node *s, String8 tag);
-// internal String8  se_string_from_struct(SE_Node *s, String8 tag);
+internal SE_Node*  se_child_from_tag(SE_Node *node, String8 tag);
+internal S64       se_s64_from_tag(SE_Node *struct_node, String8 tag);
+internal U64       se_u64_from_tag(SE_Node *struct_node, String8 tag);
+internal F32       se_f32_from_tag(SE_Node *struct_node, String8 tag);
+internal B32       se_b32_from_tag(SE_Node *struct_node, String8 tag);
+internal String8   se_str_from_tag(SE_Node *struct_node, String8 tag);
+internal Vec2U64   se_v2u64_from_tag(SE_Node *struct_node, String8 tag);
+internal Vec2F32   se_v2f32_from_tag(SE_Node *struct_node, String8 tag);
+internal Vec3F32   se_v3f32_from_tag(SE_Node *struct_node, String8 tag);
+internal Vec4F32   se_v4f32_from_tag(SE_Node *struct_node, String8 tag);
+internal Mat2x2F32 se_2x2f32_from_tag(SE_Node *struct_node, String8 tag);
+internal Mat3x3F32 se_3x3f32_from_tag(SE_Node *struct_node, String8 tag);
+internal Mat4x4F32 se_4x4f32_from_tag(SE_Node *struct_node, String8 tag);
+internal SE_Handle se_handle_from_tag(SE_Node *struct_node, String8 tag);
+internal SE_Node*  se_arr_from_tag(SE_Node *struct_node, String8 tag);
+internal SE_Node*  se_struct_from_tag(SE_Node *struct_node, String8 tag);
 
 #endif

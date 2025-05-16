@@ -93,5 +93,6 @@ internal void* fat_finalize(Arena *arena, void* base, void* ptr, U64 size);
 // NOTE(k): only works on x64, fat pointer contains a header (void* + size), can only do singular allocation, no array is allowed
 #define push_array_fat_no_zero(a, T, ptr) (T*)fat_finalize((a), arena_push((a), 16+sizeof(T), 16), ptr, sizeof(T))
 #define push_array_fat(a, T, ptr) (T*)fat_finalize((a), MemoryZero(arena_push((a), 16+sizeof(T), 16), 16+sizeof(T)), ptr, sizeof(T))
+#define push_array_fat_sized(a, s, ptr) (void*)fat_finalize((a), MemoryZero(arena_push((a), 16+s, 16), 16+s), ptr, s)
 
 #endif // BASE_ARENA_H

@@ -79,58 +79,207 @@ se_node_rec_df(SE_Node *node, SE_Node *root, U64 sib_member_off, U64 child_membe
   return ret;
 }
 
-// TODO(XXX): do we need these functions
-// internal SE_Node *
-// se_node_from_tag(SE_Node *first_node, String8 tag)
-// {
-//   SE_Node *ret = 0;
-//   for(SE_Node *n = first_node; n != 0; n = n->next)
-//   {
-//     if(str8_match(tag, n->tag, 0))
-//     {
-//       ret = n;
-//       break;
-//     }
-//   }
-//   return ret;
-// }
-// 
-// internal S64 
-// se_s64_from_struct(SE_Node *s, String8 tag)
-// {
-//   SE_Node *field_node = se_node_from_tag(s->first, tag);
-//   Assert(field_node->kind == SE_NodeKind_Int);
-//   return field_node->v.se_int;
-// }
-// 
-// internal U64 
-// se_u64_from_struct(SE_Node *s, String8 tag)
-// {
-//   SE_Node *field_node = se_node_from_tag(s->first, tag);
-//   Assert(field_node->kind == SE_NodeKind_Uint);
-//   return field_node->v.se_uint;
-// }
-// 
-// internal F64 
-// se_f64_from_struct(SE_Node *s, String8 tag)
-// {
-//   SE_Node *field_node = se_node_from_tag(s->first, tag);
-//   Assert(field_node->kind == SE_NodeKind_Float);
-//   return field_node->v.se_float;
-// }
-// 
-// internal B32 
-// se_b32_from_struct(SE_Node *s, String8 tag)
-// {
-//   SE_Node *field_node = se_node_from_tag(s->first, tag);
-//   Assert(field_node->kind == SE_NodeKind_Boolean);
-//   return field_node->v.se_boolean;
-// }
-// 
-// internal String8 
-// se_string_from_struct(SE_Node *s, String8 tag)
-// {
-//   SE_Node *field_node = se_node_from_tag(s->first, tag);
-//   Assert(field_node->kind == SE_NodeKind_String);
-//   return field_node->v.se_string;
-// }
+internal SE_Node *
+se_child_from_tag(SE_Node *node, String8 tag)
+{
+  SE_Node *ret = 0;
+  for(SE_Node *n = node->first; n != 0; n = n->next)
+  {
+    if(str8_match(tag, n->tag, 0))
+    {
+      ret = n;
+      break;
+    }
+  }
+  return ret;
+}
+
+internal S64
+se_s64_from_tag(SE_Node *struct_node, String8 tag)
+{
+  S64 ret = 0;
+  SE_Node *node = se_child_from_tag(struct_node, tag);
+  if(node)
+  {
+   Assert(node->kind == SE_NodeKind_S64);
+   ret = node->v.se_s64;
+  }
+  return ret;
+}
+
+internal U64
+se_u64_from_tag(SE_Node *struct_node, String8 tag)
+{
+  U64 ret = 0;
+  SE_Node *node = se_child_from_tag(struct_node, tag);
+  if(node)
+  {
+   Assert(node->kind == SE_NodeKind_U64);
+   ret = node->v.se_u64;
+  }
+  return ret;
+}
+
+internal F32
+se_f32_from_tag(SE_Node *struct_node, String8 tag)
+{
+  F32 ret = 0;
+  SE_Node *node = se_child_from_tag(struct_node, tag);
+  if(node)
+  {
+   Assert(node->kind == SE_NodeKind_F32);
+   ret = node->v.se_f32;
+  }
+  return ret;
+}
+
+internal B32
+se_b32_from_tag(SE_Node *struct_node, String8 tag)
+{
+  B32 ret = 0;
+  SE_Node *node = se_child_from_tag(struct_node, tag);
+  if(node)
+  {
+   Assert(node->kind == SE_NodeKind_B32);
+   ret = node->v.se_b32;
+  }
+  return ret;
+}
+
+internal String8 
+se_str_from_tag(SE_Node *struct_node, String8 tag)
+{
+  String8 ret = {0};
+  SE_Node *node = se_child_from_tag(struct_node, tag);
+  if(node)
+  {
+   Assert(node->kind == SE_NodeKind_String);
+   ret = node->v.se_str;
+  }
+  return ret;
+}
+
+internal Vec2U64
+se_v2u64_from_tag(SE_Node *struct_node, String8 tag)
+{
+  Vec2U64 ret = {0};
+  SE_Node *node = se_child_from_tag(struct_node, tag);
+  if(node)
+  {
+   Assert(node->kind == SE_NodeKind_Vec2U64);
+   ret = node->v.se_v2u64;
+  }
+  return ret;
+}
+
+internal Vec2F32
+se_v2f32_from_tag(SE_Node *struct_node, String8 tag)
+{
+  Vec2F32 ret = {0};
+  SE_Node *node = se_child_from_tag(struct_node, tag);
+  if(node)
+  {
+   Assert(node->kind == SE_NodeKind_Vec2F32);
+   ret = node->v.se_v2f32;
+  }
+  return ret;
+}
+
+internal Vec3F32
+se_v3f32_from_tag(SE_Node *struct_node, String8 tag)
+{
+  Vec3F32 ret = {0};
+  SE_Node *node = se_child_from_tag(struct_node, tag);
+  if(node)
+  {
+   Assert(node->kind == SE_NodeKind_Vec3F32);
+   ret = node->v.se_v3f32;
+  }
+  return ret;
+}
+
+internal Vec4F32
+se_v4f32_from_tag(SE_Node *struct_node, String8 tag)
+{
+  Vec4F32 ret = {0};
+  SE_Node *node = se_child_from_tag(struct_node, tag);
+  if(node)
+  {
+   Assert(node->kind == SE_NodeKind_Vec4F32);
+   ret = node->v.se_v4f32;
+  }
+  return ret;
+}
+
+internal Mat2x2F32
+se_2x2f32_from_tag(SE_Node *struct_node, String8 tag)
+{
+  Mat2x2F32 ret = {0};
+  SE_Node *node = se_child_from_tag(struct_node, tag);
+  if(node)
+  {
+   Assert(node->kind == SE_NodeKind_Mat2x2F32);
+   ret = node->v.se_2x2f32;
+  }
+  return ret;
+}
+
+internal Mat3x3F32
+se_3x3f32_from_tag(SE_Node *struct_node, String8 tag)
+{
+  Mat3x3F32 ret = {0};
+  SE_Node *node = se_child_from_tag(struct_node, tag);
+  if(node)
+  {
+   Assert(node->kind == SE_NodeKind_Mat3x3F32);
+   ret = node->v.se_3x3f32;
+  }
+  return ret;
+}
+
+internal Mat4x4F32
+se_4x4f32_from_tag(SE_Node *struct_node, String8 tag)
+{
+  Mat4x4F32 ret = {0};
+  SE_Node *node = se_child_from_tag(struct_node, tag);
+  if(node)
+  {
+   Assert(node->kind == SE_NodeKind_Mat4x4F32);
+   ret = node->v.se_4x4f32;
+  }
+  return ret;
+}
+
+internal SE_Handle
+se_handle_from_tag(SE_Node *struct_node, String8 tag)
+{
+  SE_Handle ret = {0};
+  SE_Node *node = se_child_from_tag(struct_node, tag);
+  if(node)
+  {
+   Assert(node->kind == SE_NodeKind_Handle);
+   ret = node->v.se_handle;
+  }
+  return ret;
+}
+
+internal SE_Node *
+se_arr_from_tag(SE_Node *struct_node, String8 tag)
+{
+  SE_Node *ret = 0;
+  SE_Node *node = se_child_from_tag(struct_node, tag);
+  if(node)
+  {
+    Assert(node->kind == SE_NodeKind_Array);
+    ret = node->first;
+  }
+  return ret;
+}
+
+internal SE_Node *
+se_struct_from_tag(SE_Node *struct_node, String8 tag)
+{
+  SE_Node *ret = se_child_from_tag(struct_node, tag);
+  if(ret) Assert(ret->kind == SE_NodeKind_Struct);
+  return ret;
+}

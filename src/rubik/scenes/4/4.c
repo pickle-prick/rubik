@@ -163,16 +163,11 @@ struct S4_Tile
 typedef struct S4_Scene S4_Scene;
 struct S4_Scene
 {
-  RK_Handle *tileset;
-  U64 tileset_size;
-  RK_TileMap *tilemap;
-  RK_TileMapLayer *tilemap_layers;
-  U64 *tilemap_layer_count;
-  S4_Tile **tiles;
-  U64 tile_count;
+  RK_Handle tileset;
+  RK_Handle tilemap;
 
-  S4_Guy **guys;
-  U64 guy_count;
+  // Non-serializable
+  S4_Tile **tiles;
 
   // editor view
   struct
@@ -341,10 +336,32 @@ internal void s4_move_guy(RK_Node *node, Vec2F32 dir, F32 delta_secs)
 RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
 {
   S4_Scene *s = scene->custom_data;
-  RK_Node *tilemap_node = rk_ptr_from_fat(s->tilemap);
+  RK_Node *tilemap_node = rk_node_from_handle(&s->tilemap);
   RK_TileMap *tilemap = tilemap_node->tilemap;
-  Vec2U32 tile_coord = tile_coord_from_mouse(ctx->proj_view_inv_m, s->tilemap->mat_inv, tilemap_node->node2d->transform.position);
 
+  // TODO(XXX): we may move this initialization to setup fn
+  {
+    U64 layer_count = tilemap_node->children_count;
+    // TODO(XXX): we should store tiles for all layers, use first layer for now
+    Assert(tilemap->size.x < 3000 && tilemap->size.y < 3000);
+    S4_Tile **tiles = push_array(rk_frame_arena(), S4_Tile*, tilemap->size.x*tilemap->size.y);
+    U64 tile_idx = 0;
+    for(RK_Node *n = tilemap_node->first->first; n != 0; n = n->next, tile_idx++)
+    {
+      tiles[tile_idx] = n->custom_data;
+    }
+    U64 tile_count = tile_idx+1;
+    s->tiles = tiles;
+  }
+
+  RK_TileSet *tileset = rk_tileset_from_handle(&s->tileset);
+
+  Vec2U32 tile_coord = tile_coord_from_mouse(ctx->proj_view_inv_m, tilemap->mat_inv, tilemap_node->node2d->transform.position);
+
+  if(s->debug_ui.show == 0)
+  {
+    Trap();
+  }
   RK_UI_Pane(&s->debug_ui.rect, &s->debug_ui.show, str8_lit("TileEditor"))
   {
     RK_UI_Tab(str8_lit("tile"), &s->debug_ui.show, ui_em(0.3,0), ui_em(0.3,0))
@@ -370,11 +387,11 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
       {
         ui_labelf("textures");
         ui_spacer(ui_pct(1.0, 0.0));
-        rk_ui_dropdown_begin(rk_res_from_handle(&s->tileset[s->picked_idx])->name);
-        for(U64 i = 0; i < s->tileset_size; i++)
+        rk_ui_dropdown_begin(rk_res_from_handle(&tileset->textures[s->picked_idx])->name);
+        for(U64 i = 0; i < tileset->texture_count; i++)
         {
 
-          RK_Resource *res = rk_res_from_handle(&s->tileset[i]);
+          RK_Resource *res = rk_res_from_handle(&tileset->textures[i]);
           RK_Texture2D *tex2d = (RK_Texture2D*)&res->v;
           UI_Signal sig = ui_button(res->name);
           if(ui_hovering(sig))
@@ -439,7 +456,7 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
                                                 "tile_hover");
         n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
         n->sprite2d->size = tilemap->tile_size;
-        n->sprite2d->tex = s->tileset[s->picked_idx];
+        n->sprite2d->tex = tileset->textures[s->picked_idx];
         n->sprite2d->omit_texture = 0;
         n->node2d->transform.position = pos;
         n->node2d->z_index = tile_node->node2d->z_index;
@@ -453,7 +470,7 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
         n->sprite2d->size = v2f32(100,50);
         n->sprite2d->color = v4f32(1,1,0,0.1);
         n->sprite2d->color.w = mix_1f32(0., 0.1, tile_node->hot_t);
-        n->sprite2d->tex = s->tileset[s->picked_idx];
+        n->sprite2d->tex = tileset->textures[s->picked_idx];
         n->sprite2d->omit_texture = 1;
         n->node2d->transform.position = pos;
         n->node2d->z_index = -10;
@@ -466,7 +483,7 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
         n->sprite2d->size = tilemap->tile_size;
         n->sprite2d->color = v4f32(0,1,1,0.1);
         n->sprite2d->color.w = mix_1f32(0., 0.1, tile_node->hot_t);
-        n->sprite2d->tex = s->tileset[s->picked_idx];
+        n->sprite2d->tex = tileset->textures[s->picked_idx];
         n->sprite2d->omit_texture = 1;
         n->node2d->transform.position = pos;
         n->node2d->z_index = -10;
@@ -568,6 +585,7 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile)
 {
   S4_Scene *s = scene->custom_data;
   S4_Tile *tile = node->custom_data;
+  RK_TileSet *tileset = rk_tileset_from_handle(&s->tileset);
 
   RK_Sprite2D *sprite = node->sprite2d;
   RK_Handle back = {0};
@@ -578,12 +596,12 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile)
   S64 front_idx = tile->tiles[S4_TexturePickerKind_Front];
   if(back_idx >= 0)
   {
-    back = s->tileset[(U64)back_idx];
+    back = tileset->textures[(U64)back_idx];
     tile_flag |= s4_texture_flags_table[back_idx];
   }
   if(front_idx >= 0)
   {
-    front = s->tileset[(U64)front_idx];
+    front = tileset->textures[(U64)front_idx];
     tile_flag |= s4_texture_flags_table[front_idx];
   }
 
@@ -606,80 +624,79 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile)
 
 RK_NODE_CUSTOM_UPDATE(s4_fn_system)
 {
-  S4_Scene *s = scene->custom_data;
+  // S4_Scene *s = scene->custom_data;
 
-  for(U64 i = 0; i < s->guy_count; i++)
-  {
-    S4_Guy *guy = s->guys[i];
-    guy->hunger -= 0.1*ctx->dt_sec;
-    guy->hunger = Max(guy->hunger, -0.1);
-    guy->thirst -= 0.1*ctx->dt_sec;
-    guy->thirst = Max(guy->thirst, -0.1);
-    guy->fatigue -= 0.1*ctx->dt_sec;
-    guy->fatigue = Max(guy->fatigue, -0.1);
-  }
+  // for(U64 i = 0; i < s->guy_count; i++)
+  // {
+  //   S4_Guy *guy = s->guys[i];
+  //   guy->hunger -= 0.1*ctx->dt_sec;
+  //   guy->hunger = Max(guy->hunger, -0.1);
+  //   guy->thirst -= 0.1*ctx->dt_sec;
+  //   guy->thirst = Max(guy->thirst, -0.1);
+  //   guy->fatigue -= 0.1*ctx->dt_sec;
+  //   guy->fatigue = Max(guy->fatigue, -0.1);
+  // }
 }
 
-RK_NODE_CUSTOM_UPDATE(s4_fn_guy)
-{
-  RK_AnimatedSprite2D *sprite2d = node->animated_sprite2d;
-  RK_SpriteSheet *sheet = rk_sheet_from_handle(&sprite2d->sheet);
-  RK_Transform2D *transform = &node->node2d->transform;
+// RK_NODE_CUSTOM_UPDATE(s4_fn_guy)
+// {
+//   RK_AnimatedSprite2D *sprite2d = node->animated_sprite2d;
+//   RK_SpriteSheet *sheet = rk_sheet_from_handle(&sprite2d->sheet);
+//   RK_Transform2D *transform = &node->node2d->transform;
+// 
+//   S4_Scene *s = scene->custom_data;
+//   RK_TileMap *tilemap = s->tilemap;
+//   RK_Node *tilemap_node = rk_ptr_from_fat(tilemap);
+//   Vec2U32 hot_tile_coord = tile_coord_from_mouse(ctx->proj_view_inv_m,
+//                                                  s->tilemap->mat_inv,
+//                                                  tilemap_node->node2d->transform.position);
+//   Vec2F32 mouse_pos_in_world = transform_2x2f32(tilemap->mat, v2f32(hot_tile_coord.x, hot_tile_coord.y));
+// 
+//   S4_Guy *guy = node->custom_data;
+//   Vec2U32 tile_coord = tile_coord_from_world_pos(node->node2d->transform.position,
+//                                                  tilemap_node->node2d->transform.position,
+//                                                  tilemap->mat_inv);
+// 
+//   // S4_Tile *tile = s->tiles[tile_coord.y*tilemap->size.x+tile_coord.x];
+// 
+//   if(guy->hunger <= 0)
+//   {
+//     // TODO(XXX): we may need some path finding stuff here
+//     // TODO(XXX): find the nearest tile which has food
+//     Vec2F32 dir = sub_2f32(mouse_pos_in_world, node->node2d->transform.position);
+//     if(dir.x != 0 || dir.y != 0)
+//     {
+//       dir = normalize_2f32(dir);
+//     }
+// 
+//     s4_move_guy(node, dir, ctx->dt_sec);
+//   }
+// }
 
-  S4_Scene *s = scene->custom_data;
-  RK_TileMap *tilemap = s->tilemap;
-  RK_Node *tilemap_node = rk_ptr_from_fat(tilemap);
-  Vec2U32 hot_tile_coord = tile_coord_from_mouse(ctx->proj_view_inv_m,
-                                                 s->tilemap->mat_inv,
-                                                 tilemap_node->node2d->transform.position);
-  Vec2F32 mouse_pos_in_world = transform_2x2f32(tilemap->mat, v2f32(hot_tile_coord.x, hot_tile_coord.y));
-
-  S4_Guy *guy = node->custom_data;
-  Vec2U32 tile_coord = tile_coord_from_world_pos(node->node2d->transform.position,
-                                                 tilemap_node->node2d->transform.position,
-                                                 tilemap->mat_inv);
-
-  // S4_Tile *tile = s->tiles[tile_coord.y*tilemap->size.x+tile_coord.x];
-
-  if(guy->hunger <= 0)
-  {
-    // TODO(XXX): we may need some path finding stuff here
-    // TODO(XXX): find the nearest tile which has food
-    Vec2F32 dir = sub_2f32(mouse_pos_in_world, node->node2d->transform.position);
-    if(dir.x != 0 || dir.y != 0)
-    {
-      dir = normalize_2f32(dir);
-    }
-
-    s4_move_guy(node, dir, ctx->dt_sec);
-  }
-}
-
-RK_NODE_CUSTOM_UPDATE(s4_fn_guy_controlled)
-{
-  RK_AnimatedSprite2D *sprite2d = node->animated_sprite2d;
-  RK_SpriteSheet *sheet = rk_sheet_from_handle(&sprite2d->sheet);
-  RK_Transform2D *transform = &node->node2d->transform;
-
-  Vec2F32 dir = {0};
-  if(os_key_is_down(OS_Key_Left))
-  {
-    dir.x += -1.0;
-  }
-  if(os_key_is_down(OS_Key_Right))
-  {
-    dir.x += 1.0;
-  }
-  if(os_key_is_down(OS_Key_Up))
-  {
-    dir.y += -1.0;
-  }
-  if(os_key_is_down(OS_Key_Down))
-  {
-    dir.y += 1.0;
-  }
-}
-
+// RK_NODE_CUSTOM_UPDATE(s4_fn_guy_controlled)
+// {
+//   RK_AnimatedSprite2D *sprite2d = node->animated_sprite2d;
+//   RK_SpriteSheet *sheet = rk_sheet_from_handle(&sprite2d->sheet);
+//   RK_Transform2D *transform = &node->node2d->transform;
+// 
+//   Vec2F32 dir = {0};
+//   if(os_key_is_down(OS_Key_Left))
+//   {
+//     dir.x += -1.0;
+//   }
+//   if(os_key_is_down(OS_Key_Right))
+//   {
+//     dir.x += 1.0;
+//   }
+//   if(os_key_is_down(OS_Key_Up))
+//   {
+//     dir.y += -1.0;
+//   }
+//   if(os_key_is_down(OS_Key_Down))
+//   {
+//     dir.y += 1.0;
+//   }
+// }
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Scene entry
@@ -690,8 +707,10 @@ rk_scene_entry__4()
   RK_Scene *ret = rk_scene_alloc();
   ret->name = str8_lit("isometric");
   ret->save_path = str8_lit("./src/rubik/scenes/4/default.tscn");
+  rk_push_scene(ret);
   rk_push_node_bucket(ret->node_bucket);
   rk_push_res_bucket(ret->res_bucket);
+  rk_push_handle_seed(ret->handle_seed);
 
   /////////////////////////////////////////////////////////////////////////////////////
   // scene settings
@@ -723,24 +742,10 @@ rk_scene_entry__4()
   /////////////////////////////////////////////////////////////////////////////////////
   // load resource
 
-  U64 tile_texture_count = 0;
-  RK_Handle *tile_textures = rk_tex2d_from_dir(ret->arena, str8_lit("./textures/isometric-tiles-2"), &tile_texture_count, 0);
-  // sort based on _number
-  qsort(tile_textures, tile_texture_count, sizeof(RK_Handle), texture_cmp);
+  RK_Handle tileset = rk_tileset_from_dir(str8_lit("./textures/isometric-tiles-2"), rk_key_zero());
+  scene->tileset = tileset;
 
-  RK_Handle floor_texture = {0};
-  for(U64 i = 0; i < tile_texture_count; i++)
-  {
-    RK_Resource *res = rk_res_from_handle(&tile_textures[i]);
-    if(str8_ends_with(res->name, str8_lit("tile_000.png"), 0))
-    {
-      floor_texture = tile_textures[i];
-    }
-  }
-  scene->tileset = tile_textures;
-  scene->tileset_size = tile_texture_count;
-
-  RK_Handle character_sheet = rk_spritesheet_from_image(str8_lit("./textures/Chibi-character/Chibi-character-template_skin3_part1_by_AxulArt.png"), str8_lit("./textures/Chibi-character/Chibi-character-template_skin3_part1_by_AxulArt.json"));
+  RK_Handle character_sheet = rk_spritesheet_from_image(str8_lit("./textures/Chibi-character/Chibi-character-template_skin3_part1_by_AxulArt.png"), str8_lit("./textures/Chibi-character/Chibi-character-template_skin3_part1_by_AxulArt.json"), rk_key_zero());
 
   /////////////////////////////////////////////////////////////////////////////////////
   // build node tree
@@ -780,10 +785,7 @@ rk_scene_entry__4()
     U64 guy_count = 19;
     RK_TileMap *tilemap = tilemap_node->tilemap;
     {
-      scene->tilemap = tilemap;
-      scene->tiles = push_array(ret->arena, S4_Tile*, tile_count);
-      scene->tile_count = tile_count;
-      scene->guys = push_array(ret->arena, S4_Guy*, guy_count);
+      scene->tilemap = rk_handle_from_node(tilemap_node);
     }
     {
       Mat2x2F32 mat;
@@ -815,10 +817,8 @@ rk_scene_entry__4()
             // pos.y = origin.y + i*(tile_size.y/2.0) + j*(tile_size.y/2.0);
 
             // RK_Texture2D *tex = &tile_textures[idx%tile_texture_count];
-            RK_Handle tex = floor_texture;
-
             RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D, 0, "tile-%I64d-%I64d", i, j);
-            n->sprite2d->tex = tex;
+            n->sprite2d->tex = rk_handle_zero();
             n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
             n->sprite2d->size = tile_size;
             n->sprite2d->color = v4f32(0.3,0.3,0.3,1);
@@ -833,7 +833,6 @@ rk_scene_entry__4()
             tile->size = tile_size;
             tile->tiles[S4_TexturePickerKind_Back] = 0;
             tile->tiles[S4_TexturePickerKind_Front] = -1;
-            scene->tiles[tile_idx] = tile;
             tile_idx++;
           }
         }
@@ -856,17 +855,18 @@ rk_scene_entry__4()
       p->animated_sprite2d->loop = 1;
       p->animated_sprite2d->size = v2f32(character_sheet_dst->size.x*0.3,character_sheet_dst->size.y*0.3);
       p->node2d->z_index = -1;
-      rk_node_push_fn(p, str8_lit("s4_fn_guy"));
+      // rk_node_push_fn(p, str8_lit("s4_fn_guy"));
       S4_Guy *guy = rk_node_push_custom_data(p, S4_Guy);
       {
         // set default states for guy
       }
-      scene->guys[k] = guy;
     }
   }
 
   ret->root = rk_handle_from_node(root);
+  rk_pop_scene();
   rk_pop_node_bucket();
   rk_pop_res_bucket();
+  rk_pop_handle_seed();
   return ret;
 }

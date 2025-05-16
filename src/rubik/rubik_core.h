@@ -106,9 +106,23 @@ typedef enum RK_ViewKind
   RK_ViewKind_COUNT,
 } RK_ViewKind;
 
+typedef struct RK_Image RK_Image;
+struct RK_Image
+{
+  U8 *data;
+  S32 x;
+  S32 y;
+  S32 n;
+
+  // ?
+  String8 path;
+  String8 filename;
+};
+
 // Anything can be loadedfromfile/computed/uploadedtogpu once and reuse
 typedef enum RK_ResourceKind
 {
+  RK_ResourceKind_Invalid = -1,
   RK_ResourceKind_Skin,
   RK_ResourceKind_Mesh,
   RK_ResourceKind_PackedScene,
@@ -116,6 +130,7 @@ typedef enum RK_ResourceKind
   RK_ResourceKind_Animation,
   RK_ResourceKind_Texture2D,
   RK_ResourceKind_SpriteSheet,
+  RK_ResourceKind_TileSet,
   // RK_ResourceKind_AudioStream,
   RK_ResourceKind_COUNT,
 } RK_ResourceKind;
@@ -429,6 +444,13 @@ struct RK_SpriteSheet
   RK_SpriteSheetTag   *tags;
 };
 
+typedef struct RK_TileSet RK_TileSet;
+struct RK_TileSet
+{
+  RK_Handle *textures;
+  U64 texture_count;
+};
+
 typedef struct RK_PackedScene RK_PackedScene;
 struct RK_PackedScene
 {
@@ -449,7 +471,18 @@ struct RK_Resource
   RK_ResourceSrcKind src_kind;
   RK_Key key;
 
-  String8 path;
+  // may contain multiple files
+  union
+  {
+    String8 path;
+    struct
+    {
+      String8 path_0;
+      String8 path_1;
+      String8 path_2;
+    };
+    String8 paths[3];
+  };
   String8 name;
 
   struct RK_ResourceBucket *owner_bucket;
@@ -463,6 +496,7 @@ struct RK_Resource
     RK_Animation anim;
     RK_SpriteSheet spritesheet;
     RK_PackedScene packed;
+    RK_TileSet tileset;
   } v;
 };
 
@@ -518,6 +552,7 @@ struct RK_Camera3D
       F32 top;
     }
     orthographic;
+    F32 v[4];
   };
 };
 
@@ -920,6 +955,8 @@ struct RK_Scene
 
   String8              name;
   String8              save_path;
+
+  U64                  handle_seed;
 };
 
 ////////////////////////////////
@@ -1081,8 +1118,6 @@ struct RK_State
   RK_Scene              *active_scene;
   Arena                 *frame_arenas[2];
   U64                   frame_counter;
-  // NOTE(k): used to indicate if a RK_Handle is relevant for current app sesstion
-  U64                   run_seed;
 
   //- Interaction
   OS_Handle             os_wnd;
@@ -1182,6 +1217,7 @@ internal RK_Key rk_key_merge(RK_Key a, RK_Key b);
 internal B32    rk_key_match(RK_Key a, RK_Key b);
 internal RK_Key rk_key_make(U64 a, U64 b);
 internal RK_Key rk_key_zero();
+#define rk_key_from_v2u64(v) ((RK_Key){(v).x, (v).y})
 
 /////////////////////////////////
 // Handle
@@ -1214,12 +1250,13 @@ internal RK_Resource* rk_res_from_handle(RK_Handle *h);
 #define rk_res_from_inner(inner) CastFromMember(RK_Resource,v,inner)
 #define rk_res_inner_from_handle(h) (rk_res_unwrap(rk_res_from_handle((h)))) 
 
-#define rk_tex2d_from_handle(h)  ((RK_Texture2D*)rk_res_inner_from_handle((h)))
-#define rk_sheet_from_handle(h)  ((RK_SpriteSheet*)rk_res_inner_from_handle((h)))
-#define rk_mesh_from_handle(h)   ((RK_Mesh*)rk_res_inner_from_handle((h)))
-#define rk_skin_from_handle(h)   ((RK_Skin*)rk_res_inner_from_handle((h)))
-#define rk_mat_from_handle(h)    ((RK_Material*)rk_res_inner_from_handle((h)))
-#define rk_packed_from_handle(h) ((RK_PackedScene*)rk_res_inner_from_handle((h)))
+#define rk_tex2d_from_handle(h)   ((RK_Texture2D*)rk_res_inner_from_handle((h)))
+#define rk_sheet_from_handle(h)   ((RK_SpriteSheet*)rk_res_inner_from_handle((h)))
+#define rk_tileset_from_handle(h) ((RK_TileSet*)rk_res_inner_from_handle((h)))
+#define rk_mesh_from_handle(h)    ((RK_Mesh*)rk_res_inner_from_handle((h)))
+#define rk_skin_from_handle(h)    ((RK_Skin*)rk_res_inner_from_handle((h)))
+#define rk_mat_from_handle(h)     ((RK_Material*)rk_res_inner_from_handle((h)))
+#define rk_packed_from_handle(h)  ((RK_PackedScene*)rk_res_inner_from_handle((h)))
 
 /////////////////////////////////
 //- Resourcea Building Helpers (subresource management etc...)
@@ -1346,6 +1383,7 @@ internal F32       rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F3
 internal Rng2F32   rk_rect_from_sprite2d(RK_Sprite2D *sprite2d);
 internal void      rk_sprite2d_equip_string(Arena *arena, RK_Sprite2D *sprite2d, String8 string, F_Tag font, F32 font_size, Vec4F32 font_color, U64 tab_size, F_RasterFlags text_raster_flags);
 internal int       rk_node2d_cmp_z_rev(const void *left, const void *right);
+#define rk_handle_from_se(h) ((RK_Handle){ .u64 = {h.u64[0], h.u64[1], h.u64[2], h.u64[3], h.u64[4], h.u64[5]} })
 
 #define rk_ptr_from_fat(payload_ptr)  *(void**)((U8*)payload_ptr-16)
 #define rk_size_from_fat(payload_ptr) *(U64*)((U8*)payload_ptr-8)

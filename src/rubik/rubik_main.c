@@ -54,6 +54,8 @@ entry_point(CmdLine *cmd_line)
   /////////////////////////////////
   //~ Init
 
+  srand((unsigned int)time(NULL));
+
   Vec2F32 default_resolution = {900, 900};
   String8 window_title = str8_lit("Rubik");
 

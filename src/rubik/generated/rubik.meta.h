@@ -193,6 +193,7 @@ typedef struct RK_ParentNode RK_ParentNode; struct RK_ParentNode{RK_ParentNode *
 typedef struct RK_NodeBucketNode RK_NodeBucketNode; struct RK_NodeBucketNode{RK_NodeBucketNode *next; RK_NodeBucket * v;};
 typedef struct RK_ResourceBucketNode RK_ResourceBucketNode; struct RK_ResourceBucketNode{RK_ResourceBucketNode *next; RK_ResourceBucket * v;};
 typedef struct RK_SceneNode RK_SceneNode; struct RK_SceneNode{RK_SceneNode *next; RK_Scene * v;};
+typedef struct RK_HandleSeedNode RK_HandleSeedNode; struct RK_HandleSeedNode{RK_HandleSeedNode *next; U64 v;};
 #define RK_DeclStackNils \
 struct\
 {\
@@ -200,12 +201,14 @@ RK_ParentNode parent_nil_stack_top;\
 RK_NodeBucketNode node_bucket_nil_stack_top;\
 RK_ResourceBucketNode res_bucket_nil_stack_top;\
 RK_SceneNode scene_nil_stack_top;\
+RK_HandleSeedNode handle_seed_nil_stack_top;\
 }
 #define RK_InitStackNils(state) \
 state->parent_nil_stack_top.v = 0;\
 state->node_bucket_nil_stack_top.v = 0;\
 state->res_bucket_nil_stack_top.v = 0;\
 state->scene_nil_stack_top.v = 0;\
+state->handle_seed_nil_stack_top.v = 0;\
 
 #define RK_DeclStacks \
 struct\
@@ -214,39 +217,47 @@ struct { RK_ParentNode *top; RK_Node * bottom_val; RK_ParentNode *free; B32 auto
 struct { RK_NodeBucketNode *top; RK_NodeBucket * bottom_val; RK_NodeBucketNode *free; B32 auto_pop; } node_bucket_stack;\
 struct { RK_ResourceBucketNode *top; RK_ResourceBucket * bottom_val; RK_ResourceBucketNode *free; B32 auto_pop; } res_bucket_stack;\
 struct { RK_SceneNode *top; RK_Scene * bottom_val; RK_SceneNode *free; B32 auto_pop; } scene_stack;\
+struct { RK_HandleSeedNode *top; U64 bottom_val; RK_HandleSeedNode *free; B32 auto_pop; } handle_seed_stack;\
 }
 #define RK_InitStacks(state) \
 state->parent_stack.top = &state->parent_nil_stack_top; state->parent_stack.bottom_val = 0; state->parent_stack.free = 0; state->parent_stack.auto_pop = 0;\
 state->node_bucket_stack.top = &state->node_bucket_nil_stack_top; state->node_bucket_stack.bottom_val = 0; state->node_bucket_stack.free = 0; state->node_bucket_stack.auto_pop = 0;\
 state->res_bucket_stack.top = &state->res_bucket_nil_stack_top; state->res_bucket_stack.bottom_val = 0; state->res_bucket_stack.free = 0; state->res_bucket_stack.auto_pop = 0;\
 state->scene_stack.top = &state->scene_nil_stack_top; state->scene_stack.bottom_val = 0; state->scene_stack.free = 0; state->scene_stack.auto_pop = 0;\
+state->handle_seed_stack.top = &state->handle_seed_nil_stack_top; state->handle_seed_stack.bottom_val = 0; state->handle_seed_stack.free = 0; state->handle_seed_stack.auto_pop = 0;\
 
 #define RK_AutoPopStacks(state) \
 if(state->parent_stack.auto_pop) { rk_pop_parent(); state->parent_stack.auto_pop = 0; }\
 if(state->node_bucket_stack.auto_pop) { rk_pop_node_bucket(); state->node_bucket_stack.auto_pop = 0; }\
 if(state->res_bucket_stack.auto_pop) { rk_pop_res_bucket(); state->res_bucket_stack.auto_pop = 0; }\
 if(state->scene_stack.auto_pop) { rk_pop_scene(); state->scene_stack.auto_pop = 0; }\
+if(state->handle_seed_stack.auto_pop) { rk_pop_handle_seed(); state->handle_seed_stack.auto_pop = 0; }\
 
 internal RK_Node *                  rk_top_parent(void);
 internal RK_NodeBucket *            rk_top_node_bucket(void);
 internal RK_ResourceBucket *        rk_top_res_bucket(void);
 internal RK_Scene *                 rk_top_scene(void);
+internal U64                        rk_top_handle_seed(void);
 internal RK_Node *                  rk_bottom_parent(void);
 internal RK_NodeBucket *            rk_bottom_node_bucket(void);
 internal RK_ResourceBucket *        rk_bottom_res_bucket(void);
 internal RK_Scene *                 rk_bottom_scene(void);
+internal U64                        rk_bottom_handle_seed(void);
 internal RK_Node *                  rk_push_parent(RK_Node * v);
 internal RK_NodeBucket *            rk_push_node_bucket(RK_NodeBucket * v);
 internal RK_ResourceBucket *        rk_push_res_bucket(RK_ResourceBucket * v);
 internal RK_Scene *                 rk_push_scene(RK_Scene * v);
+internal U64                        rk_push_handle_seed(U64 v);
 internal RK_Node *                  rk_pop_parent(void);
 internal RK_NodeBucket *            rk_pop_node_bucket(void);
 internal RK_ResourceBucket *        rk_pop_res_bucket(void);
 internal RK_Scene *                 rk_pop_scene(void);
+internal U64                        rk_pop_handle_seed(void);
 internal RK_Node *                  rk_set_next_parent(RK_Node * v);
 internal RK_NodeBucket *            rk_set_next_node_bucket(RK_NodeBucket * v);
 internal RK_ResourceBucket *        rk_set_next_res_bucket(RK_ResourceBucket * v);
 internal RK_Scene *                 rk_set_next_scene(RK_Scene * v);
+internal U64                        rk_set_next_handle_seed(U64 v);
 C_LINKAGE_BEGIN
 extern String8 rk_viewport_shading_kind_display_string_table[3];
 extern String8 rk_gizmo3d_mode_display_string_table[3];

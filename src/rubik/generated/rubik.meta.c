@@ -8,27 +8,33 @@
 #define RK_NodeBucket_Scope(v) DeferLoop(rk_push_node_bucket(v), rk_pop_node_bucket())
 #define RK_ResourceBucket_Scope(v) DeferLoop(rk_push_res_bucket(v), rk_pop_res_bucket())
 #define RK_Scene_Scope(v) DeferLoop(rk_push_scene(v), rk_pop_scene())
+#define RK_HandleSeed_Scope(v) DeferLoop(rk_push_handle_seed(v), rk_pop_handle_seed())
 #endif
 internal RK_Node * rk_top_parent(void) { RK_StackTopImpl(rk_state, Parent, parent) }
 internal RK_NodeBucket * rk_top_node_bucket(void) { RK_StackTopImpl(rk_state, NodeBucket, node_bucket) }
 internal RK_ResourceBucket * rk_top_res_bucket(void) { RK_StackTopImpl(rk_state, ResourceBucket, res_bucket) }
 internal RK_Scene * rk_top_scene(void) { RK_StackTopImpl(rk_state, Scene, scene) }
+internal U64 rk_top_handle_seed(void) { RK_StackTopImpl(rk_state, HandleSeed, handle_seed) }
 internal RK_Node * rk_bottom_parent(void) { RK_StackBottomImpl(rk_state, Parent, parent) }
 internal RK_NodeBucket * rk_bottom_node_bucket(void) { RK_StackBottomImpl(rk_state, NodeBucket, node_bucket) }
 internal RK_ResourceBucket * rk_bottom_res_bucket(void) { RK_StackBottomImpl(rk_state, ResourceBucket, res_bucket) }
 internal RK_Scene * rk_bottom_scene(void) { RK_StackBottomImpl(rk_state, Scene, scene) }
+internal U64 rk_bottom_handle_seed(void) { RK_StackBottomImpl(rk_state, HandleSeed, handle_seed) }
 internal RK_Node * rk_push_parent(RK_Node * v) { RK_StackPushImpl(rk_state, Parent, parent, RK_Node *, v) }
 internal RK_NodeBucket * rk_push_node_bucket(RK_NodeBucket * v) { RK_StackPushImpl(rk_state, NodeBucket, node_bucket, RK_NodeBucket *, v) }
 internal RK_ResourceBucket * rk_push_res_bucket(RK_ResourceBucket * v) { RK_StackPushImpl(rk_state, ResourceBucket, res_bucket, RK_ResourceBucket *, v) }
 internal RK_Scene * rk_push_scene(RK_Scene * v) { RK_StackPushImpl(rk_state, Scene, scene, RK_Scene *, v) }
+internal U64 rk_push_handle_seed(U64 v) { RK_StackPushImpl(rk_state, HandleSeed, handle_seed, U64, v) }
 internal RK_Node * rk_pop_parent(void) { RK_StackPopImpl(rk_state, Parent, parent) }
 internal RK_NodeBucket * rk_pop_node_bucket(void) { RK_StackPopImpl(rk_state, NodeBucket, node_bucket) }
 internal RK_ResourceBucket * rk_pop_res_bucket(void) { RK_StackPopImpl(rk_state, ResourceBucket, res_bucket) }
 internal RK_Scene * rk_pop_scene(void) { RK_StackPopImpl(rk_state, Scene, scene) }
+internal U64 rk_pop_handle_seed(void) { RK_StackPopImpl(rk_state, HandleSeed, handle_seed) }
 internal RK_Node * rk_set_next_parent(RK_Node * v) { RK_StackSetNextImpl(rk_state, Parent, parent, RK_Node *, v) }
 internal RK_NodeBucket * rk_set_next_node_bucket(RK_NodeBucket * v) { RK_StackSetNextImpl(rk_state, NodeBucket, node_bucket, RK_NodeBucket *, v) }
 internal RK_ResourceBucket * rk_set_next_res_bucket(RK_ResourceBucket * v) { RK_StackSetNextImpl(rk_state, ResourceBucket, res_bucket, RK_ResourceBucket *, v) }
 internal RK_Scene * rk_set_next_scene(RK_Scene * v) { RK_StackSetNextImpl(rk_state, Scene, scene, RK_Scene *, v) }
+internal U64 rk_set_next_handle_seed(U64 v) { RK_StackSetNextImpl(rk_state, HandleSeed, handle_seed, U64, v) }
 #define RK_EquipTypeFlagsImpl(node, type_flags) \
 RK_NodeBucket *node_bucket = node->owner_bucket; \
 if(type_flags & RK_NodeTypeFlag_Node2D) { node->node2d = node_bucket->first_free_node2d; if(node->node2d != 0) {SLLStackPop(node_bucket->first_free_node2d);} else {node->node2d = push_array_fat_no_zero(node_bucket->arena_ref, RK_Node2D, node);} MemoryZeroStruct(node->node2d); if(1) {(*node->node2d) = (RK_Node2D){.transform = {.scale = v2f32(1,1)}};}}\

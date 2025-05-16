@@ -509,6 +509,7 @@ rk_res_bucket_make(Arena *arena, U64 max_resources)
 internal void
 rk_res_bucket_release(RK_ResourceBucket *res_bucket)
 {
+  // TODO(MemoryLeak)
   for(U64 i = 0; i < res_bucket->hash_table_size; i++)
   {
     RK_ResourceBucketSlot *slot = &res_bucket->hash_table[i];
@@ -536,6 +537,10 @@ rk_res_bucket_release(RK_ResourceBucket *res_bucket)
         {
           // RK_Texture2D *tex2d = res->data;
           // r_tex2d_release(tex2d->tex);
+        }break;
+        case RK_ResourceKind_TileSet:
+        {
+          // TODO(MemoryLeak)
         }break;
         default:{InvalidPath;}break;
       }
@@ -658,7 +663,7 @@ rk_handle_from_res(RK_Resource *res)
     ret.u64[1] = res->generation;
     ret.u64[2] = res->key.u64[0];
     ret.u64[3] = res->key.u64[1];
-    ret.u64[4] = rk_state->run_seed;
+    ret.u64[4] = rk_top_handle_seed();
   }
   return ret;
 }
@@ -669,7 +674,7 @@ rk_res_from_handle(RK_Handle *handle)
   RK_Resource *ret = 0;
 
   U64 run_seed = handle->u64[4];
-  if(run_seed != rk_state->run_seed)
+  if(run_seed != rk_top_handle_seed())
   {
     // update
     RK_Key key = rk_key_make(handle->u64[2], handle->u64[3]);
@@ -703,7 +708,6 @@ rk_init(OS_Handle os_wnd)
     {
       rk_state->frame_arenas[i] = arena_alloc();
     }
-    rk_state->run_seed        = (U64)rand();
     rk_state->node_bucket     = rk_node_bucket_make(arena, 4096-1);
     rk_state->res_node_bucket = rk_node_bucket_make(arena, 4096-1);
     rk_state->res_bucket      = rk_res_bucket_make(arena, 4096-1);
@@ -1165,7 +1169,7 @@ rk_handle_from_node(RK_Node *node)
     ret.u64[1] = node->generation;
     ret.u64[2] = node->key.u64[0];
     ret.u64[3] = node->key.u64[1];
-    ret.u64[4] = rk_state->run_seed;
+    ret.u64[4] = rk_top_handle_seed();
   }
   return ret;
 }
@@ -1176,7 +1180,7 @@ rk_node_from_handle(RK_Handle *handle)
   RK_Node *ret = 0;
 
   U64 run_seed = handle->u64[4];
-  if(run_seed != rk_state->run_seed)
+  if(run_seed != rk_top_handle_seed())
   {
     // update
     RK_Key key = rk_key_make(handle->u64[2], handle->u64[3]);
@@ -1786,11 +1790,14 @@ internal void rk_ui_inspector(void)
 
       if(ui_clicked(ui_buttonf("save")))
       {
-        // rk_scene_to_tscn(scene);
+        rk_scene_to_tscn(scene);
+      }
 
-        // TODO(XXX): TEST
-        // rk_scene_from_tscn(scene->save_path);
-        se_yml_node_from_file(scene->arena, scene->save_path);
+      if(ui_clicked(ui_buttonf("reload")))
+      {
+        SLLStackPush(rk_state->first_to_free_scene, scene);
+        RK_Scene *new = rk_scene_from_tscn(scene->save_path);
+        rk_state->next_active_scene = new;
       }
     }
 
@@ -2552,6 +2559,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     rk_push_node_bucket(scene->node_bucket);
     rk_push_res_bucket(scene->res_bucket);
     rk_push_scene(scene);
+    rk_push_handle_seed(scene->handle_seed);
 
     rk_state->dt_us              = dt_us;
     rk_state->dt_sec             = dt_us/1000000.0f;
@@ -3996,6 +4004,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
   rk_pop_node_bucket();
   rk_pop_res_bucket();
   rk_pop_scene();
+  rk_pop_handle_seed();
 
   /////////////////////////////////////////////////////////////////////////////////////
   // concate draw buckets
@@ -4414,6 +4423,7 @@ rk_scene_alloc()
     ret->node_bucket     = rk_node_bucket_make(arena, 4096-1);
     ret->res_node_bucket = rk_node_bucket_make(arena, 4096-1);
     ret->res_bucket      = rk_res_bucket_make(arena, 4096-1);
+    ret->handle_seed     = (U64)rand();
   }
   return ret;
 }

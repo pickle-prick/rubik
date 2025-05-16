@@ -18,8 +18,32 @@ rk_scene_to_tscn(RK_Scene *scene)
   SE_Node *root = se_struct();
   SE_Parent(root)
   {
-    se_str_with_tag(str8_lit("path"), scene->save_path);
+    /////////////////////////////////////////////////////////////////////////////////////
+    // scene info
+
     se_str_with_tag(str8_lit("name"), scene->name);
+    se_v2u64_with_tag(str8_lit("hot_key"), v2u64(scene->hot_key.u64[0], scene->hot_key.u64[1]));
+    se_v2u64_with_tag(str8_lit("active_key"), v2u64(scene->active_key.u64[0], scene->active_key.u64[1]));
+    se_b32_with_tag(str8_lit("omit_grid"), scene->omit_grid);
+    se_b32_with_tag(str8_lit("omit_gizmo3d"), scene->omit_gizmo3d);
+    se_b32_with_tag(str8_lit("omit_light"), scene->omit_light);
+    se_u64_with_tag(str8_lit("gizmo3d_mode"), scene->gizmo3d_mode);
+    if(scene->custom_data)
+    {
+      U64 start = block_size;
+      U64 size = rk_size_from_fat(scene->custom_data);
+      if((block_size+size) > block_cap)
+      {
+        U8 *new_blocks = push_array(scratch.arena, U8, block_cap*2);
+        MemoryCopy(new_blocks, blocks, block_size);
+        blocks = new_blocks;
+        block_cap *= 2;
+      }
+      MemoryCopy(blocks+start, scene->custom_data, size);
+      block_size += size;
+      se_v2u64_with_tag(str8_lit("custom_data"), v2u64(start, start+size));
+    }
+    // AssertAlways(*(blocks+120) == 1);
 
     SE_Array_WithTag(str8_lit("ext_resources"))
     {
@@ -41,19 +65,27 @@ rk_scene_to_tscn(RK_Scene *scene)
               se_v2u64_with_tag(str8_lit("key"), v2u64(res->key.u64[0],res->key.u64[1]));
               switch(res->kind)
               {
-                case RK_ResourceKind_PackedScene:
                 case RK_ResourceKind_Texture2D:
                 {
                   RK_Texture2D *tex2d = (RK_Texture2D*)&res->v;
                   se_u64_with_tag(str8_lit("sample_kind"), tex2d->sample_kind);
                 }break;
-                case RK_ResourceKind_Material:
                 case RK_ResourceKind_SpriteSheet:
+                {
+                  RK_SpriteSheet *sheet = (RK_SpriteSheet*)&res->v;
+                  se_str_with_tag(str8_lit("path_1"), res->path_1);
+                }break;
+                case RK_ResourceKind_TileSet:
+                {
+                  // RK_TileSet *tileset = (RK_TileSet*)&res->v;
+                }break;
+                case RK_ResourceKind_Material:
+                case RK_ResourceKind_PackedScene:
                 case RK_ResourceKind_Skin:
                 case RK_ResourceKind_Mesh:
                 case RK_ResourceKind_Animation:
                 {
-                  // noop for now
+                  NotImplemented;
                 }break;
                 default: {InvalidPath;}break;
               }
@@ -74,15 +106,28 @@ rk_scene_to_tscn(RK_Scene *scene)
         if(!node->is_foreign) SE_Struct()
         {
           se_v2u64_with_tag(str8_lit("key"), v2u64(node->key.u64[0], node->key.u64[1]));
+          if(node->parent != 0)
+          {
+            se_v2u64_with_tag(str8_lit("parent"), v2u64(node->parent->key.u64[0], node->parent->key.u64[1]));
+          }
           se_u64_with_tag(str8_lit("flags"), node->flags);
           se_u64_with_tag(str8_lit("type_flags"), node->type_flags);
           se_str_with_tag(str8_lit("name"), node->name);
 
-          if(node->custom_data != 0) SE_Struct_WithTag(str8_lit("custom_data"))
+          if(node->custom_data != 0)
           {
-            // U64 size = rk_size_from_fat(node->custom_data);
-            // U64 start = block_size;
-            se_v2u64_with_tag(str8_lit("range"), v2u64(1,1));
+            U64 start = block_size;
+            U64 size = rk_size_from_fat(node->custom_data);
+            if((block_size+size) > block_cap)
+            {
+              U8 *new_blocks = push_array(scratch.arena, U8, block_cap*2);
+              MemoryCopy(new_blocks, blocks, sizeof(U8)*block_size);
+              blocks = new_blocks;
+              block_cap *= 2;
+            }
+            MemoryCopy(blocks+start, node->custom_data, size);
+            block_size += size;
+            se_v2u64_with_tag(str8_lit("custom_data"), v2u64(start, start+size));
           }
 
           ///////////////////////////////////////////////////////////////////////////////
@@ -130,17 +175,33 @@ rk_scene_to_tscn(RK_Scene *scene)
               se_v2f32_with_tag(str8_lit("position"), node2d->transform.position);
               se_f32_with_tag(str8_lit("rotation"), node2d->transform.rotation);
               se_v2f32_with_tag(str8_lit("scale"), node2d->transform.scale);
-              se_v2f32_with_tag(str8_lit("skew"), node2d->transform.skew);
+              se_f32_with_tag(str8_lit("skew"), node2d->transform.skew);
             }
             se_f32_with_tag(str8_lit("z_index"), node2d->z_index);
           }
           if(node->type_flags & RK_NodeTypeFlag_Node3D) SE_Struct_WithTag(str8_lit("node3d"))
           {
             RK_Node3D* node3d = node->node3d;
+            SE_Struct_WithTag(str8_lit("transform"))
+            {
+              se_v3f32_with_tag(str8_lit("position"), node3d->transform.position);
+              se_v4f32_with_tag(str8_lit("rotation"), node3d->transform.rotation);
+              se_v3f32_with_tag(str8_lit("scale"), node3d->transform.scale);
+            }
           }
           if(node->type_flags & RK_NodeTypeFlag_Camera3D) SE_Struct_WithTag(str8_lit("camera3d"))
           {
             RK_Camera3D *camera3d = node->camera3d;
+            se_u64_with_tag(str8_lit("projection"), camera3d->projection);
+            se_u64_with_tag(str8_lit("viewport_shading"), camera3d->viewport_shading);
+            se_u64_with_tag(str8_lit("polygon_mode"), camera3d->polygon_mode);
+            se_v4f32_with_tag(str8_lit("viewport"), camera3d->viewport);
+            se_b32_with_tag(str8_lit("hide_cursor"), camera3d->hide_cursor);
+            se_b32_with_tag(str8_lit("lock_cursor"), camera3d->lock_cursor);
+            se_b32_with_tag(str8_lit("is_active"), camera3d->is_active);
+            se_f32_with_tag(str8_lit("zn"), camera3d->zn);
+            se_f32_with_tag(str8_lit("zf"), camera3d->zf);
+            se_v4f32_with_tag(str8_lit("v"), camera3d->v);
           }
           if(node->type_flags & RK_NodeTypeFlag_MeshInstance3D) SE_Struct_WithTag(str8_lit("mesh_inst3d"))
           {
@@ -166,7 +227,7 @@ rk_scene_to_tscn(RK_Scene *scene)
           if(node->type_flags & RK_NodeTypeFlag_Sprite2D) SE_Struct_WithTag(str8_lit("sprite2d"))
           {
             RK_Sprite2D *sprite2d = node->sprite2d;
-            se_v2u64_with_tag(str8_lit("tex"), v2u64(sprite2d->tex.u64[0], sprite2d->tex.u64[1]));
+            se_handle_with_tag(str8_lit("tex"), sprite2d->tex);
             se_v2f32_with_tag(str8_lit("size"), sprite2d->size);
             se_u64_with_tag(str8_lit("anchor"), sprite2d->anchor);
             se_v4f32_with_tag(str8_lit("color"), sprite2d->color);
@@ -184,8 +245,8 @@ rk_scene_to_tscn(RK_Scene *scene)
           if(node->type_flags & RK_NodeTypeFlag_AnimatedSprite2D) SE_Struct_WithTag(str8_lit("animated_sprite2d"))
           {
             RK_AnimatedSprite2D *animated_sprite2d = node->animated_sprite2d;
+            se_handle_with_tag(str8_lit("sheet"), animated_sprite2d->sheet);
             se_b32_with_tag(str8_lit("flipped"), animated_sprite2d->flipped);
-            se_v2u64_with_tag(str8_lit("sheet"), v2u64(animated_sprite2d->sheet.u64[0], animated_sprite2d->sheet.u64[1]));
             se_v2f32_with_tag(str8_lit("size"), animated_sprite2d->size);
             se_u64_with_tag(str8_lit("curr_tag"), animated_sprite2d->curr_tag);
             se_u64_with_tag(str8_lit("next_tag"), animated_sprite2d->next_tag);
@@ -201,7 +262,7 @@ rk_scene_to_tscn(RK_Scene *scene)
           if(node->type_flags & RK_NodeTypeFlag_TileMap) SE_Struct_WithTag(str8_lit("tilemap"))
           {
             RK_TileMap* tilemap= node->tilemap;
-            se_v2f32_with_tag(str8_lit("size"), tilemap->size);
+            se_v2u64_with_tag(str8_lit("size"), v2u64(tilemap->size.x, tilemap->size.y));
             se_v2f32_with_tag(str8_lit("tile_size"), tilemap->tile_size);
             se_2x2f32_with_tag(str8_lit("mat"), tilemap->mat);
             se_2x2f32_with_tag(str8_lit("mat_inv"), tilemap->mat_inv);
@@ -214,577 +275,296 @@ rk_scene_to_tscn(RK_Scene *scene)
 
   se_build_end();
   se_yml_node_to_file(root, scene->save_path);
-  scratch_end(scratch);
 
+  // write block blob
+  {
+    String8 blob_path = scene->save_path;
+    blob_path = str8_chop_last_dot(blob_path);
+    blob_path = push_str8_cat(scratch.arena, blob_path, str8_lit(".blob"));
+    FILE *file = fopen((char*)blob_path.str, "w");
+    fwrite(blocks, block_size, 1, file);
+    fclose(file);
+  }
+
+  scratch_end(scratch);
   return ret;
 }
 
-// internal String8
-// rk_scene_to_tscn(RK_Scene *scene)
-// {
-//   String8 ret = scene->save_path;
-//   RK_ResourceBucket *res_bucket = scene->res_bucket;
-//   Temp scratch = scratch_begin(0,0);
-// 
-//   String8List strs = {0};
-//   U64 block_cap = MB(3);
-//   U64 block_size = 0;
-//   U8 *blocks = push_array(scratch.arena, U8, block_cap);
-// 
-//   // header
-//   str8_list_pushf(scratch.arena, &strs, "[rk_scene]\n", scene->name);
-//   str8_list_pushf(scratch.arena, &strs, "name=\"%S\"\n", scene->name);
-//   str8_list_pushf(scratch.arena, &strs, "\n");
-// 
-//   ///////////////////////////////////////////////////////////////////////////////////////
-//   // serialize resource
-// 
-//   // external
-//   U64 res_count = 0;
-//   for(U64 slot_idx = 0; slot_idx < res_bucket->hash_table_size; slot_idx++)
-//   {
-//     RK_ResourceBucketSlot *slot = &res_bucket->hash_table[slot_idx];
-//     for(RK_Resource *res = slot->first; res != 0; res = res->hash_next)
-//     {
-//       if(res->src_kind == RK_ResourceSrcKind_External)
-//       {
-//         res_count++;
-//         RK_Key key = res->key;
-//         switch(res->kind)
-//         {
-//           case RK_ResourceKind_PackedScene:
-//           {
-//             str8_list_pushf(scratch.arena, &strs, "[ext_resource]\n");
-//             str8_list_pushf(scratch.arena, &strs, "type=\"PackedScene\"\n");
-//             str8_list_pushf(scratch.arena, &strs, "key=[%I64u, %I64u]\n", res->key.u64[0], res->key.u64[1]);
-//             str8_list_pushf(scratch.arena, &strs, "path=\"%S\"\n", res->path);
-//             str8_list_pushf(scratch.arena, &strs, "\n");
-//           }break;
-//           case RK_ResourceKind_Texture2D:
-//           {
-//             RK_Texture2D *tex2d = (RK_Texture2D*)&res->v;
-//             str8_list_pushf(scratch.arena, &strs, "[ext_resource]\n");
-//             str8_list_pushf(scratch.arena, &strs, "type=\"RK_Texture2D\"\n");
-//             str8_list_pushf(scratch.arena, &strs, "key=[%I64u, %I64u]\n", res->key.u64[0], res->key.u64[1]);
-//             str8_list_pushf(scratch.arena, &strs, "path=\"%S\"\n", res->path);
-//             // props
-//             str8_list_pushf(scratch.arena, &strs, "sample_kind=%I64u\n", tex2d->sample_kind);
-//             str8_list_pushf(scratch.arena, &strs, "\n");
-//           }break;
-//           case RK_ResourceKind_Material:
-//           case RK_ResourceKind_SpriteSheet:
-//           {
-//             // noop for now
-//           }break;
-//           case RK_ResourceKind_Skin:
-//           case RK_ResourceKind_Mesh:
-//           case RK_ResourceKind_Animation:
-//           default: {InvalidPath;}break;
-//         }
-//       }
-//     }
-//   }
-// 
-//   if(res_count > 0) str8_list_pushf(scratch.arena, &strs, "\n");
-// 
-//   // internal/sub resource
-//   res_count = 0;
-//   for(U64 slot_idx = 0; slot_idx < res_bucket->hash_table_size; slot_idx++)
-//   {
-//     RK_ResourceBucketSlot *slot = &res_bucket->hash_table[slot_idx];
-//     for(RK_Resource *res = slot->first; res != 0; res = res->hash_next)
-//     {
-//       if(res->src_kind == RK_ResourceSrcKind_Sub)
-//       {
-//         res_count++;
-//         RK_Key key = res->key;
-//         switch(res->kind)
-//         {
-//           case RK_ResourceKind_PackedScene:
-//           case RK_ResourceKind_Texture2D:
-//           case RK_ResourceKind_Material:
-//           case RK_ResourceKind_SpriteSheet:
-//           case RK_ResourceKind_Skin:
-//           case RK_ResourceKind_Mesh:
-//           case RK_ResourceKind_Animation:
-//           default: {InvalidPath;}break;
-//         }
-//       }
-//     }
-//   }
-// 
-//   if(res_count > 0) str8_list_pushf(scratch.arena, &strs, "\n");
-// 
-//   ///////////////////////////////////////////////////////////////////////////////////////
-//   // serialize node tree
-//   RK_Node *root = rk_node_from_handle(&scene->root);
-//   RK_Node *node = root;
-//   while(node != 0)
-//   {
-//     RK_NodeRec rec = rk_node_df_pre(node, root, 0);
-//     if(!node->is_foreign)
-//     {
-//       str8_list_pushf(scratch.arena, &strs, "[node]\n");
-//       str8_list_pushf(scratch.arena, &strs, "name=\"%S\"\n", node->name);
-//       str8_list_pushf(scratch.arena, &strs, "key=[%I64u, %I64u]\n", node->key.u64[0], node->key.u64[1]);
-//       if(node->parent)
-//       {
-//         str8_list_pushf(scratch.arena, &strs, "parent=[%I64u, %I64u]\n", node->parent->key.u64[0], node->parent->key.u64[1]);
-//       }
-//       str8_list_pushf(scratch.arena, &strs, "flags=%I64u\n", node->flags);
-//       str8_list_pushf(scratch.arena, &strs, "type_flags=%I64u\n", node->type_flags);
-//       str8_list_pushf(scratch.arena, &strs, "hot_t=%f\n", node->hot_t);
-//       str8_list_pushf(scratch.arena, &strs, "active_t=%f\n", node->active_t);
-// 
-//       // Custom data (bit tricky)
-//       if(node->custom_data != 0)
-//       {
-//         U64 size = rk_size_from_fat(node->custom_data);
-//         U64 start = block_size;
-//         if((block_size+size) > block_cap)
-//         {
-//           U8 *new_blocks = push_array(scratch.arena, U8, block_cap*2);
-//           MemoryCopy(new_blocks, blocks, sizeof(U8)*block_size);
-//           blocks = new_blocks;
-//           block_cap *= 2;
-//         }
-// 
-//         MemoryCopy(blocks+start, node->custom_data, size);
-//         block_size += size;
-// 
-//         str8_list_pushf(scratch.arena, &strs, "[custom_data]\n");
-//         str8_list_pushf(scratch.arena, &strs, "range=[%I64u, %I64u]\n", start, block_size);
-//       }
-// 
-//       // Function tables
-//       if(node->first_update_fn != 0 || node->first_fixed_update_fn != 0 || node->first_setup_fn)
-//       {
-//         str8_list_pushf(scratch.arena, &strs, "[functions]\n");
-//         if(node->first_setup_fn != 0)
-//         {
-//           String8 names = {0};
-//           for(RK_UpdateFnNode *fn = node->first_setup_fn; fn != 0; fn = fn->next)
-//           {
-//             String8 post = fn->next != 0 ? str8_lit(", ") : str8_lit("");
-//             names = push_str8f(scratch.arena, "%S\"%S\"%S", names, fn->name, post);
-//           }
-//           str8_list_pushf(scratch.arena, &strs, "setup=[%S]\n", names);
-//         }
-// 
-//         if(node->first_update_fn != 0)
-//         {
-//           String8 names = {0};
-//           for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
-//           {
-//             String8 post = fn->next != 0 ? str8_lit(", ") : str8_lit("");
-//             names = push_str8f(scratch.arena, "%S\"%S\"%S", names, fn->name, post);
-//           }
-//           str8_list_pushf(scratch.arena, &strs, "update=[%S]\n", names);
-//         }
-// 
-//         if(node->first_fixed_update_fn != 0)
-//         {
-//           String8 names = {0};
-//           for(RK_UpdateFnNode *fn = node->first_fixed_update_fn; fn != 0; fn = fn->next)
-//           {
-//             String8 post = fn->next != 0 ? str8_lit(", ") : str8_lit("");
-//             names = push_str8f(scratch.arena, "%S\"%S\"%S", names, fn->name, post);
-//           }
-//           str8_list_pushf(scratch.arena, &strs, "fixed_update=[%S]\n", names);
-//         }
-//       }
-// 
-//       // Equipments
-//       if(node->type_flags & RK_NodeTypeFlag_Node2D)
-//       {
-//         RK_Node2D *node2d = node->node2d;
-//         str8_list_pushf(scratch.arena, &strs, "[node2d]\n");
-//         str8_list_pushf(scratch.arena, &strs, "transform=[%f, %f, %f, %f, %f, %f]\n",
-//                                               node2d->transform.position.x, node2d->transform.position.y,
-//                                               node2d->transform.rotation,
-//                                               node2d->transform.scale.x, node2d->transform.scale.y,
-//                                               node2d->transform.skew);
-// 
-//         str8_list_pushf(scratch.arena, &strs, "z_index=%f\n", node2d->z_index);
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_Node3D)
-//       {
-//         str8_list_pushf(scratch.arena, &strs, "[node3d]\n");
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_Camera3D)
-//       {
-//         RK_Camera3D *camera3d = node->camera3d;
-//         str8_list_pushf(scratch.arena, &strs, "[camera3d]\n");
-//         str8_list_pushf(scratch.arena, &strs, "projection=%I64u\n", camera3d->projection);
-//         str8_list_pushf(scratch.arena, &strs, "viewport_shading=%I64u\n", camera3d->viewport_shading);
-//         str8_list_pushf(scratch.arena, &strs, "polygon_mode=%I64u\n", camera3d->polygon_mode);
-//         str8_list_pushf(scratch.arena, &strs, "viewport=[%f, %f, %f, %f]\n",
-//                                               camera3d->viewport.x0,
-//                                               camera3d->viewport.x1,
-//                                               camera3d->viewport.y0,
-//                                               camera3d->viewport.y1);
-//         str8_list_pushf(scratch.arena, &strs, "hide_cursor=%d\n", camera3d->hide_cursor);
-//         str8_list_pushf(scratch.arena, &strs, "lock_cursor=%d\n", camera3d->lock_cursor);
-//         str8_list_pushf(scratch.arena, &strs, "is_active=%d\n", camera3d->is_active);
-//         str8_list_pushf(scratch.arena, &strs, "zn=%f\n", camera3d->zn);
-//         str8_list_pushf(scratch.arena, &strs, "zf=%f\n", camera3d->zf);
-//         str8_list_pushf(scratch.arena, &strs, "v=[%f, %f, %f, %f]\n",
-//                                               camera3d->orthographic.left,
-//                                               camera3d->orthographic.right,
-//                                               camera3d->orthographic.bottom,
-//                                               camera3d->orthographic.top);
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_MeshInstance3D)
-//       {
-//         str8_list_pushf(scratch.arena, &strs, "[mesh_inst3d]\n");
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_SceneInstance)
-//       {
-//         str8_list_pushf(scratch.arena, &strs, "[scene_inst]\n");
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_AnimationPlayer)
-//       {
-//         str8_list_pushf(scratch.arena, &strs, "[animation_player]\n");
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_DirectionalLight)
-//       {
-//         str8_list_pushf(scratch.arena, &strs, "[directional_light]\n");
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_PointLight)
-//       {
-//         str8_list_pushf(scratch.arena, &strs, "[point_light]\n");
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_SpotLight)
-//       {
-//         str8_list_pushf(scratch.arena, &strs, "[spot_light]\n");
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_Sprite2D)
-//       {
-//         RK_Sprite2D *sprite2d = node->sprite2d;
-//         str8_list_pushf(scratch.arena, &strs, "[sprite2d]\n");
-//         str8_list_pushf(scratch.arena, &strs, "tex=[%I64u, %I64u]\n", sprite2d->tex.u64[2], sprite2d->tex.u64[3]);
-//         str8_list_pushf(scratch.arena, &strs, "size=[%f, %f]\n", sprite2d->size.x, sprite2d->size.y);
-//         str8_list_pushf(scratch.arena, &strs, "anchor=%I64u\n", sprite2d->anchor);
-//         str8_list_pushf(scratch.arena, &strs, "color=[%f, %f, %f, %f]\n",
-//                                               sprite2d->color.x,
-//                                               sprite2d->color.y,
-//                                               sprite2d->color.z,
-//                                               sprite2d->color.w);
-//         str8_list_pushf(scratch.arena, &strs, "omit_texture=%d\n", sprite2d->omit_texture);
-//         if(sprite2d->string.size > 0)
-//         {
-//           str8_list_pushf(scratch.arena, &strs, "string=\"%S\"\n", sprite2d->string);
-//         }
-//         str8_list_pushf(scratch.arena, &strs, "font_size=%f\n", sprite2d->font_size);
-//         str8_list_pushf(scratch.arena, &strs, "font_color=[%f, %f, %f, %f]\n",
-//                                               sprite2d->font_color.x,
-//                                               sprite2d->font_color.y,
-//                                               sprite2d->font_color.z,
-//                                               sprite2d->font_color.w);
-//         str8_list_pushf(scratch.arena, &strs, "tab_size=%I64u\n", sprite2d->tab_size);
-//         str8_list_pushf(scratch.arena, &strs, "text_raster_flags=%I64u\n", sprite2d->text_raster_flags);
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_AnimatedSprite2D)
-//       {
-//         RK_AnimatedSprite2D *animated_sprite2d = node->animated_sprite2d;
-//         str8_list_pushf(scratch.arena, &strs, "[animated_sprite2d]\n");
-//         str8_list_pushf(scratch.arena, &strs, "flipped=%d\n", animated_sprite2d->flipped);
-//         str8_list_pushf(scratch.arena, &strs, "sheet=[%f, %f]\n", animated_sprite2d->sheet.u64[2], animated_sprite2d->sheet.u64[3]);
-//         str8_list_pushf(scratch.arena, &strs, "size=[%f, %f]\n", animated_sprite2d->size.x, animated_sprite2d->size.y);
-//         str8_list_pushf(scratch.arena, &strs, "curr_tag=%I64u\n", animated_sprite2d->curr_tag);
-//         str8_list_pushf(scratch.arena, &strs, "next_tag=%I64u\n", animated_sprite2d->next_tag);
-//         str8_list_pushf(scratch.arena, &strs, "loop=%d\n", animated_sprite2d->loop);
-//         str8_list_pushf(scratch.arena, &strs, "is_animating=%d\n", animated_sprite2d->is_animating);
-//         str8_list_pushf(scratch.arena, &strs, "ts_ms=%f\n", animated_sprite2d->ts_ms);
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_TileMapLayer)
-//       {
-//         str8_list_pushf(scratch.arena, &strs, "[tilemap_layer]\n");
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_TileMap)
-//       {
-//         RK_TileMap *tilemap = node->tilemap;
-//         str8_list_pushf(scratch.arena, &strs, "[tilemap]\n");
-//         str8_list_pushf(scratch.arena, &strs, "size=[%f, %f]\n", tilemap->size.x, tilemap->size.y);
-//         str8_list_pushf(scratch.arena, &strs, "tile_size=[%f, %f]\n", tilemap->tile_size.x, tilemap->tile_size.y);
-//         str8_list_pushf(scratch.arena, &strs, "mat=[%f, %f, %f, %f]\n",
-//                                               tilemap->mat.v[0],
-//                                               tilemap->mat.v[1],
-//                                               tilemap->mat.v[2],
-//                                               tilemap->mat.v[3]);
-//         str8_list_pushf(scratch.arena, &strs, "mat_inv=[%f, %f, %f, %f]\n",
-//                                               tilemap->mat_inv.v[0],
-//                                               tilemap->mat_inv.v[1],
-//                                               tilemap->mat_inv.v[2],
-//                                               tilemap->mat_inv.v[3]);
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_Particle3D)
-//       {
-//         str8_list_pushf(scratch.arena, &strs, "[particle3d]\n");
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_HookSpring3D)
-//       {
-//         str8_list_pushf(scratch.arena, &strs, "[hook_spring3d]\n");
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_Constraint3D)
-//       {
-//         str8_list_pushf(scratch.arena, &strs, "[constraint3d]\n");
-//       }
-//       if(node->type_flags & RK_NodeTypeFlag_Rigidbody3D)
-//       {
-//         str8_list_pushf(scratch.arena, &strs, "[rigidbody3d]\n");
-//       }
-//     }
-// 
-//     if(rec.next != 0)
-//     {
-//       str8_list_pushf(scratch.arena, &strs, "\n");
-//     }
-// 
-//     node = rec.next;
-//   }
-// 
-//   // writing tscn
-//   FILE *file = fopen((char*)scene->save_path.str, "w");
-//   for(String8Node *n = strs.first; n != 0; n = n->next)
-//   {
-//     fwrite(n->string.str, n->string.size, 1, file);
-//   }
-//   fclose(file);
-//   // writing blob
-//   String8 blob_path = scene->save_path;
-//   blob_path = str8_chop_last_dot(blob_path);
-//   blob_path = push_str8_cat(scratch.arena, blob_path, str8_lit(".blob"));
-//   file = fopen((char*)blob_path.str, "w");
-//   fwrite(blocks, block_size, 1, file);
-//   fclose(file);
-// 
-//   scratch_end(scratch);
-//   return ret;
-// }
+internal RK_Scene *
+rk_scene_from_tscn(String8 path)
+{
+  RK_Scene *ret = rk_scene_alloc();
+  Arena *arena = ret->arena;
+  Temp scratch = scratch_begin(0,0);
 
-// typedef struct RK_TSCN_Pair RK_TSCN_Pair;
-// struct RK_TSCN_Pair
-// {
-//   RK_TSCN_Pair *next;
-//   RK_TSCN_Pair *prev;
-//   String8 key;
-//   String8 *values;
-//   U64 value_count;
-// };
-// 
-// typedef struct RK_TSCN_Block RK_TSCN_Block;
-// struct RK_TSCN_Block
-// {
-//   String8 name;
-//   RK_TSCN_Pair *first_pair;
-//   RK_TSCN_Pair *last_pair;
-//   U64 pair_count;
-// };
+  String8 blob_path = str8_chop_last_dot(path);
+  blob_path = push_str8_cat(scratch.arena, blob_path, str8_lit(".blob"));
+  U8 *blob = 0;
+  {
+    OS_Handle f = os_file_open(OS_AccessFlag_Read, (blob_path));
+    FileProperties f_props = os_properties_from_file(f);
+    U64 size = f_props.size;
+    U8 *data = push_array(scratch.arena, U8, f_props.size);
+    os_file_read(f, rng_1u64(0,size), data);
+    blob = data;
+    os_file_close(f);
+  }
 
-// internal RK_TSCN_Pair *
-// rk_pair_from_line(Arena *arena, String8 line)
-// {
-//   RK_TSCN_Pair *ret = push_array(arena, RK_TSCN_Pair, 1);
-// 
-//   U8 *first = line.str;
-//   U8 *opl = first+line.size;
-// 
-//   // key
-//   String8 key = {0};
-//   for(; first < opl; first++)
-//   {
-//     if(*first == '=')
-//     {
-//       key = push_str8_copy(arena, str8_range(line.str, first));
-//       break;
-//     }
-//   }
-// 
-//   first++; // skip '='
-// 
-//   // value type
-//   B32 is_array = 0;
-//   B32 is_string = 0;
-//   B32 is_number = 0;
-//   if(*first == '[')
-//   {
-//     is_array = 1;
-//   }
-//   else if(*first == '"')
-//   {
-//     is_string = 1;
-//   }
-//   else
-//   {
-//     is_number = 1;
-//   }
-// 
-//   String8 *values = 0;
-//   U64 value_count = 0;
-//   if(is_string)
-//   {
-//     first++; // skip '"'
-//     values = push_array(arena, String8, 1);
-//     values[0] = push_str8_copy(arena, str8_range(first, opl-1));
-//     value_count = 1;
-//   }
-//   else if(is_number)
-//   {
-//     values = push_array(arena, String8, 1);
-//     values[0] = push_str8_copy(arena, str8_range(first, opl));
-//     value_count = 1;
-//   }
-//   else if(is_array)
-//   {
-//     first++; // skip '['
-// 
-//     U64 quote_count = 0;
-//     for(U8 *c = first; c < opl; c++) 
-//     {
-//       if(*c == '"') 
-//       {
-//         quote_count++;
-//       }
-// 
-//       if(*c == ',' && (quote_count%2 == 0))
-//       {
-//         value_count++;
-//       }
-//     }
-//     if(value_count > 0) value_count++;
-// 
-//     values = push_array(arena, String8, value_count);
-//     U64 value_idx = 0;
-//     quote_count = 0;
-//     U8 *value_start = first;
-//     for(U8 *c = first; c < opl; c++)
-//     {
-//       if(*c == '"') 
-//       {
-//         quote_count++;
-//       }
-// 
-//       if((*c == ',' || *c == ']') && (quote_count%2) == 0)
-//       {
-//         String8 value = str8_range(value_start, c);
-//         value = str8_skip_chop_whitespace(value);
-// 
-//         if(*value.str == '"')
-//         {
-//           value.str++;
-//           value.size -= 2;
-//         }
-// 
-//         values[value_idx++] = push_str8_copy(arena, value);
-//         quote_count = 0; 
-//         value_start = c+1;
-//       }
-//     }
-//   }
-//   ret->key = key;
-//   ret->values = values;
-//   ret->value_count = value_count;
-//   return ret;
-// }
+  rk_push_node_bucket(ret->node_bucket);
+  rk_push_res_bucket(ret->res_bucket);
+  rk_push_handle_seed(ret->handle_seed);
 
-// internal RK_TSCN_Block *
-// rk_next_block(Arena *arena, String8Node **_curr)
-// {
-//   RK_TSCN_Block *ret = 0;
-//   String8Node *curr = *_curr;
-// 
-//   // skip empty lines & and non-header line
-//   for(; curr != 0; curr = curr->next)
-//   {
-//     if(str8_skip_chop_whitespace(curr->string).size != 0 &&
-//        str8_starts_with(curr->string, str8_lit("["), 0))
-//     {
-//       break;
-//     }
-//   }
-// 
-//   if(curr)
-//   {
-//     ret = push_array(arena, RK_TSCN_Block, 1);
-// 
-//     // remove "[]"
-//     String8 header = push_str8_copy(arena, str8(curr->string.str+1, curr->string.size-2));
-//     RK_TSCN_Pair *first_pair = 0;
-//     RK_TSCN_Pair *last_pair = 0;
-//     U64 pair_count = 0;
-// 
-//     // read pairs until next block
-//     for(curr = curr->next; curr != 0 && *curr->string.str != '['; curr = curr->next)
-//     {
-//       if(str8_skip_chop_whitespace(curr->string).size != 0)
-//       {
-//         RK_TSCN_Pair *pair = rk_pair_from_line(arena, curr->string);
-//         DLLPushBack(first_pair, last_pair, pair);
-//         pair_count++;
-//       }
-//     }
-//     
-//     ret->name = header;
-//     ret->first_pair = first_pair;
-//     ret->last_pair = last_pair;
-//     ret->pair_count = pair_count;
-//   }
-// 
-//   // update curr
-//   *_curr = curr;
-//   return ret;
-// }
+  SE_Node *se_node = se_yml_node_from_file(scratch.arena, path);
+  String8 name = se_str_from_tag(se_node, str8_lit("name"));
+  ret->name = push_str8_copy(arena, name);
+  ret->save_path = push_str8_copy(arena, path);
+  ret->hot_key = rk_key_from_v2u64(se_v2u64_from_tag(se_node, str8_lit("hot_key")));
+  ret->active_key = rk_key_from_v2u64(se_v2u64_from_tag(se_node, str8_lit("active_key")));
+  ret->omit_grid = se_b32_from_tag(se_node, str8_lit("omit_grid"));
+  ret->omit_gizmo3d = se_b32_from_tag(se_node, str8_lit("omit_gizmo3d"));
+  ret->omit_light = se_b32_from_tag(se_node, str8_lit("omit_light"));
+  ret->gizmo3d_mode = se_u64_from_tag(se_node, str8_lit("gizmo3d_mode"));
 
-// internal RK_Scene *
-// rk_scene_from_tscn(String8 path)
-// {
-//   RK_Scene *ret = rk_scene_alloc();
-//   Arena *arena = ret->arena;
-//   Temp scratch = scratch_begin(0,0);
-// 
-//   String8 blob_path = str8_chop_last_dot(path);
-//   blob_path = push_str8_cat(scratch.arena, blob_path, str8_lit(".blob"));
-// 
-//   rk_push_node_bucket(ret->node_bucket);
-//   rk_push_res_bucket(ret->res_bucket);
-// 
-//   // scene props
-//   String8 scene_name = {0};
-// 
-//   // read file content
-//   OS_Handle f = os_file_open(OS_AccessFlag_Read, (path));
-//   FileProperties f_props = os_properties_from_file(f);
-//   U64 size = f_props.size;
-//   U8 *data = push_array(scratch.arena, U8, f_props.size);
-//   os_file_read(f, rng_1u64(0,size), data);
-//   String8 str = str8(data, size);
-//   String8List lines = wrapped_lines_from_string(scratch.arena, str, 300, 300, 2);
-// 
-//   // parse blocks
-//   String8Node *n = lines.first;
-//   while(n)
-//   {
-//     RK_TSCN_Block *block = rk_next_block(scratch.arena, &n);
-//     
-//     if(str8_match(block->name, str8_lit("ext_resource"), 0))
-//     {
-// 
-//     }
-//     else if(str8_match(block->name, str8_lit("node"), 0))
-//     {
-// 
-//     }
-//   }
-// 
-//   ret->name = push_str8_copy(arena, scene_name);
-//   ret->save_path = push_str8_copy(arena, path);
-// 
-//   rk_pop_node_bucket();
-//   rk_pop_res_bucket();
-//   scratch_end(scratch);
-//   return ret;
-// }
+  // scene custom_data
+  {
+    Vec2U64 range = se_v2u64_from_tag(se_node, str8_lit("custom_data"));
+    if(range.y-range.x > 0)
+    {
+      U64 size = range.y-range.x;
+      U8 *dst = push_array_fat_sized(arena, size, ret);
+      MemoryCopy(dst, blob+range.x, size);
+      ret->custom_data = dst;
+    }
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // load resource
+
+  SE_Node *first_ext_res_node = se_arr_from_tag(se_node, str8_lit("ext_resources"));
+  for(SE_Node *ext_res_node = first_ext_res_node; ext_res_node != 0; ext_res_node = ext_res_node->next)
+  {
+    Arena *res_arena = ret->res_bucket->arena_ref;
+
+    Vec2U64 key_v2u64 = se_v2u64_from_tag(ext_res_node, str8_lit("key"));
+    String8 name = se_str_from_tag(ext_res_node, str8_lit("name"));
+    String8 path = se_str_from_tag(ext_res_node, str8_lit("path"));
+    RK_ResourceKind kind = se_u64_from_tag(ext_res_node, str8_lit("kind"));
+
+    RK_Key key = rk_key_make(key_v2u64.x, key_v2u64.y);
+    RK_Resource *res = 0;
+
+    switch(kind)
+    {
+      case RK_ResourceKind_Texture2D:
+      {
+        R_Tex2DSampleKind sample_kind = se_u64_from_tag(ext_res_node, str8_lit("sample_kind"));
+        RK_Handle handle = rk_tex2d_from_path(path, 0, key);
+        res = rk_res_from_handle(&handle);
+        res->v.tex2d.sample_kind = sample_kind;
+      }break;
+      case RK_ResourceKind_SpriteSheet:
+      {
+        String8 img_path = se_str_from_tag(ext_res_node, str8_lit("path"));
+        String8 meta_path = se_str_from_tag(ext_res_node, str8_lit("path_1"));
+        RK_Handle handle = rk_spritesheet_from_image(img_path, meta_path, key);
+        res = rk_res_from_handle(&handle);
+      }break;
+      case RK_ResourceKind_TileSet:
+      {
+        String8 dir = se_str_from_tag(ext_res_node, str8_lit("path"));
+        RK_Handle handle = rk_tileset_from_dir(dir, key);
+        res = rk_res_from_handle(&handle);
+      }break;
+      default:{InvalidPath;}break;
+    }
+
+    AssertAlways(res != 0);
+    res->name = push_str8_copy(res_arena, name);
+    res->path = push_str8_copy(res_arena, path);
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // build node
+
+  SE_Node *first_n_node = se_arr_from_tag(se_node, str8_lit("nodes"));
+  RK_Node *root = 0;
+  RK_Node *active_camera = 0;
+  for(SE_Node *n = first_n_node; n != 0; n = n->next)
+  {
+    Vec2U64 key_v2u64 = se_v2u64_from_tag(n, str8_lit("key"));
+    Vec2U64 parent_key_v2u64 = se_v2u64_from_tag(n, str8_lit("parent"));
+    RK_NodeFlags flags = se_u64_from_tag(n, str8_lit("flags"));
+    RK_NodeTypeFlags type_flags = se_u64_from_tag(n, str8_lit("type_flags"));
+    String8 name = se_str_from_tag(n, str8_lit("name"));
+
+    RK_Key key = rk_key_make(key_v2u64.x, key_v2u64.y);
+    RK_Key parent_key = rk_key_make(parent_key_v2u64.x, parent_key_v2u64.y);
+    RK_Node *parent = 0;
+
+    if(!rk_key_match(parent_key, rk_key_zero()))
+    {
+      parent = rk_node_from_key(parent_key);
+    }
+
+    // build node
+    RK_Node *node = 0;
+    RK_Parent_Scope(parent)
+    {
+      node = rk_build_node_from_key(type_flags, flags, key);
+    }
+    rk_node_equip_display_string(node, name);
+
+    // function table 
+    // TODO(XXX): missing setup and fixed_update
+    for(SE_Node *fn = se_arr_from_tag(n, str8_lit("update")); fn != 0; fn = fn->next)
+    {
+      AssertAlways(fn->kind == SE_NodeKind_String);
+      String8 fn_name = fn->v.se_str;
+      // TODO(XXX): support setup and fixed_update
+      rk_node_push_fn(node, fn_name);
+    }
+
+    // custom data
+    {
+      Vec2U64 range = se_v2u64_from_tag(n, str8_lit("custom_data"));
+      if(range.y-range.x > 0)
+      {
+        U64 size = range.y-range.x;
+        U8 *dst = push_array_fat_sized(arena, size, node);
+        MemoryCopy(dst, blob+range.x, size);
+        node->custom_data = dst;
+      }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    // equipments
+
+    if(type_flags & RK_NodeTypeFlag_Node2D)
+    {
+      RK_Node2D *dst = node->node2d;
+      SE_Node *src = se_struct_from_tag(n, str8_lit("node2d"));
+      SE_Node *transform_src = se_struct_from_tag(src, str8_lit("transform"));
+      if(src)
+      {
+        dst->transform.position = se_v2f32_from_tag(transform_src, str8_lit("position"));
+        dst->transform.rotation = se_f32_from_tag(transform_src, str8_lit("rotation"));
+        dst->transform.scale = se_v2f32_from_tag(transform_src, str8_lit("scale"));
+        dst->transform.skew = se_f32_from_tag(transform_src, str8_lit("skew"));
+        dst->z_index = se_f32_from_tag(src, str8_lit("z_index"));
+      }
+    }
+
+    if(type_flags & RK_NodeTypeFlag_Node3D)
+    {
+      RK_Node3D *dst = node->node3d;
+      SE_Node *src = se_struct_from_tag(n, str8_lit("node3d"));
+      SE_Node *transform_src = se_struct_from_tag(src, str8_lit("transform"));
+      if(src)
+      {
+        dst->transform.position = se_v3f32_from_tag(transform_src, str8_lit("position"));
+        dst->transform.rotation = se_v4f32_from_tag(transform_src, str8_lit("rotation"));
+        dst->transform.scale = se_v3f32_from_tag(transform_src, str8_lit("scale"));
+      }
+    }
+
+    if(type_flags & RK_NodeTypeFlag_Camera3D)
+    {
+      RK_Camera3D *dst = node->camera3d;
+      SE_Node *src = se_struct_from_tag(n, str8_lit("camera3d"));
+      if(src)
+      {
+        dst->projection = se_u64_from_tag(src, str8_lit("projection"));
+        dst->viewport_shading = se_u64_from_tag(src, str8_lit("viewport_shading"));
+        dst->polygon_mode = se_u64_from_tag(src, str8_lit("polygon_mode"));
+        Vec4F32 viewport = se_v4f32_from_tag(src, str8_lit("viewport"));
+        dst->viewport = (Rng2F32){viewport.x, viewport.y, viewport.z, viewport.w};
+        dst->hide_cursor = se_b32_from_tag(src, str8_lit("hide_cursor"));
+        dst->lock_cursor = se_b32_from_tag(src, str8_lit("lock_cursor"));
+        dst->is_active = se_b32_from_tag(src, str8_lit("is_active"));
+        dst->zn = se_f32_from_tag(src, str8_lit("zn"));
+        dst->zf = se_f32_from_tag(src, str8_lit("zf"));
+        Vec4F32 v = se_v4f32_from_tag(src, str8_lit("v"));
+        dst->v[0] = v.v[0];
+        dst->v[1] = v.v[1];
+        dst->v[2] = v.v[2];
+        dst->v[3] = v.v[3];
+
+        if(dst->is_active)
+        {
+          active_camera = node;
+        }
+      }
+    }
+
+    if(type_flags & RK_NodeTypeFlag_Sprite2D)
+    {
+      RK_Sprite2D *dst = node->sprite2d;
+      SE_Node *src = se_struct_from_tag(n, str8_lit("sprite2d"));
+      if(src)
+      {
+        SE_Handle tex = se_handle_from_tag(src, str8_lit("tex"));
+        MemoryCopy(&dst->tex, &tex, sizeof(SE_Handle));
+        dst->size = se_v2f32_from_tag(src, str8_lit("size"));
+        dst->anchor = se_u64_from_tag(src, str8_lit("anchor"));
+        dst->color = se_v4f32_from_tag(src, str8_lit("color"));
+        dst->omit_texture = se_b32_from_tag(src, str8_lit("omit_texture"));
+      }
+    }
+
+    if(type_flags & RK_NodeTypeFlag_AnimatedSprite2D)
+    {
+      RK_AnimatedSprite2D *dst = node->animated_sprite2d;
+      SE_Node *src = se_struct_from_tag(n, str8_lit("animated_sprite2d"));
+      if(src)
+      {
+        dst->sheet = rk_handle_from_se(se_handle_from_tag(src, str8_lit("sheet")));
+        dst->flipped = se_b32_from_tag(src, str8_lit("flipped"));
+        dst->size = se_v2f32_from_tag(src, str8_lit("size"));
+        dst->curr_tag = se_u64_from_tag(src, str8_lit("curr_tag"));
+        dst->next_tag = se_u64_from_tag(src, str8_lit("next_tag"));
+        dst->loop = se_b32_from_tag(src, str8_lit("loop"));
+        dst->is_animating = se_b32_from_tag(src, str8_lit("is_animating"));
+        dst->ts_ms = se_f32_from_tag(src, str8_lit("ts_ms"));
+      }
+    }
+
+    if(type_flags & RK_NodeTypeFlag_TileMapLayer)
+    {
+      RK_TileMapLayer *dst = node->tilemap_layer;
+      SE_Node *src = se_struct_from_tag(n, str8_lit("tilemap_layer"));
+      if(src)
+      {
+        dst->name = push_str8_copy(arena, se_str_from_tag(src, str8_lit("name")));
+      }
+    }
+
+    if(type_flags & RK_NodeTypeFlag_TileMap)
+    {
+      RK_TileMap*dst = node->tilemap;
+      SE_Node *src = se_struct_from_tag(n, str8_lit("tilemap"));
+      if(src)
+      {
+        Vec2U64 size = se_v2u64_from_tag(src, str8_lit("size"));
+        dst->size.x = size.x;
+        dst->size.y = size.y;
+        dst->tile_size = se_v2f32_from_tag(src, str8_lit("tile_size"));
+        dst->mat = se_2x2f32_from_tag(src, str8_lit("mat"));
+        dst->mat_inv = se_2x2f32_from_tag(src, str8_lit("mat_inv"));
+      }
+    }
+
+    if(n == first_n_node) root = node;
+  }
+
+  ret->root = rk_handle_from_node(root);
+  ret->active_camera = rk_handle_from_node(active_camera);
+
+  rk_pop_node_bucket();
+  rk_pop_res_bucket();
+  rk_pop_handle_seed();
+  scratch_end(scratch);
+  return ret;
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // GLTF2.0
@@ -800,7 +580,7 @@ rk_tex2d_from_gltf_tex(cgltf_texture *tex_src, String8 gltf_directory)
   str8_list_push(scratch.arena, &path_parts, gltf_directory);
   str8_list_push(scratch.arena, &path_parts, str8_cstring(tex_src->image->uri));
   String8 path = str8_path_list_join_by_style(scratch.arena, &path_parts, PathStyle_Relative);
-  ret = rk_tex2d_from_path(path, 1);
+  ret = rk_tex2d_from_path(path, 1, rk_key_zero());
   scratch_end(scratch);
   return ret;
 }
@@ -1294,16 +1074,42 @@ rk_animation_from_gltf_animation(cgltf_data *data, cgltf_animation *animation_sr
 /////////////////////////////////
 //~ Other resources
 
+internal RK_Image
+rk_image_from_path(Arena *arena, String8 path)
+{
+  RK_Image ret = {0};
+  S32 x,y,n;
+
+  // TODO(XXX): we may use arena allocation for stbi_load, so that a realloc is avoidable
+  U8 *src = stbi_load((char*)path.str, &x, &y, &n, 4);
+  U64 size = x*y*n;
+  U8 *dst = push_array(arena, U8, size);
+  MemoryCopy(dst, src, size);
+  stbi_image_free(src);
+
+  ret.data = dst;
+  ret.x = x;
+  ret.y = y;
+  ret.n = n;
+  ret.path = push_str8_copy(arena, path);
+  ret.filename = push_str8_copy(arena, str8_skip_last_slash(path));
+  return ret;
+}
+
 internal RK_Handle
-rk_tex2d_from_path(String8 path, B32 is_bundled)
+rk_tex2d_from_path(String8 path, B32 is_bundled, RK_Key key_override)
 {
   RK_Handle ret = {0};
+  Temp scratch = scratch_begin(0,0);
   // TODO(XXX): we should consider sampler kind here
 
-  // TODO(XXX): we should use relative path here, verify if that's case later 
-  RK_Key key = rk_res_key_from_string(RK_ResourceKind_Texture2D, rk_key_zero(), path);
+  // NOTE(XXX): we should use relative path here, verify if that's case later 
+  RK_Key key = key_override;
+  if(rk_key_match(key, rk_key_zero()))
+  {
+    key = rk_res_key_from_string(RK_ResourceKind_Texture2D, rk_key_zero(), path);
+  }
   RK_Handle res = rk_handle_from_res(rk_res_from_key(key));
-
   Arena *arena = rk_top_res_bucket()->arena_ref;
   if(rk_handle_is_zero(ret))
   {
@@ -1312,20 +1118,19 @@ rk_tex2d_from_path(String8 path, B32 is_bundled)
     RK_Texture2D *tex2d = (RK_Texture2D*)&res->v;
     R_Tex2DSampleKind sample_kind = R_Tex2DSampleKind_Nearest;
     {
-      int x,y,n;
-      U8 *image_data = stbi_load((char*)path.str, &x, &y, &n, 4);
-
-      tex2d->tex = r_tex2d_alloc(R_ResourceKind_Static, sample_kind, v2s32(x,y), R_Tex2DFormat_RGBA8, image_data);
+      RK_Image image = rk_image_from_path(scratch.arena, path);
+      tex2d->tex = r_tex2d_alloc(R_ResourceKind_Static, sample_kind,
+                                 v2s32(image.x,image.y), R_Tex2DFormat_RGBA8, image.data);
       tex2d->sample_kind = sample_kind;
-      tex2d->size.x = x;
-      tex2d->size.y = y;
+      tex2d->size.x = image.x;
+      tex2d->size.y = image.y;
 
-      res->path = push_str8_copy(arena, path);
-      res->name = str8_skip_last_slash(res->path);
+      res->path = push_str8_copy(arena, image.path);
+      res->name = push_str8_copy(arena, image.filename);
       res->src_kind = is_bundled ? RK_ResourceSrcKind_Bundled : RK_ResourceSrcKind_External;
-      stbi_image_free(image_data);
     }
   }
+  scratch_end(scratch);
   return ret;
 }
 
@@ -1370,7 +1175,7 @@ rk_tex2d_from_dir(Arena *arena, String8 dir, U64 *count, B32 is_bundled)
       str8_list_push(scratch.arena, &parts, dir);
       str8_list_push(scratch.arena, &parts, info.name);
       String8 path = str8_path_list_join_by_style(scratch.arena, &parts, PathStyle_Relative);
-      *dst = rk_tex2d_from_path(path, is_bundled);
+      *dst = rk_tex2d_from_path(path, is_bundled, rk_key_zero());
       dst++;
     }
   }
@@ -1458,18 +1263,23 @@ rk_token_pass(jsmntok_t *tokens, U64 *i)
 }
 
 internal RK_Handle
-rk_spritesheet_from_image(String8 path, String8 meta_path)
+rk_spritesheet_from_image(String8 path, String8 meta_path, RK_Key key_override)
 {
   RK_Handle ret = {0};
 
   Temp scratch = scratch_begin(0,0);
-  RK_Key key = rk_res_key_from_string(RK_ResourceKind_SpriteSheet, rk_key_zero(), push_str8_cat(scratch.arena, path, meta_path));
+  RK_Key key = key_override;
+  if(rk_key_match(key, rk_key_zero()))
+  {
+    key = rk_res_key_from_string(RK_ResourceKind_SpriteSheet, rk_key_zero(), push_str8_cat(scratch.arena, path, meta_path));
+  }
   Arena *arena = rk_top_res_bucket()->arena_ref;
   ret = rk_handle_from_res(rk_res_from_key(key));
 
   if(rk_handle_is_zero(ret))
   {
     RK_Resource *res = rk_res_alloc(key);
+    res->src_kind = RK_ResourceSrcKind_External;
     ret = rk_handle_from_res(res);
     RK_SpriteSheet *sheet = (RK_SpriteSheet*)&res->v;
 
@@ -1783,17 +1593,47 @@ rk_spritesheet_from_image(String8 path, String8 meta_path)
       tag->duration = duration;
     }
 
-    sheet->tex         = rk_tex2d_from_path(path, 0);
+    sheet->tex         = rk_tex2d_from_path(path, 1, rk_key_zero());
     sheet->size        = sheet_size;
     sheet->frames      = frames;
     sheet->frame_count = frame_count;
     sheet->tags        = tags;
     sheet->tag_count   = tag_count;
 
-    res->path = push_str8_copy(arena, meta_path);
+    res->path_0 = push_str8_copy(arena, path);
+    res->path_1 = push_str8_copy(arena, meta_path);
   }
 
   scratch_end(scratch);
+  return ret;
+}
+
+internal RK_Handle
+rk_tileset_from_dir(String8 dir, RK_Key key_override)
+{
+  // TODO(XXX): we should sort the filename
+  // sort based on _number
+  // qsort(tile_textures, tile_texture_count, sizeof(RK_Handle), texture_cmp);
+  RK_Handle ret = {0};
+  RK_Key key = key_override;
+  if(rk_key_match(key, rk_key_zero()))
+  {
+    key = rk_res_key_from_string(RK_ResourceKind_TileSet, rk_key_zero(), dir);
+  }
+  RK_Handle res = rk_handle_from_res(rk_res_from_key(key));
+  Arena *arena = rk_top_res_bucket()->arena_ref;
+  if(rk_handle_is_zero(ret))
+  {
+    RK_Resource *res = rk_res_alloc(key);
+    ret = rk_handle_from_res(res);
+    RK_TileSet *tileset = (RK_TileSet*)&res->v;
+    tileset->textures = rk_tex2d_from_dir(arena, dir, &tileset->texture_count, 1);
+
+    res->path = push_str8_copy(arena, dir);
+    res->name = push_str8_copy(arena, str8_skip_last_slash(dir));
+    res->src_kind = RK_ResourceSrcKind_External;
+  }
+
   return ret;
 }
 
@@ -1836,7 +1676,7 @@ rk_material_from_image(String8 name, String8 path)
 
     String8 _name = push_str8_copy(arena, name);
 
-    mat->textures[R_GeoTexKind_Diffuse] = rk_tex2d_from_path(path, 0);
+    mat->textures[R_GeoTexKind_Diffuse] = rk_tex2d_from_path(path, 0, rk_key_zero());
     mat->v.opacity = 1.0;
     mat->v.diffuse_color = v4f32(1,1,1,1);
     mat->v.has_diffuse_texture = 1;

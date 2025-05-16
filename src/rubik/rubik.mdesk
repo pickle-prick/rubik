@@ -8,6 +8,7 @@ RK_StackTable:
   { NodeBucket                         node_bucket                  `RK_NodeBucket *`          0                                }
   { ResourceBucket                     res_bucket                   `RK_ResourceBucket *`      0                                }
   { Scene                              scene                        `RK_Scene *`               0                                }
+  { HandleSeed                         handle_seed                  `U64`                      0                                }
 }
 
 //- rjf: declaring stack node types

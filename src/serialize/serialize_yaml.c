@@ -112,12 +112,40 @@ se_yml_node_to_file(SE_Node *_root, String8 path)
       }break;
       case SE_NodeKind_Mat2x2F32:
       {
-        str8_list_pushf(scratch.arena, &strs, "2x2f32(%.4f, %.4f, %.4f, %.4f)\n", root->v.se_2x2f32.v[0], root->v.se_2x2f32.v[1], root->v.se_2x2f32.v[2], root->v.se_2x2f32.v[3]);
+        str8_list_pushf(scratch.arena, &strs, "2x2f32(%.4f, %.4f, %.4f, %.4f)\n", root->v.se_2x2f32.v[0][0], root->v.se_2x2f32.v[0][1], root->v.se_2x2f32.v[1][0], root->v.se_2x2f32.v[1][1]);
       }break;
       case SE_NodeKind_Mat3x3F32:
+      {
+        str8_list_pushf(scratch.arena, &strs, "3x3f32(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f)\n",
+                                              root->v.se_3x3f32.v[0][0],
+                                              root->v.se_3x3f32.v[0][1],
+                                              root->v.se_3x3f32.v[0][2],
+                                              root->v.se_3x3f32.v[1][0],
+                                              root->v.se_3x3f32.v[1][1],
+                                              root->v.se_3x3f32.v[1][2],
+                                              root->v.se_3x3f32.v[2][0],
+                                              root->v.se_3x3f32.v[2][1],
+                                              root->v.se_3x3f32.v[2][2]);
+      }break;
       case SE_NodeKind_Mat4x4F32:
       {
-        NotImplemented;
+        str8_list_pushf(scratch.arena, &strs, "4x4f32(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f)\n",
+                                              root->v.se_4x4f32.v[0][0],
+                                              root->v.se_4x4f32.v[0][1],
+                                              root->v.se_4x4f32.v[0][2],
+                                              root->v.se_4x4f32.v[0][3],
+                                              root->v.se_4x4f32.v[1][0],
+                                              root->v.se_4x4f32.v[1][1],
+                                              root->v.se_4x4f32.v[1][2],
+                                              root->v.se_4x4f32.v[1][3],
+                                              root->v.se_4x4f32.v[2][0],
+                                              root->v.se_4x4f32.v[2][1],
+                                              root->v.se_4x4f32.v[2][2],
+                                              root->v.se_4x4f32.v[2][3],
+                                              root->v.se_4x4f32.v[3][0],
+                                              root->v.se_4x4f32.v[3][1],
+                                              root->v.se_4x4f32.v[3][2],
+                                              root->v.se_4x4f32.v[3][3]);
       }break;
       case SE_NodeKind_Array:
       {
@@ -126,6 +154,16 @@ se_yml_node_to_file(SE_Node *_root, String8 path)
       case SE_NodeKind_Struct:
       {
         if(root != _root) str8_list_pushf(scratch.arena, &strs, "\n");
+      }break;
+      case SE_NodeKind_Handle:
+      {
+        str8_list_pushf(scratch.arena, &strs, "handle(%I64u, %I64u, %I64u, %I64u, %I64u, %I64u)\n",
+                                              root->v.se_handle.u64[0],
+                                              root->v.se_handle.u64[1],
+                                              root->v.se_handle.u64[2],
+                                              root->v.se_handle.u64[3],
+                                              root->v.se_handle.u64[4],
+                                              root->v.se_handle.u64[5]);
       }break;
       default:{InvalidPath;}break;
     }
@@ -314,7 +352,6 @@ se_yml_node_from_file(Arena *arena, String8 path)
             {
               type_str = str8_range(first,c);
               first = c+1;
-              opl -= 1;
               break;
             }
           }
@@ -331,6 +368,7 @@ se_yml_node_from_file(Arena *arena, String8 path)
           if(str8_match(type_str, str8_lit("2x2f32"), 0)) kind = SE_NodeKind_Mat2x2F32;
           if(str8_match(type_str, str8_lit("3x3f32"), 0)) kind = SE_NodeKind_Mat3x3F32;
           if(str8_match(type_str, str8_lit("4x4f32"), 0)) kind = SE_NodeKind_Mat4x4F32;
+          if(str8_match(type_str, str8_lit("handle"), 0)) kind = SE_NodeKind_Handle;
         }
 
         String8 values_src = str8_range(first,opl);
@@ -342,6 +380,8 @@ se_yml_node_from_file(Arena *arena, String8 path)
         {
           case SE_NodeKind_S64:
           {
+            // skip trailling ')'
+            values_src.size--;
             S64 *v = push_array(scratch.arena, S64, 1);
             *v = s64_from_str8(values_src, 10);
             values = v;
@@ -349,6 +389,8 @@ se_yml_node_from_file(Arena *arena, String8 path)
           }break;
           case SE_NodeKind_U64:
           {
+            // skip trailling ')'
+            values_src.size--;
             U64 *v = push_array(scratch.arena, U64, 1);
             *v = u64_from_str8(values_src, 10);
             values = v;
@@ -356,6 +398,8 @@ se_yml_node_from_file(Arena *arena, String8 path)
           }break;
           case SE_NodeKind_F32:
           {
+            // skip trailling ')'
+            values_src.size--;
             F32 *v = push_array(scratch.arena, F32, 1);
             *v = (F32)f64_from_str8(values_src);
             values = v;
@@ -363,13 +407,17 @@ se_yml_node_from_file(Arena *arena, String8 path)
           }break;
           case SE_NodeKind_B32:
           {
+            // skip trailling ')'
+            values_src.size--;
             B32 *v = push_array(scratch.arena, B32, 1);
             *v = (B32)s64_from_str8(values_src, 10);
             values = v;
             value_size = sizeof(*v);
-          }
+          }break;
           case SE_NodeKind_String:
           {
+            // skip trailling ')'
+            values_src.size--;
             String8 *v = push_array(scratch.arena, String8, 1);
             *v = push_str8_copy(scratch.arena, values_src);
             values = v;
@@ -379,12 +427,13 @@ se_yml_node_from_file(Arena *arena, String8 path)
           {
             U64 idx = 0;
             Vec2U64 *v = push_array(scratch.arena, Vec2U64, 1);
-            for(U8 *c = first; c < opl && idx < 2; c++,idx++)
+            for(U8 *c = first; c < opl && idx < 2; c++)
             {
               if(*c == ',' || c == (opl-1))
               {
-                (*v).v[idx] = u64_from_str8(str8_range(first, c), 10);
+                (*v).v[idx++] = u64_from_str8(str8_range(first, c), 10);
                 first = c+1;
+                for(;first < opl; first++) { if(!char_is_space(*first)) break; }
               }
             }
             values = v;
@@ -394,12 +443,13 @@ se_yml_node_from_file(Arena *arena, String8 path)
           {
             U64 idx = 0;
             Vec2F32 *v = push_array(scratch.arena, Vec2F32, 1);
-            for(U8 *c = first; c < opl && idx < 2; c++,idx++)
+            for(U8 *c = first; c < opl && idx < 2; c++,idx)
             {
               if(*c == ',' || c == (opl-1))
               {
-                (*v).v[idx] = (F32)f64_from_str8(str8_range(first, c));
+                (*v).v[idx++] = (F32)f64_from_str8(str8_range(first, c));
                 first = c+1;
+                for(;first < opl; first++) { if(!char_is_space(*first)) break; }
               }
             }
             values = v;
@@ -409,12 +459,13 @@ se_yml_node_from_file(Arena *arena, String8 path)
           {
             U64 idx = 0;
             Vec3F32 *v = push_array(scratch.arena, Vec3F32, 1);
-            for(U8 *c = first; c < opl && idx < 3; c++,idx++)
+            for(U8 *c = first; c < opl && idx < 3; c++,idx)
             {
               if(*c == ',' || c == (opl-1))
               {
-                (*v).v[idx] = (F32)f64_from_str8(str8_range(first, c));
+                (*v).v[idx++] = (F32)f64_from_str8(str8_range(first, c));
                 first = c+1;
+                for(;first < opl; first++) { if(!char_is_space(*first)) break; }
               }
             }
             values = v;
@@ -424,12 +475,13 @@ se_yml_node_from_file(Arena *arena, String8 path)
           {
             U64 idx = 0;
             Vec4F32 *v = push_array(scratch.arena, Vec4F32, 1);
-            for(U8 *c = first; c < opl && idx < 4; c++,idx++)
+            for(U8 *c = first; c < opl && idx < 4; c++)
             {
               if(*c == ',' || c == (opl-1))
               {
-                (*v).v[idx] = (F32)f64_from_str8(str8_range(first, c));
+                (*v).v[idx++] = (F32)f64_from_str8(str8_range(first, c));
                 first = c+1;
+                for(;first < opl; first++) { if(!char_is_space(*first)) break; }
               }
             }
             values = v;
@@ -439,12 +491,13 @@ se_yml_node_from_file(Arena *arena, String8 path)
           {
             U64 idx = 0;
             F32 *v = push_array(scratch.arena, F32, 4);
-            for(U8 *c = first; c < opl && idx < 4; c++,idx++)
+            for(U8 *c = first; c < opl && idx < 4; c++)
             {
               if(*c == ',' || c == (opl-1))
               {
-                v[idx] = (F32)f64_from_str8(str8_range(first, c));
+                v[idx++] = (F32)f64_from_str8(str8_range(first, c));
                 first = c+1;
+                for(;first < opl; first++) { if(!char_is_space(*first)) break; }
               }
             }
             values = v;
@@ -454,12 +507,13 @@ se_yml_node_from_file(Arena *arena, String8 path)
           {
             U64 idx = 0;
             F32 *v = push_array(scratch.arena, F32, 9);
-            for(U8 *c = first; c < opl && idx < 9; c++,idx++)
+            for(U8 *c = first; c < opl && idx < 9; c++)
             {
               if(*c == ',' || c == (opl-1))
               {
-                v[idx] = (F32)f64_from_str8(str8_range(first, c));
+                v[idx++] = (F32)f64_from_str8(str8_range(first, c));
                 first = c+1;
+                for(;first < opl; first++) { if(!char_is_space(*first)) break; }
               }
             }
             values = v;
@@ -469,12 +523,13 @@ se_yml_node_from_file(Arena *arena, String8 path)
           {
             U64 idx = 0;
             F32 *v = push_array(scratch.arena, F32, 16);
-            for(U8 *c = first; c < opl && idx < 16; c++,idx++)
+            for(U8 *c = first; c < opl && idx < 16; c++)
             {
               if(*c == ',' || c == (opl-1))
               {
-                v[idx] = (F32)f64_from_str8(str8_range(first, c));
+                v[idx++] = (F32)f64_from_str8(str8_range(first, c));
                 first = c+1;
+                for(;first < opl; first++) { if(!char_is_space(*first)) break; }
               }
             }
             values = v;
@@ -482,6 +537,22 @@ se_yml_node_from_file(Arena *arena, String8 path)
           }break;
           case SE_NodeKind_Array:
           case SE_NodeKind_Struct:{ has_value=0; }break;
+          case SE_NodeKind_Handle:
+          {
+            U64 idx = 0;
+            U64 *v = push_array(scratch.arena, U64, 6);
+            for(U8 *c = first; c < opl && idx < 6; c++)
+            {
+              if(*c == ',' || c == (opl-1))
+              {
+                v[idx++] = u64_from_str8(str8_range(first, c),10);
+                first = c+1;
+                for(;first < opl; first++) { if(!char_is_space(*first)) break; }
+              }
+            }
+            values = v;
+            value_size = sizeof(*v)*6;
+          }break;
           default:{InvalidPath;}break;
         }
 
@@ -496,295 +567,6 @@ se_yml_node_from_file(Arena *arena, String8 path)
 
   se_build_end();
   scratch_end(scratch);
+  ret = root;
   return ret;
 }
-
-// internal SE_Node *
-// se_yml_node_from_file(Arena *arena, String8 path)
-// {
-//   Temp temp = scratch_begin(&arena,1);
-// 
-//   // Read file
-//   OS_Handle f = os_file_open(OS_AccessFlag_Read, (path));
-//   FileProperties f_props = os_properties_from_file(f);
-//   U64 size = f_props.size;
-//   U8 *data = push_array(temp.arena, U8, f_props.size);
-//   os_file_read(f, rng_1u64(0,size), data);
-//   String8 str = str8(data, size);
-// 
-//   String8List lines = wrapped_lines_from_string(temp.arena, str, 300, 300, 2);
-// 
-//   se_build_begin(arena);
-//   // k: top struct
-//   SE_Node *root = se_struct(str8_zero());
-//   se_push_parent(root);
-// 
-//   String8Node *line_node = lines.first;
-//   while(line_node != 0)
-//   {
-//     line_node = se_yml_node_from_strlist(temp.arena, line_node, root, 0);
-//   }
-// 
-//   se_pop_parent();
-//   scratch_end(temp);
-//   se_build_end();
-//   return root;
-// }
-// 
-// //~ Helper functions
-// 
-// internal void
-// se_yml_push_node_to_strlist(Arena *arena, String8List *strs, SE_Node *node)
-// {
-//   String8 prefix = {0};
-//   SE_Node *parent = node->parent;
-// 
-//   // Indent
-//   {
-//     S64 top_indent = se_g_top_indent->v;
-//     top_indent = ClampBot(0, top_indent);
-//     U64 size = top_indent*SE_YML_INDENT_SIZE;
-//     prefix.str = push_array(arena, U8, size+1);
-//     prefix.size = size;
-//     MemorySet(prefix.str, ' ', size);
-//     prefix.str[size] = '\0';
-//   }
-// 
-//   // List prefix
-//   if(parent != 0 && parent->kind == SE_NodeKind_Array)
-//   {
-//     prefix = push_str8f(arena, "%S- ", prefix);
-//   }
-// 
-//   // Tag
-//   if(node->tag.size > 0)
-//   {
-//     prefix = push_str8f(arena, "%S%S: ", prefix, node->tag);
-//   }
-// 
-//   str8_list_pushf(arena, strs, "%S", prefix);
-//   switch(node->kind)
-//   {
-//     case SE_NodeKind_Int:
-//     {
-//       str8_list_pushf(arena, strs, "s%I64d\n", node->v.se_int);
-//     }break;
-//     case SE_NodeKind_Uint:
-//     {
-//       str8_list_pushf(arena, strs, "u%I64u\n", node->v.se_int);
-//     }break;
-//     case SE_NodeKind_Float:
-//     {
-//       str8_list_pushf(arena, strs, "f%I64f\n", node->v.se_float);
-//     }break;
-//     case SE_NodeKind_String:
-//     {
-//       str8_list_pushf(arena, strs, "\"%S\"\n", node->v.se_string);
-//     }break;
-//     case SE_NodeKind_Boolean:
-//     {
-//       String8 v = node->v.se_boolean ? str8_lit("true") : str8_lit("false");
-//       str8_list_pushf(arena, strs, "%S\n", v);
-//     }break;
-//     case SE_NodeKind_Array:
-//     case SE_NodeKind_Struct:
-//     {
-//       if(prefix.size > 0) str8_list_pushf(arena, strs, "\n");
-//     }break;
-//     default: {InvalidPath;}break;
-//   }
-// 
-//   se_yml_push_indent(arena, 1);
-//   for(SE_Node *c = node->first; c != 0; c = c->next)
-//   {
-//     se_yml_push_node_to_strlist(arena, strs, c);
-//   }
-//   se_yml_pop_indent();
-// }
-// 
-// internal U64 
-// se_yml_whitespaces_from_str(String8 string)
-// {
-//   U64 whitespace_count = 0;
-//   U8 *first = string.str;
-//   U8 *opl = first + string.size;
-//   for(; first < opl; first++)
-//   {
-//     if (!char_is_space(*first)) break;
-//     whitespace_count++;
-//   }
-//   return whitespace_count;
-// }
-// 
-// internal String8Node *
-// se_yml_node_from_strlist(Arena *arena, String8Node *line_node, SE_Node *struct_parent, SE_Node *array_parent)
-// {
-//   SE_Node *n = se_build_node();
-// 
-//   B32 is_struct_entry = struct_parent != 0;
-//   B32 is_array_entry  = array_parent != 0;
-// 
-//   String8Node *next_line_node = line_node->next;
-//   U64 next_line_indent = 0;
-//   if(next_line_node != 0)
-//   {
-//     next_line_indent = se_yml_whitespaces_from_str(next_line_node->string) / SE_YML_INDENT_SIZE;
-//   }
-// 
-//   // k: parse/skip indent
-//   String8 string = line_node->string;
-//   U64 whitespace_count = se_yml_whitespaces_from_str(string);
-//   U64 indent = whitespace_count / SE_YML_INDENT_SIZE;
-//   string = str8_skip(string, whitespace_count);
-// 
-//   // k: parse/skip tag
-//   String8 tag = {0};
-//   {
-//     U8 *first = string.str;
-//     U8 *opl = first + string.size;
-//     U64 tag_str_size = 0;
-//     for(;first < opl; first++)
-//     {
-//       // k: no tag, it's a string
-//       if(*first == '"')
-//       {
-//         break;
-//       }
-//       // k: list entry
-//       if(*first == '-')
-//       {
-//         string = str8_skip(string, 2);
-//         Assert(is_array_entry);
-//         break;
-//       }
-//       // k: it's a tag
-//       if(*first == ':')
-//       {
-//         tag_str_size = first-string.str;
-//         break;
-//       }
-//     }
-//     if(tag_str_size > 0)
-//     {
-//       tag = str8_chop(string, string.size-tag_str_size);
-//     }
-//     if(tag.size > 0)
-//     {
-//       // skip tag + ':'
-//       string = str8_skip(string, tag.size+1);
-//     }
-//   }
-//   n->tag = push_str8_copy(arena, tag);
-//   string = str8_skip_chop_whitespace(string);
-// 
-//   if(is_struct_entry)
-//   {
-//     AssertAlways(tag.size > 0);
-//   }
-// 
-//   if(string.size > 0)
-//   {
-//     // Pase value (str, int, float, boolean)
-//     if(*string.str == '"')
-//     {
-//       n->kind = SE_NodeKind_String;
-//       n->v.se_string = push_str8_copy(arena, str8_skip(str8_chop(string, 1), 1));
-//     }
-//     else if(str8_match(str8_lit("true"), string, 0))
-//     {
-//       n->kind = SE_NodeKind_Boolean;
-//       n->v.se_boolean = 1;
-//     }
-//     else if(str8_match(str8_lit("false"), string, 0))
-//     {
-//       n->kind = SE_NodeKind_Boolean;
-//       n->v.se_boolean = 0;
-//     }
-//     else if(str8_starts_with(string, str8_lit("s"), 0))
-//     {
-//       // S64
-//       n->kind = SE_NodeKind_Int;
-//       n->v.se_int = s64_from_str8(str8_skip(string, 1), 10);
-//     }
-//     else if(str8_starts_with(string, str8_lit("u"), 0))
-//     {
-//       // U64
-//       n->kind = SE_NodeKind_Uint;
-//       n->v.se_uint = u64_from_str8(str8_skip(string, 1), 10);
-//     }
-//     else if(str8_starts_with(string, str8_lit("f"), 0))
-//     {
-//       // F64
-//       n->kind = SE_NodeKind_Float;
-//       n->v.se_float = f64_from_str8(str8_skip(string, 1));
-//     }
-//     else
-//     {
-//       InvalidPath;
-//     }
-//   }
-// 
-//   B32 is_struct = 0;
-//   B32 is_array = 0;
-// 
-//   if(string.size == 1 && *string.str == '-')
-//   {
-//     is_struct = 1;
-//   }
-//   // k: this loop skip empty lines
-//   else for(; next_line_node != 0 && next_line_indent > indent; next_line_node = next_line_node->next)
-//   {
-//     // Get Indent
-//     next_line_indent = se_yml_whitespaces_from_str(next_line_node->string) / SE_YML_INDENT_SIZE;
-// 
-//     // Read next line to check if current line starts a array or struct
-//     String8 line_str = str8_skip(next_line_node->string, next_line_indent*SE_YML_INDENT_SIZE);
-//     if(line_str.size > 0)
-//     {
-//       if(*line_str.str == '-')
-//       {
-//         is_array = 1;
-//         break;
-//       }
-//       else 
-//       {
-//         is_struct = 1;
-//         break;
-//       }
-//     }
-//     else
-//     {
-//       // k: skip empty lines
-//       continue;
-//     }
-//   }
-// 
-//   if(is_array || is_struct)
-//   {
-//     SE_NodeKind kind = 0;
-//     SE_Node *struct_parent = 0;
-//     SE_Node *array_parent = 0;
-//     if(is_struct)
-//     {
-//       kind = SE_NodeKind_Struct;
-//       struct_parent = n;
-//     }
-//     if(is_array)
-//     {
-//       kind = SE_NodeKind_Array;
-//       array_parent = n;
-//     }
-//     n->kind = kind;
-// 
-//     while(next_line_node != 0 && next_line_indent > indent)
-//     {
-//       SE_Parent(n)
-//       {
-//         next_line_node = se_yml_node_from_strlist(arena, next_line_node, struct_parent, array_parent);
-//         if(next_line_node != 0) next_line_indent = se_yml_whitespaces_from_str(next_line_node->string) / SE_YML_INDENT_SIZE;
-//       }
-//     }
-//   }
-// 
-//   return next_line_node;
-// }
