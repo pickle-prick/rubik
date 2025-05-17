@@ -1,6 +1,10 @@
 /////////////////////////////////////////////////////////////////////////////////////////
 // Basic Type/Enum
 
+typedef U64 S4_EntityFlags;
+#define S4_EntityFlag_Tile   (S4_EntityFlags)(1ull<<0)
+#define S4_EntityFlag_Guy    (S4_EntityFlags)(1ull<<1)
+
 typedef U64 S4_TileFlags;
 #define S4_TileFlag_Water   (S4_TileFlags)(1ull<<0)
 #define S4_TileFlag_Ice     (S4_TileFlags)(1ull<<1)
@@ -11,6 +15,7 @@ typedef U64 S4_TileFlags;
 #define S4_TileFlag_Fruit   (S4_TileFlags)(1ull<<6)
 #define S4_TileFlag_Seed    (S4_TileFlags)(1ull<<7)
 
+// composite tile flags
 #define S4_TileFlag_Eatable S4_TileFlag_Grass;
 
 typedef enum S4_TexturePickerKind
@@ -20,13 +25,17 @@ typedef enum S4_TexturePickerKind
   S4_TexturePickerKind_COUNT,
 } S4_TexturePickerKind;
 
+typedef enum S4_ConstraintKind
+{
+  S4_ConstraintKind_COUNT,
+} S4_ConstraintKind;
+
 String8 s4_texture_picker_kind_display_string_table[S4_TexturePickerKind_COUNT] =
 {
   str8_lit_comp("Back"),
   str8_lit_comp("Front"),
 };
 
-// TODO(XXX)
 S4_TileFlags s4_texture_flags_table[115] =
 {
   // 0 -> 21
@@ -168,6 +177,7 @@ struct S4_Scene
 
   // Non-serializable
   S4_Tile **tiles;
+  S4_Guy **guys;
 
   // editor view
   struct
@@ -313,17 +323,20 @@ internal void s4_move_guy(RK_Node *node, Vec2F32 dir, F32 delta_secs)
 /////////////////////////////////////////////////////////////////////////////////////////
 // Update Function
 
-RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
+RK_NODE_CUSTOM_UPDATE(s4_fn_scene_begin)
 {
   S4_Scene *s = scene->custom_data;
   RK_Node *tilemap_node = rk_node_from_handle(&s->tilemap);
   RK_TileMap *tilemap = tilemap_node->tilemap;
+  RK_NodeBucket *node_bucket = scene->node_bucket;
 
-  // TODO(XXX): we may move this initialization to setup fn
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // collect some pointers (run every frame, don't need to be serialized)
+
+  // collect tiles
   {
     U64 layer_count = tilemap_node->children_count;
     // TODO(XXX): we should store tiles for all layers, use first layer for now
-    Assert(tilemap->size.x < 3000 && tilemap->size.y < 3000);
     S4_Tile **tiles = push_array(rk_frame_arena(), S4_Tile*, tilemap->size.x*tilemap->size.y);
     U64 tile_idx = 0;
     for(RK_Node *n = tilemap_node->first->first; n != 0; n = n->next, tile_idx++)
@@ -334,14 +347,31 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
     s->tiles = tiles;
   }
 
-  RK_TileSet *tileset = rk_tileset_from_handle(&s->tileset);
-
-  Vec2U32 tile_coord = tile_coord_from_mouse(ctx->proj_view_inv_m, tilemap->mat_inv, tilemap_node->node2d->transform.position);
-
-  if(s->debug_ui.show == 0)
+  // collect guys
+  S4_Guy **guys = 0;
+  for(U64 slot_idx = 0; slot_idx < node_bucket->hash_table_size; slot_idx++)
   {
-    Trap();
+    RK_NodeBucketSlot *slot = &node_bucket->hash_table[slot_idx];
+    for(RK_Node *n = slot->first; n != 0; n = n->next)
+    {
+      if(n->custom_flags & S4_EntityFlag_Guy)
+      {
+        darray_push(rk_frame_arena(), guys, n->custom_data);
+      }
+    }
   }
+  s->guys = guys;
+}
+
+RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
+{
+  S4_Scene *s = scene->custom_data;
+  RK_Node *tilemap_node = rk_node_from_handle(&s->tilemap);
+  RK_TileMap *tilemap = tilemap_node->tilemap;
+  RK_TileSet *tileset = rk_tileset_from_handle(&s->tileset);
+  Vec2U32 tile_coord = tile_coord_from_mouse(ctx->proj_view_inv_m,
+                                             tilemap->mat_inv,
+                                             tilemap_node->node2d->transform.position);
   RK_UI_Pane(&s->debug_ui.rect, &s->debug_ui.show, str8_lit("TileEditor"))
   {
     RK_UI_Tab(str8_lit("tile"), &s->debug_ui.show, ui_em(0.3,0), ui_em(0.3,0))
@@ -477,10 +507,12 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
 
     if(rk_state->sig.f & UI_SignalFlag_RightClicked && rk_state->sig.f&UI_SignalFlag_Hovering)
     {
-      s->picked_idx = tile->tiles[s->picker_kind];
+      if(tile->tiles[s->picker_kind] >= 0)
+      {
+        s->picked_idx = tile->tiles[s->picker_kind];
+      }
     }
   }
-
 }
 
 RK_NODE_CUSTOM_UPDATE(s4_fn_tilemap)
@@ -604,54 +636,53 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile)
 
 RK_NODE_CUSTOM_UPDATE(s4_fn_system)
 {
-  // S4_Scene *s = scene->custom_data;
-
-  // for(U64 i = 0; i < s->guy_count; i++)
-  // {
-  //   S4_Guy *guy = s->guys[i];
-  //   guy->hunger -= 0.1*ctx->dt_sec;
-  //   guy->hunger = Max(guy->hunger, -0.1);
-  //   guy->thirst -= 0.1*ctx->dt_sec;
-  //   guy->thirst = Max(guy->thirst, -0.1);
-  //   guy->fatigue -= 0.1*ctx->dt_sec;
-  //   guy->fatigue = Max(guy->fatigue, -0.1);
-  // }
+  S4_Scene *s = scene->custom_data;
+  for(U64 i = 0; i < darray_size(s->guys); i++)
+  {
+    S4_Guy *guy = s->guys[i];
+    guy->hunger -= 0.1*ctx->dt_sec;
+    guy->hunger = Max(guy->hunger, -0.1);
+    guy->thirst -= 0.1*ctx->dt_sec;
+    guy->thirst = Max(guy->thirst, -0.1);
+    guy->fatigue -= 0.1*ctx->dt_sec;
+    guy->fatigue = Max(guy->fatigue, -0.1);
+  }
 }
 
-// RK_NODE_CUSTOM_UPDATE(s4_fn_guy)
-// {
-//   RK_AnimatedSprite2D *sprite2d = node->animated_sprite2d;
-//   RK_SpriteSheet *sheet = rk_sheet_from_handle(&sprite2d->sheet);
-//   RK_Transform2D *transform = &node->node2d->transform;
-// 
-//   S4_Scene *s = scene->custom_data;
-//   RK_TileMap *tilemap = s->tilemap;
-//   RK_Node *tilemap_node = rk_ptr_from_fat(tilemap);
-//   Vec2U32 hot_tile_coord = tile_coord_from_mouse(ctx->proj_view_inv_m,
-//                                                  s->tilemap->mat_inv,
-//                                                  tilemap_node->node2d->transform.position);
-//   Vec2F32 mouse_pos_in_world = transform_2x2f32(tilemap->mat, v2f32(hot_tile_coord.x, hot_tile_coord.y));
-// 
-//   S4_Guy *guy = node->custom_data;
-//   Vec2U32 tile_coord = tile_coord_from_world_pos(node->node2d->transform.position,
-//                                                  tilemap_node->node2d->transform.position,
-//                                                  tilemap->mat_inv);
-// 
-//   // S4_Tile *tile = s->tiles[tile_coord.y*tilemap->size.x+tile_coord.x];
-// 
-//   if(guy->hunger <= 0)
-//   {
-//     // TODO(XXX): we may need some path finding stuff here
-//     // TODO(XXX): find the nearest tile which has food
-//     Vec2F32 dir = sub_2f32(mouse_pos_in_world, node->node2d->transform.position);
-//     if(dir.x != 0 || dir.y != 0)
-//     {
-//       dir = normalize_2f32(dir);
-//     }
-// 
-//     s4_move_guy(node, dir, ctx->dt_sec);
-//   }
-// }
+RK_NODE_CUSTOM_UPDATE(s4_fn_guy)
+{
+  RK_AnimatedSprite2D *sprite2d = node->animated_sprite2d;
+  RK_SpriteSheet *sheet = rk_sheet_from_handle(&sprite2d->sheet);
+  RK_Transform2D *transform = &node->node2d->transform;
+
+  S4_Scene *s = scene->custom_data;
+  RK_Node *tilemap_node = rk_node_from_handle(&s->tilemap);
+  RK_TileMap *tilemap = tilemap_node->tilemap;
+
+  Vec2U32 hot_tile_coord = tile_coord_from_mouse(ctx->proj_view_inv_m,
+                                                 tilemap->mat_inv,
+                                                 tilemap_node->node2d->transform.position);
+  Vec2F32 mouse_pos_in_world = transform_2x2f32(tilemap->mat, v2f32(hot_tile_coord.x, hot_tile_coord.y));
+
+  S4_Guy *guy = node->custom_data;
+  Vec2U32 tile_coord = tile_coord_from_world_pos(node->node2d->transform.position,
+                                                 tilemap_node->node2d->transform.position,
+                                                 tilemap->mat_inv);
+  // S4_Tile *tile = s->tiles[tile_coord.y*tilemap->size.x+tile_coord.x];
+
+  if(guy->hunger <= 0)
+  {
+    // TODO(XXX): we may need some path finding stuff here
+    // TODO(XXX): find the nearest tile which has food
+    Vec2F32 dir = sub_2f32(mouse_pos_in_world, node->node2d->transform.position);
+    if(dir.x != 0 || dir.y != 0)
+    {
+      dir = normalize_2f32(dir);
+    }
+
+    s4_move_guy(node, dir, ctx->dt_sec);
+  }
+}
 
 // RK_NODE_CUSTOM_UPDATE(s4_fn_guy_controlled)
 // {
@@ -717,6 +748,7 @@ rk_scene_entry__4()
   // Vec2F32 viewport_world_dim = dim_2f32(viewport_world);
 
   RK_Node *root = rk_build_node3d_from_stringf(0,0, "root");
+  rk_node_push_fn(root, str8_lit("s4_fn_scene_begin"));
   rk_node_push_fn(root, str8_lit("s4_fn_tile_editor"));
   rk_node_push_fn(root, str8_lit("s4_fn_system"));
 
@@ -725,7 +757,6 @@ rk_scene_entry__4()
 
   RK_Handle tileset = rk_tileset_from_dir(str8_lit("./textures/isometric-tiles-2"), rk_key_zero());
   scene->tileset = tileset;
-
   RK_Handle character_sheet = rk_spritesheet_from_image(str8_lit("./textures/Chibi-character/Chibi-character-template_skin3_part1_by_AxulArt.png"), str8_lit("./textures/Chibi-character/Chibi-character-template_skin3_part1_by_AxulArt.json"), rk_key_zero());
 
   /////////////////////////////////////////////////////////////////////////////////////
@@ -765,9 +796,7 @@ rk_scene_entry__4()
     rk_node_push_fn(tilemap_node, str8_lit("s4_fn_tilemap"));
     U64 guy_count = 19;
     RK_TileMap *tilemap = tilemap_node->tilemap;
-    {
-      scene->tilemap = rk_handle_from_node(tilemap_node);
-    }
+    scene->tilemap = rk_handle_from_node(tilemap_node);
     {
       Mat2x2F32 mat;
       mat.v[0][0] =  0.5*tile_size.x;
@@ -799,6 +828,7 @@ rk_scene_entry__4()
 
             // RK_Texture2D *tex = &tile_textures[idx%tile_texture_count];
             RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D, 0, "tile-%I64d-%I64d", i, j);
+            n->custom_flags |= S4_EntityFlag_Tile;
             n->sprite2d->tex = rk_handle_zero();
             n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
             n->sprite2d->size = tile_size;
@@ -827,20 +857,18 @@ rk_scene_entry__4()
       F32 i = ceil_f32(rand() % tilemap_size.x);
       F32 j = ceil_f32(rand() % tilemap_size.y);
       Vec2F32 pos = transform_2x2f32(tilemap->mat, v2f32(i, j));
-
-      RK_Node *p = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_AnimatedSprite2D, 0, "person_1");
+      RK_Node *p = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_AnimatedSprite2D,
+                                              0, "person_1");
+      p->custom_flags |= S4_EntityFlag_Guy;
       p->node2d->transform.position = pos;
       p->animated_sprite2d->sheet = character_sheet;
       p->animated_sprite2d->is_animating = 1;
-      p->animated_sprite2d->curr_tag = 0; // idle
+      p->animated_sprite2d->curr_tag = 0; /* idle */
       p->animated_sprite2d->loop = 1;
       p->animated_sprite2d->size = v2f32(character_sheet_dst->size.x*0.3,character_sheet_dst->size.y*0.3);
       p->node2d->z_index = -1;
-      // rk_node_push_fn(p, str8_lit("s4_fn_guy"));
+      rk_node_push_fn(p, str8_lit("s4_fn_guy"));
       S4_Guy *guy = rk_node_push_custom_data(p, S4_Guy);
-      {
-        // set default states for guy
-      }
     }
   }
 

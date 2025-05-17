@@ -4,6 +4,7 @@ RK_ScenesTable:
 {
   {0, default}
   {4, isometric}
+  {5, ship}
 }
 
 @gen
@@ -26,13 +27,14 @@ RK_ScenesTable:
 @table(name)
 RK_FunctionTable:
 {
+  {s4_fn_scene_begin}
   {s4_fn_tile_editor}
   {s4_fn_tilemap}
   {s4_fn_system}
   {s4_fn_camera}
   {s4_fn_tile}
   {rk_scene_entry__4}
-  // {s4_fn_guy}
+  {s4_fn_guy}
   // {s4_fn_guy_controlled}
 }
 

@@ -789,6 +789,7 @@ struct RK_Node
   U8                            name_buffer[300];
   RK_NodeFlags                  flags;
   RK_NodeTypeFlags              type_flags;
+  U64                           custom_flags; /* for game logic */
 
   U64                           children_count;
 
