@@ -145,12 +145,14 @@ entry_point(CmdLine *cmd_line)
     //~ End of frame
 
     // TODO(XXX): the order here may be wrong, check later
-    gpu_start_us = os_now_microseconds();
+    ProfBegin("sub bucket");
     d_submit_bucket(os_wnd, wnd, d_bucket);
     hot_id = r_window_end_frame(wnd, rk_state->cursor);
     r_end_frame();
     arena_clear(frame_arena);
+    ProfEnd();
 
+    gpu_start_us = os_now_microseconds();
     cpu_end_us = os_now_microseconds();
     cpu_dt_us = cpu_end_us - cpu_start_us;
     ProfEnd();

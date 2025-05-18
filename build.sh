@@ -51,28 +51,28 @@ mkdir -p local
 if [ -v no_meta ]; then echo "[skipping metagen]"; fi
 if [ ! -v no_meta ]
 then
-    cd build
-    $compile_debug ../src/metagen/metagen_main.c $compile_link $out metagen
-    ./metagen
-    cd ..
+  cd build
+  $compile_debug ../src/metagen/metagen_main.c $compile_link $out metagen
+  ./metagen
+  cd ..
 fi
 
 # --- Compile Shaders ---------------------------------------------------------
 if [ -v no_shader ]; then echo "[skipping no_shader]"; fi
 if [ ! -v no_shader ]; then
-    shader_in_dir="./src/render/vulkan/shader"
-    shader_out_dir="./src/render/vulkan/shader"
-    for shader in "${shader_in_dir}"/*.{vert,frag,comp}; do
-      if [[ -f "$shader" ]]; then
-        filename=$(basename -- "$shader")
-        extension="${filename##*.}"
-        name="${filename%.*}"
+  shader_in_dir="./src/render/vulkan/shader"
+  shader_out_dir="./src/render/vulkan/shader"
+  for shader in "${shader_in_dir}"/*.{vert,frag,comp}; do
+    if [[ -f "$shader" ]]; then
+      filename=$(basename -- "$shader")
+      extension="${filename##*.}"
+      name="${filename%.*}"
 
-        # Compile the shader to the output directory with .spv extension
-        echo "Compiling ${shader} to ${shader_out_dir}/${name}_${extension}.spv"
-        glslc "$shader" -o "${shader_out_dir}/${name}_${extension}.spv"
-      fi
-    done
+      # Compile the shader to the output directory with .spv extension
+      echo "Compiling ${shader} to ${shader_out_dir}/${name}_${extension}.spv"
+      glslc "$shader" -o "${shader_out_dir}/${name}_${extension}.spv"
+    fi
+  done
 fi
 
 # --- Build Everything (@build_targets) ---------------------------------------

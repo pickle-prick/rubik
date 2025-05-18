@@ -99,22 +99,22 @@ set shader_in_dir=%~dp0\src\render\vulkan\shader
 set shader_out_dir=%~dp0\src\render\vulkan\shader
 if "%no_shader%"=="1" echo [skipping shader compiling]
 if not "%no_shader%"=="1" (
-    for %%G in ("%shader_in_dir%\*.vert" "%shader_in_dir%\*.frag" "%shader_in_dir%\*.comp") do (
-        if exist "%%G" (
-            set "shader=%%G"
-            for %%A in ("%%~nxG") do (
-                set "filename=%%~nA"
-                set "extension=%%~xA"
-                set "name=%%~nA"
+  for %%G in ("%shader_in_dir%\*.vert" "%shader_in_dir%\*.frag" "%shader_in_dir%\*.comp") do (
+    if exist "%%G" (
+      set "shader=%%G"
+      for %%A in ("%%~nxG") do (
+        set "filename=%%~nA"
+        set "extension=%%~xA"
+        set "name=%%~nA"
 
-                :: Remove the leading dot from the extension
-                set "extension=!extension:~1!"
+        :: Remove the leading dot from the extension
+        set "extension=!extension:~1!"
 
-                echo Compiling !shader! to !shader_out_dir!\!name!_!extension!.spv
-                glslc "!shader!" -o "!shader_out_dir!\!name!_!extension!.spv"
-            )
-        )
+        echo Compiling !shader! to !shader_out_dir!\!name!_!extension!.spv
+        glslc "!shader!" -o "!shader_out_dir!\!name!_!extension!.spv"
+      )
     )
+  )
 )
 
 :: --- Build & Run Metaprogram ------------------------------------------------

@@ -5,6 +5,8 @@
 
 ![Screenshot of a 3D scene](./screenshots/003.gif)
 
+![Screenshot of a 2D scene](./screenshots/004.gif)
+
 ## Development Setup Instructions
 
 **Note: Currently, only x64 linux and Windows development are supported.**
