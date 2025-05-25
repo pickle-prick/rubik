@@ -221,7 +221,7 @@ se_yml_node_from_file(Arena *arena, String8 path)
       for(;opl > first;)
       {
         opl -= 1;
-        if (!char_is_space(*opl)){
+        if(!char_is_space(*opl)){
           opl += 1;
           break;
         }

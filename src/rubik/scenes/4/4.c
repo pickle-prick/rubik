@@ -372,7 +372,7 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_tile_editor)
   Vec2U32 tile_coord = tile_coord_from_mouse(ctx->proj_view_inv_m,
                                              tilemap->mat_inv,
                                              tilemap_node->node2d->transform.position);
-  RK_UI_Pane(&s->debug_ui.rect, &s->debug_ui.show, str8_lit("TileEditor"))
+  D_BucketScope(rk_state->bucket_rect) RK_UI_Pane(&s->debug_ui.rect, &s->debug_ui.show, str8_lit("TileEditor"))
   {
     RK_UI_Tab(str8_lit("tile"), &s->debug_ui.show, ui_em(0.3,0), ui_em(0.3,0))
     {
@@ -724,7 +724,7 @@ rk_scene_entry__4()
   rk_push_res_bucket(ret->res_bucket);
   rk_push_handle_seed(ret->handle_seed);
 
-  /////////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////
   // scene settings
 
   ret->omit_grid = 1;
@@ -752,14 +752,14 @@ rk_scene_entry__4()
   rk_node_push_fn(root, str8_lit("s4_fn_tile_editor"));
   rk_node_push_fn(root, str8_lit("s4_fn_system"));
 
-  /////////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////
   // load resource
 
   RK_Handle tileset = rk_tileset_from_dir(str8_lit("./textures/isometric-tiles-2"), rk_key_zero());
   scene->tileset = tileset;
   RK_Handle character_sheet = rk_spritesheet_from_image(str8_lit("./textures/Chibi-character/Chibi-character-template_skin3_part1_by_AxulArt.png"), str8_lit("./textures/Chibi-character/Chibi-character-template_skin3_part1_by_AxulArt.json"), rk_key_zero());
 
-  /////////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////
   // build node tree
 
   RK_Parent_Scope(root)

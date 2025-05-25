@@ -35,6 +35,9 @@ RK_FunctionTable:
   {s4_fn_tile}
   {rk_scene_entry__4}
   {s4_fn_guy}
+  {s5_fn_submarine}
+  {s5_fn_fish}
+  {s5_fn_game_ui}
   // {s4_fn_guy_controlled}
 }
 

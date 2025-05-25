@@ -80,7 +80,7 @@ rk_ui_draw()
       if(box->flags & UI_BoxFlag_DrawHotEffects)
       {
         F32 effective_active_t = box->active_t;
-        if (!(box->flags & UI_BoxFlag_DrawActiveEffects))
+        if(!(box->flags & UI_BoxFlag_DrawActiveEffects))
         {
           effective_active_t = 0;
         }
