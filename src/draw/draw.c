@@ -621,6 +621,38 @@ d_img(Rng2F32 dst, Rng2F32 src, R_Handle texture, Vec4F32 color,
   return inst;
 }
 
+//- rjf: blurs
+internal R_PassParams_Blur *
+d_blur(Rng2F32 rect, F32 blur_size, F32 corner_radius)
+{
+  Arena *arena = d_thread_ctx->arena;
+  D_Bucket *bucket = d_top_bucket();
+  R_Pass *pass = r_pass_from_kind(arena, &bucket->passes, R_PassKind_Blur, 0);
+  R_PassParams_Blur *params = pass->params_blur;
+  params->rect = rect;
+  params->clip = d_top_clip();
+  params->blur_size = blur_size;
+  params->corner_radii[Corner_00] = corner_radius;
+  params->corner_radii[Corner_01] = corner_radius;
+  params->corner_radii[Corner_10] = corner_radius;
+  params->corner_radii[Corner_11] = corner_radius;
+  return params;
+}
+
+//- k: noisee
+internal R_PassParams_Noise *
+d_noise(Rng2F32 rect, F32 dt_secs)
+{
+  Arena *arena = d_thread_ctx->arena;
+  D_Bucket *bucket = d_top_bucket();
+  R_Pass *pass = r_pass_from_kind(arena, &bucket->passes, R_PassKind_Noise, 0);
+  R_PassParams_Noise *params = pass->params_noise;
+  params->rect = rect;
+  params->clip = d_top_clip();
+  params->dt_secs = dt_secs;
+  return params;
+}
+
 internal void
 d_text_run(Vec2F32 p, Vec4F32 color, F_Run run)
 {

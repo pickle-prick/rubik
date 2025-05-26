@@ -4,13 +4,14 @@
 ////////////////////////////////
 //~ rjf: Generated Code
 
-U8 r_pass_kind_batch_table[4] = {1, 0, 1, 1};
+U8 r_pass_kind_batch_table[5] = {1, 0, 0, 1, 1};
 
-U64 r_pass_kind_params_size_table[4] = {
-    sizeof(R_PassParams_UI),
-    sizeof(R_PassParams_Blur),
-    sizeof(R_PassParams_Geo2D),
-    sizeof(R_PassParams_Geo3D),
+U64 r_pass_kind_params_size_table[5] = {
+  sizeof(R_PassParams_UI),
+  sizeof(R_PassParams_Blur),
+  sizeof(R_PassParams_Noise),
+  sizeof(R_PassParams_Geo2D),
+  sizeof(R_PassParams_Geo3D),
 };
 StaticAssert(ArrayCount(r_pass_kind_batch_table) == R_PassKind_COUNT, r_pass_size_check);
 StaticAssert(ArrayCount(r_pass_kind_params_size_table) == R_PassKind_COUNT, r_pass_size_check);
@@ -20,13 +21,13 @@ StaticAssert(ArrayCount(r_pass_kind_params_size_table) == R_PassKind_COUNT, r_pa
 
 internal R_Handle r_handle_zero(void)
 {
-    R_Handle handle = {0};
-    return handle;
+  R_Handle handle = {0};
+  return handle;
 }
 
 internal B32 r_handle_match(R_Handle a, R_Handle b)
 {
-    return a.u64[0] == b.u64[0] && a.u64[1] == b.u64[1];
+  return a.u64[0] == b.u64[0] && a.u64[1] == b.u64[1];
 }
 
 ////////////////////////////////
@@ -34,28 +35,28 @@ internal B32 r_handle_match(R_Handle a, R_Handle b)
 
 internal R_BatchList r_batch_list_make(U64 instance_size)
 {
-    R_BatchList list = {0};
-    list.bytes_per_inst = instance_size;
-    return list;
+  R_BatchList list = {0};
+  list.bytes_per_inst = instance_size;
+  return list;
 }
 
 internal void *
 r_batch_list_push_inst(Arena *arena, R_BatchList *list, U64 batch_inst_cap)
 {
-    void *inst = 0;
-    R_BatchNode *n = list->last;
-    if(n == 0 || n->v.byte_count + list->bytes_per_inst > n->v.byte_cap)
-    {
-        n = push_array(arena, R_BatchNode, 1);
-        n->v.byte_cap = batch_inst_cap * list->bytes_per_inst;
-        n->v.v = push_array_no_zero(arena, U8, n->v.byte_cap);
-        SLLQueuePush(list->first, list->last, n);
-        list->batch_count += 1;
-    }
-    inst = n->v.v + n->v.byte_count;
-    n->v.byte_count += list->bytes_per_inst;
-    list->byte_count += list->bytes_per_inst;
-    return inst;
+  void *inst = 0;
+  R_BatchNode *n = list->last;
+  if(n == 0 || n->v.byte_count + list->bytes_per_inst > n->v.byte_cap)
+  {
+    n = push_array(arena, R_BatchNode, 1);
+    n->v.byte_cap = batch_inst_cap * list->bytes_per_inst;
+    n->v.v = push_array_no_zero(arena, U8, n->v.byte_cap);
+    SLLQueuePush(list->first, list->last, n);
+    list->batch_count += 1;
+  }
+  inst = n->v.v + n->v.byte_count;
+  n->v.byte_count += list->bytes_per_inst;
+  list->byte_count += list->bytes_per_inst;
+  return inst;
 }
 
 ////////////////////////////////
@@ -64,18 +65,18 @@ r_batch_list_push_inst(Arena *arena, R_BatchList *list, U64 batch_inst_cap)
 internal R_Pass *
 r_pass_from_kind(Arena *arena, R_PassList *list, R_PassKind kind, B32 merge_pass)
 {
-    R_PassNode *n = list->last;
-    if(!r_pass_kind_batch_table[kind] || !merge_pass)
-    {
-        n = 0;
-    }
-    if(n == 0 || n->v.kind != kind)
-    {
-        n = push_array(arena, R_PassNode, 1);
-        SLLQueuePush(list->first, list->last, n);
-        list->count += 1;
-        n->v.kind = kind;
-        n->v.params = push_array(arena, U8, r_pass_kind_params_size_table[kind]);
-    }
-    return &n->v;
+  R_PassNode *n = list->last;
+  if(!r_pass_kind_batch_table[kind] || !merge_pass)
+  {
+    n = 0;
+  }
+  if(n == 0 || n->v.kind != kind)
+  {
+    n = push_array(arena, R_PassNode, 1);
+    SLLQueuePush(list->first, list->last, n);
+    list->count += 1;
+    n->v.kind = kind;
+    n->v.params = push_array(arena, U8, r_pass_kind_params_size_table[kind]);
+  }
+  return &n->v;
 }

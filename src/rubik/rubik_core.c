@@ -4020,6 +4020,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
   d_push_bucket(ret);
   // NOTE(k): check if there is anything in passes, we don't a empty geo pass (pass is not cheap)
   if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo2D]))       {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo2D], 0);}
+  // TODO(XXX): only for test, make it composiable
+  d_noise(r2f32p(0,0,0,0), rk_state->dt_sec);
   if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back]))  {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back], 0);}
   if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front])) {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front], 0);}
   if(!d_bucket_is_empty(rk_state->bucket_rect))                              {d_sub_bucket(rk_state->bucket_rect, 0);}

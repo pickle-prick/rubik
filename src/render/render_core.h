@@ -94,6 +94,7 @@ typedef enum R_PassKind
 {
   R_PassKind_UI,
   R_PassKind_Blur,
+  R_PassKind_Noise,
   R_PassKind_Geo2D,
   R_PassKind_Geo3D,
   R_PassKind_COUNT,
@@ -391,6 +392,14 @@ struct R_PassParams_Blur
   F32 corner_radii[Corner_COUNT];
 };
 
+typedef struct R_PassParams_Noise R_PassParams_Noise;
+struct R_PassParams_Noise
+{
+  Rng2F32 rect;
+  Rng2F32 clip;
+  F32 dt_secs;
+};
+
 typedef struct R_PassParams_Geo2D R_PassParams_Geo2D;
 struct R_PassParams_Geo2D
 {
@@ -431,7 +440,8 @@ struct R_Pass
     {
       void *params;
       R_PassParams_UI *params_ui;
-      // R_PassParams_Blur *params_blur;
+      R_PassParams_Blur *params_blur;
+      R_PassParams_Noise *params_noise;
       R_PassParams_Geo2D *params_geo2d;
       R_PassParams_Geo3D *params_geo3d;
     };

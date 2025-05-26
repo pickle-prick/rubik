@@ -8,5 +8,5 @@ layout(set = 0, binding = 0) uniform sampler2D geo2d_sampler;
 
 void main()
 {
-    out_color = texture(geo2d_sampler, tex);
+  out_color = texture(geo2d_sampler, tex);
 }
