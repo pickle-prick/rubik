@@ -1084,7 +1084,7 @@ rk_image_from_path(Arena *arena, String8 path)
 
   // TODO(XXX): we may use arena allocation for stbi_load, so that a realloc is avoidable
   U8 *src = stbi_load((char*)path.str, &x, &y, &n, 4);
-  U64 size = x*y*n;
+  U64 size = x*y*4;
   U8 *dst = push_array(arena, U8, size);
   MemoryCopy(dst, src, size);
   stbi_image_free(src);
@@ -1627,7 +1627,6 @@ rk_tileset_from_dir(String8 dir, RK_Key key_override)
     res->name = push_str8_copy(arena, str8_skip_last_slash(dir));
     res->src_kind = RK_ResourceSrcKind_External;
   }
-
   return ret;
 }
 
@@ -1667,8 +1666,6 @@ rk_material_from_image(String8 name, String8 path)
     RK_Resource *res = rk_res_alloc(key);
     ret = rk_handle_from_res(res);
     RK_Material *mat = (RK_Material*)&res->v;
-
-    String8 _name = push_str8_copy(arena, name);
 
     mat->textures[R_GeoTexKind_Diffuse] = rk_tex2d_from_path(path, 0, rk_key_zero());
     mat->v.opacity = 1.0;

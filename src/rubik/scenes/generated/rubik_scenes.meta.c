@@ -14,8 +14,11 @@ RK_SceneTemplate rk_scene_templates[3] =
 {str8_lit_comp("5"), rk_scene_entry__5, },
 };
 
-RK_FunctionEntry rk_scene_function_table[11] =
+RK_FunctionEntry rk_scene_function_table[14] =
 {
+{str8_lit_comp("s0_fn_editor_camera"), s0_fn_editor_camera, },
+{str8_lit_comp("s0_fn_rotating_spot_light"), s0_fn_rotating_spot_light, },
+{str8_lit_comp("rk_scene_entry__0"), rk_scene_entry__0, },
 {str8_lit_comp("s4_fn_scene_begin"), s4_fn_scene_begin, },
 {str8_lit_comp("s4_fn_tile_editor"), s4_fn_tile_editor, },
 {str8_lit_comp("s4_fn_tilemap"), s4_fn_tilemap, },

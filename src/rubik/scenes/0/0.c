@@ -1,5 +1,5 @@
 // Camera (editor camera)
-RK_NODE_CUSTOM_UPDATE(editor_camera_fn)
+RK_NODE_CUSTOM_UPDATE(s0_fn_editor_camera)
 {
   RK_Transform3D *transform = &node->node3d->transform;
 
@@ -84,7 +84,7 @@ struct AnimatedSpotLight
   F32 target_range;
 };
 
-RK_NODE_CUSTOM_UPDATE(rotating_spot_light)
+RK_NODE_CUSTOM_UPDATE(s0_fn_rotating_spot_light)
 {
   RK_SpotLight *light = node->spot_light;
   AnimatedSpotLight *data = node->custom_data;
@@ -257,7 +257,10 @@ RK_NODE_CUSTOM_UPDATE(body)
 internal RK_Scene *
 rk_scene_entry__0()
 {
-  RK_Scene *ret = rk_scene_alloc(str8_lit("default"), str8_lit("./src/rubik/scenes/0/default.tscn"));
+  RK_Scene *ret = rk_scene_alloc();
+  ret->name = str8_lit("3d_demo");
+  ret->save_path = str8_lit("./src/rubik/scenes/0/default.tscn");
+  ret->reset_fn = str8_lit("rk_scene_entry__0");
 
   // some initilization for scene
   {
@@ -301,7 +304,7 @@ rk_scene_entry__0()
       main_camera->camera3d->zn = 0.1;
       main_camera->camera3d->zf = 200.f;
       main_camera->camera3d->perspective.fov = 0.25f;
-      rk_node_push_fn(main_camera, str8_lit("editor_camera_fn"));
+      rk_node_push_fn(main_camera, str8_lit("s0_fn_editor_camera"));
       main_camera->node3d->transform.position = v3f32(0,-3,0);
     }
     ret->active_camera = rk_handle_from_node(main_camera);
@@ -382,7 +385,7 @@ rk_scene_entry__0()
       l->spot_light->direction = normalize_3f32(v3f32(1,1,0));
       l->spot_light->range = 9.9;
       l->spot_light->angle = radians_from_turns_f32(0.09);
-      rk_node_push_fn(l, str8_lit("rotating_spot_light"));
+      rk_node_push_fn(l, str8_lit("s0_fn_rotating_spot_light"));
 
       AnimatedSpotLight *data = rk_node_push_custom_data(l, AnimatedSpotLight);
       data->rotation_axis.v[i] = 1;
@@ -450,19 +453,19 @@ rk_scene_entry__0()
       // constraint->constraint3d->targets.a = rk_handle_from_node(a);
       // constraint->constraint3d->targets.b = rk_handle_from_node(b);
 
-      RK_Node *a = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_Rigidbody3D, RK_NodeFlag_NavigationRoot, "b_1");
-      rk_node_equip_box(a, v3f32(1,1,1), 0,0,0);
-      a->rigidbody3d->v.x = v3f32(0,-1, 0);
-      a->rigidbody3d->v.q = make_indentity_quat_f32();
-      a->rigidbody3d->v.mass = 1;
-      a->rigidbody3d->v.shape = PH_Rigidbody3DShapeKind_Cuboid;
-      a->rigidbody3d->v.dim.v3f32 = v3f32(1,1,1);
-      a->rigidbody3d->v.last_dim.v3f32 = v3f32(1,1,1);
-      a->rigidbody3d->v.Ibody = ph_inertia_from_cuboid(1, v3f32(1,1,1));
-      a->rigidbody3d->v.Ibodyinv = ph_inertiainv_from_cuboid(1, v3f32(1,1,1));
-      // a->rigidbody3d->v.L = v3f32(0.1, 0,0);
-      // a->rigidbody3d->v.P = v3f32(0.3, 0.1,0);
-      rk_node_push_fn(a, str8_lit("body"));
+      // RK_Node *a = rk_build_node_from_stringf(RK_NodeTypeFlag_Node3D|RK_NodeTypeFlag_Rigidbody3D, RK_NodeFlag_NavigationRoot, "b_1");
+      // rk_node_equip_box(a, v3f32(1,1,1), 0,0,0);
+      // a->rigidbody3d->v.x = v3f32(0,-1, 0);
+      // a->rigidbody3d->v.q = make_indentity_quat_f32();
+      // a->rigidbody3d->v.mass = 1;
+      // a->rigidbody3d->v.shape = PH_Rigidbody3DShapeKind_Cuboid;
+      // a->rigidbody3d->v.dim.v3f32 = v3f32(1,1,1);
+      // a->rigidbody3d->v.last_dim.v3f32 = v3f32(1,1,1);
+      // a->rigidbody3d->v.Ibody = ph_inertia_from_cuboid(1, v3f32(1,1,1));
+      // a->rigidbody3d->v.Ibodyinv = ph_inertiainv_from_cuboid(1, v3f32(1,1,1));
+      // // a->rigidbody3d->v.L = v3f32(0.1, 0,0);
+      // // a->rigidbody3d->v.P = v3f32(0.3, 0.1,0);
+      // rk_node_push_fn(a, str8_lit("body"));
     }
   }
   ret->root = rk_handle_from_node(root);

@@ -27,6 +27,9 @@ RK_ScenesTable:
 @table(name)
 RK_FunctionTable:
 {
+  {s0_fn_editor_camera}
+  {s0_fn_rotating_spot_light}
+  {rk_scene_entry__0}
   {s4_fn_scene_begin}
   {s4_fn_tile_editor}
   {s4_fn_tilemap}

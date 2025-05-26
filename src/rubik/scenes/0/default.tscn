@@ -1,0 +1,233 @@
+name: str(3d_demo)
+reset_fn: str(rk_scene_entry__0)
+hot_key: v2u64(0, 0)
+active_key: v2u64(0, 0)
+omit_grid: b32(1)
+omit_gizmo3d: b32(0)
+omit_light: b32(1)
+gizmo3d_mode: u64(0)
+ext_resources: 
+nodes: 
+ - 
+  key: v2u64(746744014776526199, 0)
+  flags: u64(0)
+  type_flags: u64(2)
+  name: str(root)
+  node3d: 
+   transform: 
+    position: v3f32(0.0000, 0.0000, 0.0000)
+    rotation: v4f32(0.0000, 0.0000, 0.0000, 1.0000)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+ - 
+  key: v2u64(6411987155475424874, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(0)
+  type_flags: u64(6)
+  name: str(main_camera)
+  update: 
+   - str(s0_fn_editor_camera)
+  node3d: 
+   transform: 
+    position: v3f32(0.7517, -7.5452, -5.4981)
+    rotation: v4f32(-0.4562, -0.1295, -0.0673, 0.8778)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  camera3d: 
+   projection: u64(4294967296)
+   viewport_shading: u64(1)
+   polygon_mode: u64(0)
+   viewport: v4f32(0.0000, 0.0000, 0.0000, 0.0000)
+   hide_cursor: b32(0)
+   lock_cursor: b32(0)
+   is_active: b32(1)
+   zn: f32(0.1000)
+   zf: f32(200.0000)
+   v: v4f32(0.2500, 0.0000, 0.0000, 0.0000)
+ - 
+  key: v2u64(7483953978279530588, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(1)
+  type_flags: u64(18)
+  name: str(floor)
+  node3d: 
+   transform: 
+    position: v3f32(0.0000, -0.0100, 0.0000)
+    rotation: v4f32(0.0000, 0.0000, 0.0000, 1.0000)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  mesh_inst3d: 
+ - 
+  key: v2u64(4895333556917546021, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(0)
+  type_flags: u64(130)
+  name: str(direction_light_1)
+  node3d: 
+   transform: 
+    position: v3f32(0.0000, 0.0000, 0.0000)
+    rotation: v4f32(0.0000, 0.0000, 0.0000, 1.0000)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  directional_light: 
+ - 
+  key: v2u64(1881402386091784819, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(1)
+  type_flags: u64(274)
+  name: str(point_light_0_0)
+  node3d: 
+   transform: 
+    position: v3f32(-3.0000, -3.5000, -4.6085)
+    rotation: v4f32(0.0000, 0.0000, 0.0000, 1.0000)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  mesh_inst3d: 
+  point_light: 
+ - 
+  key: v2u64(13374174815599627721, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(1)
+  type_flags: u64(274)
+  name: str(point_light_0_1)
+  node3d: 
+   transform: 
+    position: v3f32(0.0000, -3.5000, -3.0000)
+    rotation: v4f32(0.0000, 0.0000, 0.0000, 1.0000)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  mesh_inst3d: 
+  point_light: 
+ - 
+  key: v2u64(11040061087323635301, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(1)
+  type_flags: u64(274)
+  name: str(point_light_0_2)
+  node3d: 
+   transform: 
+    position: v3f32(3.0000, -3.5000, -3.0000)
+    rotation: v4f32(0.0000, 0.0000, 0.0000, 1.0000)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  mesh_inst3d: 
+  point_light: 
+ - 
+  key: v2u64(8832467216719842738, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(1)
+  type_flags: u64(274)
+  name: str(point_light_1_0)
+  node3d: 
+   transform: 
+    position: v3f32(-3.0000, -3.5000, 0.0000)
+    rotation: v4f32(0.0000, 0.0000, 0.0000, 1.0000)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  mesh_inst3d: 
+  point_light: 
+ - 
+  key: v2u64(10141915967441163023, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(1)
+  type_flags: u64(274)
+  name: str(point_light_1_1)
+  node3d: 
+   transform: 
+    position: v3f32(0.0000, -3.5000, 0.0000)
+    rotation: v4f32(0.0000, 0.0000, 0.0000, 1.0000)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  mesh_inst3d: 
+  point_light: 
+ - 
+  key: v2u64(2687015735608235704, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(1)
+  type_flags: u64(274)
+  name: str(point_light_1_2)
+  node3d: 
+   transform: 
+    position: v3f32(3.0000, -3.5000, 0.0000)
+    rotation: v4f32(0.0000, 0.0000, 0.0000, 1.0000)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  mesh_inst3d: 
+  point_light: 
+ - 
+  key: v2u64(8614127471324618855, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(1)
+  type_flags: u64(274)
+  name: str(point_light_2_0)
+  node3d: 
+   transform: 
+    position: v3f32(-3.0000, -3.5000, 3.0000)
+    rotation: v4f32(0.0000, 0.0000, 0.0000, 1.0000)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  mesh_inst3d: 
+  point_light: 
+ - 
+  key: v2u64(7115445044324020538, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(1)
+  type_flags: u64(274)
+  name: str(point_light_2_1)
+  node3d: 
+   transform: 
+    position: v3f32(0.0000, -3.5000, 3.0000)
+    rotation: v4f32(0.0000, 0.0000, 0.0000, 1.0000)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  mesh_inst3d: 
+  point_light: 
+ - 
+  key: v2u64(1028283295646522476, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(1)
+  type_flags: u64(274)
+  name: str(point_light_2_2)
+  node3d: 
+   transform: 
+    position: v3f32(3.0000, -3.5000, 3.0000)
+    rotation: v4f32(0.0000, 0.0000, 0.0000, 1.0000)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  mesh_inst3d: 
+  point_light: 
+ - 
+  key: v2u64(7969352003010214632, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(1)
+  type_flags: u64(530)
+  name: str(spot_light_0)
+  custom_data: v2u64(0, 20)
+  update: 
+   - str(s0_fn_rotating_spot_light)
+  node3d: 
+   transform: 
+    position: v3f32(-3.0000, -3.0000, 0.0000)
+    rotation: v4f32(-0.4304, 0.0000, 0.0000, -0.9026)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  mesh_inst3d: 
+  spoint_light: 
+ - 
+  key: v2u64(17186534147596467458, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(1)
+  type_flags: u64(530)
+  name: str(spot_light_1)
+  custom_data: v2u64(20, 40)
+  update: 
+   - str(s0_fn_rotating_spot_light)
+  node3d: 
+   transform: 
+    position: v3f32(0.0000, -3.0000, 0.0000)
+    rotation: v4f32(0.0000, -0.4304, 0.0000, -0.9026)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  mesh_inst3d: 
+  spoint_light: 
+ - 
+  key: v2u64(18034373423941223657, 0)
+  parent: v2u64(746744014776526199, 0)
+  flags: u64(1)
+  type_flags: u64(530)
+  name: str(spot_light_2)
+  custom_data: v2u64(40, 60)
+  update: 
+   - str(s0_fn_rotating_spot_light)
+  node3d: 
+   transform: 
+    position: v3f32(3.0000, -3.0000, 0.0000)
+    rotation: v4f32(0.0000, 0.0000, -0.4304, -0.9026)
+    scale: v3f32(1.0000, 1.0000, 1.0000)
+  mesh_inst3d: 
+  spoint_light: 

@@ -609,7 +609,7 @@ internal VkFence                 r_vulkan_fence(VkDevice device);
 internal VkSemaphore             r_vulkan_semaphore(VkDevice device);
 internal void                    r_vulkan_cmd_begin(VkCommandBuffer cmd_buf);
 internal void                    r_vulkan_cmd_end(VkCommandBuffer cmd_buf);
-internal void                    r_vulkan_image_transition(VkCommandBuffer cmd_buf, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout, VkPipelineStageFlags src_stage, VkAccessFlags src_access_flag, VkPipelineStageFlags dst_stage, VkAccessFlags dst_access_flag);
+internal void                    r_vulkan_image_transition(VkCommandBuffer cmd_buf, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout, VkPipelineStageFlags src_stage, VkAccessFlags src_access_flag, VkPipelineStageFlags dst_stage, VkAccessFlags dst_access_flag, VkImageAspectFlags aspect_mask);
 internal void                    r_vulkan_descriptor_pool_alloc();
 internal VkSampler               r_vulkan_sampler2d(R_Tex2DSampleKind kind);
 

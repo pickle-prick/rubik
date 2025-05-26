@@ -2226,7 +2226,7 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
     // The problem with it, of course, is that it doesn't necessarily offer the best performance for any operation
     // It is required for some special cases, like using an image as both input and output, or for reading an image after it has left the preinitialized layout
     r_vulkan_image_transition(cmd_buf,texture->image.h, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+                              VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
 
     // Copy buffer to image
     VkBufferImageCopy region =
@@ -2253,7 +2253,7 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
     vkCmdCopyBufferToImage(cmd_buf, staging_buffer, texture->image.h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
     r_vulkan_image_transition(cmd_buf, texture->image.h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
   }
 
   // Free staging buffer and memory
@@ -2749,7 +2749,7 @@ r_buffer_copy(R_Handle handle, void *data, U64 size)
  * There is an equivalent buffer memory barrier to do this for buffers
  */
 internal void
-r_vulkan_image_transition(VkCommandBuffer cmd_buf, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout, VkPipelineStageFlags src_stage, VkAccessFlags src_access_flag, VkPipelineStageFlags dst_stage, VkAccessFlags dst_access_flag)
+r_vulkan_image_transition(VkCommandBuffer cmd_buf, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout, VkPipelineStageFlags src_stage, VkAccessFlags src_access_flag, VkPipelineStageFlags dst_stage, VkAccessFlags dst_access_flag, VkImageAspectFlags aspect_mask)
 {
   VkImageMemoryBarrier barrier =
   {
@@ -2764,7 +2764,7 @@ r_vulkan_image_transition(VkCommandBuffer cmd_buf, VkImage image, VkImageLayout 
     // The image and subresourceRange specify the image that is affected and the specific part of the image
     // Our image is not an array and does not have mipmapping levels, so only one level and layer are specified 
     .image                           = image,
-    .subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+    .subresourceRange.aspectMask     = aspect_mask,
     .subresourceRange.baseMipLevel   = 0,
     .subresourceRange.levelCount     = 1,
     .subresourceRange.baseArrayLayer = 0,
@@ -3872,9 +3872,8 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       }break;
       case R_Vulkan_PipelineKind_GFX_Geo3D_ZPre:
       {
-        color_attachment_count = 1;
-        color_attachment_formats = push_array(scratch.arena, VkFormat, 1);
-        color_attachment_formats[0] = swapchain_format;
+        color_attachment_count = 0;
+        depth_attachment_format = r_vulkan_pdevice()->depth_image_format;
       }break;
       case R_Vulkan_PipelineKind_GFX_Geo3D_Debug:
       case R_Vulkan_PipelineKind_GFX_Geo3D_Forward:
@@ -4168,7 +4167,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
   VkImage stage_color_image = wnd->render_targets->stage_color_image.h;
   {
     r_vulkan_image_transition(frame->cmd_buf, stage_color_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
     VkClearColorValue clear_clr = {0,0,0,0};
     VkImageSubresourceRange subrange;
     subrange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -4178,12 +4177,12 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
     subrange.layerCount     = 1;
     vkCmdClearColorImage(frame->cmd_buf, stage_color_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear_clr, 1, &subrange);
     r_vulkan_image_transition(frame->cmd_buf, stage_color_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
   }
   VkImage id_color_image = wnd->render_targets->stage_id_image.h;
   {
     r_vulkan_image_transition(frame->cmd_buf, id_color_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                              VK_PIPELINE_STAGE_HOST_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+                              VK_PIPELINE_STAGE_HOST_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
     VkClearColorValue clear_clr = {0,0,0,0};
     VkImageSubresourceRange subrange;
     subrange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -4193,7 +4192,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
     subrange.layerCount     = 1;
     vkCmdClearColorImage(frame->cmd_buf, id_color_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear_clr, 1, &subrange);
     r_vulkan_image_transition(frame->cmd_buf, id_color_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
   }
 
   r_vulkan_push_cmd(frame->cmd_buf);
@@ -4286,10 +4285,10 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
     // transition stage color image layout to shader read optimal
     r_vulkan_image_transition(cmd_buf, wnd->render_targets->stage_color_image.h,
                               VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                              VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+                              VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
 
     r_vulkan_image_transition(frame->cmd_buf, swapchain->images[frame->img_idx], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                              VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+                              VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
 
     // begin
     vkCmdBeginRendering(cmd_buf, &render_info);
@@ -4323,7 +4322,7 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
     vkCmdEndRendering(cmd_buf);
   }
   r_vulkan_image_transition(frame->cmd_buf, swapchain->images[frame->img_idx], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
 
   // End and submit command buffer
   VK_Assert(vkEndCommandBuffer(cmd_buf));
@@ -4583,9 +4582,9 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
         // draw
 
         r_vulkan_image_transition(frame->cmd_buf, render_targets->stage_color_image.h, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
         r_vulkan_image_transition(frame->cmd_buf, render_targets->scratch_color_image.h, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                                  VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+                                  VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
 
         // TODO(XXX): we are not using params here (clip and rect e.g.)
 
@@ -4630,9 +4629,9 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
         vkCmdEndRendering(cmd_buf);
 
         r_vulkan_image_transition(cmd_buf, render_targets->scratch_color_image.h, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
         r_vulkan_image_transition(cmd_buf, render_targets->stage_color_image.h, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
 
         // copy scratch image to stage image
         {
@@ -4656,7 +4655,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           copy_region.extent = (VkExtent3D){render_targets->scratch_color_image.extent.width, render_targets->scratch_color_image.extent.height, 1};
           vkCmdCopyImage(cmd_buf, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
           r_vulkan_image_transition(cmd_buf, render_targets->stage_color_image.h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+                                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
         }
       }break;
       case R_PassKind_Geo2D:
@@ -4719,7 +4718,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
         // forward pass
 
         r_vulkan_image_transition(frame->cmd_buf, render_targets->geo2d_color_image.h, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
 
         // NOTE(XXX): id image is cleared at the beginning of the frame
         VkClearValue clear_colors[1] = {0};
@@ -4814,9 +4813,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
         // composite to the main staging buffer
 
         r_vulkan_image_transition(frame->cmd_buf, render_targets->geo2d_color_image.h, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
 
-        // unpack renderpass and pipeline
         {
           VkRenderingAttachmentInfo color_attachment_info = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
           color_attachment_info.imageView = render_targets->stage_color_image.view;
@@ -4863,543 +4861,612 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
       }break;
       case R_PassKind_Geo3D: 
       {
-        // Assert(geo3d_pass_idx < MAX_GEO3D_PASS);
-
-        // // Unpack params
-        // R_PassParams_Geo3D *params = pass->params_geo3d;
-        // R_BatchGroup3DMap *mesh_group_map = &params->mesh_batches;
-
-        // // Pre-compute some inverse
-        // Mat4x4F32 proj_inv = inverse_4x4f32(params->projection);
-        // Mat4x4F32 view_inv = inverse_4x4f32(params->view);
-
-        // // Unpack pipelines
-        // R_Vulkan_RenderPass *renderpass = &renderpasses[R_Vulkan_RenderPassKind_Geo3D];
-
-        // R_Vulkan_Pipeline *geo3d_zpre_pipelines = renderpasses[R_Vulkan_RenderPassKind_Geo3D_ZPre].pipelines.z_pre;
-        // R_Vulkan_Pipeline *geo3d_debug_pipelines = renderpass->pipelines.geo3d.debug;
-        // R_Vulkan_Pipeline *geo3d_forward_pipelines = renderpass->pipelines.geo3d.forward;
-        // R_Vulkan_Pipeline *geo3d_tile_frustum_pipeline = &renderpass->pipelines.geo3d.tile_frustum;
-        // R_Vulkan_Pipeline *geo3d_light_culling_pipeline = &renderpass->pipelines.geo3d.light_culling;
-
-        // // some variables to be initialized
-        // Vec2U32 grid_size = {0}; // light grid size
-
-        // /////////////////////////////////////////////////////////////////////////
-        // // unpack all kinds of buffer offsets
-
-        // // inst buffer
-        // R_Vulkan_Buffer *inst_buffer = &frame->inst_buffer_mesh3d[geo3d_pass_idx];
-
-        // // geo3d ubo
-        // // NOTE(k): Geo3d uniform is per Geo3D pass unlike rect pass which is per group
-        // R_Vulkan_UBOBuffer *geo3d_ubo_buffer = &frame->ubo_buffers[R_Vulkan_UBOTypeKind_Geo3D];
-        // U32 geo3d_ubo_buffer_off = geo3d_pass_idx * geo3d_ubo_buffer->stride;
-        // U8 *geo3d_ubo_dst = (U8*)geo3d_ubo_buffer->buffer.mapped + geo3d_ubo_buffer_off;
-
-        // // tile frustum ubo
-        // R_Vulkan_UBOBuffer *tile_frustum_ubo_buffer = &frame->ubo_buffers[R_Vulkan_UBOTypeKind_Geo3D_TileFrustum];
-        // U32 tile_frustum_ubo_buffer_off = geo3d_pass_idx * tile_frustum_ubo_buffer->stride;
-        // U8 *tile_frustum_ubo_dst = (U8*)tile_frustum_ubo_buffer->buffer.mapped + tile_frustum_ubo_buffer_off;
-
-        // // light culling ubo
-        // R_Vulkan_UBOBuffer *light_culling_ubo_buffer = &frame->ubo_buffers[R_Vulkan_UBOTypeKind_Geo3D_LightCulling];
-        // U32 light_culling_ubo_buffer_off = geo3d_pass_idx * light_culling_ubo_buffer->stride;
-        // U8 *light_culling_ubo_dst = (U8*)light_culling_ubo_buffer->buffer.mapped + light_culling_ubo_buffer_off;
-
-        // // lights sbo
-        // R_Vulkan_SBOBuffer *lights_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_Lights];
-        // U32 lights_sbo_buffer_off = geo3d_pass_idx*lights_sbo_buffer->stride;
-        // U8 *lights_sbo_dst = (U8*)lights_sbo_buffer->buffer.mapped + lights_sbo_buffer_off;
-
-        // // tiles sbo (device local)
-        // R_Vulkan_SBOBuffer *tiles_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_Tiles];
-        // U32 tiles_sbo_buffer_off = geo3d_pass_idx * tiles_sbo_buffer->stride;
-
-        // // light indices sbo (device local)
-        // R_Vulkan_SBOBuffer *light_indices_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_LightIndices];
-        // U32 light_indices_sbo_buffer_off = geo3d_pass_idx * light_indices_sbo_buffer->stride;
-
-        // // tile lights sbo (deviec local)
-        // R_Vulkan_SBOBuffer *tile_lights_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_TileLights];
-        // U32 tile_lights_sbo_buffer_off = geo3d_pass_idx * tile_lights_sbo_buffer->stride;
-
-        // // joints sbo
-        // R_Vulkan_SBOBuffer *joints_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_Joints];
-        // U32 joints_sbo_buffer_off = geo3d_pass_idx*MAX_JOINTS_PER_PASS * sizeof(R_Vulkan_SBO_Geo3D_Joint);
-        // U8 *joints_sbo_dst = (U8*)(joints_sbo_buffer->buffer.mapped) + joints_sbo_buffer_off;
-
-        // // materials sbo
-        // R_Vulkan_SBOBuffer *materials_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_Materials];
-        // U32 materials_sbo_buffer_off = geo3d_pass_idx*MAX_MATERIALS_PER_PASS * sizeof(R_Vulkan_SBO_Geo3D_Material); 
-        // U8 *materials_sbo_dst = (U8*)(materials_sbo_buffer->buffer.mapped) + materials_sbo_buffer_off;
-
-        // /////////////////////////////////////////////////////////////////////////
-        // // upload geo3d ubo buffer
-
-        // R_Vulkan_UBO_Geo3D geo3d_ubo = {0};
-        // geo3d_ubo.proj      = params->projection;
-        // geo3d_ubo.proj_inv  = proj_inv;
-        // geo3d_ubo.view      = params->view;
-        // geo3d_ubo.view_inv  = view_inv;
-        // geo3d_ubo.show_grid = !params->omit_grid;
-        // MemoryCopy(geo3d_ubo_dst, &geo3d_ubo, sizeof(R_Vulkan_UBO_Geo3D));
-
-        // /////////////////////////////////////////////////////////////////////////
-        // // upload materials sbo buffer
-
-        // Temp scratch = scratch_begin(0,0);
-        // AssertAlways(params->material_count < MAX_MATERIALS_PER_PASS);
-        // R_Vulkan_SBO_Geo3D_Material *materials = push_array(scratch.arena, R_Vulkan_SBO_Geo3D_Material, params->material_count);
-        // for(U64 i = 0; i < params->material_count; i++)
-        // {
-        //   R_Vulkan_SBO_Geo3D_Material *mat_dst = &materials[i];
-        //   R_Material3D *mat_src = &params->materials[i];
-        //   MemoryCopy(mat_dst, mat_src, sizeof(R_Material3D));
-
-        //   /////////////////////////////////////////////////////////////////////
-        //   // update sample map
-        //   // Set up texture sample map matrix based on texture format
-        //   // Vulkan use col-major
-
-        //   // diffuse texture
-        //   if(mat_dst->has_diffuse_texture)
-        //   {
-        //     R_Vulkan_Tex2D *tex = r_vulkan_tex2d_from_handle(params->textures[i].array[R_GeoTexKind_Diffuse]);
-        //     Vec4F32 texture_sample_channel_map[4] = {
-        //       {1, 0, 0, 0},
-        //       {0, 1, 0, 0},
-        //       {0, 0, 1, 0},
-        //       {0, 0, 0, 1},
-        //     };
-        //     if(tex)
-        //     {
-        //       switch(tex->format)
-        //       {
-        //         default: break;
-        //         case R_Tex2DFormat_R8: 
-        //         {
-        //           MemoryZeroStruct(&texture_sample_channel_map);
-        //           // TODO(k): why, shouldn't vulkan use col-major order?
-        //           texture_sample_channel_map[0] = v4f32(1, 1, 1, 1);
-        //           // texture_sample_channel_map[0].x = 1;
-        //           // texture_sample_channel_map[1].x = 1;
-        //           // texture_sample_channel_map[2].x = 1;
-        //           // texture_sample_channel_map[3].x = 1;
-        //         }break;
-        //       }
-        //     }
-        //     MemoryCopy(&mat_dst->diffuse_sample_channel_map, &texture_sample_channel_map, sizeof(Mat4x4F32));
-        //   }
-        // }
-        // MemoryCopy(materials_sbo_dst, materials, sizeof(R_Vulkan_SBO_Geo3D_Material)*params->material_count);
-        // scratch_end(scratch);
-
-        // /////////////////////////////////////////////////////////////////////////////////
-        // // walk through all mesh node to fill up buffers(joints, inst_buffer)
-
-        // {
-        //   U64 joint_idx = 0;
-        //   U64 inst_idx = 0;
-        //   for(R_BatchGroup3DMapNode *n = mesh_group_map->first; n != 0; n = n->insert_next)
-        //   {
-        //     R_BatchList *batches = &n->batches;
-        //     R_BatchGroup3DParams *group_params = &n->params;
-        //     U64 indice_count = group_params->indice_count;
-        //     U64 line_width = group_params->line_width;
-
-        //     // get & fill inst buffer
-        //     for(R_BatchNode *batch = batches->first; batch != 0; batch = batch->next)
-        //     {
-        //       // Copy instance skinning data to sbo joints buffer
-        //       U64 batch_inst_count = batch->v.byte_count / sizeof(R_Mesh3DInst);
-        //       U8 *dst_ptr = inst_buffer->mapped + inst_idx*sizeof(R_Mesh3DInst);
-        //       for(U64 i = 0; i < batch_inst_count; i++)
-        //       {
-        //         R_Mesh3DInst *inst = ((R_Mesh3DInst *)batch->v.v)+i;
-        //         if(inst->joint_count > 0)
-        //         {
-        //           U32 size = sizeof(Mat4x4F32) * inst->joint_count;
-        //           // TODO(XXX): we should consider stride here
-        //           inst->first_joint = joint_idx;
-        //           MemoryCopy(joints_sbo_dst+joint_idx*sizeof(R_Vulkan_SBO_Geo3D_Joint), inst->joint_xforms, size);
-        //           joint_idx += inst->joint_count;
-        //         }
-        //       }
-        //       inst_idx += batch_inst_count;
-
-        //       // Copy to instance buffer
-        //       MemoryCopy(dst_ptr, batch->v.v, batch->v.byte_count);
-        //     }
-        //   }
-        // }
-
-        // /////////////////////////////////////////////////////////////////////////////////
-        // // viewport and scissor
-
-        // VkViewport viewport = {0};
-        // Vec2F32 viewport_dim = dim_2f32(params->viewport);
-        // if(viewport_dim.x == 0 || viewport_dim.y == 0)
-        // {
-        //   viewport.width  = wnd->bag->stage_color_image.extent.width;
-        //   viewport.height = wnd->bag->stage_color_image.extent.height;
-        // }
-        // else
-        // {
-        //   viewport.x      = params->viewport.p0.x;
-        //   viewport.y      = params->viewport.p0.y;
-        //   viewport.width  = viewport_dim.x;
-        //   viewport.height = viewport_dim.y;
-        // }
-        // viewport.minDepth = 0.0f;
-        // viewport.maxDepth = 1.0f;
-        // vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
-
-        // VkRect2D scissor = {0};
-        // scissor.offset = (VkOffset2D){0, 0};
-        // scissor.extent = wnd->bag->stage_color_image.extent;
-        // vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
-
-        // /////////////////////////////////////////////////////////////////////////////////
-        // // lighting
-        // // NOTE(k): we can only do compute pass outside of vulkan renderpass
-
-        // if(!params->omit_light)
-        // {
-        //   ///////////////////////////////////////////////////////////////////////////////
-        //   // pre depth pass
-
-        //   {
-        //     R_Vulkan_RenderPass *renderpass = &renderpasses[R_Vulkan_RenderPassKind_Geo3D_ZPre];
-        //     R_Vulkan_Pipeline *pipelines = renderpass->pipelines.z_pre;
-
-        //     // start the renderpass
-        //     VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
-        //     begin_info.renderPass = renderpass->h;
-        //     begin_info.framebuffer = framebuffers[R_Vulkan_RenderPassKind_Geo3D_ZPre];
-        //     begin_info.renderArea.offset = (VkOffset2D){0, 0};
-        //     begin_info.renderArea.extent = wnd->bag->stage_color_image.extent;
-        //     VkClearValue clear_colors[1];
-        //     clear_colors[0].depthStencil = (VkClearDepthStencilValue){1.0f, 0};
-        //     begin_info.clearValueCount = 1;
-        //     begin_info.pClearValues = clear_colors;
-        //     vkCmdBeginRenderPass(cmd_buf, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
-        //     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        //         geo3d_zpre_pipelines[0].layout, 0, 1,
-        //         &geo3d_ubo_buffer->set.h, 1, &geo3d_ubo_buffer_off);
-        //     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        //         geo3d_zpre_pipelines[0].layout, 1, 1,
-        //         &joints_sbo_buffer->set.h, 1, &joints_sbo_buffer_off);
-
-        //     U64 inst_idx = 0;
-        //     for(R_BatchGroup3DMapNode *n = mesh_group_map->first; n!=0; n = n->insert_next) 
-        //     {
-        //       // Unpack group params
-        //       R_BatchList *batches = &n->batches;
-        //       R_BatchGroup3DParams *group_params = &n->params;
-        //       R_Vulkan_Buffer *mesh_vertices = r_vulkan_buffer_from_handle(group_params->mesh_vertices);
-        //       R_Vulkan_Buffer *mesh_indices = r_vulkan_buffer_from_handle(group_params->mesh_indices);
-        //       U64 inst_count = batches->byte_count / batches->bytes_per_inst;
-        //       U64 indice_count = group_params->indice_count;
-        //       U64 line_width = group_params->line_width;
-
-        //       // Unpack specific pipeline for topology and polygon mode
-        //       R_GeoTopologyKind topology = group_params->mesh_geo_topology;
-        //       R_GeoPolygonKind polygon = group_params->mesh_geo_polygon;
-
-        //       R_Vulkan_Pipeline *pipeline = &pipelines[R_GeoPolygonKind_COUNT*topology + polygon];
-        //       // Bind pipeline
-        //       // The second parameter specifies if the pipeline object is a graphics or compute pipelinVK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BITe
-        //       // We've now told Vulkan which operations to execute in the graphcis pipeline and which attachment to use in the fragment shader
-        //       vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->h);
-
-        //       vkCmdBindVertexBuffers(cmd_buf, 0, 1, &mesh_vertices->h, &(VkDeviceSize){group_params->vertex_buffer_offset});
-        //       vkCmdBindIndexBuffer(cmd_buf, mesh_indices->h, (VkDeviceSize){group_params->indice_buffer_offset}, VK_INDEX_TYPE_UINT32);
-        //       vkCmdBindVertexBuffers(cmd_buf, 1, 1, &inst_buffer->h, &(VkDeviceSize){inst_idx*sizeof(R_Mesh3DInst)});
-
-        //       // set line width if device supports widelines feature
-        //       if(r_vulkan_pdevice()->features.wideLines == VK_TRUE)
-        //       {
-        //         vkCmdSetLineWidth(cmd_buf, line_width);
-        //       }
-
-        //       // draw mesh
-        //       vkCmdDrawIndexed(cmd_buf, indice_count, inst_count, 0, 0, 0);
-        //       inst_idx += inst_count;
-        //     }
-
-        //     vkCmdEndRenderPass(cmd_buf);
-        //   }
-
-        //   /////////////////////////////////////////////////////////////////////
-        //   // Tile frustum compute pass
-
-        //   {
-        //     /////////////////////////////////////////////////////////////////
-        //     // calculate grid size based on the size of viewport
-
-        //     Vec2F32 viewport_dim = dim_2f32(params->viewport);
-        //     if(viewport_dim.x == 0 || viewport_dim.y == 0)
-        //     {
-        //       viewport_dim.x  = wnd->bag->stage_color_image.extent.width;
-        //       viewport_dim.y = wnd->bag->stage_color_image.extent.height;
-        //     }
-        //     viewport_dim.x = AlignPow2((U64)ceil_f32(viewport_dim.x), TILE_SIZE);
-        //     viewport_dim.y = AlignPow2((U64)ceil_f32(viewport_dim.y), TILE_SIZE);
-
-        //     grid_size.x = viewport_dim.x / TILE_SIZE;
-        //     grid_size.y = viewport_dim.y / TILE_SIZE;
-
-        //     /////////////////////////////////////////////////////////////////
-        //     // unpack ubo buffer
-
-        //     R_Vulkan_UBO_Geo3D_TileFrustum ubo = {0};
-        //     ubo.proj_inv = proj_inv;
-        //     ubo.grid_size = grid_size;
-        //     MemoryCopy(tile_frustum_ubo_dst, &ubo, sizeof(R_Vulkan_UBO_Geo3D_TileFrustum));
-        //     // bind ubo
-        //     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
-        //         geo3d_tile_frustum_pipeline->layout, 0, 1,
-        //         &tile_frustum_ubo_buffer->set.h,
-        //         1, &tile_frustum_ubo_buffer_off);
-
-        //     /////////////////////////////////////////////////////////////////
-        //     // unpack sbo buffer
-
-        //     // bind sbo
-        //     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
-        //         geo3d_tile_frustum_pipeline->layout, 1, 1,
-        //         &tiles_sbo_buffer->set.h,
-        //         1, &tiles_sbo_buffer_off);
-
-        //     /////////////////////////////////////////////////////////////////
-        //     // compute pass
-
-        //     Vec2U32 thread_group_size = {TILE_SIZE,TILE_SIZE};
-        //     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, geo3d_tile_frustum_pipeline->h);
-        //     // NOTE(k): shader need to check xy is inboud of grid size
-        //     vkCmdDispatch(cmd_buf, AlignPow2(grid_size.x,thread_group_size.x) / thread_group_size.x, AlignPow2(grid_size.y,thread_group_size.y) / thread_group_size.y, 1);
-        //   }
-
-        //   /////////////////////////////////////////////////////////////////////
-        //   // light culling compute pass
-
-        //   // TODO(XXX): need a memory berrier here to wait on z_pre and frustum culling to be finished
-        //   {
-        //     // ubo upload & bind
-        //     R_Vulkan_UBO_Geo3D_LightCulling ubo = {0};
-        //     ubo.proj_inv = proj_inv;
-        //     ubo.light_count = params->light_count;
-        //     MemoryCopy(light_culling_ubo_dst, &ubo, sizeof(R_Vulkan_UBO_Geo3D_LightCulling));
-        //     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
-        //         geo3d_light_culling_pipeline->layout, 0, 1,
-        //         &light_culling_ubo_buffer->set.h, 1, &light_culling_ubo_buffer_off);
-        //     // global lights
-        //     // upload lights
-        //     MemoryCopy(lights_sbo_dst, params->lights, params->light_count*sizeof(R_Light3D));
-        //     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
-        //         geo3d_light_culling_pipeline->layout, 1, 1,
-        //         &lights_sbo_buffer->set.h, 1, &lights_sbo_buffer_off);
-        //     // zpre
-        //     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
-        //         geo3d_light_culling_pipeline->layout, 2, 1,
-        //         &frame->bag_ref->geo3d_pre_depth_ds.h, 0, 0);
-        //     // tiles
-        //     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
-        //         geo3d_light_culling_pipeline->layout, 3, 1,
-        //         &tiles_sbo_buffer->set.h, 1, &tiles_sbo_buffer_off);
-        //     // global light indices
-        //     // do zero initilization for this buffer (gpu side, buffer clear)
-        //     // TODO(XXX): we may need to add a buffer barrier here for syncronization
-        //     vkCmdFillBuffer(cmd_buf, light_indices_sbo_buffer->buffer.h, light_indices_sbo_buffer_off, light_indices_sbo_buffer->stride, 0);
-        //     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
-        //         geo3d_light_culling_pipeline->layout, 4, 1,
-        //         &light_indices_sbo_buffer->set.h, 1, &light_indices_sbo_buffer_off);
-        //     // tile lights
-        //     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
-        //         geo3d_light_culling_pipeline->layout, 5, 1,
-        //         &tile_lights_sbo_buffer->set.h, 1, &tile_lights_sbo_buffer_off);
-
-        //     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, geo3d_light_culling_pipeline->h);
-        //     vkCmdDispatch(cmd_buf, grid_size.x, grid_size.y, 1);
-        //   }
-        // }
-
-        // /////////////////////////////////////////////////////////////////////////
-        // //~ Start geo3d renderpass
-
-        // // TODO(XXX): missing buffer barrier for compute shader to be finished
-
-        // VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
-        // begin_info.renderPass        = renderpass->h;
-        // begin_info.framebuffer       = framebuffers[R_Vulkan_RenderPassKind_Geo3D];
-        // begin_info.renderArea.offset = (VkOffset2D){0, 0};
-        // begin_info.renderArea.extent = wnd->bag->stage_color_image.extent;
-
-        // /////////////////////////////////////////////////////////////////////////
-        // //- clear values
-
-        // // Note that the order of clear_values should be identical to the order of your attachments
-        // VkClearValue clear_colors[3];
-        // // geo3d color image
-        // clear_colors[0].color        = (VkClearColorValue){{ 0.0f, 0.0f, 0.0f, 0.0f }}; /* black with 100% opacity */
-        // // The range of depths in the depth buffer is 0.0 to 1.0 in Vulkan, where 1.0 lies at the far view plane and 0.0 at the near view plane. The initial value at each point in the depth buffer should be the furthest possible depth, which is 1.0
-        // // geo3d normal depth image
-        // clear_colors[1].color        = (VkClearColorValue){0.f, 0.f, 0.f, 1.f};
-        // // geo3d depth
-        // clear_colors[2].depthStencil = (VkClearDepthStencilValue){1.0f, 0};
-
-        // // Those two parameters define the clear values to use for VK_ATTACHMENT_LOAD_OP_CLEAR, which we used as load operations for the color attachment
-        // begin_info.clearValueCount = 3;
-        // begin_info.pClearValues    = clear_colors;
-        // vkCmdBeginRenderPass(cmd_buf, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
-        // /////////////////////////////////////////////////////////////////////////
-        // //- draw geo3d debug if asked
-
-        // if(!params->omit_grid)
-        // {
-        //   vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        //       geo3d_debug_pipelines[0].layout, 0, 1,
-        //       &geo3d_ubo_buffer->set.h, 1, &geo3d_ubo_buffer_off);
-        //   // Bind geo3d debug pipeline
-        //   vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        //       geo3d_debug_pipelines[R_GeoPolygonKind_COUNT * R_GeoTopologyKind_Triangles + R_GeoPolygonKind_Fill].h);
-
-        //   // Draw mesh debug info (grid e.g.)
-        //   vkCmdDraw(cmd_buf, 6, 1, 0, 0);
-        // }
-
-        // /////////////////////////////////////////////////////////////////////////
-        // //- push constants for geo3d forward pass
-
-        // R_Vulkan_PUSH_Geo3D_Forward push;
-        // push.light_grid_size = grid_size;
-        // push.viewport.x = viewport.width;
-        // push.viewport.y = viewport.height;
-        // vkCmdPushConstants(cmd_buf, geo3d_forward_pipelines[0].layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(R_Vulkan_PUSH_Geo3D_Forward), &push);
-
-        // /////////////////////////////////////////////////////////////////////////
-        // //- binds (ubo & sbo)
-
-        // // 0: ubo
-        // vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        //                         geo3d_forward_pipelines[0].layout, 0, 1,
-        //                         &geo3d_ubo_buffer->set.h, 1, &geo3d_ubo_buffer_off);
-
-        // // 1: joints
-        // vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, geo3d_forward_pipelines[0].layout, 1, 1, &joints_sbo_buffer->set.h, 1, &joints_sbo_buffer_off);
-
-        // // 2: texture (bind when loop through instances)
-
-        // // 3: lights
-        // vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        //                         geo3d_forward_pipelines[0].layout, 3, 1,
-        //                         &lights_sbo_buffer->set.h, 1, &lights_sbo_buffer_off);
-        // // 4: global light indices
-        // vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        //                         geo3d_forward_pipelines[0].layout, 4, 1,
-        //                         &light_indices_sbo_buffer->set.h, 1, &light_indices_sbo_buffer_off);
-        // // 5: tile lights
-        // vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        //                         geo3d_forward_pipelines[0].layout, 5, 1,
-        //                         &tile_lights_sbo_buffer->set.h, 1, &tile_lights_sbo_buffer_off);
-
-        // // 6: materials
-        // vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        //                         geo3d_forward_pipelines[0].layout, 6, 1,
-        //                         &materials_sbo_buffer->set.h, 1, &materials_sbo_buffer_off);
-
-        // /////////////////////////////////////////////////////////////////////////
-        // //- geo3d forward pass
-
-        // U64 inst_idx = 0;
-        // for(R_BatchGroup3DMapNode *n = mesh_group_map->first; n!=0; n = n->insert_next) 
-        // {
-        //   // Unpack group params
-        //   R_BatchList *batches = &n->batches;
-        //   R_BatchGroup3DParams *group_params = &n->params;
-        //   R_Vulkan_Buffer *mesh_vertices = r_vulkan_buffer_from_handle(group_params->mesh_vertices);
-        //   R_Vulkan_Buffer *mesh_indices = r_vulkan_buffer_from_handle(group_params->mesh_indices);
-        //   U64 inst_count = batches->byte_count / batches->bytes_per_inst;
-        //   U64 indice_count = group_params->indice_count;
-        //   U64 line_width = group_params->line_width;
-
-        //   // Unpack specific pipeline for topology and polygon mode
-        //   R_GeoTopologyKind topology = group_params->mesh_geo_topology;
-        //   R_GeoPolygonKind polygon = group_params->mesh_geo_polygon;
-        //   R_Vulkan_Pipeline *pipeline = &geo3d_forward_pipelines[R_GeoPolygonKind_COUNT*topology + polygon];
-
-        //   // Bind texture
-        //   // TODO(XXX): bind other texture (ambient, normal, bump, ...)
-        //   // TODO(XXX): make use of texture sampler kind
-        //   R_Handle tex_handle = params->textures[group_params->mat_idx].array[R_GeoTexKind_Diffuse];
-        //   if(r_handle_match(tex_handle, r_handle_zero()))
-        //   {
-        //     tex_handle = r_vulkan_state->backup_texture;
-        //   }
-        //   R_Vulkan_Tex2D *texture = r_vulkan_tex2d_from_handle(tex_handle);
-        //   vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->layout, 2, 1, &texture->desc_set.h, 0, NULL);
-
-        //   vkCmdBindVertexBuffers(cmd_buf, 0, 1, &mesh_vertices->h, &(VkDeviceSize){group_params->vertex_buffer_offset});
-        //   vkCmdBindIndexBuffer(cmd_buf, mesh_indices->h, (VkDeviceSize){group_params->indice_buffer_offset}, VK_INDEX_TYPE_UINT32);
-        //   vkCmdBindVertexBuffers(cmd_buf, 1, 1, &inst_buffer->h, &(VkDeviceSize){inst_idx*sizeof(R_Mesh3DInst)});
-
-        //   // Bind pipeline
-        //   // The second parameter specifies if the pipeline object is a graphics or compute pipelinVK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BITe
-        //   // We've now told Vulkan which operations to execute in the graphcis pipeline and which attachment to use in the fragment shader
-        //   vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->h);
-
-        //   // set line width if device supports widelines feature
-        //   if(r_vulkan_pdevice()->features.wideLines == VK_TRUE)
-        //   {
-        //     vkCmdSetLineWidth(cmd_buf, line_width);
-        //   }
-
-        //   // draw mesh
-        //   vkCmdDrawIndexed(cmd_buf, indice_count, inst_count, 0, 0, 0);
-        //   inst_idx += inst_count;
-        // }
-        // vkCmdEndRenderPass(cmd_buf);
-
-        // /////////////////////////////////////////////////////////////////////////
-        // // Composite to the main staging buffer
-        // {
-        //   // Unpack renderpass and pipeline
-        //   R_Vulkan_RenderPass *renderpass = &renderpasses[R_Vulkan_RenderPassKind_Geo3D_Composite];
-        //   // Start renderpass
-        //   VkRenderPassBeginInfo begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
-        //   begin_info.renderPass        = renderpass->h;
-        //   begin_info.framebuffer       = framebuffers[R_Vulkan_RenderPassKind_Geo3D_Composite];
-        //   begin_info.renderArea.offset = (VkOffset2D){0, 0};
-        //   begin_info.renderArea.extent = wnd->bag->stage_color_image.extent;
-        //   begin_info.clearValueCount   = 0;
-        //   begin_info.pClearValues      = 0;
-        //   vkCmdBeginRenderPass(cmd_buf, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
-        //   vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipelines.geo3d_composite.h);
-        //   // Viewport and scissor
-        //   VkViewport viewport = {0};
-        //   viewport.x        = 0.0f;
-        //   viewport.y        = 0.0f;
-        //   viewport.width    = wnd->bag->stage_color_image.extent.width;
-        //   viewport.height   = wnd->bag->stage_color_image.extent.height;
-        //   viewport.minDepth = 0.0f;
-        //   viewport.maxDepth = 1.0f;
-        //   vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
-        //   // Setup scissor rect
-        //   VkRect2D scissor = {0};
-        //   scissor.offset = (VkOffset2D){0, 0};
-        //   scissor.extent = wnd->bag->stage_color_image.extent;
-        //   vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
-        //   // Bind stage color descriptor
-        //   vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipelines.geo3d_composite.layout, 0, 1, &wnd->bag->geo3d_color_ds.h, 0, NULL);
-        //   vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, renderpass->pipelines.geo3d_composite.layout, 1, 1, &wnd->bag->geo3d_normal_depth_ds.h, 0, NULL);
-        //   vkCmdDraw(cmd_buf, 4, 1, 0, 0);
-        //   vkCmdEndRenderPass(cmd_buf);
-        // }
-        // geo3d_pass_idx++;
+        Assert(geo3d_pass_idx < MAX_GEO3D_PASS);
+
+        // Unpack params
+        R_PassParams_Geo3D *params = pass->params_geo3d;
+        R_BatchGroup3DMap *mesh_group_map = &params->mesh_batches;
+
+        R_Vulkan_RenderTargets *render_targets = wnd->render_targets;
+
+        // Pre-compute some inverse
+        Mat4x4F32 proj_inv = inverse_4x4f32(params->projection);
+        Mat4x4F32 view_inv = inverse_4x4f32(params->view);
+
+        // some variables to be initialized
+        Vec2U32 grid_size = {0}; // light grid size
+
+        /////////////////////////////////////////////////////////////////////////
+        // unpack all kinds of buffer offsets
+
+        // inst buffer
+        R_Vulkan_Buffer *inst_buffer = &frame->inst_buffer_mesh3d[geo3d_pass_idx];
+
+        // geo3d ubo
+        // NOTE(k): Geo3d uniform is per Geo3D pass unlike rect pass which is per group
+        R_Vulkan_UBOBuffer *geo3d_ubo_buffer = &frame->ubo_buffers[R_Vulkan_UBOTypeKind_Geo3D];
+        U32 geo3d_ubo_buffer_off = geo3d_pass_idx * geo3d_ubo_buffer->stride;
+        U8 *geo3d_ubo_dst = (U8*)geo3d_ubo_buffer->buffer.mapped + geo3d_ubo_buffer_off;
+
+        // tile frustum ubo
+        R_Vulkan_UBOBuffer *tile_frustum_ubo_buffer = &frame->ubo_buffers[R_Vulkan_UBOTypeKind_Geo3D_TileFrustum];
+        U32 tile_frustum_ubo_buffer_off = geo3d_pass_idx * tile_frustum_ubo_buffer->stride;
+        U8 *tile_frustum_ubo_dst = (U8*)tile_frustum_ubo_buffer->buffer.mapped + tile_frustum_ubo_buffer_off;
+
+        // light culling ubo
+        R_Vulkan_UBOBuffer *light_culling_ubo_buffer = &frame->ubo_buffers[R_Vulkan_UBOTypeKind_Geo3D_LightCulling];
+        U32 light_culling_ubo_buffer_off = geo3d_pass_idx * light_culling_ubo_buffer->stride;
+        U8 *light_culling_ubo_dst = (U8*)light_culling_ubo_buffer->buffer.mapped + light_culling_ubo_buffer_off;
+
+        // lights sbo
+        R_Vulkan_SBOBuffer *lights_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_Lights];
+        U32 lights_sbo_buffer_off = geo3d_pass_idx*lights_sbo_buffer->stride;
+        U8 *lights_sbo_dst = (U8*)lights_sbo_buffer->buffer.mapped + lights_sbo_buffer_off;
+
+        // tiles sbo (device local)
+        R_Vulkan_SBOBuffer *tiles_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_Tiles];
+        U32 tiles_sbo_buffer_off = geo3d_pass_idx * tiles_sbo_buffer->stride;
+
+        // light indices sbo (device local)
+        R_Vulkan_SBOBuffer *light_indices_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_LightIndices];
+        U32 light_indices_sbo_buffer_off = geo3d_pass_idx * light_indices_sbo_buffer->stride;
+
+        // tile lights sbo (deviec local)
+        R_Vulkan_SBOBuffer *tile_lights_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_TileLights];
+        U32 tile_lights_sbo_buffer_off = geo3d_pass_idx * tile_lights_sbo_buffer->stride;
+
+        // joints sbo
+        R_Vulkan_SBOBuffer *joints_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_Joints];
+        U32 joints_sbo_buffer_off = geo3d_pass_idx*MAX_JOINTS_PER_PASS * sizeof(R_Vulkan_SBO_Geo3D_Joint);
+        U8 *joints_sbo_dst = (U8*)(joints_sbo_buffer->buffer.mapped) + joints_sbo_buffer_off;
+
+        // materials sbo
+        R_Vulkan_SBOBuffer *materials_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_Materials];
+        U32 materials_sbo_buffer_off = geo3d_pass_idx*MAX_MATERIALS_PER_PASS * sizeof(R_Vulkan_SBO_Geo3D_Material); 
+        U8 *materials_sbo_dst = (U8*)(materials_sbo_buffer->buffer.mapped) + materials_sbo_buffer_off;
+
+        /////////////////////////////////////////////////////////////////////////////////
+        // upload geo3d ubo buffer
+
+        R_Vulkan_UBO_Geo3D geo3d_ubo = {0};
+        geo3d_ubo.proj      = params->projection;
+        geo3d_ubo.proj_inv  = proj_inv;
+        geo3d_ubo.view      = params->view;
+        geo3d_ubo.view_inv  = view_inv;
+        geo3d_ubo.show_grid = !params->omit_grid;
+        MemoryCopy(geo3d_ubo_dst, &geo3d_ubo, sizeof(R_Vulkan_UBO_Geo3D));
+
+        /////////////////////////////////////////////////////////////////////////////////
+        // upload materials sbo buffer
+
+        Temp scratch = scratch_begin(0,0);
+        AssertAlways(params->material_count < MAX_MATERIALS_PER_PASS);
+        R_Vulkan_SBO_Geo3D_Material *materials = push_array(scratch.arena, R_Vulkan_SBO_Geo3D_Material, params->material_count);
+        for(U64 i = 0; i < params->material_count; i++)
+        {
+          R_Vulkan_SBO_Geo3D_Material *mat_dst = &materials[i];
+          R_Material3D *mat_src = &params->materials[i];
+          MemoryCopy(mat_dst, mat_src, sizeof(R_Material3D));
+
+          /////////////////////////////////////////////////////////////////////
+          // update sample map
+          // Set up texture sample map matrix based on texture format
+          // Vulkan use col-major
+
+          // diffuse texture
+          if(mat_dst->has_diffuse_texture)
+          {
+            R_Vulkan_Tex2D *tex = r_vulkan_tex2d_from_handle(params->textures[i].array[R_GeoTexKind_Diffuse]);
+            Vec4F32 texture_sample_channel_map[4] = {
+              {1, 0, 0, 0},
+              {0, 1, 0, 0},
+              {0, 0, 1, 0},
+              {0, 0, 0, 1},
+            };
+            if(tex)
+            {
+              switch(tex->format)
+              {
+                default: break;
+                case R_Tex2DFormat_R8: 
+                {
+                  MemoryZeroStruct(&texture_sample_channel_map);
+                  // TODO(k): why, shouldn't vulkan use col-major order?
+                  texture_sample_channel_map[0] = v4f32(1, 1, 1, 1);
+                  // texture_sample_channel_map[0].x = 1;
+                  // texture_sample_channel_map[1].x = 1;
+                  // texture_sample_channel_map[2].x = 1;
+                  // texture_sample_channel_map[3].x = 1;
+                }break;
+              }
+            }
+            MemoryCopy(&mat_dst->diffuse_sample_channel_map, &texture_sample_channel_map, sizeof(Mat4x4F32));
+          }
+        }
+        MemoryCopy(materials_sbo_dst, materials, sizeof(R_Vulkan_SBO_Geo3D_Material)*params->material_count);
+        scratch_end(scratch);
+
+        /////////////////////////////////////////////////////////////////////////////////
+        // walk through all mesh node to fill up buffers(joints, inst_buffer)
+
+        {
+          U64 joint_idx = 0;
+          U64 inst_idx = 0;
+          for(R_BatchGroup3DMapNode *n = mesh_group_map->first; n != 0; n = n->insert_next)
+          {
+            R_BatchList *batches = &n->batches;
+            R_BatchGroup3DParams *group_params = &n->params;
+            U64 indice_count = group_params->indice_count;
+            U64 line_width = group_params->line_width;
+
+            // get & fill inst buffer
+            for(R_BatchNode *batch = batches->first; batch != 0; batch = batch->next)
+            {
+              // Copy instance skinning data to sbo joints buffer
+              U64 batch_inst_count = batch->v.byte_count / sizeof(R_Mesh3DInst);
+              U8 *dst_ptr = inst_buffer->mapped + inst_idx*sizeof(R_Mesh3DInst);
+              for(U64 i = 0; i < batch_inst_count; i++)
+              {
+                R_Mesh3DInst *inst = ((R_Mesh3DInst *)batch->v.v)+i;
+                if(inst->joint_count > 0)
+                {
+                  U32 size = sizeof(Mat4x4F32) * inst->joint_count;
+                  // TODO(XXX): we should consider stride here
+                  inst->first_joint = joint_idx;
+                  MemoryCopy(joints_sbo_dst+joint_idx*sizeof(R_Vulkan_SBO_Geo3D_Joint), inst->joint_xforms, size);
+                  joint_idx += inst->joint_count;
+                }
+              }
+              inst_idx += batch_inst_count;
+
+              // Copy to instance buffer
+              MemoryCopy(dst_ptr, batch->v.v, batch->v.byte_count);
+            }
+          }
+        }
+
+        /////////////////////////////////////////////////////////////////////////////////
+        // viewport and scissor
+
+        VkViewport viewport = {0};
+        Vec2F32 viewport_dim = dim_2f32(params->viewport);
+        if(viewport_dim.x == 0 || viewport_dim.y == 0)
+        {
+          viewport.width  = render_targets->stage_color_image.extent.width;
+          viewport.height = render_targets->stage_color_image.extent.height;
+        }
+        else
+        {
+          viewport.x      = params->viewport.p0.x;
+          viewport.y      = params->viewport.p0.y;
+          viewport.width  = viewport_dim.x;
+          viewport.height = viewport_dim.y;
+        }
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
+
+        VkRect2D scissor = {0};
+        scissor.offset = (VkOffset2D){0, 0};
+        scissor.extent = render_targets->stage_color_image.extent;
+        vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
+
+        /////////////////////////////////////////////////////////////////////////////////
+        // lighting
+        // NOTE(k): we can only do compute pass outside of vulkan renderpass
+
+        if(!params->omit_light)
+        {
+          r_vulkan_image_transition(cmd_buf, render_targets->geo3d_pre_depth_image.h, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+          ///////////////////////////////////////////////////////////////////////////////
+          // pre depth pass (for tiling frustum)
+
+          {
+            R_Vulkan_Pipeline *pipelines = wnd->pipelines.geo3d.z_pre;
+            VkClearValue clear_colors[1];
+            clear_colors[0].depthStencil = (VkClearDepthStencilValue){1.0f, 0};
+
+            VkRenderingAttachmentInfo depth_attachment_infos[1] = {0};
+            depth_attachment_infos[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+            depth_attachment_infos[0].imageView = render_targets->geo3d_pre_depth_image.view;
+            depth_attachment_infos[0].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+            depth_attachment_infos[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            depth_attachment_infos[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            depth_attachment_infos[0].clearValue = clear_colors[0];
+
+            VkRenderingInfo render_info = { VK_STRUCTURE_TYPE_RENDERING_INFO };
+            render_info.renderArea.offset = (VkOffset2D){0, 0};
+            render_info.renderArea.extent = wnd->render_targets->stage_color_image.extent;
+            render_info.layerCount = 1;
+            render_info.colorAttachmentCount = 0;
+            render_info.pDepthAttachment = depth_attachment_infos;
+
+            // begin drawing
+            vkCmdBeginRendering(cmd_buf, &render_info);
+
+            vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[0].layout, 0, 1, &geo3d_ubo_buffer->set.h, 1, &geo3d_ubo_buffer_off);
+            vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[0].layout, 1, 1, &joints_sbo_buffer->set.h, 1, &joints_sbo_buffer_off);
+
+            U64 inst_idx = 0;
+            for(R_BatchGroup3DMapNode *n = mesh_group_map->first; n!=0; n = n->insert_next) 
+            {
+              // Unpack group params
+              R_BatchList *batches = &n->batches;
+              R_BatchGroup3DParams *group_params = &n->params;
+              R_Vulkan_Buffer *mesh_vertices = r_vulkan_buffer_from_handle(group_params->mesh_vertices);
+              R_Vulkan_Buffer *mesh_indices = r_vulkan_buffer_from_handle(group_params->mesh_indices);
+              U64 inst_count = batches->byte_count / batches->bytes_per_inst;
+              U64 indice_count = group_params->indice_count;
+              U64 line_width = group_params->line_width;
+
+              // Unpack specific pipeline for topology and polygon mode
+              R_GeoTopologyKind topology = group_params->mesh_geo_topology;
+              R_GeoPolygonKind polygon = group_params->mesh_geo_polygon;
+
+              R_Vulkan_Pipeline *pipeline = &pipelines[R_GeoPolygonKind_COUNT*topology + polygon];
+              // Bind pipeline
+              // The second parameter specifies if the pipeline object is a graphics or compute pipelinVK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BITe
+              // We've now told Vulkan which operations to execute in the graphcis pipeline and which attachment to use in the fragment shader
+              vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->h);
+
+              vkCmdBindVertexBuffers(cmd_buf, 0, 1, &mesh_vertices->h, &(VkDeviceSize){group_params->vertex_buffer_offset});
+              vkCmdBindIndexBuffer(cmd_buf, mesh_indices->h, (VkDeviceSize){group_params->indice_buffer_offset}, VK_INDEX_TYPE_UINT32);
+              vkCmdBindVertexBuffers(cmd_buf, 1, 1, &inst_buffer->h, &(VkDeviceSize){inst_idx*sizeof(R_Mesh3DInst)});
+
+              // set line width if device supports widelines feature
+              if(r_vulkan_pdevice()->features.wideLines == VK_TRUE)
+              {
+                vkCmdSetLineWidth(cmd_buf, line_width);
+              }
+
+              // draw mesh
+              vkCmdDrawIndexed(cmd_buf, indice_count, inst_count, 0, 0, 0);
+              inst_idx += inst_count;
+            }
+
+            vkCmdEndRendering(cmd_buf);
+          }
+
+          ///////////////////////////////////////////////////////////////////////////////
+          // Tile frustum compute pass
+
+          {
+            /////////////////////////////////////////////////////////////////////////////
+            // calculate grid size based on the size of viewport
+
+            R_Vulkan_Pipeline *pipeline = &wnd->pipelines.geo3d.tile_frustum;
+
+            Vec2F32 viewport_dim = dim_2f32(params->viewport);
+            if(viewport_dim.x == 0 || viewport_dim.y == 0)
+            {
+              viewport_dim.x = render_targets->stage_color_image.extent.width;
+              viewport_dim.y = render_targets->stage_color_image.extent.height;
+            }
+            viewport_dim.x = AlignPow2((U64)ceil_f32(viewport_dim.x), TILE_SIZE);
+            viewport_dim.y = AlignPow2((U64)ceil_f32(viewport_dim.y), TILE_SIZE);
+
+            grid_size.x = viewport_dim.x / TILE_SIZE;
+            grid_size.y = viewport_dim.y / TILE_SIZE;
+
+            /////////////////////////////////////////////////////////////////////////////
+            // unpack ubo buffer
+
+            R_Vulkan_UBO_Geo3D_TileFrustum ubo = {0};
+            ubo.proj_inv = proj_inv;
+            ubo.grid_size = grid_size;
+            MemoryCopy(tile_frustum_ubo_dst, &ubo, sizeof(R_Vulkan_UBO_Geo3D_TileFrustum));
+            // bind ubo
+            vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    pipeline->layout, 0, 1,
+                                    &tile_frustum_ubo_buffer->set.h,
+                                    1, &tile_frustum_ubo_buffer_off);
+
+            /////////////////////////////////////////////////////////////////////////////
+            // unpack sbo buffer
+
+            // bind sbo
+            vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    pipeline->layout, 1, 1,
+                                    &tiles_sbo_buffer->set.h,
+                                    1, &tiles_sbo_buffer_off);
+
+            /////////////////////////////////////////////////////////////////////////////
+            // compute pass
+
+            Vec2U32 thread_group_size = {TILE_SIZE,TILE_SIZE};
+            vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->h);
+            // NOTE(k): shader need to check xy is inboud of grid size
+            vkCmdDispatch(cmd_buf, AlignPow2(grid_size.x,thread_group_size.x) / thread_group_size.x, AlignPow2(grid_size.y,thread_group_size.y) / thread_group_size.y, 1);
+          }
+
+          ///////////////////////////////////////////////////////////////////////////////
+          // light culling compute pass
+
+          r_vulkan_image_transition(frame->cmd_buf, render_targets->geo3d_pre_depth_image.h,
+                                    VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                    VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+                                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+          // TODO(XXX): need a memory berrier here to wait on z_pre and frustum culling to be finished
+          {
+            R_Vulkan_Pipeline *pipeline = &wnd->pipelines.geo3d.light_culling;
+
+            // ubo upload & bind
+            R_Vulkan_UBO_Geo3D_LightCulling ubo = {0};
+            ubo.proj_inv = proj_inv;
+            ubo.light_count = params->light_count;
+            MemoryCopy(light_culling_ubo_dst, &ubo, sizeof(R_Vulkan_UBO_Geo3D_LightCulling));
+            vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    pipeline->layout, 0, 1,
+                                    &light_culling_ubo_buffer->set.h, 1, &light_culling_ubo_buffer_off);
+            // global lights
+            // upload lights
+            MemoryCopy(lights_sbo_dst, params->lights, params->light_count*sizeof(R_Light3D));
+            vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    pipeline->layout, 1, 1,
+                                    &lights_sbo_buffer->set.h, 1, &lights_sbo_buffer_off);
+            // zpre
+            vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    pipeline->layout, 2, 1,
+                                    &render_targets->geo3d_pre_depth_ds.h, 0, 0);
+            // tiles
+            vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    pipeline->layout, 3, 1,
+                                    &tiles_sbo_buffer->set.h, 1, &tiles_sbo_buffer_off);
+
+            // global light indices
+            // do zero initilization for this buffer (gpu side, buffer clear)
+            // TODO(XXX): we may need to add a buffer barrier here for syncronization
+            vkCmdFillBuffer(cmd_buf, light_indices_sbo_buffer->buffer.h, light_indices_sbo_buffer_off, light_indices_sbo_buffer->stride, 0);
+            vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    pipeline->layout, 4, 1,
+                                    &light_indices_sbo_buffer->set.h, 1, &light_indices_sbo_buffer_off);
+            // tile lights
+            vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    pipeline->layout, 5, 1,
+                                    &tile_lights_sbo_buffer->set.h, 1, &tile_lights_sbo_buffer_off);
+
+            vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->h);
+            vkCmdDispatch(cmd_buf, grid_size.x, grid_size.y, 1);
+          }
+        }
+
+        // TODO(XXX): missing buffer barrier for compute shader to be finished
+
+        r_vulkan_image_transition(frame->cmd_buf, render_targets->geo3d_color_image.h,
+                                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                                  VK_IMAGE_ASPECT_COLOR_BIT);
+        r_vulkan_image_transition(frame->cmd_buf, render_targets->geo3d_normal_depth_image.h,
+                                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                                  VK_IMAGE_ASPECT_COLOR_BIT);
+
+        /////////////////////////////////////////////////////////////////////////
+        //~ start geo3d rendering
+        {
+          // unpack pipelines
+          R_Vulkan_Pipeline *pipelines = wnd->pipelines.geo3d.forward;
+          R_Vulkan_Pipeline *debug_pipelines = wnd->pipelines.geo3d.debug;
+
+          VkClearValue clear_colors[3] = {0};
+          // color image
+          clear_colors[0].color        = (VkClearColorValue){{ 0.0f, 0.0f, 0.0f, 0.0f }}; /* black with 100% opacity */
+          // The range of depths in the depth buffer is 0.0 to 1.0 in Vulkan, where 1.0 lies at the far view plane and 0.0 at the near view plane. The initial value at each point in the depth buffer should be the furthest possible depth, which is 1.0
+          // normal depth image
+          clear_colors[1].color        = (VkClearColorValue){0.f, 0.f, 0.f, 1.f};
+          // depth
+          clear_colors[2].depthStencil = (VkClearDepthStencilValue){1.0f, 0};
+
+          VkRenderingAttachmentInfo attachment_infos[4] = {0};
+          attachment_infos[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+          attachment_infos[0].imageView = render_targets->geo3d_color_image.view;
+          attachment_infos[0].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+          attachment_infos[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+          attachment_infos[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+          attachment_infos[0].clearValue = clear_colors[0];
+
+          attachment_infos[1].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+          attachment_infos[1].imageView = render_targets->geo3d_normal_depth_image.view;
+          attachment_infos[1].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+          attachment_infos[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+          attachment_infos[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+          attachment_infos[1].clearValue = clear_colors[1];
+
+          attachment_infos[2].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+          attachment_infos[2].imageView = render_targets->stage_id_image.view;
+          attachment_infos[2].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+          attachment_infos[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+          attachment_infos[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+          attachment_infos[3].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+          attachment_infos[3].imageView = render_targets->geo3d_depth_image.view;
+          attachment_infos[3].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+          attachment_infos[3].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+          attachment_infos[3].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+          attachment_infos[3].clearValue = clear_colors[2];
+
+          VkRenderingInfo render_info = { VK_STRUCTURE_TYPE_RENDERING_INFO };
+          render_info.renderArea.offset = (VkOffset2D){0, 0};
+          render_info.renderArea.extent = wnd->render_targets->stage_color_image.extent;
+          render_info.layerCount = 1;
+          render_info.colorAttachmentCount = 3;
+          render_info.pColorAttachments = attachment_infos;
+          render_info.pDepthAttachment = &attachment_infos[3];
+
+          // begin drawing
+          vkCmdBeginRendering(cmd_buf, &render_info);
+
+          //- draw geo3d debug if asked
+          if(!params->omit_grid)
+          {
+            // TODO(XXX): debug pipeline don't need multiple polygon & topology
+            vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    debug_pipelines[0].layout, 0, 1,
+                                    &geo3d_ubo_buffer->set.h, 1, &geo3d_ubo_buffer_off);
+            // Bind geo3d debug pipeline
+            vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              debug_pipelines[R_GeoPolygonKind_COUNT * R_GeoTopologyKind_Triangles + R_GeoPolygonKind_Fill].h);
+
+            // Draw mesh debug info (grid e.g.)
+            vkCmdDraw(cmd_buf, 6, 1, 0, 0);
+          }
+
+          ///////////////////////////////////////////////////////////////////////////////
+          //- push constants for geo3d forward pass
+
+          R_Vulkan_PUSH_Geo3D_Forward push;
+          push.light_grid_size = grid_size;
+          push.viewport.x = viewport.width;
+          push.viewport.y = viewport.height;
+          vkCmdPushConstants(cmd_buf, pipelines[0].layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(R_Vulkan_PUSH_Geo3D_Forward), &push);
+
+          /////////////////////////////////////////////////////////////////////////
+          //- binds (ubo & sbo)
+
+          // 0: ubo
+          vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                  pipelines[0].layout, 0, 1,
+                                  &geo3d_ubo_buffer->set.h, 1, &geo3d_ubo_buffer_off);
+
+          // 1: joints
+          vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[0].layout, 1, 1, &joints_sbo_buffer->set.h, 1, &joints_sbo_buffer_off);
+
+          // 2: texture (bind when loop through instances)
+
+          // 3: lights
+          vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                  pipelines[0].layout, 3, 1,
+                                  &lights_sbo_buffer->set.h, 1, &lights_sbo_buffer_off);
+          // 4: global light indices
+          vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                  pipelines[0].layout, 4, 1,
+                                  &light_indices_sbo_buffer->set.h, 1, &light_indices_sbo_buffer_off);
+          // 5: tile lights
+          vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                  pipelines[0].layout, 5, 1,
+                                  &tile_lights_sbo_buffer->set.h, 1, &tile_lights_sbo_buffer_off);
+
+          // 6: materials
+          vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                  pipelines[0].layout, 6, 1,
+                                  &materials_sbo_buffer->set.h, 1, &materials_sbo_buffer_off);
+
+          /////////////////////////////////////////////////////////////////////////
+          //- geo3d forward pass
+
+          U64 inst_idx = 0;
+          for(R_BatchGroup3DMapNode *n = mesh_group_map->first; n!=0; n = n->insert_next) 
+          {
+            // Unpack group params
+            R_BatchList *batches = &n->batches;
+            R_BatchGroup3DParams *group_params = &n->params;
+            R_Vulkan_Buffer *mesh_vertices = r_vulkan_buffer_from_handle(group_params->mesh_vertices);
+            R_Vulkan_Buffer *mesh_indices = r_vulkan_buffer_from_handle(group_params->mesh_indices);
+            U64 inst_count = batches->byte_count / batches->bytes_per_inst;
+            U64 indice_count = group_params->indice_count;
+            U64 line_width = group_params->line_width;
+
+            // Unpack specific pipeline for topology and polygon mode
+            R_GeoTopologyKind topology = group_params->mesh_geo_topology;
+            R_GeoPolygonKind polygon = group_params->mesh_geo_polygon;
+            R_Vulkan_Pipeline *pipeline = &pipelines[R_GeoPolygonKind_COUNT*topology + polygon];
+
+            // Bind texture
+            // TODO(XXX): bind other texture (ambient, normal, bump, ...)
+            // TODO(XXX): make use of texture sampler kind
+            R_Handle tex_handle = params->textures[group_params->mat_idx].array[R_GeoTexKind_Diffuse];
+            if(r_handle_match(tex_handle, r_handle_zero()))
+            {
+              tex_handle = r_vulkan_state->backup_texture;
+            }
+            R_Vulkan_Tex2D *texture = r_vulkan_tex2d_from_handle(tex_handle);
+            vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->layout, 2, 1, &texture->desc_set.h, 0, NULL);
+
+            vkCmdBindVertexBuffers(cmd_buf, 0, 1, &mesh_vertices->h, &(VkDeviceSize){group_params->vertex_buffer_offset});
+            vkCmdBindIndexBuffer(cmd_buf, mesh_indices->h, (VkDeviceSize){group_params->indice_buffer_offset}, VK_INDEX_TYPE_UINT32);
+            vkCmdBindVertexBuffers(cmd_buf, 1, 1, &inst_buffer->h, &(VkDeviceSize){inst_idx*sizeof(R_Mesh3DInst)});
+
+            // Bind pipeline
+            // The second parameter specifies if the pipeline object is a graphics or compute pipelinVK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BITe
+            // We've now told Vulkan which operations to execute in the graphcis pipeline and which attachment to use in the fragment shader
+            vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->h);
+
+            // set line width if device supports widelines feature
+            if(r_vulkan_pdevice()->features.wideLines == VK_TRUE)
+            {
+              vkCmdSetLineWidth(cmd_buf, line_width);
+            }
+
+            // draw mesh
+            vkCmdDrawIndexed(cmd_buf, indice_count, inst_count, 0, 0, 0);
+            inst_idx += inst_count;
+          }
+          vkCmdEndRendering(cmd_buf);
+        }
+
+        /////////////////////////////////////////////////////////////////////////
+        // Composite to the main staging buffer
+
+        r_vulkan_image_transition(frame->cmd_buf, render_targets->geo3d_color_image.h,
+                                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
+                                  VK_IMAGE_ASPECT_COLOR_BIT);
+        r_vulkan_image_transition(frame->cmd_buf, render_targets->geo3d_normal_depth_image.h,
+                                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
+                                  VK_IMAGE_ASPECT_COLOR_BIT);
+        {
+          // unpack pipelines
+          R_Vulkan_Pipeline *pipeline = &wnd->pipelines.geo3d.composite;
+
+          VkRenderingAttachmentInfo attachment_infos[1] = {0};
+          attachment_infos[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+          attachment_infos[0].imageView = render_targets->stage_color_image.view;
+          attachment_infos[0].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+          attachment_infos[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+          attachment_infos[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+          VkRenderingInfo render_info = { VK_STRUCTURE_TYPE_RENDERING_INFO };
+          render_info.renderArea.offset = (VkOffset2D){0, 0};
+          render_info.renderArea.extent = wnd->render_targets->stage_color_image.extent;
+          render_info.layerCount = 1;
+          render_info.colorAttachmentCount = 1;
+          render_info.pColorAttachments = attachment_infos;
+
+          // begin rendering
+          vkCmdBeginRendering(cmd_buf, &render_info);
+
+          vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->h);
+          // Viewport and scissor
+          VkViewport viewport = {0};
+          viewport.x        = 0.0f;
+          viewport.y        = 0.0f;
+          viewport.width    = render_targets->stage_color_image.extent.width;
+          viewport.height   = render_targets->stage_color_image.extent.height;
+          viewport.minDepth = 0.0f;
+          viewport.maxDepth = 1.0f;
+          vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
+          // Setup scissor rect
+          VkRect2D scissor = {0};
+          scissor.offset = (VkOffset2D){0, 0};
+          scissor.extent = render_targets->stage_color_image.extent;
+          vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
+          // Bind stage color descriptor
+          vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->layout, 0, 1, &render_targets->geo3d_color_ds.h, 0, NULL);
+          vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->layout, 1, 1, &render_targets->geo3d_normal_depth_ds.h, 0, NULL);
+          vkCmdDraw(cmd_buf, 4, 1, 0, 0);
+
+          // end rendering
+          vkCmdEndRendering(cmd_buf);
+        }
+        geo3d_pass_idx++;
       }break;
       default: {InvalidPath;}break;
     }

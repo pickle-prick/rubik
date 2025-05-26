@@ -77,6 +77,9 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_game_ui)
         ui_labelf("v: %f %f", submarine->v.x, submarine->v.y);
       }
     }
+
+    // TODO(XXX)
+    // sea level indicator
   }
 }
 

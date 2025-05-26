@@ -36,19 +36,19 @@ layout(std140, set = 1, binding = 0) readonly buffer Joints {
 
 void main()
 {
-    vec4 pos_local = vec4(pos, 1.0);
+  vec4 pos_local = vec4(pos, 1.0);
 
-    if(joint_count > 0)
-    {
-        mat4 skin_mat = 
-            weights[0] * global_joints.xforms[first_joint+joints[0]] + 
-            weights[1] * global_joints.xforms[first_joint+joints[1]] + 
-            weights[2] * global_joints.xforms[first_joint+joints[2]] + 
-            weights[3] * global_joints.xforms[first_joint+joints[3]];
+  if(joint_count > 0)
+  {
+    mat4 skin_mat = 
+      weights[0] * global_joints.xforms[first_joint+joints[0]] + 
+      weights[1] * global_joints.xforms[first_joint+joints[1]] + 
+      weights[2] * global_joints.xforms[first_joint+joints[2]] + 
+      weights[3] * global_joints.xforms[first_joint+joints[3]];
 
-        pos_local = skin_mat * pos_local;
-    }
+    pos_local = skin_mat * pos_local;
+  }
 
-    vec4 pos_world = ubo.proj * ubo.view * model * pos_local;
-    gl_Position = pos_world;
+  vec4 pos_world = ubo.proj * ubo.view * model * pos_local;
+  gl_Position = pos_world;
 }
