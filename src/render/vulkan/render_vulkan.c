@@ -167,7 +167,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
 
     if(!found)
     {
-      fprintf(stderr, "layer '%s' was not found for this instance", enabled_layers[i]);
+      fprintf(stderr, "layer '%s' was not found for this instance\n", enabled_layers[i]);
       Trap();
     }
   }
