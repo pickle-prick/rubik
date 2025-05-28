@@ -1,6 +1,9 @@
 /////////////////////////////////////////////////////////////////////////////////////////
 // Basic Type/Enum
 
+typedef U64 S5_EntityFlags;
+#define S5_EntityFlag_Boid (S5_EntityFlags)(1ull<<0)
+
 typedef struct S5_Camera S5_Camera;
 struct S5_Camera
 {
@@ -13,6 +16,10 @@ struct S5_Scene
 {
   RK_Handle sea;
   RK_Handle submarine;
+
+  // per-frame build artifacts
+  Vec2F32 world_mouse;
+  RK_Node **fishes;
 
   // editor view
   struct
@@ -37,14 +44,199 @@ struct S5_Fish
 {
   F32 max_depth;
   F32 min_depth;
-  Vec2F32 target_position;
+
+  Vec2F32 vel;
+  Vec2F32 acc;
+  Vec2F32 target_vel;
+
+  F32 motivation;
+  F32 last_motivation_update_time;
 };
 
 #define S5_SEA_FLUID_DENSITY 1025.0
 #define S5_SCALE_WORLD_TO_METER 0.001
 
 /////////////////////////////////////////////////////////////////////////////////////////
+// Helper Functions
+
+internal Vec2F32
+s5_world_position_from_mouse(Vec2F32 mouse, Vec2F32 resolution_dim, Mat4x4F32 proj_view_inv_m)
+{
+  // mouse ndc pos
+  F32 mox_ndc = (mouse.x / resolution_dim.x) * 2.f - 1.f;
+  F32 moy_ndc = (mouse.y / resolution_dim.y) * 2.f - 1.f;
+  Vec4F32 mouse_in_world_4 = transform_4x4f32(proj_view_inv_m, v4f32(mox_ndc, moy_ndc, 1., 1.));
+  Vec2F32 ret = v2f32(mouse_in_world_4.x, mouse_in_world_4.y);
+  return ret;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
 // Update Functions
+
+RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
+{
+
+  S5_Scene *s = scene->custom_data;
+  RK_NodeBucket *node_bucket = scene->node_bucket;
+
+  RK_Node **fishes = 0;
+  for(U64 slot_idx = 0; slot_idx < node_bucket->hash_table_size; slot_idx++)
+  {
+    RK_NodeBucketSlot *slot = &node_bucket->hash_table[slot_idx];
+    for(RK_Node *n = slot->first; n != 0; n = n->hash_next)
+    {
+      if(n->custom_flags & S5_EntityFlag_Boid)
+      {
+        darray_push(rk_frame_arena(), fishes, n);
+      }
+    }
+  }
+  s->fishes = fishes;
+
+  s->world_mouse = s5_world_position_from_mouse(rk_state->cursor, rk_state->window_dim, ctx->proj_view_inv_m);
+
+  for(U64 j = 0; j < darray_size(fishes); j++)
+  {
+    RK_Node *fish_node = fishes[j];
+    S5_Fish *fish = fish_node->custom_data;
+    RK_Transform2D *transform = &fish_node->node2d->transform;
+    Vec2F32 size = fish_node->sprite2d->size;
+    Vec2F32 position = fish_node->node2d->transform.position;
+
+    Vec2F32 acc = {0};
+
+    // move to cursor
+    {
+      F32 dist_self_to_mouse = length_2f32(sub_2f32(s->world_mouse, position));
+      Vec2F32 dir_self_to_mouse = normalize_2f32(sub_2f32(s->world_mouse, position));
+
+      F32 angle_rad = ((rand()/(F32)RAND_MAX) * (1.0/2) - (1.0/4));
+      F32 cos_a = cos_f32(angle_rad);
+      F32 sin_a = cos_f32(angle_rad);
+
+      Vec2F32 dir = {
+        dir_self_to_mouse.x*cos_a - dir_self_to_mouse.y*sin_a,
+        dir_self_to_mouse.x*sin_a + dir_self_to_mouse.y*cos_a,
+      };
+
+      if(dist_self_to_mouse < size.x*6.3)
+      {
+        F32 w = 109000;
+        Vec2F32 uf = scale_2f32(dir_self_to_mouse, -w);
+        acc = add_2f32(acc, uf);
+      }
+      else
+      {
+        F32 w = 100000;
+        Vec2F32 uf = scale_2f32(dir, w);
+        acc = add_2f32(acc, uf);
+      }
+    }
+
+    // separation
+    for(U64 i = 0; i < darray_size(fishes); i++)
+    {
+      RK_Node *rhs_node = fishes[i];
+      if(rhs_node != fish_node)
+      {
+        S5_Fish *rhs_fish = rhs_node->custom_data;
+        Vec2F32 rhs_position = rhs_node->node2d->transform.position;
+
+        Vec2F32 rhs_to_self = sub_2f32(position, rhs_position);
+        F32 dist = length_2f32(rhs_to_self);
+
+        F32 constraint_dist = size.x*1.5;
+        if(dist < constraint_dist)
+        {
+          F32 w = 100000 * (dist/constraint_dist);
+          // unit force (assuming mass is 1)
+          Vec2F32 uf = scale_2f32(normalize_2f32(rhs_to_self), w);
+          acc = add_2f32(acc, uf);
+        }
+      }
+    }
+
+    // alignment
+    {
+      Vec2F32 alignment_direction = fish->vel;
+      U64 nearby_count = 0;
+      for(U64 i = 0; i < darray_size(fishes); i++)
+      {
+        RK_Node *rhs_node = fishes[i];
+
+        if(rhs_node != fish_node)
+        {
+          S5_Fish *rhs_fish = rhs_node->custom_data;
+          Vec2F32 rhs_position = rhs_node->node2d->transform.position;
+
+          Vec2F32 rhs_to_self = sub_2f32(position, rhs_position);
+          F32 dist = length_2f32(rhs_to_self);
+
+          if(dist < size.x*6)
+          {
+            nearby_count++;
+            alignment_direction.x += rhs_fish->vel.x;
+            alignment_direction.y += rhs_fish->vel.y;
+          }
+        }
+      }
+      if(nearby_count > 0)
+      {
+        alignment_direction.x /= (nearby_count+1);
+        alignment_direction.y /= (nearby_count+1);
+
+        if(alignment_direction.x != 0 || alignment_direction.y != 0)
+        {
+          Vec2F32 steer_alignment = normalize_2f32(sub_2f32(alignment_direction, fish->vel));
+          F32 w = 2000;
+          Vec2F32 uf = scale_2f32(steer_alignment, w);
+          acc = add_2f32(acc, uf);
+        }
+      }
+    }
+
+    // cohesion
+    {
+      Vec2F32 center_of_mass = position;
+      U64 nearby_count = 0;
+      for(U64 i = 0; i < darray_size(fishes); i++)
+      {
+        RK_Node *rhs_node = fishes[i];
+
+        if(rhs_node != fish_node)
+        {
+          S5_Fish *rhs_fish = rhs_node->custom_data;
+          Vec2F32 rhs_position = rhs_node->node2d->transform.position;
+
+          Vec2F32 rhs_to_self = sub_2f32(position, rhs_position);
+          F32 dist = length_2f32(rhs_to_self);
+
+          if(dist < size.x*6)
+          {
+            nearby_count++;
+            center_of_mass.x += rhs_position.x;
+            center_of_mass.y += rhs_position.y;
+          }
+        }
+      }
+      if(nearby_count > 0)
+      {
+        center_of_mass.x /= (nearby_count+1);
+        center_of_mass.y /= (nearby_count+1);
+
+        Vec2F32 steer_cohesion = normalize_2f32(sub_2f32(center_of_mass, position));
+        F32 w = 15000;
+        Vec2F32 uf = scale_2f32(steer_cohesion, w);
+        acc = add_2f32(acc, uf);
+      }
+    }
+
+    // F32 scale = 1.0 * (rand()/(F32)RAND_MAX) * (1);
+    Vec2F32 vel = scale_2f32(acc, ctx->dt_sec*fish->motivation);
+    fish->acc = acc;
+    fish->target_vel = vel;
+  }
+}
 
 RK_NODE_CUSTOM_UPDATE(s5_fn_game_ui)
 {
@@ -154,28 +346,48 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
 RK_NODE_CUSTOM_UPDATE(s5_fn_fish)
 {
   S5_Scene *s = scene->custom_data;
+  RK_Node **fishes = s->fishes;
   S5_Fish *fish = node->custom_data;
   RK_Transform2D *transform = &node->node2d->transform;
-  RK_Node *submarine_node = rk_node_from_handle(&s->submarine);
+  Vec2F32 size = node->sprite2d->size;
+  Vec2F32 position = node->node2d->transform.position;
 
-  Vec2F32 ray = sub_2f32(submarine_node->node2d->transform.position, node->node2d->transform.position);
-  Vec2F32 dir = normalize_2f32(ray);
-  F32 dist = length_2f32(ray);
+  // smooth velocity
+  // animating
+  // TODO(XXX): compute this once at the beginning of the frame
+  // F32 vast_rate = 1 - pow_f32(2, (-60.f * ui_state->animation_dt));
+  // F32 fast_rate = 1 - pow_f32(2, (-50.f * ui_state->animation_dt));
+  // F32 fish_rate = 1 - pow_f32(2, (-40.f * ui_state->animation_dt));
+  // F32 slow_rate = 1 - pow_f32(2, (-30.f * ui_state->animation_dt));
+  // F32 slug_rate = 1 - pow_f32(2, (-15.f * ui_state->animation_dt));
+  // F32 slaf_rate = 1 - pow_f32(2, (-8.f * ui_state->animation_dt));
+  // fish->vel.x += vast_rate * (fish->target_vel.x-fish->vel.x);
+  // fish->vel.y += vast_rate * (fish->target_vel.y-fish->vel.y);
 
-  F32 speed = 600.0;
-  if(dist < 600.0)
+  fish->vel = mix_2f32(fish->target_vel, fish->vel, 0.7);
+  // fish->vel = fish->target_vel;
+
+  // fish->vel = fish->target_vel;
+  // Vec2F32 vel_normalized = normalize_2f32(fish->vel);
+  // F32 vel_mag = length_2f32(fish->vel);
+  // printf("vel_mag: %f\n", vel_mag);
+  // F32 speed = Clamp(0, vel_mag, 900);
+  // fish->vel = scale_2f32(vel_normalized, speed);
+
+  Vec2F32 d_position = scale_2f32(fish->vel, ctx->dt_sec);
+  position = add_2f32(position, d_position);
+  node->node2d->transform.position = position;
+
+  F32 update_dt = os_now_microseconds()/1000000.0 - fish->last_motivation_update_time;
+  if(update_dt > 6.0)
   {
-    Vec2F32 to_move = scale_2f32(dir, speed*ctx->dt_sec);
-    transform->position = add_2f32(to_move, transform->position);
+    fish->motivation = 1 + (rand()/(F32)RAND_MAX) * 1;
   }
-  else
-  {
-    // pick a random direction to move
-  }
+  return;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// Scene entry
+// Scene Entry
 
 internal RK_Scene *
 rk_scene_entry__5()
@@ -211,10 +423,10 @@ rk_scene_entry__5()
   // Rng2F32 viewport_screen = {0,0,600,600};
   // Vec2F32 viewport_screen_dim = dim_2f32(viewport_screen);
   Rng2F32 viewport_world = rk_state->window_rect;
-  // Vec2F32 viewport_world_dim = dim_2f32(viewport_world);
 
   // root node
   RK_Node *root = rk_build_node3d_from_stringf(0,0, "root");
+  rk_node_push_fn(root, str8_lit("s5_fn_scene_begin"));
   rk_node_push_fn(root, str8_lit("s5_fn_game_ui"));
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -290,21 +502,23 @@ rk_scene_entry__5()
     Rng1U32 spwan_range_y = {0, 3000};
     U32 spwan_dim_x = dim_1u32(spwan_range_x);
     U32 spwan_dim_y = dim_1u32(spwan_range_y);
-    for(U64 i = 0; i < 300; i++)
+    for(U64 i = 0; i < 230; i++)
     {
       F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
       F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;
       RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D, 0, "fish_%I64u", i);
       node->node2d->transform.position = v2f32(x, y);
       node->sprite2d->anchor = RK_Sprite2DAnchorKind_TopLeft;
-      node->sprite2d->size = v2f32(30,30);
-      node->sprite2d->color = v4f32(0.6,0.0,0.1,1.);
+      node->sprite2d->size = v2f32(10,10);
+      node->sprite2d->color = v4f32(0.9,0.0,0.1,1.);
       node->sprite2d->omit_texture = 1;
+      node->custom_flags |= S5_EntityFlag_Boid;
       rk_node_push_fn(node, str8_lit("s5_fn_fish"));
       submarine_node = node;
       S5_Fish *fish = rk_node_push_custom_data(node, S5_Fish);
       fish->min_depth = y - 30;
       fish->max_depth = y + 30;
+      fish->motivation = 1.0;
     }
   }
 

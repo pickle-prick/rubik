@@ -1909,7 +1909,6 @@ r_vulkan_handle_from_buffer(R_Vulkan_Buffer *buffer)
     return handle;
 }
 
-
 /////////////////////////////////////////////////////////////////////////////////////////
 // Swapchain&Surface
 
@@ -4612,7 +4611,11 @@ r_vulkan_cmd_end(VkCommandBuffer cmd_buf)
 /////////////////////////////////////////////////////////////////////////////////////////
 // Frame markers
 
-internal void r_begin_frame(void) { /* TODO */ }
+internal void
+r_begin_frame(void)
+{
+  // TODO
+}
 
 internal void
 r_end_frame(void)
@@ -4664,8 +4667,8 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
     Assert(targets->rc >= 0);
   }
 
-  // Cleanup deprecated render targets
   ///////////////////////////////////////////////////////////////////////////////////////
+  // Cleanup deprecated render targets
 
   for(R_Vulkan_RenderTargets *t = r_vulkan_state->first_to_free_render_targets; t != 0;)
   {
@@ -5185,8 +5188,11 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           copy_region.dstOffset = (VkOffset3D){0,0,0};
           copy_region.extent = (VkExtent3D){render_targets->scratch_color_image.extent.width, render_targets->scratch_color_image.extent.height, 1};
           vkCmdCopyImage(cmd_buf, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
-          r_vulkan_image_transition(cmd_buf, render_targets->stage_color_image.h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+          r_vulkan_image_transition(cmd_buf, render_targets->stage_color_image.h,
+                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                                    VK_IMAGE_ASPECT_COLOR_BIT);
         }
       }break;
       case R_PassKind_Geo2D:
@@ -5407,7 +5413,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
         // some variables to be initialized
         Vec2U32 grid_size = {0}; // light grid size
 
-        /////////////////////////////////////////////////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////
         // unpack all kinds of buffer offsets
 
         // inst buffer
@@ -5479,7 +5485,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           R_Material3D *mat_src = &params->materials[i];
           MemoryCopy(mat_dst, mat_src, sizeof(R_Material3D));
 
-          /////////////////////////////////////////////////////////////////////
+          ///////////////////////////////////////////////////////////////////////////////
           // update sample map
           // Set up texture sample map matrix based on texture format
           // Vulkan use col-major
@@ -5777,7 +5783,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
                                   VK_IMAGE_ASPECT_COLOR_BIT);
 
-        /////////////////////////////////////////////////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////
         //~ start geo3d rendering
         {
           // unpack pipelines
@@ -5856,7 +5862,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           push.viewport.y = viewport.height;
           vkCmdPushConstants(cmd_buf, pipelines[0].layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(R_Vulkan_PUSH_Geo3D_Forward), &push);
 
-          /////////////////////////////////////////////////////////////////////////
+          ///////////////////////////////////////////////////////////////////////////////
           //- binds (ubo & sbo)
 
           // 0: ubo
@@ -5887,7 +5893,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                                   pipelines[0].layout, 6, 1,
                                   &materials_sbo_buffer->set.h, 1, &materials_sbo_buffer_off);
 
-          /////////////////////////////////////////////////////////////////////////
+          ///////////////////////////////////////////////////////////////////////////////
           //- geo3d forward pass
 
           U64 inst_idx = 0;
@@ -5940,7 +5946,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           vkCmdEndRendering(cmd_buf);
         }
 
-        /////////////////////////////////////////////////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////
         // Composite to the main staging buffer
 
         r_vulkan_image_transition(frame->cmd_buf, render_targets->geo3d_color_image.h,
@@ -6094,11 +6100,11 @@ r_vulkan_sampler2d(R_Tex2DSampleKind kind)
   }
 
   // Note that the axes are called U, V and W instead of X, Y and Z
-  //               VK_SAMPLER_ADDRESS_MODE_REPEAT: repeat the texture when going beyond the image dimension
-  //      VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT: like repeat mode, but inverts the coordinates to mirror the image when going beyond the dimension
-  //        VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE: take the color of the edge cloesest to the coordinate beyond the image dimensions
+  // VK_SAMPLER_ADDRESS_MODE_REPEAT:               repeat the texture when going beyond the image dimension
+  // VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT:      like repeat mode, but inverts the coordinates to mirror the image when going beyond the dimension
+  // VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE:        take the color of the edge cloesest to the coordinate beyond the image dimensions
   // VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE: like clamp to edge, but instead uses the edge opposite the closest edge
-  //      VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER: return a solid color when sampling beyond the dimensions of the image
+  // VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER:      return a solid color when sampling beyond the dimensions of the image
   // It doesn't really matter which addressing mode we use here, because we're not going to sample outside of the image in this tutorial
   // However, the repeat mode is probably the most common mode, because it can be used to tile textures like floors an walls
   create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;

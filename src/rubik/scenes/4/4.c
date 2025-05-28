@@ -352,7 +352,7 @@ RK_NODE_CUSTOM_UPDATE(s4_fn_scene_begin)
   for(U64 slot_idx = 0; slot_idx < node_bucket->hash_table_size; slot_idx++)
   {
     RK_NodeBucketSlot *slot = &node_bucket->hash_table[slot_idx];
-    for(RK_Node *n = slot->first; n != 0; n = n->next)
+    for(RK_Node *n = slot->first; n != 0; n = n->hash_next)
     {
       if(n->custom_flags & S4_EntityFlag_Guy)
       {
