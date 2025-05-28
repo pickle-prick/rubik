@@ -149,8 +149,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
   // get instance layer info
   U32 instance_layer_count;
   VK_Assert(vkEnumerateInstanceLayerProperties(&instance_layer_count, NULL));
-  VkLayerProperties available_layers[instance_layer_count];
-  VK_Assert(vkEnumerateInstanceLayerProperties(&instance_layer_count, available_layers));
+  VkLayerProperties instance_layers[instance_layer_count];
+  VK_Assert(vkEnumerateInstanceLayerProperties(&instance_layer_count, instance_layers));
 
   // check if all enabled layers are presented
   for(U64 i = 0; i < enabled_layer_count; i++)
@@ -158,7 +158,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     B32 found = 0;
     for(U64 j = 0; j < instance_layer_count; j++)
     {
-      if(strcmp(available_layers[i].layerName, enabled_layers[i]))
+      if(strcmp(instance_layers[j].layerName, enabled_layers[i]) == 0)
       {
         found = 1;
         break;
@@ -4737,7 +4737,9 @@ internal U64
 r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
 {
   // TODO(k): Should every window have its own thread?
-  //           since different window need to wait on its fence, we don't want to block it for other windows
+  //          since different window need to wait on its fence, we don't want to block it for other windows
+
+  // unpack params
   R_Vulkan_Window *wnd              = r_vulkan_window_from_handle(window_equip);
   R_Vulkan_Frame *frame             = &wnd->frames[wnd->curr_frame_idx];
   VkCommandBuffer cmd_buf           = frame->cmd_buf;
