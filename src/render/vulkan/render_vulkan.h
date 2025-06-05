@@ -303,14 +303,17 @@ typedef struct
 #define MAX_IMAGE_COUNT 6
 typedef struct
 {
-  VkSwapchainKHR       h;
-  VkExtent2D           extent;
-  VkFormat             format;
-  VkColorSpaceKHR      color_space;
+  VkSwapchainKHR  h;
+  VkExtent2D      extent;
+  VkFormat        format;
+  VkColorSpaceKHR color_space;
 
-  U32                  image_count;
-  VkImage              images[MAX_IMAGE_COUNT];
-  VkImageView          image_views[MAX_IMAGE_COUNT];
+  U32             image_count;
+  VkImage         images[MAX_IMAGE_COUNT];
+  VkImageView     image_views[MAX_IMAGE_COUNT];
+
+  // Semaphores that are waited on by QueuePresent are buffered based on the bumber of swapchain images
+  VkSemaphore     submit_semaphores[MAX_IMAGE_COUNT];
 } R_Vulkan_Swapchain;
 
 typedef struct
@@ -450,38 +453,36 @@ struct R_Vulkan_RenderTargets
 
 typedef struct
 {
-  VkSemaphore              img_acq_sem;
-  VkSemaphore              rend_comp_sem;
-  VkFence                  inflt_fence;
-  U32                      img_idx;
-  VkCommandBuffer          cmd_buf;
+  VkSemaphore            img_acq_sem;
+  VkFence                inflt_fence;
+  U32                    img_idx;
+  VkCommandBuffer        cmd_buf;
 
-  //
-  R_Vulkan_RenderTargets   *render_targets_ref;
+  R_Vulkan_RenderTargets *render_targets_ref;
 
   // UBO buffer and descriptor set
-  R_Vulkan_UBOBuffer       ubo_buffers[R_Vulkan_UBOTypeKind_COUNT];
+  R_Vulkan_UBOBuffer     ubo_buffers[R_Vulkan_UBOTypeKind_COUNT];
 
   // Storage buffer and descriptor set
-  R_Vulkan_SBOBuffer       sbo_buffers[R_Vulkan_SBOTypeKind_COUNT];
+  R_Vulkan_SBOBuffer     sbo_buffers[R_Vulkan_SBOTypeKind_COUNT];
 
   // Instance buffer
-  R_Vulkan_Buffer          inst_buffer_rect[MAX_RECT_PASS];
-  R_Vulkan_Buffer          inst_buffer_mesh2d[MAX_GEO2D_PASS];
-  R_Vulkan_Buffer          inst_buffer_mesh3d[MAX_GEO3D_PASS];
+  R_Vulkan_Buffer        inst_buffer_rect[MAX_RECT_PASS];
+  R_Vulkan_Buffer        inst_buffer_mesh2d[MAX_GEO2D_PASS];
+  R_Vulkan_Buffer        inst_buffer_mesh3d[MAX_GEO3D_PASS];
 } R_Vulkan_Frame;
 
 typedef struct R_Vulkan_Window R_Vulkan_Window;
 struct R_Vulkan_Window
 {
   // allocation link
-  U64                      generation;
-  R_Vulkan_Window          *next;
+  U64 generation;
+  R_Vulkan_Window *next;
 
-  OS_Handle                os_wnd;
+  OS_Handle os_wnd;
 
-  R_Vulkan_Surface         surface;
-  R_Vulkan_RenderTargets   *render_targets;
+  R_Vulkan_Surface surface;
+  R_Vulkan_RenderTargets *render_targets;
   union
   {
     struct
@@ -509,8 +510,8 @@ struct R_Vulkan_Window
     R_Vulkan_Pipeline arr[R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT * 4 + 7];
   } pipelines;
 
-  R_Vulkan_Frame           frames[MAX_FRAMES_IN_FLIGHT];
-  U64                      curr_frame_idx;
+  R_Vulkan_Frame frames[MAX_FRAMES_IN_FLIGHT];
+  U64 curr_frame_idx;
 };
 
 typedef struct R_Vulkan_State R_Vulkan_State;

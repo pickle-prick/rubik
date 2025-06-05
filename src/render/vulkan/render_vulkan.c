@@ -60,8 +60,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
   r_vulkan_state->instance_version_minor = minor;
   r_vulkan_state->instance_version_patch = patch;
 
-  // Dynamic rendering requires at least 1.2
-  AssertAlways(major == 1 && minor >= 2);
+  // Dynamic rendering requires at least 1.3
+  AssertAlways(major == 1 && minor >= 3);
 
   // Now, to create an instance we'll first have to fill in a struct with 
   //      some information about our application.
@@ -75,7 +75,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
   app_info.pEngineName = "Custom";
   app_info.engineVersion = VK_MAKE_VERSION(0, 0, 1);
   // VK_API_VERSION_1_3
-  app_info.apiVersion = VK_MAKE_API_VERSION(0, major, minor, patch);
+  app_info.apiVersion = VK_MAKE_API_VERSION(0, major, minor, 0);
   app_info.pNext = NULL; // point to extension information
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -943,8 +943,7 @@ r_window_equip(OS_Handle os_wnd)
   // create frames
   {
     // Command buffers will be automatically freed when their command pool is destroyed, so we don't need explicit cleanup
-    // Command buffers are allocated with the vkAllocateCommandBuffers function
-    //      which takes a VkCommandBufferAllocateInfo struct as parameter that specifies the command pool and number of buffers to allcoate
+    // Command buffers are allocated with the vkAllocateCommandBuffers function which takes a VkCommandBufferAllocateInfo struct as parameter that specifies the command pool and number of buffers to allcoate
     VkCommandBuffer command_buffers[MAX_FRAMES_IN_FLIGHT];
     VkCommandBufferAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
     alloc_info.commandPool        = r_vulkan_state->cmd_pool;
@@ -960,12 +959,12 @@ r_window_equip(OS_Handle os_wnd)
       ret->frames[i].cmd_buf = command_buffers[i];
 
       // Create the synchronization objects for frames
+
       // One semaphore to signal that an image has been acquired from the swapchain and is ready for rendering
       // Another one to signal that rendering has finished and presentation can happen
       // One fence to make sure only one frame is rendering at a time
-      ret->frames[i].img_acq_sem   = r_vulkan_semaphore(r_vulkan_state->logical_device.h);
-      ret->frames[i].rend_comp_sem = r_vulkan_semaphore(r_vulkan_state->logical_device.h);
-      ret->frames[i].inflt_fence   = r_vulkan_fence(r_vulkan_state->logical_device.h);
+      ret->frames[i].img_acq_sem = r_vulkan_semaphore(r_vulkan_state->logical_device.h);
+      ret->frames[i].inflt_fence = r_vulkan_fence(r_vulkan_state->logical_device.h);
 
       // Create all uniform buffers
       for(U64 kind = 0; kind < R_Vulkan_UBOTypeKind_COUNT; kind++)
@@ -1000,8 +999,8 @@ r_window_equip(OS_Handle os_wnd)
         ret->frames[i].sbo_buffers[kind] = r_vulkan_sbo_buffer_alloc(kind, unit_count);
       }
 
+      ///////////////////////////////////////////////////////////////////////////////////
       // Create instance buffers for rect and geo3d
-      /////////////////////////////////////////////////////////////////
 
       // TODO(k): just remember to free this
       // create inst buffer for rect
@@ -2010,24 +2009,21 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
   // *oldSwapchain*
   // With Vulkan it's possbile that your swapchain becomes invalid or unoptimized while your application is running, for example because the window
   // was resized. In that case the swapchain actually needs to be recreated from scratch and a reference to the old one must be specified in this field.
-  VkSwapchainCreateInfoKHR create_info =
-  {
-    .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-    .surface          = surface->h,
-    .minImageCount    = min_swapchain_image_count,
-    .imageFormat      = swapchain.format,
-    .imageColorSpace  = swapchain.color_space,
-    .imageExtent      = swapchain.extent,
-    .imageArrayLayers = 1,
-    .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-    // NOTE(k): if we want to manully clear the swap image, the VK_IMAGE_USAGE_TRANSFER_DST_BIT is necessary
-    .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-    .preTransform     = surface->caps.currentTransform,
-    .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-    .presentMode      = selected_prest_mode,
-    .clipped          = VK_TRUE,
-    .oldSwapchain     = VK_NULL_HANDLE,
-  };
+  VkSwapchainCreateInfoKHR create_info = {VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
+  create_info.surface          = surface->h;
+  create_info.minImageCount    = min_swapchain_image_count;
+  create_info.imageFormat      = swapchain.format;
+  create_info.imageColorSpace  = swapchain.color_space;
+  create_info.imageExtent      = swapchain.extent;
+  create_info.imageArrayLayers = 1;
+  create_info.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  // NOTE(k): if we want to manully clear the swap image, the VK_IMAGE_USAGE_TRANSFER_DST_BIT is necessary
+  create_info.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  create_info.preTransform     = surface->caps.currentTransform;
+  create_info.compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+  create_info.presentMode      = selected_prest_mode;
+  create_info.clipped          = VK_TRUE;
+  create_info.oldSwapchain     = VK_NULL_HANDLE;
   if(old_swapchain != 0) create_info.oldSwapchain = old_swapchain->h;
 
   // We need to specify how to handle swap chain images that will be used across multiple queue families
@@ -2097,6 +2093,12 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
 
     VK_Assert(vkCreateImageView(r_vulkan_state->logical_device.h, &create_info, NULL, &swapchain.image_views[i]));
     // Unlike images, the image views were explicitly created by us, so we need to add a similar loop to destroy them again at the end of the program
+
+    // create submit semaphores
+    for(U64 i = 0; i < swapchain.image_count; i++)
+    {
+      swapchain.submit_semaphores[i] = r_vulkan_semaphore(r_vulkan_state->logical_device.h);
+    }
   }
   return swapchain;
 }
@@ -4864,7 +4866,7 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
   VK_Assert(vkEndCommandBuffer(cmd_buf));
   VkSemaphore wait_sems[1]            = { frame->img_acq_sem };
   VkPipelineStageFlags wait_stages[1] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-  VkSemaphore signal_sems[1]          = { frame->rend_comp_sem };
+  VkSemaphore signal_sems[1]          = { swapchain->submit_semaphores[frame->img_idx] };
 
   // submit
   VkSubmitInfo submit_info = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
