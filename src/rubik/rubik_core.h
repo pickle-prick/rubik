@@ -1311,11 +1311,11 @@ internal RK_NodeRec rk_node_df(RK_Node *n, RK_Node *root, U64 sib_member_off, U6
 #define rk_node_df_pre(node, root, force_leaf) rk_node_df(node, root, OffsetOf(RK_Node, next), OffsetOf(RK_Node, first), force_leaf)
 #define rk_node_df_post(node, root, force_leaf) rk_node_df(node, root, OffsetOf(RK_Node, prev), OffsetOf(RK_Node, last), force_leaf)
 
-internal void      rk_node_push_fn(RK_Node *n, String8 fn_name);
-// TODO(XXX): rename this function later, remove "node"
+internal void rk_node_push_fn_(RK_Node *n, String8 fn_name);
+#define rk_node_push_fn(n, f) rk_node_push_fn_(n, str8_lit(#f))
 internal RK_Handle rk_handle_from_node(RK_Node *n);
-internal RK_Node*  rk_node_from_handle(RK_Handle *handle);
-internal B32       rk_node_is_active(RK_Node *node);
+internal RK_Node* rk_node_from_handle(RK_Handle *handle);
+internal B32 rk_node_is_active(RK_Node *node);
 
 #define rk_scene_push_custom_data(s, T) (T*)(s->custom_data = push_array_fat(s->arena, T, s))
 #define rk_node_push_custom_data(n, T) (T*)(n->custom_data = push_array_fat(n->owner_bucket->arena_ref, T, n))
@@ -1369,14 +1369,14 @@ internal void         rk_drawlist_build(RK_DrawList *drawlist); /* upload buffer
 /////////////////////////////////
 //~ Helpers
 
-#define FileReadAll(arena, fp, return_data, return_size)                             \
-  do                                                                                 \
-  {                                                                                  \
-    OS_Handle f = os_file_open(OS_AccessFlag_Read, (fp));                            \
-    FileProperties f_props = os_properties_from_file(f);                             \
-    *return_size = f_props.size;                                                     \
-    *return_data = push_array(arena, U8, f_props.size);                              \
-    os_file_read(f, rng_1u64(0,f_props.size), *return_data);                         \
+#define FileReadAll(arena, fp, return_data, return_size)                                 \
+  do                                                                                     \
+  {                                                                                      \
+    OS_Handle f = os_file_open(OS_AccessFlag_Read, (fp));                                \
+    FileProperties f_props = os_properties_from_file(f);                                 \
+    *return_size = f_props.size;                                                         \
+    *return_data = push_array(arena, U8, f_props.size);                                  \
+    os_file_read(f, rng_1u64(0,f_props.size), *return_data);                             \
   } while (0);
 internal void      rk_trs_from_xform(Mat4x4F32 *m, Vec3F32 *trans, QuatF32 *rot, Vec3F32 *scale);
 internal void      rk_ijk_from_xform(Mat4x4F32 m, Vec3F32 *i, Vec3F32 *j, Vec3F32 *k);

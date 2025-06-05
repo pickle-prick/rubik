@@ -1134,7 +1134,7 @@ rk_node_df(RK_Node *n, RK_Node* root, U64 sib_member_off, U64 child_member_off, 
 // }
 
 internal void
-rk_node_push_fn(RK_Node *n, String8 fn_name)
+rk_node_push_fn_(RK_Node *n, String8 fn_name)
 {
   RK_NodeBucket *node_bucket = n->owner_bucket;
   Arena *arena = node_bucket->arena_ref;
