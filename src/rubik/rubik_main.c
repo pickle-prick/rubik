@@ -100,7 +100,7 @@ entry_point(CmdLine *cmd_line)
     rk_register_function(rk_scene_function_table[i].name, rk_scene_function_table[i].fn);
   }
 
-  RK_Scene *default_scene = rk_state->templates[2].fn();
+  RK_Scene *default_scene = rk_state->templates[1].fn();
   // RK_Scene *default_scene = rk_scene_from_tscn(str8_lit("./src/rubik/scenes/4/default.tscn"));
   rk_state->active_scene = default_scene;
 
@@ -115,8 +115,8 @@ entry_point(CmdLine *cmd_line)
     ProfTick();
     ProfBegin("frame");
     rk_state->debug.frame_dt_us = frame_dt_us;
-    rk_state->debug.cpu_dt_us = cpu_dt_us;
-    rk_state->debug.gpu_dt_us = gpu_dt_us;
+    rk_state->debug.cpu_dt_us   = cpu_dt_us;
+    rk_state->debug.gpu_dt_us   = gpu_dt_us;
 
     frame_dt_us = os_now_microseconds()-frame_us;
     frame_us = os_now_microseconds();

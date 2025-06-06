@@ -95,6 +95,8 @@ typedef enum R_PassKind
   R_PassKind_UI,
   R_PassKind_Blur,
   R_PassKind_Noise,
+  R_PassKind_Edge,
+  R_PassKind_Crt,
   R_PassKind_Geo2D,
   R_PassKind_Geo3D,
   R_PassKind_COUNT,
@@ -150,6 +152,7 @@ struct R_Mesh2DInst
   B32       has_texture;
   Vec4F32   color;
   B32       has_color;
+  B32       draw_edge;
 };
 
 typedef struct R_Mesh3DInst R_Mesh3DInst;
@@ -397,7 +400,21 @@ struct R_PassParams_Noise
 {
   Rng2F32 rect;
   Rng2F32 clip;
-  F32 dt_secs;
+  F32 elapsed_secs;
+};
+
+typedef struct R_PassParams_Edge R_PassParams_Edge;
+struct R_PassParams_Edge
+{
+  F32 elapsed_secs;
+};
+
+typedef struct R_PassParams_Crt R_PassParams_Crt;
+struct R_PassParams_Crt
+{
+  F32 warp;
+  F32 scan;
+  F32 elapsed_secs;
 };
 
 typedef struct R_PassParams_Geo2D R_PassParams_Geo2D;
@@ -442,6 +459,8 @@ struct R_Pass
       R_PassParams_UI *params_ui;
       R_PassParams_Blur *params_blur;
       R_PassParams_Noise *params_noise;
+      R_PassParams_Edge *params_edge;
+      R_PassParams_Crt *params_crt;
       R_PassParams_Geo2D *params_geo2d;
       R_PassParams_Geo3D *params_geo3d;
     };

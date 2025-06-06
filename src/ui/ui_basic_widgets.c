@@ -210,9 +210,7 @@ internal UI_BOX_CUSTOM_DRAW(ui_line_edit_draw)
 }
 
 internal UI_Signal
-ui_line_edit(TxtPt *cursor, TxtPt *mark,
-    U8 *edit_buffer, U64 edit_buffer_size, U64 *edit_string_size_out,
-    String8 pre_edit_value, String8 string)
+ui_line_edit(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, U64 *edit_string_size_out, String8 pre_edit_value, String8 string)
 {
   // Make key
   UI_Key key = ui_key_from_string(ui_active_seed_key(), string);

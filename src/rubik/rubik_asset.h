@@ -41,7 +41,8 @@ internal void rk_mesh_primitive_cylinder(Arena *arena, F32 radius, F32 height, U
 internal void rk_mesh_primitive_cone(Arena *arena, F32 radius, F32 height, U64 radial_segments, B32 cap_bottom, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out);
 internal void rk_mesh_primitive_capsule(Arena *arena, F32 radius, F32 height, U64 radial_segments, U64 rings, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out);
 internal void rk_mesh_primitive_torus(Arena *arena, F32 inner_radius, F32 outer_radius, U64 rings, U64 ring_segments, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out);
-internal void rk_mesh_primitive_circle_line(Arena *arena, F32 radius, U64 segments, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out);
+internal void rk_mesh_primitive_circle(Arena *arena, F32 radius, U64 segments, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out);
+internal void rk_mesh_primitive_circle_lined(Arena *arena, F32 radius, U64 segments, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out);
 internal void rk_mesh_primitive_arc_filled(Arena *arena, F32 radius, F32 pct, U64 segments, B32 both_face, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out);
 
 //~ Node building helper
@@ -62,6 +63,7 @@ internal RK_DrawNode* rk_drawlist_push_box(Arena *arena, RK_DrawList *drawlist, 
 internal RK_DrawNode* rk_drawlist_push_sphere(Arena *arena, RK_DrawList *drawlist, F32 radius, F32 height, U64 radial_segments, U64 rings, B32 is_hemisphere);
 internal RK_DrawNode* rk_drawlist_push_cone(Arena *arena, RK_DrawList *drawlist, F32 radius, F32 height, U64 radial_segments);
 internal RK_DrawNode* rk_drawlist_push_line(Arena *arena, RK_DrawList *drawlist, Vec3F32 start, Vec3F32 end);
+internal RK_DrawNode* rk_drawlist_push_circle_lined(Arena *arena, RK_DrawList *drawlist, F32 radius, U64 segments);
 internal RK_DrawNode* rk_drawlist_push_circle(Arena *arena, RK_DrawList *drawlist, F32 radius, U64 segments);
 internal RK_DrawNode* rk_drawlist_push_arc(Arena *arena, RK_DrawList *drawlist, Vec3F32 origin, Vec3F32 a, Vec3F32 b, U64 segments, B32 both_face);
 

@@ -3,7 +3,6 @@
 RK_ScenesTable:
 {
   {0, default}
-  {4, isometric}
   {5, ship}
 }
 
@@ -30,14 +29,15 @@ RK_FunctionTable:
   {s0_fn_editor_camera}
   {s0_fn_rotating_spot_light}
   {rk_scene_entry__0}
-  {s4_fn_scene_begin}
-  {s4_fn_tile_editor}
-  {s4_fn_tilemap}
-  {s4_fn_system}
-  {s4_fn_camera}
-  {s4_fn_tile}
-  {rk_scene_entry__4}
-  {s4_fn_guy}
+  // {s4_fn_scene_begin}
+  // {s4_fn_tile_editor}
+  // {s4_fn_tilemap}
+  // {s4_fn_system}
+  // {s4_fn_camera}
+  // {s4_fn_tile}
+  // {rk_scene_entry__4}
+  // {s4_fn_guy}
+  {s5_fn_camera}
   {s5_fn_scene_begin}
   {s5_fn_submarine}
   {s5_fn_flock}

@@ -641,7 +641,7 @@ d_blur(Rng2F32 rect, F32 blur_size, F32 corner_radius)
 
 //- k: noisee
 internal R_PassParams_Noise *
-d_noise(Rng2F32 rect, F32 dt_secs)
+d_noise(Rng2F32 rect, F32 elapsed_secs)
 {
   Arena *arena = d_thread_ctx->arena;
   D_Bucket *bucket = d_top_bucket();
@@ -649,7 +649,33 @@ d_noise(Rng2F32 rect, F32 dt_secs)
   R_PassParams_Noise *params = pass->params_noise;
   params->rect = rect;
   params->clip = d_top_clip();
-  params->dt_secs = dt_secs;
+  params->elapsed_secs = elapsed_secs;
+  return params;
+}
+
+//- k: edge
+internal R_PassParams_Edge *
+d_edge(F32 elapsed_secs)
+{
+  Arena *arena = d_thread_ctx->arena;
+  D_Bucket *bucket = d_top_bucket();
+  R_Pass *pass = r_pass_from_kind(arena, &bucket->passes, R_PassKind_Edge, 0);
+  R_PassParams_Edge *params = pass->params_edge;
+  params->elapsed_secs = elapsed_secs;
+  return params;
+}
+
+//- k: crt
+internal R_PassParams_Crt *
+d_crt(F32 warp, F32 scan, F32 elapsed_secs)
+{
+  Arena *arena = d_thread_ctx->arena;
+  D_Bucket *bucket = d_top_bucket();
+  R_Pass *pass = r_pass_from_kind(arena, &bucket->passes, R_PassKind_Crt, 0);
+  R_PassParams_Crt *params = pass->params_crt;
+  params->warp = warp;
+  params->scan = scan;
+  params->elapsed_secs = elapsed_secs;
   return params;
 }
 

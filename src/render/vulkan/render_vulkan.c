@@ -590,6 +590,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     {
       case R_Vulkan_VShadKind_Rect:            {shad_path = str8_lit("src/render/vulkan/shader/rect_vert.spv");}break;
       case R_Vulkan_VShadKind_Noise:           {shad_path = str8_lit("src/render/vulkan/shader/noise_vert.spv");}break;
+      case R_Vulkan_VShadKind_Edge:            {shad_path = str8_lit("src/render/vulkan/shader/edge_vert.spv");}break;
+      case R_Vulkan_VShadKind_Crt:            {shad_path = str8_lit("src/render/vulkan/shader/crt_vert.spv");}break;
       case R_Vulkan_VShadKind_Geo2D_Forward:   {shad_path = str8_lit("src/render/vulkan/shader/geo2d_forward_vert.spv");}break;
       case R_Vulkan_VShadKind_Geo2D_Composite: {shad_path = str8_lit("src/render/vulkan/shader/geo2d_composite_vert.spv");}break;
       case R_Vulkan_VShadKind_Geo3D_ZPre:      {shad_path = str8_lit("src/render/vulkan/shader/geo3d_zpre_vert.spv");}break;
@@ -620,6 +622,8 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     {
       case R_Vulkan_FShadKind_Rect:            {shad_path = str8_lit("src/render/vulkan/shader/rect_frag.spv");}break;
       case R_Vulkan_FShadKind_Noise:           {shad_path = str8_lit("src/render/vulkan/shader/noise_frag.spv");}break;
+      case R_Vulkan_FShadKind_Edge:            {shad_path = str8_lit("src/render/vulkan/shader/edge_frag.spv");}break;
+      case R_Vulkan_FShadKind_Crt:            {shad_path = str8_lit("src/render/vulkan/shader/crt_frag.spv");}break;
       case R_Vulkan_FShadKind_Geo2D_Forward:   {shad_path = str8_lit("src/render/vulkan/shader/geo2d_forward_frag.spv");}break;
       case R_Vulkan_FShadKind_Geo2D_Composite: {shad_path = str8_lit("src/render/vulkan/shader/geo2d_composite_frag.spv");}break;
       case R_Vulkan_FShadKind_Geo3D_ZPre:      {shad_path = str8_lit("src/render/vulkan/shader/geo3d_zpre_frag.spv");}break;
@@ -1096,8 +1100,15 @@ r_window_equip(OS_Handle os_wnd)
     ret->pipelines.rect = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Rect, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
 
     // blur
+
     // noise
     ret->pipelines.noise = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Noise, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
+
+    // edge
+    ret->pipelines.edge = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Edge, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
+
+    // crt
+    ret->pipelines.crt = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Crt, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
 
     // geo2d
     for(U64 i = 0; i < R_GeoTopologyKind_COUNT; i++)
@@ -2416,6 +2427,8 @@ r_vulkan_render_targets_alloc(OS_Handle os_wnd, R_Vulkan_Surface *surface, R_Vul
   R_Vulkan_DescriptorSet *scratch_color_ds      = &ret->scratch_color_ds;
   R_Vulkan_Image *geo2d_color_image             = &ret->geo2d_color_image;
   R_Vulkan_DescriptorSet *geo2d_color_ds        = &ret->geo2d_color_ds;
+  R_Vulkan_Image *edge_image                    = &ret->edge_image;
+  R_Vulkan_DescriptorSet *edge_ds               = &ret->edge_ds;
   R_Vulkan_Image *geo3d_color_image             = &ret->geo3d_color_image;
   R_Vulkan_DescriptorSet *geo3d_color_ds        = &ret->geo3d_color_ds;
   R_Vulkan_Image *geo3d_normal_depth_image      = &ret->geo3d_normal_depth_image;
@@ -2546,6 +2559,70 @@ r_vulkan_render_targets_alloc(OS_Handle os_wnd, R_Vulkan_Surface *surface, R_Vul
     VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, stage_id_cpu->h, stage_id_cpu->memory, 0));
     Assert(stage_id_cpu->size != 0);
     VK_Assert(vkMapMemory(r_vulkan_state->logical_device.h, stage_id_cpu->memory, 0, stage_id_cpu->size, 0, &stage_id_cpu->mapped));
+  }
+
+  // edge image and its sampler descriptor set
+  {
+    VkFormat format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    VkExtent2D extent = swapchain->extent;
+    VkImage image_handle = {0};
+
+    VkImageCreateInfo create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    create_info.imageType     = VK_IMAGE_TYPE_2D;
+    create_info.extent.width  = extent.width;
+    create_info.extent.height = extent.height;
+    create_info.extent.depth  = 1;
+    create_info.mipLevels     = 1;
+    create_info.arrayLayers   = 1;
+    create_info.format        = format;
+    create_info.tiling        = VK_IMAGE_TILING_OPTIMAL;
+    create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    create_info.usage         = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    create_info.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+    create_info.samples       = VK_SAMPLE_COUNT_1_BIT;
+    create_info.flags         = 0; // Optional
+    VK_Assert(vkCreateImage(r_vulkan_state->logical_device.h, &create_info, NULL, &image_handle));
+
+    VkMemoryRequirements mem_requirements;
+    vkGetImageMemoryRequirements(r_vulkan_state->logical_device.h, image_handle, &mem_requirements);
+
+    VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    alloc_info.allocationSize = mem_requirements.size;
+    alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+    VkDeviceMemory memory = {0};
+    VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &memory));
+    VK_Assert(vkBindImageMemory(r_vulkan_state->logical_device.h, image_handle, memory, 0));
+
+    VkImageViewCreateInfo image_view_create_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    
+    image_view_create_info.image                           = image_handle;
+    image_view_create_info.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+    image_view_create_info.format                          = format;
+    image_view_create_info.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_view_create_info.subresourceRange.baseMipLevel   = 0;
+    image_view_create_info.subresourceRange.levelCount     = 1;
+    image_view_create_info.subresourceRange.baseArrayLayer = 0;
+    image_view_create_info.subresourceRange.layerCount     = 1;
+    
+    VkImageView image_view = {0};
+    VK_Assert(vkCreateImageView(r_vulkan_state->logical_device.h, &image_view_create_info, NULL, &image_view));
+
+    R_Vulkan_DescriptorSet ds = {0};
+    // create sampler descriptor set
+    r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind_Tex2D,
+                                  1, 16, NULL, &image_view,
+                                  &r_vulkan_state->samplers[R_Tex2DSampleKind_Nearest],
+                                  &ds);
+
+    // copy values
+    edge_image->h = image_handle;
+    edge_image->format = format;
+    edge_image->extent = extent;
+    edge_image->memory = memory;
+    edge_image->view = image_view;
+    *edge_ds = ds;
   }
 
   // geo2d color image and its sampler descriptor set
@@ -2929,6 +3006,12 @@ r_vulkan_render_targets_destroy(R_Vulkan_RenderTargets *render_targets)
   vkUnmapMemory(r_vulkan_state->logical_device.h, render_targets->stage_id_cpu.memory);
   vkDestroyBuffer(r_vulkan_state->logical_device.h, render_targets->stage_id_cpu.h, NULL);
   vkFreeMemory(r_vulkan_state->logical_device.h, render_targets->stage_id_cpu.memory, NULL);
+
+  // edge image
+  vkDestroyImageView(r_vulkan_state->logical_device.h, render_targets->edge_image.view, NULL);
+  vkDestroyImage(r_vulkan_state->logical_device.h, render_targets->edge_image.h, NULL);
+  r_vulkan_descriptor_set_destroy(&render_targets->edge_ds);
+  vkFreeMemory(r_vulkan_state->logical_device.h, render_targets->edge_image.memory, NULL);
 
   // geo2d color image
   vkDestroyImageView(r_vulkan_state->logical_device.h, render_targets->geo2d_color_image.view, NULL);
@@ -3402,6 +3485,16 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       vshad_mo = r_vulkan_state->vshad_modules[R_Vulkan_VShadKind_Noise];
       fshad_mo = r_vulkan_state->fshad_modules[R_Vulkan_FShadKind_Noise];
     }break;
+    case(R_Vulkan_PipelineKind_GFX_Edge):
+    {
+      vshad_mo = r_vulkan_state->vshad_modules[R_Vulkan_VShadKind_Edge];
+      fshad_mo = r_vulkan_state->fshad_modules[R_Vulkan_FShadKind_Edge];
+    }break;
+    case(R_Vulkan_PipelineKind_GFX_Crt):
+    {
+      vshad_mo = r_vulkan_state->vshad_modules[R_Vulkan_VShadKind_Crt];
+      fshad_mo = r_vulkan_state->fshad_modules[R_Vulkan_FShadKind_Crt];
+    }break;
     case(R_Vulkan_PipelineKind_GFX_Geo2D_Forward):
     {
       vshad_mo = r_vulkan_state->vshad_modules[R_Vulkan_VShadKind_Geo2D_Forward];
@@ -3562,7 +3655,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
     case R_Vulkan_PipelineKind_GFX_Geo2D_Forward:
     {
       vtx_binding_desc_count = 2;
-      vtx_attr_desc_cnt = 19;
+      vtx_attr_desc_cnt = 20;
 
       vtx_binding_desc[0].binding   = 0;
       vtx_binding_desc[0].stride    = sizeof(R_Vertex);
@@ -3668,11 +3761,17 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       vtx_attr_descs[17].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
       vtx_attr_descs[17].offset   = offsetof(R_Mesh2DInst, color);
 
-      // color
+      // has color
       vtx_attr_descs[18].binding  = 1;
       vtx_attr_descs[18].location = 18;
       vtx_attr_descs[18].format   = VK_FORMAT_R32_UINT;
       vtx_attr_descs[18].offset   = offsetof(R_Mesh2DInst, has_color);
+
+      // draw edge
+      vtx_attr_descs[19].binding  = 1;
+      vtx_attr_descs[19].location = 19;
+      vtx_attr_descs[19].format   = VK_FORMAT_R32_UINT;
+      vtx_attr_descs[19].offset   = offsetof(R_Mesh2DInst, draw_edge);
     }break;
     case R_Vulkan_PipelineKind_GFX_Geo3D_ZPre:
     case R_Vulkan_PipelineKind_GFX_Geo3D_Forward:
@@ -3895,6 +3994,8 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
     }break;
     // case R_Vulkan_PipelineKind_GFX_Blur:
     case R_Vulkan_PipelineKind_GFX_Noise:
+    case R_Vulkan_PipelineKind_GFX_Edge:
+    case R_Vulkan_PipelineKind_GFX_Crt:
     case R_Vulkan_PipelineKind_GFX_Geo2D_Composite:
     case(R_Vulkan_PipelineKind_GFX_Geo3D_Composite):
     case(R_Vulkan_PipelineKind_GFX_Finalize):
@@ -3998,6 +4099,8 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
     case R_Vulkan_PipelineKind_GFX_Rect:
     // case R_Vulkan_PipelineKind_GFX_Blur:
     case R_Vulkan_PipelineKind_GFX_Noise:
+    case R_Vulkan_PipelineKind_GFX_Edge:
+    case R_Vulkan_PipelineKind_GFX_Crt:
     case R_Vulkan_PipelineKind_GFX_Geo2D_Composite:
     case R_Vulkan_PipelineKind_GFX_Geo3D_Composite:
     case R_Vulkan_PipelineKind_GFX_Finalize:
@@ -4056,6 +4159,8 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
     case R_Vulkan_PipelineKind_GFX_Rect:
     // case R_Vulkan_PipelineKind_GFX_Blur:
     case R_Vulkan_PipelineKind_GFX_Noise:
+    case R_Vulkan_PipelineKind_GFX_Edge:
+    case R_Vulkan_PipelineKind_GFX_Crt:
     case R_Vulkan_PipelineKind_GFX_Geo2D_Forward:
     case R_Vulkan_PipelineKind_GFX_Geo2D_Composite:
     case R_Vulkan_PipelineKind_GFX_Geo3D_Composite:
@@ -4085,7 +4190,8 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
 
 #if 0
   // No Blend
-  /////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////
+
   VkPipelineColorBlendAttachmentState color_blend_attachment_state = {
     .colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
     .blendEnable         = VK_FALSE,
@@ -4176,6 +4282,8 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
     }break;
     // case R_Vulkan_PipelineKind_GFX_Blur:
     case R_Vulkan_PipelineKind_GFX_Noise:
+    case R_Vulkan_PipelineKind_GFX_Edge:
+    case R_Vulkan_PipelineKind_GFX_Crt:
     case R_Vulkan_PipelineKind_GFX_Geo3D_ZPre: 
     case R_Vulkan_PipelineKind_GFX_Finalize: 
     {
@@ -4208,11 +4316,13 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
     default:{InvalidPath;}break;
     case R_Vulkan_PipelineKind_GFX_Geo2D_Forward:
     {
-      color_blend_state_create_info.attachmentCount = 2;
+      color_blend_state_create_info.attachmentCount = 3;
     }break;
     case R_Vulkan_PipelineKind_GFX_Rect:
     // case R_Vulkan_PipelineKind_GFX_Blur:
     case R_Vulkan_PipelineKind_GFX_Noise:
+    case R_Vulkan_PipelineKind_GFX_Edge:
+    case R_Vulkan_PipelineKind_GFX_Crt:
     case R_Vulkan_PipelineKind_GFX_Geo2D_Composite:
     case R_Vulkan_PipelineKind_GFX_Geo3D_Composite:
     case R_Vulkan_PipelineKind_GFX_Finalize:
@@ -4309,8 +4419,33 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
         push_constant_range_count = 1;
         push_constant_ranges[0] = (VkPushConstantRange){
           .offset = 0,
-            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .size = sizeof(R_Vulkan_PUSH_Noise),
+          .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+          .size = sizeof(R_Vulkan_PUSH_Noise),
+        };
+      }break;
+      case R_Vulkan_PipelineKind_GFX_Edge:
+      {
+        set_layout_count = 2;
+        set_layouts[0] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D].h;
+        set_layouts[1] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D].h;
+
+        push_constant_range_count = 1;
+        push_constant_ranges[0] = (VkPushConstantRange){
+          .offset = 0,
+          .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+          .size = sizeof(R_Vulkan_PUSH_Edge),
+        };
+      }break;
+      case R_Vulkan_PipelineKind_GFX_Crt:
+      {
+        set_layout_count = 1;
+        set_layouts[0] = r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D].h;
+
+        push_constant_range_count = 1;
+        push_constant_ranges[0] = (VkPushConstantRange){
+          .offset = 0,
+          .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+          .size = sizeof(R_Vulkan_PUSH_Crt),
         };
       }break;
       case R_Vulkan_PipelineKind_GFX_Finalize:
@@ -4322,7 +4457,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
 
     create_info.setLayoutCount         = set_layout_count; // Optional
     create_info.pSetLayouts            = set_layouts;      // Optional
-                                                           // The structure also specifies push constants, which are another way of passing dynamic values to shaders that we may get into in future
+    // The structure also specifies push constants, which are another way of passing dynamic values to shaders that we may get into in future
     create_info.pushConstantRangeCount = push_constant_range_count; // Optional
     create_info.pPushConstantRanges    = push_constant_ranges; // Optional
 
@@ -4352,12 +4487,25 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
         color_attachment_formats = push_array(scratch.arena, VkFormat, 1);
         color_attachment_formats[0] = swapchain_format;
       }break;
+      case R_Vulkan_PipelineKind_GFX_Edge:
+      {
+        color_attachment_count = 1;
+        color_attachment_formats = push_array(scratch.arena, VkFormat, 1);
+        color_attachment_formats[0] = swapchain_format;
+      }break;
+      case R_Vulkan_PipelineKind_GFX_Crt:
+      {
+        color_attachment_count = 1;
+        color_attachment_formats = push_array(scratch.arena, VkFormat, 1);
+        color_attachment_formats[0] = swapchain_format;
+      }break;
       case R_Vulkan_PipelineKind_GFX_Geo2D_Forward:
       {
-        color_attachment_count = 2;
+        color_attachment_count = 3;
         color_attachment_formats = push_array(scratch.arena, VkFormat, 2);
         color_attachment_formats[0] = swapchain_format;
         color_attachment_formats[1] = VK_FORMAT_R32G32_UINT;
+        color_attachment_formats[2] = VK_FORMAT_R32G32B32A32_SFLOAT;
       }break;
       case R_Vulkan_PipelineKind_GFX_Geo2D_Composite:
       {
@@ -4396,9 +4544,9 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       default:{InvalidPath;}break;
     }
 
-    rendering_info.colorAttachmentCount = color_attachment_count;
+    rendering_info.colorAttachmentCount    = color_attachment_count;
     rendering_info.pColorAttachmentFormats = color_attachment_formats;
-    rendering_info.depthAttachmentFormat = depth_attachment_format;
+    rendering_info.depthAttachmentFormat   = depth_attachment_format;
     rendering_info.stencilAttachmentFormat = stencil_attachment_format;
   }
 
@@ -4457,13 +4605,13 @@ r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind)
 
   Temp scratch = scratch_begin(0,0);
 
+  ///////////////////////////////////////////////////////////////////////////////////////
   // specialization constants
-  ////////////////////////////////////////////
 
   VkSpecializationInfo spec_info = {0};
 
+  ///////////////////////////////////////////////////////////////////////////////////////
   // shader stage
-  ////////////////////////////////////////////
 
   VkShaderModule compute_shader_mo;
   switch(kind)
@@ -4521,8 +4669,8 @@ r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind)
   shad_stage.pName               = "main";
   shad_stage.pSpecializationInfo = &spec_info;
 
+  ///////////////////////////////////////////////////////////////////////////////////////
   // pipeline layout
-  ////////////////////////////////////////////
 
   VkPipelineLayoutCreateInfo layout_info = {0};
   VkDescriptorSetLayout *set_layouts;
@@ -4559,8 +4707,8 @@ r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind)
   VkPipelineLayout layout;
   VK_Assert(vkCreatePipelineLayout(r_vulkan_state->logical_device.h, &layout_info, NULL, &layout));
 
+  ///////////////////////////////////////////////////////////////////////////////////////
   // create pipeline
-  ////////////////////////////////////////////
 
   VkComputePipelineCreateInfo pipeline_info = {0};
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -5148,7 +5296,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
         push.mouse = v2f32(0,0); /* TODO(XXX): not used */
         push.resolution.x = render_targets->scratch_color_image.extent.width;
         push.resolution.y = render_targets->scratch_color_image.extent.height;
-        push.time = params->dt_secs;
+        push.time = params->elapsed_secs*0.5;
 
         vkCmdPushConstants(cmd_buf, wnd->pipelines.noise.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(R_Vulkan_PUSH_Noise), &push);
 
@@ -5160,6 +5308,216 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 
         // bind stage color descriptor
         vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, wnd->pipelines.noise.layout, 0, 1, &render_targets->stage_color_ds.h, 0, NULL);
+
+        vkCmdDraw(cmd_buf, 4, 1, 0, 0);
+
+        // end drawing
+        vkCmdEndRendering(cmd_buf);
+
+        r_vulkan_image_transition(cmd_buf, render_targets->scratch_color_image.h, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+        r_vulkan_image_transition(cmd_buf, render_targets->stage_color_image.h, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+
+        // copy scratch image to stage image
+        {
+          VkImage src = render_targets->scratch_color_image.h;
+          VkImage dst = render_targets->stage_color_image.h;
+          VkImageCopy copy_region = {0};
+          copy_region.srcSubresource = (VkImageSubresourceLayers){
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+          };
+          copy_region.srcOffset = (VkOffset3D){0,0,0};
+          copy_region.dstSubresource = (VkImageSubresourceLayers){
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+          };
+          copy_region.dstOffset = (VkOffset3D){0,0,0};
+          copy_region.extent = (VkExtent3D){render_targets->scratch_color_image.extent.width, render_targets->scratch_color_image.extent.height, 1};
+          vkCmdCopyImage(cmd_buf, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+          r_vulkan_image_transition(cmd_buf, render_targets->stage_color_image.h,
+                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                                    VK_IMAGE_ASPECT_COLOR_BIT);
+        }
+      }break;
+      case R_PassKind_Edge:
+      {
+        // unpack params
+        R_PassParams_Edge *params = pass->params_edge;
+
+        /////////////////////////////////////////////////////////////////////////////////
+        // viewport and scissor
+
+        VkViewport viewport = {0};
+        viewport.width    = render_targets->scratch_color_image.extent.width;
+        viewport.height   = render_targets->scratch_color_image.extent.height;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
+
+        VkRect2D scissor = {0};
+        scissor.offset = (VkOffset2D){0, 0};
+        scissor.extent = render_targets->stage_color_image.extent;
+        vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
+
+        /////////////////////////////////////////////////////////////////////////////////
+        // draw
+
+        r_vulkan_image_transition(frame->cmd_buf, render_targets->stage_color_image.h, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+        r_vulkan_image_transition(frame->cmd_buf, render_targets->edge_image.h, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+        r_vulkan_image_transition(frame->cmd_buf, render_targets->scratch_color_image.h, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                  VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+
+        // TODO(XXX): we are not using params here (clip and rect e.g.)
+
+        VkClearValue clear_colors[1] = {0};
+        clear_colors[0].color = (VkClearColorValue){{ 0.0f, 0.0f, 0.0f, 0.0f }}; /* black with 100% opacity */
+
+        VkRenderingAttachmentInfo color_attachment_infos[1] = {0};
+        color_attachment_infos[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        color_attachment_infos[0].imageView = render_targets->scratch_color_image.view;
+        color_attachment_infos[0].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        color_attachment_infos[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        color_attachment_infos[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        color_attachment_infos[0].clearValue = clear_colors[0];
+
+        VkRenderingInfo render_info = { VK_STRUCTURE_TYPE_RENDERING_INFO };
+        render_info.renderArea.offset = (VkOffset2D){0, 0};
+        render_info.renderArea.extent = wnd->render_targets->scratch_color_image.extent;
+        render_info.layerCount = 1;
+        render_info.colorAttachmentCount = ArrayCount(color_attachment_infos);
+        render_info.pColorAttachments = color_attachment_infos;
+
+        // push constant
+        R_Vulkan_PUSH_Edge push = {0};
+        push.time = params->elapsed_secs;
+
+        vkCmdPushConstants(cmd_buf, wnd->pipelines.edge.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(R_Vulkan_PUSH_Edge), &push);
+
+        // bind pipeline
+        vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, wnd->pipelines.edge.h);
+
+        // begin drawing
+        vkCmdBeginRendering(cmd_buf, &render_info);
+
+        // bind stage color descriptor
+        vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, wnd->pipelines.edge.layout, 0, 1, &render_targets->stage_color_ds.h, 0, NULL);
+        // bind edge color descriptor
+        vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, wnd->pipelines.edge.layout, 1, 1, &render_targets->edge_ds.h, 0, NULL);
+
+        vkCmdDraw(cmd_buf, 4, 1, 0, 0);
+
+        // end drawing
+        vkCmdEndRendering(cmd_buf);
+
+        r_vulkan_image_transition(cmd_buf, render_targets->scratch_color_image.h, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+        r_vulkan_image_transition(cmd_buf, render_targets->stage_color_image.h, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+
+        // copy scratch image to stage image
+        {
+          VkImage src = render_targets->scratch_color_image.h;
+          VkImage dst = render_targets->stage_color_image.h;
+          VkImageCopy copy_region = {0};
+          copy_region.srcSubresource = (VkImageSubresourceLayers){
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+          };
+          copy_region.srcOffset = (VkOffset3D){0,0,0};
+          copy_region.dstSubresource = (VkImageSubresourceLayers){
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+          };
+          copy_region.dstOffset = (VkOffset3D){0,0,0};
+          copy_region.extent = (VkExtent3D){render_targets->scratch_color_image.extent.width, render_targets->scratch_color_image.extent.height, 1};
+          vkCmdCopyImage(cmd_buf, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+          r_vulkan_image_transition(cmd_buf, render_targets->stage_color_image.h,
+                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                                    VK_IMAGE_ASPECT_COLOR_BIT);
+        }
+      }break;
+      case R_PassKind_Crt:
+      {
+        // unpack params
+        R_PassParams_Crt *params = pass->params_crt;
+
+        /////////////////////////////////////////////////////////////////////////////////
+        // viewport and scissor
+
+        VkViewport viewport = {0};
+        viewport.width    = render_targets->scratch_color_image.extent.width;
+        viewport.height   = render_targets->scratch_color_image.extent.height;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
+
+        VkRect2D scissor = {0};
+        scissor.offset = (VkOffset2D){0, 0};
+        scissor.extent = render_targets->stage_color_image.extent;
+        vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
+
+        /////////////////////////////////////////////////////////////////////////////////
+        // draw
+
+        r_vulkan_image_transition(frame->cmd_buf, render_targets->stage_color_image.h, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                  VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+        r_vulkan_image_transition(frame->cmd_buf, render_targets->scratch_color_image.h, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                  VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+
+        // TODO(XXX): we are not using params here (clip and rect e.g.)
+
+        VkClearValue clear_colors[1] = {0};
+        clear_colors[0].color = (VkClearColorValue){{ 0.0f, 0.0f, 0.0f, 0.0f }}; /* black with 100% opacity */
+
+        VkRenderingAttachmentInfo color_attachment_infos[1] = {0};
+        color_attachment_infos[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        color_attachment_infos[0].imageView = render_targets->scratch_color_image.view;
+        color_attachment_infos[0].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        color_attachment_infos[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        color_attachment_infos[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        color_attachment_infos[0].clearValue = clear_colors[0];
+
+        VkRenderingInfo render_info = { VK_STRUCTURE_TYPE_RENDERING_INFO };
+        render_info.renderArea.offset = (VkOffset2D){0, 0};
+        render_info.renderArea.extent = wnd->render_targets->scratch_color_image.extent;
+        render_info.layerCount = 1;
+        render_info.colorAttachmentCount = ArrayCount(color_attachment_infos);
+        render_info.pColorAttachments = color_attachment_infos;
+
+        // push constant
+        R_Vulkan_PUSH_Crt push = {0};
+        push.resolution.x = render_targets->scratch_color_image.extent.width;
+        push.resolution.y = render_targets->scratch_color_image.extent.height;
+        push.time = params->elapsed_secs;
+        push.scan = params->scan;
+        push.warp = params->warp;
+
+        vkCmdPushConstants(cmd_buf, wnd->pipelines.crt.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(R_Vulkan_PUSH_Crt), &push);
+
+        // bind pipeline
+        vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, wnd->pipelines.crt.h);
+
+        // begin drawing
+        vkCmdBeginRendering(cmd_buf, &render_info);
+
+        // bind stage color descriptor
+        vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, wnd->pipelines.crt.layout, 0, 1, &render_targets->stage_color_ds.h, 0, NULL);
 
         vkCmdDraw(cmd_buf, 4, 1, 0, 0);
 
@@ -5260,22 +5618,34 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 
         r_vulkan_image_transition(frame->cmd_buf, render_targets->geo2d_color_image.h, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
+        r_vulkan_image_transition(frame->cmd_buf, render_targets->edge_image.h, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
 
         // NOTE(XXX): id image is cleared at the beginning of the frame
-        VkClearValue clear_colors[1] = {0};
+        VkClearValue clear_colors[2] = {0};
         clear_colors[0].color = (VkClearColorValue){{ 0.0f, 0.0f, 0.0f, 0.0f }}; /* black with 100% opacity */
-        VkRenderingAttachmentInfo color_attachment_infos[2] = {0};
+        clear_colors[1].color = (VkClearColorValue){{ 0.0f, 0.0f, 0.0f, 0.0f }};
+
+        VkRenderingAttachmentInfo color_attachment_infos[3] = {0};
         color_attachment_infos[0].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         color_attachment_infos[0].imageView = render_targets->geo2d_color_image.view;
         color_attachment_infos[0].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
         color_attachment_infos[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         color_attachment_infos[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         color_attachment_infos[0].clearValue = clear_colors[0];
+
         color_attachment_infos[1].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         color_attachment_infos[1].imageView = render_targets->stage_id_image.view;
         color_attachment_infos[1].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
         color_attachment_infos[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         color_attachment_infos[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+        color_attachment_infos[2].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        color_attachment_infos[2].imageView = render_targets->edge_image.view;
+        color_attachment_infos[2].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        color_attachment_infos[2].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        color_attachment_infos[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        color_attachment_infos[2].clearValue = clear_colors[1];
 
         VkRenderingInfo render_info = { VK_STRUCTURE_TYPE_RENDERING_INFO };
         // The render area defiens where shader loads and stores will take place

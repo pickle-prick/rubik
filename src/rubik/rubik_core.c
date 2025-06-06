@@ -716,6 +716,7 @@ rk_init(OS_Handle os_wnd)
     rk_state->last_dpi        = rk_state->last_dpi;
     rk_state->window_rect     = os_client_rect_from_window(os_wnd, 1);
     rk_state->window_dim      = dim_2f32(rk_state->window_rect);
+    rk_state->begin_us        = os_now_microseconds();
 
     for(U64 i = 0; i < ArrayCount(rk_state->drawlists); i++)
     {
@@ -2574,9 +2575,11 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     rk_push_scene(scene);
     rk_push_handle_seed(scene->handle_seed);
 
+    rk_state->os_events          = os_events;
     rk_state->dt_us              = dt_us;
     rk_state->dt_sec             = dt_us/1000000.0f;
     rk_state->dt_ms              = dt_us/1000.0f;
+    rk_state->elapsed_sec        = (os_now_microseconds()-rk_state->begin_us)/1000000.0;
     rk_state->last_window_rect   = rk_state->window_rect;
     rk_state->last_window_dim    = dim_2f32(rk_state->last_window_rect);
     rk_state->window_res_changed = rk_state->window_rect.x0 == rk_state->last_window_rect.x0 && rk_state->window_rect.x1 == rk_state->last_window_rect.x1 && rk_state->window_rect.y0 == rk_state->last_window_rect.y0 && rk_state->window_rect.y1 == rk_state->last_window_rect.y1;
@@ -2901,12 +2904,12 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     OS_Event *os_evt_opl = os_events.last + 1;
     for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
     {
-        if(os_evt == 0) continue;
-        // if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
-        if(os_evt->key == OS_Key_S && os_evt->kind == OS_EventKind_Press)
-        {
-          rk_scene_to_tscn(scene);
-        }
+      if(os_evt == 0) continue;
+      // if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
+      if(os_evt->key == OS_Key_S && os_evt->kind == OS_EventKind_Press && (os_evt->modifiers & OS_Modifier_Ctrl))
+      {
+        rk_scene_to_tscn(scene);
+      }
     }
   }
 
@@ -3283,24 +3286,43 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         RK_Texture2D *tex2d = rk_tex2d_from_handle(&sprite->tex);
         R_Handle tex = tex2d ? tex2d->tex : r_handle_zero();
 
-        /////////////////////////////////////////////////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////
         // draw mesh 2d
 
-        Vec2F32 half_size = scale_2f32(sprite->size, 0.5);
-        Rng2F32 dst = rk_rect_from_sprite2d(sprite);
-        Rng2F32 src = {0,0, 1,1};
-        RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), dst, src);
+        RK_DrawNode *n = 0;
+        Mat4x4F32 xform = {0};
+        Mat4x4F32 xform_inv = {0};
 
-        Mat4x4F32 xform = node->fixed_xform;
-        Mat4x4F32 xform_inv = inverse_4x4f32(xform);
+        switch(sprite->shape)
+        {
+          case RK_Sprite2DShapeKind_Rect:
+          {
+            Vec2F32 half_size = scale_2f32(sprite->size.rect, 0.5);
+            Rng2F32 dst = rk_rect_from_sprite2d(sprite);
+            Rng2F32 src = r2f32p(0,0, 1,1);
+            n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), dst, src);
+            xform = node->fixed_xform;
+            xform_inv = inverse_4x4f32(xform);
+          }break;
+          case RK_Sprite2DShapeKind_Circle:
+          {
+            F32 radius = sprite->size.circle.radius;
+            n = rk_drawlist_push_circle(rk_frame_arena(), rk_frame_drawlist(), radius, 69);
+            xform = make_rotate_4x4f32(v3f32(1,0,0), -0.25);
+            xform = mul_4x4f32(node->fixed_xform, xform);
+            xform_inv = inverse_4x4f32(xform);
+          }break;
+          default:{InvalidPath;}break;
+        }
 
-        R_Mesh2DInst *inst = d_sprite(n->vertices, n->indices, n->vertices_buffer_offset, n->indices_buffer_offset, n->indice_count, R_GeoTopologyKind_Triangles, R_GeoPolygonKind_Fill, 0, tex, 1.);
+        R_Mesh2DInst *inst = d_sprite(n->vertices, n->indices, n->vertices_buffer_offset, n->indices_buffer_offset, n->indice_count, n->topology, n->polygon, 0, tex, 1.);
         inst->key = node->key.u64[0];
         inst->xform = xform;
         inst->xform_inv = xform_inv;
         inst->has_texture = !sprite->omit_texture;
         inst->has_color = sprite->omit_texture;
         inst->color = sprite->color;
+        inst->draw_edge = sprite->draw_edge;
 
         // if(rk_key_match(scene->hot_key, node->key) && (node->flags & RK_NodeFlag_DrawHotEffects))
         // {
@@ -4021,10 +4043,12 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
   // NOTE(k): check if there is anything in passes, we don't a empty geo pass (pass is not cheap)
   if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo2D]))       {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo2D], 0);}
   // TODO(XXX): only for test, make it composiable
-  d_noise(r2f32p(0,0,0,0), rk_state->dt_sec);
+  // d_noise(r2f32p(0,0,0,0), rk_state->elapsed_sec);
+  d_edge(rk_state->elapsed_sec);
   if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back]))  {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back], 0);}
   if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front])) {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front], 0);}
   if(!d_bucket_is_empty(rk_state->bucket_rect))                              {d_sub_bucket(rk_state->bucket_rect, 0);}
+  d_crt(0.05, 1.15, rk_state->elapsed_sec);
   d_pop_bucket();
 
   ProfEnd();
@@ -4307,25 +4331,26 @@ rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F32 plane_normal, Vec
 internal Rng2F32
 rk_rect_from_sprite2d(RK_Sprite2D *sprite2d)
 {
-  Rng2F32 ret;
-  Vec2F32 half_size = scale_2f32(sprite2d->size, 0.5);
+  Rng2F32 ret = {0};
+  Vec2F32 rect_size = sprite2d->size.rect;
+  Vec2F32 half_size = scale_2f32(rect_size, 0.5);
   switch(sprite2d->anchor)
   {
     case RK_Sprite2DAnchorKind_TopLeft:
     {
-      ret = (Rng2F32){0,0, sprite2d->size.x, sprite2d->size.y};
+      ret = (Rng2F32){0,0, rect_size.x, rect_size.y};
     }break;
     case RK_Sprite2DAnchorKind_TopRight:
     {
-      ret = (Rng2F32){-sprite2d->size.x, 0,0, sprite2d->size.y};
+      ret = (Rng2F32){-rect_size.x, 0,0, rect_size.y};
     }break;
     case RK_Sprite2DAnchorKind_BottomLeft:
     {
-      ret = (Rng2F32){0, -sprite2d->size.y, sprite2d->size.x, 0};
+      ret = (Rng2F32){0, -rect_size.y, rect_size.x, 0};
     }break;
     case RK_Sprite2DAnchorKind_BottomRight:
     {
-      ret = (Rng2F32){-sprite2d->size.x, -sprite2d->size.y, 0,0};
+      ret = (Rng2F32){-rect_size.x, -rect_size.y, 0,0};
     }break;
     case RK_Sprite2DAnchorKind_Center:
     {

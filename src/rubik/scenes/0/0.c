@@ -304,7 +304,7 @@ rk_scene_entry__0()
       main_camera->camera3d->zn = 0.1;
       main_camera->camera3d->zf = 200.f;
       main_camera->camera3d->perspective.fov = 0.25f;
-      rk_node_push_fn(main_camera, str8_lit("s0_fn_editor_camera"));
+      rk_node_push_fn(main_camera, s0_fn_editor_camera);
       main_camera->node3d->transform.position = v3f32(0,-3,0);
     }
     ret->active_camera = rk_handle_from_node(main_camera);
@@ -385,7 +385,7 @@ rk_scene_entry__0()
       l->spot_light->direction = normalize_3f32(v3f32(1,1,0));
       l->spot_light->range = 9.9;
       l->spot_light->angle = radians_from_turns_f32(0.09);
-      rk_node_push_fn(l, str8_lit("s0_fn_rotating_spot_light"));
+      rk_node_push_fn(l, s0_fn_rotating_spot_light);
 
       AnimatedSpotLight *data = rk_node_push_custom_data(l, AnimatedSpotLight);
       data->rotation_axis.v[i] = 1;

@@ -171,8 +171,14 @@ internal inline R_Rect2DInst* d_img(Rng2F32 dst, Rng2F32 src, R_Handle texture, 
 //- rjf: blurs
 internal R_PassParams_Blur *d_blur(Rng2F32 rect, F32 blur_size, F32 corner_radius);
 
-//- k: noisee
-internal R_PassParams_Noise *d_noise(Rng2F32 rect, F32 delta_secs);
+//- k: noise
+internal R_PassParams_Noise *d_noise(Rng2F32 rect, F32 elapsed_secs);
+
+//- k: edge
+internal R_PassParams_Edge *d_edge(F32 elapsed_secs);
+
+//- k: crt
+internal R_PassParams_Crt *d_crt(F32 warp, F32 scan, F32 elapsed_secs);
 
 //- rjf: 3d rendering pass params
 internal R_PassParams_Geo3D* d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection);

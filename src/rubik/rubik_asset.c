@@ -46,7 +46,7 @@ rk_scene_to_tscn(RK_Scene *scene)
     }
     // AssertAlways(*(blocks+120) == 1);
 
-    SE_Array_WithTag(str8_lit("ext_resources"))
+    if(res_bucket->res_count > 0) SE_Array_WithTag(str8_lit("ext_resources"))
     {
       U64 res_count = 0;
       for(U64 slot_idx = 0; slot_idx < res_bucket->hash_table_size; slot_idx++)
@@ -229,7 +229,8 @@ rk_scene_to_tscn(RK_Scene *scene)
           {
             RK_Sprite2D *sprite2d = node->sprite2d;
             se_handle_with_tag(str8_lit("tex"), sprite2d->tex);
-            se_v2f32_with_tag(str8_lit("size"), sprite2d->size);
+            se_u64_with_tag(str8_lit("shape"), sprite2d->shape);
+            se_v2f32_with_tag(str8_lit("size"), sprite2d->size.v);
             se_u64_with_tag(str8_lit("anchor"), sprite2d->anchor);
             se_v4f32_with_tag(str8_lit("color"), sprite2d->color);
             se_b32_with_tag(str8_lit("omit_texture"), sprite2d->omit_texture);
@@ -423,7 +424,7 @@ rk_scene_from_tscn(String8 path)
       AssertAlways(fn->kind == SE_NodeKind_String);
       String8 fn_name = fn->v.se_str;
       // TODO(XXX): support setup and fixed_update
-      rk_node_push_fn(node, fn_name);
+      rk_node_push_fn_(node, fn_name);
     }
 
     // custom data
@@ -506,7 +507,9 @@ rk_scene_from_tscn(String8 path)
       {
         SE_Handle tex = se_handle_from_tag(src, str8_lit("tex"));
         MemoryCopy(&dst->tex, &tex, sizeof(SE_Handle));
-        dst->size = se_v2f32_from_tag(src, str8_lit("size"));
+
+        dst->shape = se_u64_from_tag(src, str8_lit("shape"));
+        dst->size.v = se_v2f32_from_tag(src, str8_lit("size"));
         dst->anchor = se_u64_from_tag(src, str8_lit("anchor"));
         dst->color = se_v4f32_from_tag(src, str8_lit("color"));
         dst->omit_texture = se_b32_from_tag(src, str8_lit("omit_texture"));
@@ -2570,7 +2573,62 @@ rk_mesh_primitive_torus(Arena *arena, F32 inner_radius, F32 outer_radius, U64 ri
 }
 
 internal void
-rk_mesh_primitive_circle_line(Arena *arena, F32 radius, U64 segments, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
+rk_mesh_primitive_circle(Arena *arena, F32 radius, U64 segments, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
+{
+  U64 vertex_count = segments+2;
+  U64 indice_count = segments*3;
+  R_Vertex *vertices = push_array(arena, R_Vertex, vertex_count);
+  U32 *indices = push_array(arena, U32, indice_count);
+  F32 turn_rad = tau32 / (F32)segments;
+
+  U64 vertex_idx = 0;
+  U64 indice_idx = 0;
+
+  {
+    Vec3F32 origin = {0,0,0};
+    R_Vertex vertex = {0};
+    vertex.nor = v3f32(0,-1,0);
+    vertex.tan = v3f32(1,0,0);
+    vertex.pos = origin;
+    vertex.tex = v2f32(0,0);
+    vertices[vertex_idx++] = vertex;
+  }
+
+  // default to xz plane, face to -z, counter clock wise
+  F32 x,z;
+  U64 prev_vertex_indice;
+  for(U64 i = 0; i < segments+1; i++)
+  {
+    F32 rad = turn_rad * i;
+    x = cosf(rad) * radius;
+    z = sinf(rad) * radius;
+    R_Vertex vertex = {0};
+    vertex.nor = v3f32(0,-1,0);
+    vertex.tan = v3f32(1,0,0);
+    vertex.pos = v3f32(x,0,z);
+    vertex.tex = v2f32(0,0);
+    vertices[vertex_idx++] = vertex;
+
+    U64 curr_vertex_indice = vertex_idx-1;
+    if(i > 0)
+    {
+      indices[indice_idx++] = prev_vertex_indice;
+      indices[indice_idx++] = 0;
+      indices[indice_idx++] = curr_vertex_indice;
+    }
+    prev_vertex_indice = curr_vertex_indice;
+  }
+
+  Assert(vertex_idx == vertex_count);
+  Assert(indice_idx == indice_count);
+  *vertices_out = vertices;
+  *vertices_count_out = vertex_count;
+  *indices_out = indices;
+  *indices_count_out = indice_count;
+}
+
+internal void
+rk_mesh_primitive_circle_lined(Arena *arena, F32 radius, U64 segments, R_Vertex **vertices_out, U64 *vertices_count_out, U32 **indices_out, U64 *indices_count_out)
 {
   U64 vertex_count = segments+1;
   U64 indice_count = segments*2;
@@ -3051,6 +3109,8 @@ rk_drawlist_push_rect(Arena *arena, RK_DrawList *drawlist, Rng2F32 dst, Rng2F32 
   indices[5] = 2;
 
   RK_DrawNode *ret = rk_drawlist_push(arena, drawlist, vertices, vertex_count, indices, indice_count);
+  ret->topology = R_GeoTopologyKind_Triangles;
+  ret->polygon = R_GeoPolygonKind_Fill;
   return ret;
 }
 
@@ -3113,6 +3173,8 @@ rk_drawlist_push_string(Arena *arena, RK_DrawList *drawlist, Rng2F32 dst, String
         // d_img(dst, src, piece->texture, n->v.color, 0,0,0);
         RK_DrawNode *d_node = rk_drawlist_push_rect(arena, drawlist, dst, src);
         d_node->albedo_tex = piece->texture;
+        d_node->topology = R_GeoTopologyKind_Triangles;
+        d_node->polygon = R_GeoPolygonKind_Fill;
         DLLPushBack_NP(ret, last_to_draw, d_node, draw_next, draw_prev);
       }
 
@@ -3143,6 +3205,8 @@ rk_drawlist_push_plane(Arena *arena, RK_DrawList *drawlist, Vec2F32 size, B32 bo
   rk_mesh_primitive_plane(arena, size, 0,0, both_face, &vertices, &vertex_count, &indices, &indice_count);
 
   ret = rk_drawlist_push(arena, drawlist, vertices, vertex_count, indices, indice_count);
+  ret->topology = R_GeoTopologyKind_Triangles;
+  ret->polygon = R_GeoPolygonKind_Fill;
   return ret;
 }
 
@@ -3160,6 +3224,8 @@ rk_drawlist_push_box(Arena *arena, RK_DrawList *drawlist, Vec3F32 size)
   U64 indice_buffer_size = sizeof(U32) * indice_count;
 
   ret = rk_drawlist_push(arena, drawlist, vertices, vertex_count, indices, indice_count);
+  ret->topology = R_GeoTopologyKind_Triangles;
+  ret->polygon = R_GeoPolygonKind_Fill;
   return ret;
 }
 
@@ -3177,6 +3243,8 @@ rk_drawlist_push_sphere(Arena *arena, RK_DrawList *drawlist, F32 radius, F32 hei
   U64 indice_buffer_size = sizeof(U32) * indice_count;
 
   ret = rk_drawlist_push(arena, drawlist, vertices, vertex_count, indices, indice_count);
+  ret->topology = R_GeoTopologyKind_Triangles;
+  ret->polygon = R_GeoPolygonKind_Fill;
   return ret;
 }
 
@@ -3192,6 +3260,8 @@ rk_drawlist_push_cone(Arena *arena, RK_DrawList *drawlist, F32 radius, F32 heigh
   U64 indice_buffer_size = sizeof(U32) * indice_count;
 
   RK_DrawNode *ret = rk_drawlist_push(arena, drawlist, vertices, vertex_count, indices, indice_count);
+  ret->topology = R_GeoTopologyKind_Triangles;
+  ret->polygon = R_GeoPolygonKind_Fill;
   return ret;
 }
 
@@ -3206,6 +3276,8 @@ rk_drawlist_push_line(Arena *arena, RK_DrawList *drawlist, Vec3F32 start, Vec3F3
   indices[1] = 1;
 
   RK_DrawNode *ret = rk_drawlist_push(arena, drawlist, vertices, 2, indices, 2);
+  ret->topology = R_GeoTopologyKind_Lines;
+  ret->polygon = R_GeoPolygonKind_Fill;
   return ret;
 }
 
@@ -3216,11 +3288,30 @@ rk_drawlist_push_circle(Arena *arena, RK_DrawList *drawlist, F32 radius, U64 seg
   U64 vertex_count;
   U32 *indices;
   U64 indice_count;
-  rk_mesh_primitive_circle_line(arena, radius, segments, &vertices, &vertex_count, &indices, &indice_count);
+  rk_mesh_primitive_circle(arena, radius, segments, &vertices, &vertex_count, &indices, &indice_count);
   U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
   U64 indice_buffer_size = sizeof(U32) * indice_count;
 
   RK_DrawNode *ret = rk_drawlist_push(arena, drawlist, vertices, vertex_count, indices, indice_count);
+  ret->topology = R_GeoTopologyKind_Triangles;
+  ret->polygon = R_GeoPolygonKind_Fill;
+  return ret;
+}
+
+internal RK_DrawNode *
+rk_drawlist_push_circle_lined(Arena *arena, RK_DrawList *drawlist, F32 radius, U64 segments)
+{
+  R_Vertex *vertices;
+  U64 vertex_count;
+  U32 *indices;
+  U64 indice_count;
+  rk_mesh_primitive_circle_lined(arena, radius, segments, &vertices, &vertex_count, &indices, &indice_count);
+  U64 vertex_buffer_size = sizeof(R_Vertex) * vertex_count;
+  U64 indice_buffer_size = sizeof(U32) * indice_count;
+
+  RK_DrawNode *ret = rk_drawlist_push(arena, drawlist, vertices, vertex_count, indices, indice_count);
+  ret->topology = R_GeoTopologyKind_Lines;
+  ret->polygon = R_GeoPolygonKind_Fill;
   return ret;
 }
 
@@ -3297,5 +3388,7 @@ rk_drawlist_push_arc(Arena *arena, RK_DrawList *drawlist, Vec3F32 origin, Vec3F3
   U64 indice_buffer_size = sizeof(U32) * indice_count;
 
   RK_DrawNode *ret = rk_drawlist_push(arena, drawlist, vertices, vertex_count, indices, indice_count);
+  ret->topology = R_GeoTopologyKind_Triangles;
+  ret->polygon = R_GeoPolygonKind_Fill;
   return ret;
 }

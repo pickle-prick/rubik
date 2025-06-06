@@ -1,22 +1,24 @@
 // Copyright (c) 2024 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
-////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: Generated Code
 
-U8 r_pass_kind_batch_table[5] = {1, 0, 0, 1, 1};
+U8 r_pass_kind_batch_table[7] = {1, 0, 0, 0, 0, 1, 1};
 
-U64 r_pass_kind_params_size_table[5] = {
+U64 r_pass_kind_params_size_table[7] = {
   sizeof(R_PassParams_UI),
   sizeof(R_PassParams_Blur),
   sizeof(R_PassParams_Noise),
+  sizeof(R_PassParams_Edge),
+  sizeof(R_PassParams_Crt),
   sizeof(R_PassParams_Geo2D),
   sizeof(R_PassParams_Geo3D),
 };
 StaticAssert(ArrayCount(r_pass_kind_batch_table) == R_PassKind_COUNT, r_pass_size_check);
 StaticAssert(ArrayCount(r_pass_kind_params_size_table) == R_PassKind_COUNT, r_pass_size_check);
 
-////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: Basic Type Functions
 
 internal R_Handle r_handle_zero(void)
@@ -30,7 +32,7 @@ internal B32 r_handle_match(R_Handle a, R_Handle b)
   return a.u64[0] == b.u64[0] && a.u64[1] == b.u64[1];
 }
 
-////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: Batch Type Functions
 
 internal R_BatchList r_batch_list_make(U64 instance_size)
@@ -59,7 +61,7 @@ r_batch_list_push_inst(Arena *arena, R_BatchList *list, U64 batch_inst_cap)
   return inst;
 }
 
-////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: Pass Type Functions
 
 internal R_Pass *

@@ -41,91 +41,97 @@ typedef enum UI_MouseButtonKind {
 ////////////////////////////////
 //~ rjf: Focus Types
 
-typedef enum UI_FocusKind {
-    UI_FocusKind_Null,
-    UI_FocusKind_Off,
-    UI_FocusKind_On,
-    UI_FocusKind_Root,
-    UI_FocusKind_COUNT
+typedef enum UI_FocusKind
+{
+  UI_FocusKind_Null,
+  UI_FocusKind_Off,
+  UI_FocusKind_On,
+  UI_FocusKind_Root,
+  UI_FocusKind_COUNT
 } UI_FocusKind;
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Events
 
-typedef enum UI_EventKind {
-    UI_EventKind_Null,
-    UI_EventKind_Press,
-    UI_EventKind_Release,
-    UI_EventKind_Text,
-    UI_EventKind_Navigate,
-    UI_EventKind_Edit,
-    UI_EventKind_MouseMove,
-    UI_EventKind_Scroll,
-    UI_EventKind_FileDrop,
-    UI_EventKind_AutocompleteHint,
-    UI_EventKind_COUNT
+typedef enum UI_EventKind
+{
+  UI_EventKind_Null,
+  UI_EventKind_Press,
+  UI_EventKind_Release,
+  UI_EventKind_Text,
+  UI_EventKind_Navigate,
+  UI_EventKind_Edit,
+  UI_EventKind_MouseMove,
+  UI_EventKind_Scroll,
+  UI_EventKind_FileDrop,
+  UI_EventKind_AutocompleteHint,
+  UI_EventKind_COUNT
 } UI_EventKind;
 
-typedef enum UI_EventActionSlot {
-    UI_EventActionSlot_Null,
-    UI_EventActionSlot_Accept,
-    UI_EventActionSlot_Cancel,
-    UI_EventActionSlot_Edit,
-    UI_EventActionSlot_COUNT
+typedef enum UI_EventActionSlot
+{
+  UI_EventActionSlot_Null,
+  UI_EventActionSlot_Accept,
+  UI_EventActionSlot_Cancel,
+  UI_EventActionSlot_Edit,
+  UI_EventActionSlot_COUNT
 } UI_EventActionSlot;
 
 typedef U32 UI_EventFlags;
 enum
 {
-    UI_EventFlag_KeepMark            = (1<<0),
-    UI_EventFlag_Delete              = (1<<1),
-    UI_EventFlag_Copy                = (1<<2),
-    UI_EventFlag_Paste               = (1<<3),
-    UI_EventFlag_ZeroDeltaOnSelect   = (1<<4),
-    UI_EventFlag_PickSelectSide      = (1<<5),
-    UI_EventFlag_CapAtLine           = (1<<6),
-    UI_EventFlag_ExplicitDirectional = (1<<7),
-    UI_EventFlag_Reorder             = (1<<8),
+  UI_EventFlag_KeepMark            = (1<<0),
+  UI_EventFlag_Delete              = (1<<1),
+  UI_EventFlag_Copy                = (1<<2),
+  UI_EventFlag_Paste               = (1<<3),
+  UI_EventFlag_ZeroDeltaOnSelect   = (1<<4),
+  UI_EventFlag_PickSelectSide      = (1<<5),
+  UI_EventFlag_CapAtLine           = (1<<6),
+  UI_EventFlag_ExplicitDirectional = (1<<7),
+  UI_EventFlag_Reorder             = (1<<8),
 };
 
 typedef enum UI_EventDeltaUnit
 {
-    UI_EventDeltaUnit_Null,
-    UI_EventDeltaUnit_Char,
-    UI_EventDeltaUnit_Word,
-    UI_EventDeltaUnit_Line,
-    UI_EventDeltaUnit_Page,
-    UI_EventDeltaUnit_Whole,
-    UI_EventDeltaUnit_COUNT
+  UI_EventDeltaUnit_Null,
+  UI_EventDeltaUnit_Char,
+  UI_EventDeltaUnit_Word,
+  UI_EventDeltaUnit_Line,
+  UI_EventDeltaUnit_Page,
+  UI_EventDeltaUnit_Whole,
+  UI_EventDeltaUnit_COUNT
 } UI_EventDeltaUnit;
 
 typedef struct UI_Event UI_Event;
-struct UI_Event {
-    UI_EventKind       kind;
-    UI_EventFlags      flags;
-    UI_EventActionSlot slot;
-    Vec2F32            pos;
-    OS_Key             key;
-    OS_Modifiers       modifiers;
-    String8            string;
-    UI_EventDeltaUnit  delta_unit;
-    Vec2F32            delta_2f32;
-    Vec2S32            delta_2s32;
-    U64                timestamp_us;
+struct UI_Event
+{
+  UI_EventKind       kind;
+  UI_EventFlags      flags;
+  UI_EventActionSlot slot;
+  Vec2F32            pos;
+  OS_Key             key;
+  OS_Modifiers       modifiers;
+  String8            string;
+  UI_EventDeltaUnit  delta_unit;
+  Vec2F32            delta_2f32;
+  Vec2S32            delta_2s32;
+  U64                timestamp_us;
 };
 
 typedef struct UI_EventNode UI_EventNode;
-struct UI_EventNode {
-    UI_EventNode *next;
-    UI_EventNode *prev;
-    UI_Event     v;
+struct UI_EventNode
+{
+  UI_EventNode *next;
+  UI_EventNode *prev;
+  UI_Event     v;
 };
 
 typedef struct UI_EventList UI_EventList;
-struct UI_EventList {
-    UI_EventNode *first;
-    UI_EventNode *last;
-    U64          count;
+struct UI_EventList
+{
+  UI_EventNode *first;
+  UI_EventNode *last;
+  U64          count;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -141,19 +147,20 @@ enum
 typedef struct UI_TxtOp UI_TxtOp;
 struct UI_TxtOp
 {
-    UI_TxtOpFlags flags;
-    String8 replace;
-    String8 copy;
-    TxtRng range;
-    TxtPt cursor;
-    TxtPt mark;
+  UI_TxtOpFlags flags;
+  String8 replace;
+  String8 copy;
+  TxtRng range;
+  TxtPt cursor;
+  TxtPt mark;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Keys
 typedef struct UI_Key UI_Key;
-struct UI_Key  {
-    U64 u64[1];
+struct UI_Key
+{
+  U64 u64[1];
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -161,19 +168,19 @@ struct UI_Key  {
 
 typedef enum UI_SizeKind
 {
-    UI_SizeKind_Null,
-    UI_SizeKind_Pixels,      // size is computed via a preferred pixel value
-    UI_SizeKind_TextContent, // size is computed via the dimensions of box's rendered string
-    UI_SizeKind_ParentPct,   // size is computed via a well-determined parent or grandparent size
-    UI_SizeKind_ChildrenSum, // size is computed via summing well-determined sizes of children
+  UI_SizeKind_Null,
+  UI_SizeKind_Pixels,      // size is computed via a preferred pixel value
+  UI_SizeKind_TextContent, // size is computed via the dimensions of box's rendered string
+  UI_SizeKind_ParentPct,   // size is computed via a well-determined parent or grandparent size
+  UI_SizeKind_ChildrenSum, // size is computed via summing well-determined sizes of children
 } UI_SizeKind;
 
 typedef struct UI_Size UI_Size;
 struct UI_Size
 {
-    UI_SizeKind kind;
-    F32 value;
-    F32 strictness;
+  UI_SizeKind kind;
+  F32 value;
+  F32 strictness;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -181,43 +188,43 @@ struct UI_Size
 
 typedef enum UI_ColorCode
 {
-    UI_ColorCode_Null,
-    UI_ColorCode_Background,
-    UI_ColorCode_Text,
-    UI_ColorCode_TextWeak,
-    UI_ColorCode_Border,
-    UI_ColorCode_Overlay,
-    UI_ColorCode_Cursor,
-    UI_ColorCode_Selection,
-    UI_ColorCode_COUNT
+  UI_ColorCode_Null,
+  UI_ColorCode_Background,
+  UI_ColorCode_Text,
+  UI_ColorCode_TextWeak,
+  UI_ColorCode_Border,
+  UI_ColorCode_Overlay,
+  UI_ColorCode_Cursor,
+  UI_ColorCode_Selection,
+  UI_ColorCode_COUNT
 } UI_ColorCode;
 
 typedef struct UI_Palette UI_Palette;
 struct UI_Palette
 {
-    union
+  union
+  {
+    Vec4F32 colors[UI_ColorCode_COUNT];
+    struct
     {
-        Vec4F32 colors[UI_ColorCode_COUNT];
-        struct
-        {
-            Vec4F32 null;
-            Vec4F32 background;
-            Vec4F32 text;
-            Vec4F32 text_weak;
-            Vec4F32 border;
-            Vec4F32 overlay;
-            Vec4F32 cursor;
-            Vec4F32 selection;
-        };
+      Vec4F32 null;
+      Vec4F32 background;
+      Vec4F32 text;
+      Vec4F32 text_weak;
+      Vec4F32 border;
+      Vec4F32 overlay;
+      Vec4F32 cursor;
+      Vec4F32 selection;
     };
+  };
 };
 
 typedef struct UI_WidgetPaletteInfo UI_WidgetPaletteInfo;
 struct UI_WidgetPaletteInfo
 {
-    UI_Palette *tooltip_palette;
-    UI_Palette *ctx_menu_palette;
-    UI_Palette *scrollbar_palette;
+  UI_Palette *tooltip_palette;
+  UI_Palette *ctx_menu_palette;
+  UI_Palette *scrollbar_palette;
 };
 
 ////////////////////////////////
@@ -226,19 +233,19 @@ struct UI_WidgetPaletteInfo
 typedef U32 UI_AnimationInfoFlags;
 enum
 {
-    UI_AnimationInfoFlag_HotAnimations          = (1<<0),
-    UI_AnimationInfoFlag_ActiveAnimations       = (1<<1),
-    UI_AnimationInfoFlag_FocusAnimations        = (1<<2),
-    UI_AnimationInfoFlag_TooltipAnimations      = (1<<3),
-    UI_AnimationInfoFlag_ContextMenuAnimations  = (1<<4),
-    UI_AnimationInfoFlag_ScrollingAnimations    = (1<<5),
-    UI_AnimationInfoFlag_All = 0xffffffff,
+  UI_AnimationInfoFlag_HotAnimations         = (1<<0),
+  UI_AnimationInfoFlag_ActiveAnimations      = (1<<1),
+  UI_AnimationInfoFlag_FocusAnimations       = (1<<2),
+  UI_AnimationInfoFlag_TooltipAnimations     = (1<<3),
+  UI_AnimationInfoFlag_ContextMenuAnimations = (1<<4),
+  UI_AnimationInfoFlag_ScrollingAnimations   = (1<<5),
+  UI_AnimationInfoFlag_All                   = 0xffffffff,
 };
 
 typedef struct UI_AnimationInfo UI_AnimationInfo;
 struct UI_AnimationInfo
 {
-    UI_AnimationInfoFlags flags;
+  UI_AnimationInfoFlags flags;
 };
 
 ////////////////////////////////
@@ -247,19 +254,19 @@ struct UI_AnimationInfo
 typedef struct UI_ScrollPt UI_ScrollPt;
 struct UI_ScrollPt
 {
-    S64 idx;
-    F32 off;
+  S64 idx;
+  F32 off;
 };
 
 typedef union UI_ScrollPt2 UI_ScrollPt2;
 union UI_ScrollPt2
 {
-    UI_ScrollPt v[2];
-    struct
-    {
-        UI_ScrollPt x;
-        UI_ScrollPt y;
-    };
+  UI_ScrollPt v[2];
+  struct
+  {
+    UI_ScrollPt x;
+    UI_ScrollPt y;
+  };
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -267,10 +274,10 @@ union UI_ScrollPt2
 
 typedef enum UI_TextAlign
 {
-    UI_TextAlign_Left,
-    UI_TextAlign_Center,
-    UI_TextAlign_Right,
-    UI_TextAlign_COUNT
+  UI_TextAlign_Left,
+  UI_TextAlign_Center,
+  UI_TextAlign_Right,
+  UI_TextAlign_COUNT
 } UI_TextAlign;
 
 struct UI_Box;
@@ -503,7 +510,8 @@ enum
 };
 
 typedef struct UI_Signal UI_Signal;
-struct UI_Signal {
+struct UI_Signal
+{
   UI_Box *box;
   OS_Modifiers event_flags;
   Vec2S16 scroll;
@@ -592,55 +600,55 @@ internal void     ui_pop_corner_radius(void);
 typedef struct UI_BoxHashSlot UI_BoxHashSlot;
 struct UI_BoxHashSlot
 {
-    UI_Box *hash_first;
-    UI_Box *hash_last;
+  UI_Box *hash_first;
+  UI_Box *hash_last;
 };
 
 typedef struct UI_State UI_State;
 struct UI_State
 {
-    // Main arena
-    Arena                *arena;
+  // Main arena
+  Arena                *arena;
 
-    // Build arena
-    Arena                *build_arenas[2];
-    U64                  build_index;
+  // Build arena
+  Arena                *build_arenas[2];
+  U64                  build_index;
 
-    // Box Cache
-    UI_Box               *first_free_box;
-    U64                  box_table_size;
-    UI_BoxHashSlot       *box_table;
+  // Box Cache
+  UI_Box               *first_free_box;
+  U64                  box_table_size;
+  UI_BoxHashSlot       *box_table;
 
-    // Build phase output
-    UI_Box               *root;
-    U64                  build_box_count;
-    U64                  last_build_box_count;
+  // Build phase output
+  UI_Box               *root;
+  U64                  build_box_count;
+  U64                  last_build_box_count;
 
-    // Build parameters
-    UI_IconInfo          icon_info;
-    UI_WidgetPaletteInfo widget_palette_info;
-    UI_AnimationInfo     animation_info;
-    OS_Handle            os_wnd;
-    Vec2F32              mouse;
-    F32                  animation_dt;
-    F32                  default_animation_rate;
-    UI_EventList         *events;
+  // Build parameters
+  UI_IconInfo          icon_info;
+  UI_WidgetPaletteInfo widget_palette_info;
+  UI_AnimationInfo     animation_info;
+  OS_Handle            os_wnd;
+  Vec2F32              mouse;
+  F32                  animation_dt;
+  F32                  default_animation_rate;
+  UI_EventList         *events;
 
-    // User interaction state
-    UI_Key               hot_box_key;
-    UI_Key               active_box_key[UI_MouseButtonKind_COUNT];
-    UI_Key               drop_hot_box_key;
-    // Drag
-    Vec2F32              drag_start_mouse;
-    Arena                *drag_state_arena;
-    String8              drag_state_data;
-    U64                  press_timestamp_history_us[UI_MouseButtonKind_COUNT][3];
-    UI_Key               press_key_history[UI_MouseButtonKind_COUNT][3];
-    U64                  last_time_mousemoved_us;
+  // User interaction state
+  UI_Key               hot_box_key;
+  UI_Key               active_box_key[UI_MouseButtonKind_COUNT];
+  UI_Key               drop_hot_box_key;
+  // Drag
+  Vec2F32              drag_start_mouse;
+  Arena                *drag_state_arena;
+  String8              drag_state_data;
+  U64                  press_timestamp_history_us[UI_MouseButtonKind_COUNT][3];
+  UI_Key               press_key_history[UI_MouseButtonKind_COUNT][3];
+  U64                  last_time_mousemoved_us;
 
-    // Build phase stacks
-    UI_DeclStackNils;
-    UI_DeclStacks;
+  // Build phase stacks
+  UI_DeclStackNils;
+  UI_DeclStacks;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -695,13 +703,13 @@ internal void ui_scroll_pt_clamp_idx(UI_ScrollPt *v, Rng1S64 range);
 //~ rjf: Box Type Functions
 
 read_only global UI_Box ui_nil_box = {
-    &ui_nil_box,
-    &ui_nil_box,
-    &ui_nil_box,
-    &ui_nil_box,
-    &ui_nil_box,
-    &ui_nil_box,
-    &ui_nil_box,
+  &ui_nil_box,
+  &ui_nil_box,
+  &ui_nil_box,
+  &ui_nil_box,
+  &ui_nil_box,
+  &ui_nil_box,
+  &ui_nil_box,
 };
 internal B32 ui_box_is_nil(UI_Box *box);
 internal UI_BoxRec ui_box_rec_df(UI_Box *box, UI_Box *root, U64 sib_member_off, U64 child_member_off);

@@ -1292,18 +1292,18 @@ ui_signal_from_box(UI_Box *box)
       ui_state->drag_start_mouse = evt->pos;
 
       if(ui_key_match(box->key, ui_state->press_key_history[evt_mouse_button_kind][0]) &&
-          evt->timestamp_us-ui_state->press_timestamp_history_us[evt_mouse_button_kind][0] <= 1000000*os_get_gfx_info()->double_click_time)
+         evt->timestamp_us-ui_state->press_timestamp_history_us[evt_mouse_button_kind][0] <= 1000000*os_get_gfx_info()->double_click_time)
       {
         sig.f |= (UI_SignalFlag_LeftDoubleClicked<<evt_mouse_button_kind);
       }
 
       // TODO: handle tripled clicking
       MemoryCopy(&ui_state->press_key_history[evt_mouse_button_kind][1],
-          &ui_state->press_key_history[evt_mouse_button_kind][0],
-          sizeof(ui_state->press_key_history[evt_mouse_button_kind][0]) * (ArrayCount(ui_state->press_key_history)-1));
+                 &ui_state->press_key_history[evt_mouse_button_kind][0],
+                 sizeof(ui_state->press_key_history[evt_mouse_button_kind][0]) * (ArrayCount(ui_state->press_key_history)-1));
       MemoryCopy(&ui_state->press_timestamp_history_us[evt_mouse_button_kind][1],
-          &ui_state->press_timestamp_history_us[evt_mouse_button_kind][0],
-          sizeof(ui_state->press_timestamp_history_us[evt_mouse_button_kind][0]) * (ArrayCount(ui_state->press_timestamp_history_us)-1));
+                 &ui_state->press_timestamp_history_us[evt_mouse_button_kind][0],
+                 sizeof(ui_state->press_timestamp_history_us[evt_mouse_button_kind][0]) * (ArrayCount(ui_state->press_timestamp_history_us)-1));
       ui_state->press_key_history[evt_mouse_button_kind][0] = box->key;
       ui_state->press_timestamp_history_us[evt_mouse_button_kind][0] = evt->timestamp_us;
 
@@ -1312,9 +1312,9 @@ ui_signal_from_box(UI_Box *box)
 
     //- k: mouse released in active box -> unset active
     if(box->flags & UI_BoxFlag_MouseClickable &&
-        evt->kind == UI_EventKind_Release &&
-        ui_key_match(box->key, ui_state->active_box_key[evt_mouse_button_kind]) &&
-        evt_mouse_in_bounds && evt_key_is_mouse)
+       evt->kind == UI_EventKind_Release &&
+       ui_key_match(box->key, ui_state->active_box_key[evt_mouse_button_kind]) &&
+       evt_mouse_in_bounds && evt_key_is_mouse)
     {
       ui_state->hot_box_key = box->key;
       ui_state->active_box_key[evt_mouse_button_kind] = ui_key_zero();
@@ -1328,10 +1328,10 @@ ui_signal_from_box(UI_Box *box)
 
     //- k: mouse released outside of active box -> unset hot/active
     if(box->flags & UI_BoxFlag_MouseClickable &&
-        evt->kind == UI_EventKind_Release &&
-        ui_key_match(box->key, ui_state->active_box_key[evt_mouse_button_kind]) &&
-        !evt_mouse_in_bounds &&
-        evt_key_is_mouse)
+       evt->kind == UI_EventKind_Release &&
+       ui_key_match(box->key, ui_state->active_box_key[evt_mouse_button_kind]) &&
+       !evt_mouse_in_bounds &&
+       evt_key_is_mouse)
     {
       ui_state->hot_box_key = box->key;
       ui_state->active_box_key[evt_mouse_button_kind] = ui_key_zero();
@@ -1352,9 +1352,9 @@ ui_signal_from_box(UI_Box *box)
 
     //- k: scroll
     if(box->flags & UI_BoxFlag_Scroll &&
-        evt->kind == UI_EventKind_Scroll &&
-        evt->modifiers != OS_Modifier_Ctrl &&
-        evt_mouse_in_bounds)
+       evt->kind == UI_EventKind_Scroll &&
+       evt->modifiers != OS_Modifier_Ctrl &&
+       evt_mouse_in_bounds)
     {
       Vec2F32 delta = evt->delta_2f32;
       if(evt->modifiers & OS_Modifier_Shift)
@@ -1387,12 +1387,13 @@ ui_signal_from_box(UI_Box *box)
 
   //////////////////////////////
   //- rjf: mouse is over this box's rect, no other hot key? -> set hot key, mark hovering
+
   if(box->flags & UI_BoxFlag_MouseClickable &&
-      contains_2f32(rect, ui_state->mouse) &&
-      (ui_key_match(ui_state->hot_box_key, ui_key_zero()) || ui_key_match(ui_state->hot_box_key, box->key)) &&
-      (ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Left], ui_key_zero()) || ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Left], box->key)) &&
-      (ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Middle], ui_key_zero()) || ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Middle], box->key)) &&
-      (ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Right], ui_key_zero()) || ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Right], box->key)))
+     contains_2f32(rect, ui_state->mouse) &&
+     (ui_key_match(ui_state->hot_box_key, ui_key_zero()) || ui_key_match(ui_state->hot_box_key, box->key)) &&
+     (ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Left], ui_key_zero()) || ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Left], box->key)) &&
+     (ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Middle], ui_key_zero()) || ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Middle], box->key)) &&
+     (ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Right], ui_key_zero()) || ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Right], box->key)))
   {
     ui_state->hot_box_key = box->key;
     sig.f |= UI_SignalFlag_Hovering;
@@ -1400,6 +1401,7 @@ ui_signal_from_box(UI_Box *box)
 
   //////////////////////////////
   //- rjf: active -> dragging
+
   if(box->flags & UI_BoxFlag_MouseClickable)
   {
     for EachEnumVal(UI_MouseButtonKind, k)
@@ -1413,6 +1415,7 @@ ui_signal_from_box(UI_Box *box)
 
   //////////////////////////////
   //- rjf: mouse is not over this box, hot key is the box? -> unset hot key
+
   if(!contains_2f32(rect, ui_state->mouse) && ui_key_match(ui_state->hot_box_key, box->key))
   {
     ui_state->hot_box_key = ui_key_zero();
@@ -1420,6 +1423,7 @@ ui_signal_from_box(UI_Box *box)
 
   //////////////////////////////
   //- rjf: get default nav ancestor
+
   UI_Box *default_nav_parent = &ui_nil_box;
   for(UI_Box *p = ui_top_parent(); !ui_box_is_nil(p); p = p->parent)
   {
@@ -1432,6 +1436,7 @@ ui_signal_from_box(UI_Box *box)
 
   //////////////////////////////
   //- rjf: clicking in default nav -> set navigation state to this box
+
   if(box->flags & UI_BoxFlag_ClickToFocus && sig.f&UI_SignalFlag_Pressed && !ui_box_is_nil(default_nav_parent))
   {
     default_nav_parent->default_nav_focus_next_hot_key = box->key;

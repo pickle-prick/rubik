@@ -16,6 +16,7 @@ layout(location = 15) in uvec2  id;
 layout(location = 16) in  uint  has_texture;
 layout(location = 17) in  vec4  color;
 layout(location = 18) in  uint  has_color;
+layout(location = 19) in  uint  draw_edge;
 
 // It is important to know that some types, like dvec3 64 bit vectors, use multiple slots
 // That means that the index after it must be at least 2 higher
@@ -23,6 +24,7 @@ layout(location = 0)       out  vec2  frag_texcoord;
 layout(location = 1)       out  vec4  frag_color;
 layout(location = 2)  flat out  uvec2 frag_id;
 layout(location = 3)  flat out  uint  frag_has_texture;
+layout(location = 4)  flat out  uint  frag_draw_edge;
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // ubo/sbo
@@ -41,10 +43,10 @@ void main()
   vec4 pos_world = ubo.proj * pos_view;
   gl_Position = pos_world;
 
-
-  // Output
+  // output
   frag_texcoord    = tex;
   frag_color       = has_color > 0 ? color : col;
   frag_id          = id;
   frag_has_texture = has_texture;
+  frag_draw_edge   = draw_edge;
 }

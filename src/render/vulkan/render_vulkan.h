@@ -23,7 +23,7 @@
 // frames in flight, the CPU could get ahead of the GPU, because the work load
 // of the GPU could be too larger for it to handle, so the CPU would end up
 // waiting a lot, adding frames of latency Generally extra latency isn't desired
-#define MAX_FRAMES_IN_FLIGHT 1
+#define MAX_FRAMES_IN_FLIGHT 2
 // support max 4K with 32x32 sized tile
 #define TILE_SIZE 32
 #define MAX_TILES_PER_PASS ((3840*2160)/(TILE_SIZE*TILE_SIZE))
@@ -37,6 +37,8 @@ typedef enum R_Vulkan_VShadKind
   R_Vulkan_VShadKind_Rect,
   // R_Vulkan_VShadKind_Blur,
   R_Vulkan_VShadKind_Noise,
+  R_Vulkan_VShadKind_Edge,
+  R_Vulkan_VShadKind_Crt,
   R_Vulkan_VShadKind_Geo2D_Forward,
   R_Vulkan_VShadKind_Geo2D_Composite,
   R_Vulkan_VShadKind_Geo3D_ZPre,
@@ -52,6 +54,8 @@ typedef enum R_Vulkan_FShadKind
   R_Vulkan_FShadKind_Rect,
   // R_Vulkan_FShadKind_Blur,
   R_Vulkan_FShadKind_Noise,
+  R_Vulkan_FShadKind_Edge,
+  R_Vulkan_FShadKind_Crt,
   R_Vulkan_FShadKind_Geo2D_Forward,
   R_Vulkan_FShadKind_Geo2D_Composite,
   R_Vulkan_FShadKind_Geo3D_ZPre,
@@ -117,6 +121,8 @@ typedef enum R_Vulkan_PipelineKind
   R_Vulkan_PipelineKind_GFX_Rect,
   // R_Vulkan_PipelineKind_GFX_Blur,
   R_Vulkan_PipelineKind_GFX_Noise,
+  R_Vulkan_PipelineKind_GFX_Edge,
+  R_Vulkan_PipelineKind_GFX_Crt,
   // 2d
   R_Vulkan_PipelineKind_GFX_Geo2D_Forward,
   R_Vulkan_PipelineKind_GFX_Geo2D_Composite,
@@ -245,6 +251,21 @@ struct R_Vulkan_PUSH_Noise
 {
   Vec2F32 resolution;
   Vec2F32 mouse;
+  F32 time;
+};
+
+typedef struct R_Vulkan_PUSH_Edge R_Vulkan_PUSH_Edge;
+struct R_Vulkan_PUSH_Edge
+{
+  F32 time;
+};
+
+typedef struct R_Vulkan_PUSH_Crt R_Vulkan_PUSH_Crt;
+struct R_Vulkan_PUSH_Crt
+{
+  Vec2F32 resolution;
+  F32 warp;
+  F32 scan;
   F32 time;
 };
 
@@ -436,9 +457,13 @@ struct R_Vulkan_RenderTargets
   // scratch
   R_Vulkan_Image         scratch_color_image;
   R_Vulkan_DescriptorSet scratch_color_ds;
+  // edge
+  R_Vulkan_Image         edge_image;
+  R_Vulkan_DescriptorSet edge_ds;
   // 2d
   R_Vulkan_Image         geo2d_color_image;
   R_Vulkan_DescriptorSet geo2d_color_ds;
+
   // 3d
   R_Vulkan_Image         geo3d_color_image;
   R_Vulkan_DescriptorSet geo3d_color_ds;
@@ -490,6 +515,8 @@ struct R_Vulkan_Window
       R_Vulkan_Pipeline rect;
       // R_Vulkan_Pipeline blur;
       R_Vulkan_Pipeline noise;
+      R_Vulkan_Pipeline edge;
+      R_Vulkan_Pipeline crt;
       struct
       {
         R_Vulkan_Pipeline forward[R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT];
@@ -507,7 +534,7 @@ struct R_Vulkan_Window
       R_Vulkan_Pipeline finalize;
     };
     // TODO(XXX): not sure if we need some paddings here
-    R_Vulkan_Pipeline arr[R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT * 4 + 7];
+    R_Vulkan_Pipeline arr[R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT * 4 + 9];
   } pipelines;
 
   R_Vulkan_Frame frames[MAX_FRAMES_IN_FLIGHT];

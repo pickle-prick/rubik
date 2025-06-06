@@ -45,6 +45,14 @@ typedef enum RK_Sprite2DAnchorKind
   RK_Sprite2DAnchorKind_COUNT,
 } RK_Sprite2DAnchorKind;
 
+typedef enum RK_Sprite2DShapeKind
+{
+  RK_Sprite2DShapeKind_Rect,
+  RK_Sprite2DShapeKind_Circle,
+  RK_Sprite2DShapeKind_Triangle,
+  RK_Sprite2DShapeKind_COUNT,
+} RK_Sprite2DShapeKind;
+
 /////////////////////////////////////////////////////////////////////////////////////////
 //- Render bucket
 
@@ -629,11 +637,21 @@ struct RK_Sprite2D
 {
   RK_Sprite2D *next;
   RK_Handle tex;
-  Vec2F32 size;
+  RK_Sprite2DShapeKind shape;
+  union
+  {
+    Vec2F32 rect;
+    struct
+    {
+      F32 radius;
+    } circle;
+    Vec2F32 v;
+  } size;
   RK_Sprite2DAnchorKind anchor;
   // TODO(XXX): it's weird to put color here
   Vec4F32 color;
   B32 omit_texture;
+  B32 draw_edge;
 
   // string stuffs
   String8 string;
@@ -1074,6 +1092,9 @@ struct RK_DrawNode
   RK_DrawNode *draw_next;
   RK_DrawNode *draw_prev;
 
+  R_GeoPolygonKind polygon;
+  R_GeoTopologyKind topology;
+
   // vertex
   // src
   R_Vertex *vertices_src;
@@ -1124,6 +1145,7 @@ struct RK_State
 
   //- Interaction
   OS_Handle             os_wnd;
+  OS_EventList          os_events;
 
   //- UI overlay signal (used for handle user input)
   UI_Signal             sig;
@@ -1132,6 +1154,10 @@ struct RK_State
   U64                   dt_us;
   F32                   dt_sec;
   F32                   dt_ms;
+
+  //- elapsed time
+  U64                   begin_us;
+  F32                   elapsed_sec;
 
   //- Global storage buckets
   RK_NodeBucket         *node_bucket;
