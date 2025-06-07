@@ -1553,8 +1553,7 @@ internal Vec2F32 center_2f32(Rng2F32 r) {
   return c;
 }
 internal B32 contains_2f32(Rng2F32 r, Vec2F32 x) {
-  B32 c = (r.min.x <= x.x && x.x < r.max.x && r.min.y <= x.y &&
-      x.y < r.max.y);
+  B32 c = (r.min.x <= x.x && x.x < r.max.x && r.min.y <= x.y && x.y < r.max.y);
   return c;
 }
 internal Vec2F32 dim_2f32(Rng2F32 r) {
