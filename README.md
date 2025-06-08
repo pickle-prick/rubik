@@ -195,9 +195,9 @@ A list of the layers in the codebase and their associated namespaces is below:
     - [X] tiling and light culling pass (compute)
     - [ ] shadow map pass
     - [ ] blur pass (Gaussian)
-    - [X] geo3d pass
-    - [ ] other post effects
+    - [X] other post effects (noise, crt, edge)
 - [X] 2D collision detection
+    - [X] QuadTree
 - [ ] 3D collision detection
     - [ ] binary space partitioning tree
 - [ ] Rendering backend

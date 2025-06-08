@@ -1409,7 +1409,7 @@ internal void      rk_ijk_from_xform(Mat4x4F32 m, Vec3F32 *i, Vec3F32 *j, Vec3F3
 internal Mat4x4F32 rk_xform_from_transform3d(RK_Transform3D *transform);
 internal Mat4x4F32 rk_xform_from_trs(Vec3F32 translate, QuatF32 rotation, Vec3F32 scale);
 internal F32       rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F32 plane_normal, Vec3F32 plane_point);
-internal Rng2F32   rk_rect_from_sprite2d(RK_Sprite2D *sprite2d);
+internal Rng2F32   rk_rect_from_sprite2d(RK_Sprite2D *sprite2d, Vec2F32 pos);
 internal void      rk_sprite2d_equip_string(Arena *arena, RK_Sprite2D *sprite2d, String8 string, F_Tag font, F32 font_size, Vec4F32 font_color, U64 tab_size, F_RasterFlags text_raster_flags);
 internal int       rk_node2d_cmp_z_rev(const void *left, const void *right);
 internal int       rk_path_cmp(const void *left_, const void *right_);

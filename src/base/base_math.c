@@ -1556,6 +1556,13 @@ internal B32 contains_2f32(Rng2F32 r, Vec2F32 x) {
   B32 c = (r.min.x <= x.x && x.x < r.max.x && r.min.y <= x.y && x.y < r.max.y);
   return c;
 }
+internal B32 contains_22f32(Rng2F32 a, Rng2F32 b) {
+  B32 c = b.x0 >= a.x0 &&
+          b.x1 <= a.x1 &&
+          b.y0 >= a.y0 &&
+          b.y1 <= a.y1;
+  return c;
+};
 internal Vec2F32 dim_2f32(Rng2F32 r) {
   Vec2F32 dim = {r.max.x - r.min.x, r.max.y - r.min.y};
   return dim;
@@ -1576,6 +1583,11 @@ internal Rng2F32 intersect_2f32(Rng2F32 a, Rng2F32 b) {
   c.p1.y = Min(a.max.y, b.max.y);
   return c;
 }
+internal B32 overlaps_2f32(Rng2F32 a, Rng2F32 b) {
+  return !(a.p1.x <= b.p0.x || a.p0.x >= b.p1.x ||
+           a.p1.y <= b.p0.y || a.p0.y >= b.p1.y);
+}
+
 internal Vec2F32 clamp_2f32(Rng2F32 r, Vec2F32 v) {
   v.x = Clamp(r.min.x, v.x, r.max.x);
   v.y = Clamp(r.min.y, v.y, r.max.y);

@@ -671,10 +671,12 @@ internal Rng2F32 rng_2f32(Vec2F32 min, Vec2F32 max);
 internal Rng2F32 shift_2f32(Rng2F32 r, Vec2F32 x);
 internal Rng2F32 pad_2f32(Rng2F32 r, F32 x);
 internal Vec2F32 center_2f32(Rng2F32 r);
-internal B32 contains_2f32(Rng2F32 r, Vec2F32 x);
+internal B32     contains_2f32(Rng2F32 r, Vec2F32 x);
+internal B32     contains_22f32(Rng2F32 a, Rng2F32 b);
 internal Vec2F32 dim_2f32(Rng2F32 r);
 internal Rng2F32 union_2f32(Rng2F32 a, Rng2F32 b);
 internal Rng2F32 intersect_2f32(Rng2F32 a, Rng2F32 b);
+internal B32     overlaps_2f32(Rng2F32 a, Rng2F32 b);
 internal Vec2F32 clamp_2f32(Rng2F32 r, Vec2F32 v);
 
 ////////////////////////////////

@@ -2988,6 +2988,8 @@ r_vulkan_render_targets_destroy(R_Vulkan_RenderTargets *render_targets)
   for(U64 i = 0; i < render_targets->swapchain.image_count; i++)
   {
     vkDestroyImageView(r_vulkan_state->logical_device.h, render_targets->swapchain.image_views[i], NULL);
+    // TODO(XXX): we should be able to reuse these semaphores
+    vkDestroySemaphore(r_vulkan_state->logical_device.h, render_targets->swapchain.submit_semaphores[i], NULL);
   }
   vkDestroySwapchainKHR(r_vulkan_state->logical_device.h, render_targets->swapchain.h, NULL);
 

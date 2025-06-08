@@ -3298,7 +3298,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
           case RK_Sprite2DShapeKind_Rect:
           {
             Vec2F32 half_size = scale_2f32(sprite->size.rect, 0.5);
-            Rng2F32 dst = rk_rect_from_sprite2d(sprite);
+            // NOTE(k): don't add pos here, we are using xform to do translation
+            Rng2F32 dst = rk_rect_from_sprite2d(sprite, v2f32(0,0));
             Rng2F32 src = r2f32p(0,0, 1,1);
             n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), dst, src);
             xform = node->fixed_xform;
@@ -4329,7 +4330,7 @@ rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F32 plane_normal, Vec
 }
 
 internal Rng2F32
-rk_rect_from_sprite2d(RK_Sprite2D *sprite2d)
+rk_rect_from_sprite2d(RK_Sprite2D *sprite2d, Vec2F32 pos)
 {
   Rng2F32 ret = {0};
   Vec2F32 rect_size = sprite2d->size.rect;
@@ -4358,6 +4359,8 @@ rk_rect_from_sprite2d(RK_Sprite2D *sprite2d)
     }break;
     default:{InvalidPath;}break;
   }
+  ret.p0 = add_2f32(pos, ret.p0);
+  ret.p1 = add_2f32(pos, ret.p1);
   return ret;
 }
 

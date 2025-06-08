@@ -203,7 +203,10 @@ ui_store_drag_data(String8 string)
 internal String8
 ui_get_drag_data(U64 min_required_size)
 {
+  // NOTE: if left size is 0 and it's causing assertion failed
+  //            check duplicated ui box keys
   AssertAlways(ui_state->drag_state_data.size >= min_required_size);
+
   // TODO: don't get it
   // if(ui_state->drag_state_data.size < min_required_size)
   // {

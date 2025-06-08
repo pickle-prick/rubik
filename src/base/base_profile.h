@@ -119,6 +119,8 @@ internal ProfNode *pf_node_alloc();
 ////////////////////////////////
 //~ k: Helper Wrappers
 
+// TODO(XXX): revisit this, don't seem to merge same function calls, also huge performance hit
+//            may be related to table lookup
 #define ProfBeginFunction(...) ProfBegin(this_function_name)
 #define ProfScope(...) DeferLoop(ProfBegin(__VA_ARGS__), ProfEnd())
 

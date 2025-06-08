@@ -1,148 +1,15 @@
 /////////////////////////////////////////////////////////////////////////////////////////
 // Basic Type/Enum
 
-typedef struct QuadTree QuadTree;
-struct QuadTree
-{
-  Rng2F32 bounds;
-
-  B32 divided;
-  U64 idx; // NW, NE, SW, SE
-  QuadTree *parent;
-  QuadTree *children[4]; // NW, NE, SW, SE
-
-  void **values;
-};
-
-internal void
-quadtree_push_values(Arena *arena, QuadTree *qt, void ***out, B32 recursive)
-{
-  // push self values
-  if(qt->values != 0)
-  {
-    for(U64 i = 0; i < darray_size(qt->values); i++)
-    {
-      darray_push(arena, *out, qt->values[i]);
-    }
-  }
-
-  // push children values
-  if(recursive && qt->divided)
-  {
-    for(U64 i = 0; i < 4; i++)
-    {
-      QuadTree *child = qt->children[i];
-      quadtree_push_values(arena, child, out, 1);
-    }
-  }
-}
-
-internal void
-quadtree_query(Arena *arena, QuadTree *root, Rng2F32 src_rect, void ***out)
-{
-  Rng2F32 dst_rect = root->bounds;
-  Vec2F32 src_size = dim_2f32(src_rect);
-  Vec2F32 sub_size = scale_2f32(dim_2f32(dst_rect), 0.5);
-
-  quadtree_push_values(arena, root, out, 0);
-  if(root->divided)
-  {
-    for(U64 i = 0; i < 4; i++)
-    {
-      QuadTree *child = root->children[i];
-      Rng2F32 intersection = intersect_2f32(child->bounds, src_rect);
-      if(intersection.x0 < intersection.x1 && intersection.y0 < intersection.y1)
-      {
-        quadtree_query(arena, child, intersection, out);
-      }
-    }
-  }
-}
-
-internal void
-quadtree_insert(Arena *arena, QuadTree *qt, Rng2F32 src_rect, void *value)
-{
-  Rng2F32 dst_rect = qt->bounds;
-  Vec2F32 src_size = dim_2f32(src_rect);
-  Vec2F32 sub_size = scale_2f32(dim_2f32(dst_rect), 0.5);
-
-  B32 contained = contains_2f32(dst_rect, src_rect.p0) && contains_2f32(dst_rect, src_rect.p1);
-  AssertAlways(contained);
-  if(!qt->divided)
-  {
-    F32 xs[3] = {dst_rect.x0, (dst_rect.x0+dst_rect.x1)/2.0, dst_rect.x1};
-    F32 ys[3] = {dst_rect.y0, (dst_rect.y0+dst_rect.y1)/2.0, dst_rect.y1};
-
-    // NW
-    qt->children[0] = push_array(arena, QuadTree, 1);
-    qt->children[0]->bounds.x0 = xs[0];
-    qt->children[0]->bounds.x1 = xs[1];
-    qt->children[0]->bounds.y0 = ys[0];
-    qt->children[0]->bounds.y1 = ys[1];
-    qt->children[0]->parent = qt;
-    qt->children[0]->idx = 0;
-
-    // NE
-    qt->children[1] = push_array(arena, QuadTree, 1);
-    qt->children[1]->bounds.x0 = xs[1];
-    qt->children[1]->bounds.x1 = xs[2];
-    qt->children[1]->bounds.y0 = ys[0];
-    qt->children[1]->bounds.y1 = ys[1];
-    qt->children[1]->parent = qt;
-    qt->children[1]->idx = 1;
-
-    // SW
-    qt->children[2] = push_array(arena, QuadTree, 1);
-    qt->children[2]->bounds.x0 = xs[0];
-    qt->children[2]->bounds.x1 = xs[1];
-    qt->children[2]->bounds.y0 = ys[1];
-    qt->children[2]->bounds.y1 = ys[2];
-    qt->children[2]->parent = qt;
-    qt->children[2]->idx = 2;
-
-    // SE
-    qt->children[3] = push_array(arena, QuadTree, 1);
-    qt->children[3]->bounds.x0 = xs[1];
-    qt->children[3]->bounds.x1 = xs[2];
-    qt->children[3]->bounds.y0 = ys[1];
-    qt->children[3]->bounds.y1 = ys[2];
-    qt->children[3]->parent = qt;
-    qt->children[3]->idx = 3;
-
-    qt->divided = 1;
-  }
-
-  B32 inserted = 0;
-  // pick a child to insert
-  for(U64 i = 0; i < 4; i++)
-  {
-    QuadTree *child = qt->children[i];
-    B32 contained = contains_2f32(child->bounds, src_rect.p0) && contains_2f32(child->bounds, src_rect.p1);
-    if(contained)
-    {
-      inserted = 1;
-      quadtree_insert(arena, child, src_rect, value);
-      break;
-    }
-  }
-
-  // src_rect's size is smaller than the sub rect, but it's not within any of the child (in the middle)
-  if(!inserted)
-  {
-    inserted = 1;
-    darray_push(arena, qt->values, value);
-  }
-}
-
 typedef U64 S5_EntityFlags;
 #define S5_EntityFlag_Boid (S5_EntityFlags)(1ull<<0)
 
-typedef enum S5_ResourceKind
-{
-  S5_ResourceKind_AirBag,
-  S5_ResourceKind_Battery,
-  S5_ResourceKind_COUNT,
-} S5_ResourceKind;
+// typedef enum S5_ResourceKind
+// {
+//   S5_ResourceKind_AirBag,
+//   S5_ResourceKind_Battery,
+//   S5_ResourceKind_COUNT,
+// } S5_ResourceKind;
 
 typedef struct S5_Camera S5_Camera;
 struct S5_Camera
@@ -166,13 +33,23 @@ struct S5_Scene
   {
     Rng2F32 rect;
     B32 show;
-  } debug_ui;
-};
 
-typedef struct S5_Resource S5_Resource;
-struct S5_Resource
-{
-  S5_ResourceKind kind;
+    // txt input buffer
+    TxtPt txt_cursor;
+    TxtPt txt_mark;
+    B32 txt_has_draft;
+    U8 *txt_edit_buffer;
+    U8 txt_edit_buffer_size;
+    U64 txt_edit_string_size;
+  } debug_ui;
+
+  struct
+  {
+    F32 w_target;
+    F32 w_separation;
+    F32 w_alignment;
+    F32 w_cohesion;
+  } debug;
 };
 
 typedef struct S5_Submarine S5_Submarine;
@@ -194,7 +71,10 @@ struct S5_Submarine
 typedef struct S5_Flock S5_Flock;
 struct S5_Flock
 {
-  Rng2F32 bounds;
+  F32 w_target;
+  F32 w_separation;
+  F32 w_alignment;
+  F32 w_cohesion;
 };
 
 typedef struct S5_Boid S5_Boid;
@@ -319,10 +199,9 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
   RK_NodeBucket *node_bucket = scene->node_bucket;
   s->world_mouse = s5_world_position_from_mouse(rk_state->cursor, rk_state->window_dim, ctx->proj_view_inv_m);
 
-  // TODO(XXX): we should collect the world bounds for sprite2d
   // TODO(XXX): not ideal, how can find a resonal bounds for the world 
-  QuadTree *root_quad = push_array(rk_frame_arena(), QuadTree, 1);
-  root_quad->bounds = r2f32p(-400000,-400000,400000,400000);
+  // we may want to collect the 2d world bounds for sprite2d
+  QuadTree *root_quad = quadtree_push(rk_frame_arena(), r2f32p(-400000,-400000,400000,400000));
 
   for(U64 slot_idx = 0; slot_idx < node_bucket->hash_table_size; slot_idx++)
   {
@@ -333,31 +212,46 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
       if(n->type_flags & RK_NodeTypeFlag_Sprite2D)
       {
         Vec2F32 position = n->node2d->transform.position;
-        Rng2F32 src_rect = rk_rect_from_sprite2d(n->sprite2d);
-        src_rect.p0 = add_2f32(position, src_rect.p0);
-        src_rect.p1 = add_2f32(position, src_rect.p1);
-
+        Rng2F32 src_rect = rk_rect_from_sprite2d(n->sprite2d, position);
         quadtree_insert(rk_frame_arena(), root_quad, src_rect, n);
       }
     }
   }
-
-  // TODO(XXX): ONLY FOR TESTING
-  // QuadTree *root_quad = push_array(rk_frame_arena(), QuadTree, 1);
-  // root_quad->bounds = r2f32p(0,0,400,400);
-  // U64 value = 3;
-  // Rng2F32 src_rect = {0,0, 190,190};
-  // quadtree_insert(rk_frame_arena(), root_quad, src_rect, &value);
-  // U64 **ret = 0;
-  // quadtree_query(rk_frame_arena(), root_quad, src_rect, (void***)&ret);
-  // if(ret != 0)
-  // {
-  //   U64 size = darray_size(ret);
-  //   U64 v = *ret[0];
-  //   Trap();
-  // }
-
   s->root_quad = root_quad;
+
+  // draw a debug rect
+  if(BUILD_DEBUG) RK_Parent_Scope(rk_node_from_handle(&scene->root))
+  {
+    Vec2F32 mouse_world = s5_world_position_from_mouse(rk_state->cursor, rk_state->window_dim, ctx->proj_view_inv_m);
+    RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
+                                            RK_NodeFlag_Transient, "debug_rect");
+    Vec2F32 position = mouse_world;
+    n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
+    n->sprite2d->shape = RK_Sprite2DShapeKind_Rect;
+    n->sprite2d->size.rect = v2f32(300,300);
+    n->sprite2d->color = v4f32(1,0,0,0.1);
+    n->sprite2d->omit_texture = 1;
+    n->sprite2d->draw_edge = 1;
+    n->node2d->transform.position = position;
+    n->node2d->z_index = -1;
+
+    // Temp scratch = scratch_begin(0,0);
+    // {
+    //   Rng2F32 debug_rect = rk_rect_from_sprite2d(n->sprite2d, position);
+    //   RK_Node **nodes = 0;
+    //   quadtree_query(scratch.arena, s->root_quad, debug_rect, (void***)&nodes);
+
+    //   U64 count = 0;
+    //   for(U64 i = 0; i < darray_size(nodes); i++)
+    //   {
+    //     if(nodes[i]->custom_flags & S5_EntityFlag_Boid)
+    //     {
+    //       count++;
+    //     }
+    //   }
+    // }
+    // scratch_end(scratch);
+  }
 }
 
 RK_NODE_CUSTOM_UPDATE(s5_fn_game_ui)
@@ -366,6 +260,61 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_game_ui)
   RK_Node *sea_node = rk_node_from_handle(&s->sea);
   RK_Node *submarine_node = rk_node_from_handle(&s->submarine);
   S5_Submarine *submarine = submarine_node->custom_data;
+
+  // DEBUG UI
+  D_BucketScope(rk_state->bucket_rect)
+    RK_UI_Pane(&s->debug_ui.rect, &s->debug_ui.show, str8_lit("Debug"))
+  {
+      UI_Row
+      {
+        ui_labelf("flock w_target");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_f32_edit(&s->debug.w_target, -100, 100,
+                    &s->debug_ui.txt_cursor, &s->debug_ui.txt_mark,
+                    s->debug_ui.txt_edit_buffer, s->debug_ui.txt_edit_buffer_size,
+                    &s->debug_ui.txt_edit_string_size, &s->debug_ui.txt_has_draft,
+                    str8_lit("w_target###w_target"));
+      }
+
+      ui_spacer(ui_em(0.3,0));
+
+      UI_Row
+      {
+        ui_labelf("flock w_separation");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_f32_edit(&s->debug.w_separation, -100, 100,
+                    &s->debug_ui.txt_cursor, &s->debug_ui.txt_mark,
+                    s->debug_ui.txt_edit_buffer, s->debug_ui.txt_edit_buffer_size,
+                    &s->debug_ui.txt_edit_string_size, &s->debug_ui.txt_has_draft,
+                    str8_lit("w_separation###w_separation"));
+      }
+
+      ui_spacer(ui_em(0.3,0));
+
+      UI_Row
+      {
+        ui_labelf("flock w_alignment");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_f32_edit(&s->debug.w_alignment, -100, 100,
+                    &s->debug_ui.txt_cursor, &s->debug_ui.txt_mark,
+                    s->debug_ui.txt_edit_buffer, s->debug_ui.txt_edit_buffer_size,
+                    &s->debug_ui.txt_edit_string_size, &s->debug_ui.txt_has_draft,
+                    str8_lit("w_alignment###w_alignment"));
+      }
+
+      ui_spacer(ui_em(0.3,0));
+
+      UI_Row
+      {
+        ui_labelf("flock w_cohesion");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_f32_edit(&s->debug.w_cohesion, -100, 100,
+                    &s->debug_ui.txt_cursor, &s->debug_ui.txt_mark,
+                    s->debug_ui.txt_edit_buffer, s->debug_ui.txt_edit_buffer_size,
+                    &s->debug_ui.txt_edit_string_size, &s->debug_ui.txt_has_draft,
+                    str8_lit("w_cohesion###w_cohesion"));
+      }
+  }
 
   D_BucketScope(rk_state->bucket_rect)
   {
@@ -530,9 +479,19 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
 
 RK_NODE_CUSTOM_UPDATE(s5_fn_flock)
 {
-  ProfBeginFunction();
+  // ProfBeginFunction();
   Temp scratch = scratch_begin(0,0);
   S5_Scene *s = scene->custom_data;
+  S5_Flock *flock = node->custom_data;
+
+  // copy global flock parameters in debug mode 
+  if(BUILD_DEBUG)
+  {
+    flock->w_target = s->debug.w_target;
+    flock->w_separation = s->debug.w_separation;
+    flock->w_alignment = s->debug.w_alignment;
+    flock->w_cohesion = s->debug.w_cohesion;
+  }
 
   RK_Node **boids = 0;
   for(RK_Node *child = node->first; child != 0; child = child->next)
@@ -553,33 +512,38 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_flock)
     Vec2F32 size = boid_node->sprite2d->size.rect;
     Vec2F32 position = boid_node->node2d->transform.position;
 
+    Vec2F32 acc = {0};
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    // collect neighbors
+
+    // TODO(XXX): it's still too expensive to run for every boid
+
+    U64 max_neighbor_radius = size.x*2;
     RK_Node **neighbors_src = 0;
-    Rng2F32 src_rect = rk_rect_from_sprite2d(boid_node->sprite2d);
-    src_rect.p0 = add_2f32(position, src_rect.p0);
-    src_rect.p1 = add_2f32(position, src_rect.p1);
-    // src_rect = pad_2f32(src_rect, size.x*3);
-    quadtree_query(rk_frame_arena(), s->root_quad, src_rect, (void***)&neighbors_src);
-
-    Vec2F32 src_dim = dim_2f32(src_rect);
-
+    Rng2F32 src_rect = rk_rect_from_sprite2d(boid_node->sprite2d, position);
+    // TODO(XXX): consider the rect width and height seprately
+    src_rect = pad_2f32(src_rect, max_neighbor_radius);
+    quadtree_query(scratch.arena, s->root_quad, src_rect, (void***)&neighbors_src);
     RK_Node **neighbors = 0;
     for(U64 i = 0; i < darray_size(neighbors_src); i++)
     {
       if(neighbors_src[i]->custom_flags & S5_EntityFlag_Boid)
       {
-        darray_push(rk_frame_arena(), neighbors, neighbors_src[i]);
+        darray_push(scratch.arena, neighbors, neighbors_src[i]);
       }
     }
-    printf("neighbor_count: %lu\n", darray_size(neighbors));
 
-    Vec2F32 acc = {0};
-
+    /////////////////////////////////////////////////////////////////////////////////////
     // move to cursor
+
     {
-      F32 dist_self_to_target = length_2f32(sub_2f32(position, submarine_center));
-      // F32 dist_self_to_mouse = length_2f32(sub_2f32(s->world_mouse, position));
-      // Vec2F32 dir_self_to_mouse = normalize_2f32(sub_2f32(s->world_mouse, position));
-      Vec2F32 dir_self_to_target = normalize_2f32(sub_2f32(submarine_center, position));
+      // TODO(XXX): we should make the direction turning slower
+
+      // F32 dist_self_to_target = length_2f32(sub_2f32(position, submarine_center));
+      // Vec2F32 dir_self_to_target = normalize_2f32(sub_2f32(submarine_center, position)); */ to submarine */
+      Vec2F32 dir_self_to_target = normalize_2f32(sub_2f32(s->world_mouse, position));
+      F32 dist_self_to_target = length_2f32(sub_2f32(s->world_mouse, position)); /* to mouse */
 
       F32 angle_rad = ((rand()/(F32)RAND_MAX) * (1.0/2) - (1.0/4));
       F32 cos_a = cos_f32(angle_rad);
@@ -590,68 +554,50 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_flock)
         dir_self_to_target.x*sin_a + dir_self_to_target.y*cos_a,
       };
 
+      // too close to the target
       if(dist_self_to_target < size.x*6.3)
       {
-        F32 w = 109000;
+        F32 w = flock->w_target;
         Vec2F32 uf = scale_2f32(dir_self_to_target, -w);
         acc = add_2f32(acc, uf);
       }
       else
       {
-        F32 w = 100000;
+        F32 w = flock->w_target;
         Vec2F32 uf = scale_2f32(dir, w);
         acc = add_2f32(acc, uf);
       }
     }
 
+    /////////////////////////////////////////////////////////////////////////////////////
     // separation
-    for(U64 i = 0; i < darray_size(neighbors); i++)
+
     {
-      RK_Node *rhs_node = neighbors[i];
-      if(rhs_node != boid_node)
+      for(U64 i = 0; i < darray_size(neighbors); i++)
       {
-        S5_Boid *rhs_boid = rhs_node->custom_data;
-        Vec2F32 rhs_position = rhs_node->node2d->transform.position;
-
-        Vec2F32 rhs_to_self = sub_2f32(position, rhs_position);
-        F32 dist = length_2f32(rhs_to_self);
-
-        F32 constraint_dist = size.x*1.5;
-        if(dist < constraint_dist)
+        RK_Node *rhs_node = neighbors[i];
+        if(rhs_node != boid_node)
         {
-          F32 w = 100000 * (dist/constraint_dist);
-          // unit force (assuming mass is 1)
-          Vec2F32 uf = scale_2f32(normalize_2f32(rhs_to_self), w);
-          acc = add_2f32(acc, uf);
+          S5_Boid *rhs_boid = rhs_node->custom_data;
+          Vec2F32 rhs_position = rhs_node->node2d->transform.position;
+          Vec2F32 rhs_to_self = sub_2f32(position, rhs_position);
+          F32 dist = length_2f32(rhs_to_self);
+
+          F32 min_dist = size.x*0.6;
+          if(dist < min_dist)
+          {
+            F32 w = flock->w_separation * (dist/min_dist);
+            // unit force (assuming mass is 1, so it's acceleration)
+            Vec2F32 uf = scale_2f32(normalize_2f32(rhs_to_self), w);
+            acc = add_2f32(acc, uf);
+          }
         }
       }
     }
-    // for(U64 i = 0; i < darray_size(boids); i++)
-    // {
-    //   RK_Node *rhs_node = boids[i];
-    //   if(rhs_node != boid_node)
-    //   {
-    //     S5_Boid *rhs_boid = rhs_node->custom_data;
-    //     Vec2F32 rhs_position = rhs_node->node2d->transform.position;
-
-    //     Vec2F32 rhs_to_self = sub_2f32(position, rhs_position);
-    //     F32 dist = length_2f32(rhs_to_self);
-
-    //     F32 constraint_dist = size.x*1.5;
-    //     if(dist < constraint_dist)
-    //     {
-    //       F32 w = 100000 * (dist/constraint_dist);
-    //       // unit force (assuming mass is 1)
-    //       Vec2F32 uf = scale_2f32(normalize_2f32(rhs_to_self), w);
-    //       acc = add_2f32(acc, uf);
-    //     }
-    //   }
-    // }
 
     // alignment
     {
       Vec2F32 alignment_direction = boid->vel;
-      U64 nearby_count = 0;
       for(U64 i = 0; i < darray_size(neighbors); i++)
       {
         RK_Node *rhs_node = neighbors[i];
@@ -664,71 +610,31 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_flock)
           Vec2F32 rhs_to_self = sub_2f32(position, rhs_position);
           F32 dist = length_2f32(rhs_to_self);
 
-          if(dist < size.x*6)
-          {
-            nearby_count++;
-            alignment_direction.x += rhs_boid->vel.x;
-            alignment_direction.y += rhs_boid->vel.y;
-          }
+          alignment_direction.x += rhs_boid->vel.x;
+          alignment_direction.y += rhs_boid->vel.y;
         }
       }
-      if(nearby_count > 0)
+      U64 neighbor_count = darray_size(neighbors);
+      if(neighbor_count)
       {
-        alignment_direction.x /= (nearby_count+1);
-        alignment_direction.y /= (nearby_count+1);
+        alignment_direction.x /= (neighbor_count+1);
+        alignment_direction.y /= (neighbor_count+1);
 
         if(alignment_direction.x != 0 || alignment_direction.y != 0)
         {
           Vec2F32 steer_alignment = normalize_2f32(sub_2f32(alignment_direction, boid->vel));
-          F32 w = 2000;
+          F32 w = flock->w_alignment;
           Vec2F32 uf = scale_2f32(steer_alignment, w);
           acc = add_2f32(acc, uf);
         }
       }
     }
-    // {
-    //   Vec2F32 alignment_direction = boid->vel;
-    //   U64 nearby_count = 0;
-    //   for(U64 i = 0; i < darray_size(boids); i++)
-    //   {
-    //     RK_Node *rhs_node = boids[i];
-
-    //     if(rhs_node != boid_node)
-    //     {
-    //       S5_Boid *rhs_boid = rhs_node->custom_data;
-    //       Vec2F32 rhs_position = rhs_node->node2d->transform.position;
-
-    //       Vec2F32 rhs_to_self = sub_2f32(position, rhs_position);
-    //       F32 dist = length_2f32(rhs_to_self);
-
-    //       if(dist < size.x*6)
-    //       {
-    //         nearby_count++;
-    //         alignment_direction.x += rhs_boid->vel.x;
-    //         alignment_direction.y += rhs_boid->vel.y;
-    //       }
-    //     }
-    //   }
-    //   if(nearby_count > 0)
-    //   {
-    //     alignment_direction.x /= (nearby_count+1);
-    //     alignment_direction.y /= (nearby_count+1);
-
-    //     if(alignment_direction.x != 0 || alignment_direction.y != 0)
-    //     {
-    //       Vec2F32 steer_alignment = normalize_2f32(sub_2f32(alignment_direction, boid->vel));
-    //       F32 w = 2000;
-    //       Vec2F32 uf = scale_2f32(steer_alignment, w);
-    //       acc = add_2f32(acc, uf);
-    //     }
-    //   }
-    // }
 
     // cohesion
     {
       Vec2F32 center_of_mass = position;
-      U64 nearby_count = 0;
-      for(U64 i = 0; i < darray_size(neighbors); i++)
+      U64 neighbor_count = darray_size(neighbors);
+      for(U64 i = 0; i < neighbor_count; i++)
       {
         RK_Node *rhs_node = neighbors[i];
 
@@ -740,59 +646,21 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_flock)
           Vec2F32 rhs_to_self = sub_2f32(position, rhs_position);
           F32 dist = length_2f32(rhs_to_self);
 
-          if(dist < size.x*6)
-          {
-            nearby_count++;
-            center_of_mass.x += rhs_position.x;
-            center_of_mass.y += rhs_position.y;
-          }
+          center_of_mass.x += rhs_position.x;
+          center_of_mass.y += rhs_position.y;
         }
       }
-      if(nearby_count > 0)
+      if(neighbor_count > 0)
       {
-        center_of_mass.x /= (nearby_count+1);
-        center_of_mass.y /= (nearby_count+1);
+        center_of_mass.x /= (neighbor_count+1);
+        center_of_mass.y /= (neighbor_count+1);
 
         Vec2F32 steer_cohesion = normalize_2f32(sub_2f32(center_of_mass, position));
-        F32 w = 15000;
+        F32 w = flock->w_cohesion;
         Vec2F32 uf = scale_2f32(steer_cohesion, w);
         acc = add_2f32(acc, uf);
       }
     }
-    // {
-    //   Vec2F32 center_of_mass = position;
-    //   U64 nearby_count = 0;
-    //   for(U64 i = 0; i < darray_size(boids); i++)
-    //   {
-    //     RK_Node *rhs_node = boids[i];
-
-    //     if(rhs_node != boid_node)
-    //     {
-    //       S5_Boid *rhs_boid = rhs_node->custom_data;
-    //       Vec2F32 rhs_position = rhs_node->node2d->transform.position;
-
-    //       Vec2F32 rhs_to_self = sub_2f32(position, rhs_position);
-    //       F32 dist = length_2f32(rhs_to_self);
-
-    //       if(dist < size.x*6)
-    //       {
-    //         nearby_count++;
-    //         center_of_mass.x += rhs_position.x;
-    //         center_of_mass.y += rhs_position.y;
-    //       }
-    //     }
-    //   }
-    //   if(nearby_count > 0)
-    //   {
-    //     center_of_mass.x /= (nearby_count+1);
-    //     center_of_mass.y /= (nearby_count+1);
-
-    //     Vec2F32 steer_cohesion = normalize_2f32(sub_2f32(center_of_mass, position));
-    //     F32 w = 15000;
-    //     Vec2F32 uf = scale_2f32(steer_cohesion, w);
-    //     acc = add_2f32(acc, uf);
-    //   }
-    // }
 
     // F32 scale = 1.0 * (rand()/(F32)RAND_MAX) * (1);
     Vec2F32 vel = scale_2f32(acc, ctx->dt_sec*boid->motivation);
@@ -800,12 +668,12 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_flock)
     boid->target_vel = vel;
   }
   scratch_end(scratch);
-  ProfEnd();
+  // ProfEnd();
 }
 
 RK_NODE_CUSTOM_UPDATE(s5_fn_boid)
 {
-  ProfBeginFunction();
+  // ProfBeginFunction();
   S5_Scene *s = scene->custom_data;
   S5_Boid *fish = node->custom_data;
   RK_Sprite2D *sprite2d = node->sprite2d;
@@ -863,7 +731,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_boid)
     sprite2d->color.w = 1;
     sprite2d->draw_edge = 1;
   }
-  ProfEnd();
+  // ProfEnd();
   return;
 }
 
@@ -897,7 +765,15 @@ rk_scene_entry__5()
                                   rk_state->window_rect.y1/2.0,
                                   rk_state->window_rect.x1/2.0 + 900,
                                   rk_state->window_rect.y1/2.0 + 600);
-    scene->debug_ui.show = 1;
+
+    scene->debug_ui.show                 = 1;
+    scene->debug_ui.txt_cursor           = (TxtPt){0};
+    scene->debug_ui.txt_mark             = (TxtPt){0};
+    scene->debug_ui.txt_has_draft        = 0;
+    U64 edit_buffer_size = 100;
+    scene->debug_ui.txt_edit_buffer_size = edit_buffer_size;
+    scene->debug_ui.txt_edit_buffer      = push_array(ret->arena, U8, edit_buffer_size);
+    scene->debug_ui.txt_edit_string_size = 0;
   }
 
   // 2d viewport
@@ -982,12 +858,21 @@ rk_scene_entry__5()
       submarine->max_density = S5_SEA_FLUID_DENSITY;
     }
     scene->submarine = rk_handle_from_node(submarine_node);
+    scene->debug.w_target = 50000;
+    scene->debug.w_separation = 60000;
+    scene->debug.w_alignment = 2000;
+    scene->debug.w_cohesion = 15000;
 
     // flock and boids
     for(U64 j = 0; j < 1; j++)
     {
       RK_Node *flock_node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D, 0, "flock_%I64u", j);
       rk_node_push_fn(flock_node, s5_fn_flock);
+      S5_Flock *flock = rk_node_push_custom_data(flock_node, S5_Flock);
+      flock->w_target = 50000;
+      flock->w_alignment = 2000;
+      flock->w_separation = 60000;
+      flock->w_cohesion = 15000;
 
       RK_Parent_Scope(flock_node)
       {
@@ -1017,8 +902,6 @@ rk_scene_entry__5()
         }
       }
     }
-
-    // resources
   }
 
   ret->root = rk_handle_from_node(root);
