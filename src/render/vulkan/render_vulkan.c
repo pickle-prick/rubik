@@ -2988,7 +2988,10 @@ r_vulkan_render_targets_destroy(R_Vulkan_RenderTargets *render_targets)
   for(U64 i = 0; i < render_targets->swapchain.image_count; i++)
   {
     vkDestroyImageView(r_vulkan_state->logical_device.h, render_targets->swapchain.image_views[i], NULL);
+
     // TODO(XXX): we should be able to reuse these semaphores
+    // TODO(BUG): it's not safe to destroy semaphore here, fix it later
+    //            can't be called on VkSemaphore 0x4a000000004a that is currently in use by VkQueue
     vkDestroySemaphore(r_vulkan_state->logical_device.h, render_targets->swapchain.submit_semaphores[i], NULL);
   }
   vkDestroySwapchainKHR(r_vulkan_state->logical_device.h, render_targets->swapchain.h, NULL);
@@ -4799,6 +4802,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
   {
     // Acquire image from swapchain
     ret = vkAcquireNextImageKHR(device->h, wnd->render_targets->swapchain.h, UINT64_MAX, frame->img_acq_sem, VK_NULL_HANDLE, &frame->img_idx);
+    // TODO(XXX): this one don't trigger somehow, find out why
     if(ret == VK_ERROR_OUT_OF_DATE_KHR || ret == VK_SUBOPTIMAL_KHR)
     {
       r_vulkan_window_resize(wnd);
@@ -5050,6 +5054,7 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
   if(prest_ret == VK_ERROR_OUT_OF_DATE_KHR || prest_ret == VK_SUBOPTIMAL_KHR)
   {
     r_vulkan_window_resize(wnd);
+    printf("window resized\n");
   } 
   else { AssertAlways(prest_ret == VK_SUCCESS); }
 
@@ -5079,6 +5084,23 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
   U64 geo2d_pass_idx = 0;
   // NOTE(k): geo3d ubo is per geo3d pass, rect ubo is per group
   U64 geo3d_pass_idx = 0;
+
+  // TODO(XXX): remove this local_persist
+  local_persist B32 first_submit = 1;
+  if(BUILD_DEBUG && first_submit)
+  {
+    printf("rt stage_color: %p\n", wnd->render_targets->stage_color_image.h);
+    printf("rt stage_id: %p\n", wnd->render_targets->stage_id_image.h);
+    printf("rt scratch_color: %p\n", wnd->render_targets->scratch_color_image.h);
+    printf("rt edge_image: %p\n", wnd->render_targets->edge_image.h);
+    printf("rt geo2d_color_image: %p\n", wnd->render_targets->geo2d_color_image.h);
+
+    printf("rt geo3d_color_image: %p\n", wnd->render_targets->geo3d_color_image.h);
+    printf("rt geo3d_normal_depth_image: %p\n", wnd->render_targets->geo3d_normal_depth_image.h);
+    printf("rt geo3d_depth_image: %p\n", wnd->render_targets->geo3d_depth_image.h);
+    printf("rt geo3d_pre_depth_image: %p\n", wnd->render_targets->geo3d_pre_depth_image.h);
+    first_submit = 0;
+  }
 
   // Do passing
   for(R_PassNode *pass_n = passes->first; pass_n != 0; pass_n = pass_n->next)
@@ -5970,6 +5992,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 
         if(!params->omit_light)
         {
+          // geo3d pre_depth_image: undefined => depth
           r_vulkan_image_transition(cmd_buf, render_targets->geo3d_pre_depth_image.h, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
                                     VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
 
@@ -6097,6 +6120,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           ///////////////////////////////////////////////////////////////////////////////
           // light culling compute pass
 
+          // pre_depth_image: color_output => shader_read
           r_vulkan_image_transition(frame->cmd_buf, render_targets->geo3d_pre_depth_image.h,
                                     VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                                     VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
@@ -6148,11 +6172,13 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 
         // TODO(XXX): missing buffer barrier for compute shader to be finished
 
+        // geo3d_color_image: undefined => color_output
         r_vulkan_image_transition(frame->cmd_buf, render_targets->geo3d_color_image.h,
                                   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
                                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
                                   VK_IMAGE_ASPECT_COLOR_BIT);
+        // geo3d_normal_depth_image: undefined => color_output
         r_vulkan_image_transition(frame->cmd_buf, render_targets->geo3d_normal_depth_image.h,
                                   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
@@ -6161,6 +6187,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 
         /////////////////////////////////////////////////////////////////////////////////
         //~ start geo3d rendering
+
         {
           // unpack pipelines
           R_Vulkan_Pipeline *pipelines = wnd->pipelines.geo3d.forward;
@@ -6325,11 +6352,13 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
         /////////////////////////////////////////////////////////////////////////////////
         // Composite to the main staging buffer
 
+        // geo3d_color_image: color_output => shader_read
         r_vulkan_image_transition(frame->cmd_buf, render_targets->geo3d_color_image.h,
                                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
                                   VK_IMAGE_ASPECT_COLOR_BIT);
+        // geo3d_normal_depth_image: color_output => shader_read
         r_vulkan_image_transition(frame->cmd_buf, render_targets->geo3d_normal_depth_image.h,
                                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                                   VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,

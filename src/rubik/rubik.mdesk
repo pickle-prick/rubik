@@ -126,6 +126,7 @@ RK_NodeEquipmentTable:
   { RK_NodeTypeFlag_PointLight       point_light       `RK_PointLight`       0 0                                                                             }
   { RK_NodeTypeFlag_SpotLight        spot_light        `RK_SpotLight`        0 0                                                                             }
   { RK_NodeTypeFlag_Sprite2D         sprite2d          `RK_Sprite2D`         0 0                                                                             }
+  { RK_NodeTypeFlag_Collider2D       collider2d        `RK_Collider2D`       0 0                                                                             }
   { RK_NodeTypeFlag_AnimatedSprite2D animated_sprite2d `RK_AnimatedSprite2D` 0 0                                                                             }
   { RK_NodeTypeFlag_TileMapLayer     tilemap_layer     `RK_TileMapLayer`     0 0                                                                             }
   { RK_NodeTypeFlag_TileMap          tilemap           `RK_TileMap`          0 0                                                                             }

@@ -2598,6 +2598,14 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     rk_state->last_dpi           = rk_state->dpi;
     rk_state->dpi                = os_dpi_from_window(rk_state->os_wnd);
 
+    // animation
+    rk_state->animation.vast_rate = 1 - pow_f32(2, (-60.f * ui_state->animation_dt));
+    rk_state->animation.fast_rate = 1 - pow_f32(2, (-50.f * ui_state->animation_dt));
+    rk_state->animation.fish_rate = 1 - pow_f32(2, (-40.f * ui_state->animation_dt));
+    rk_state->animation.slow_rate = 1 - pow_f32(2, (-30.f * ui_state->animation_dt));
+    rk_state->animation.slug_rate = 1 - pow_f32(2, (-15.f * ui_state->animation_dt));
+    rk_state->animation.slaf_rate = 1 - pow_f32(2, (-8.f * ui_state->animation_dt));
+
     // clear frame gizmo drawlist
     rk_drawlist_reset(rk_frame_drawlist());
 
@@ -2625,7 +2633,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     arena_clear(rk_frame_arena());
   }
 
-  /////////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////
   // Unpack active camera
 
   RK_Node *camera_node = rk_node_from_handle(&scene->active_camera);

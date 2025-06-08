@@ -465,6 +465,7 @@ struct R_Vulkan_RenderTargets
   R_Vulkan_DescriptorSet geo2d_color_ds;
 
   // 3d
+  // TODO(XXX): this is a mess, cleanup unused image, also add toon shading post pass
   R_Vulkan_Image         geo3d_color_image;
   R_Vulkan_DescriptorSet geo3d_color_ds;
   R_Vulkan_Image         geo3d_normal_depth_image;

@@ -53,6 +53,23 @@ typedef enum RK_Sprite2DShapeKind
   RK_Sprite2DShapeKind_COUNT,
 } RK_Sprite2DShapeKind;
 
+typedef enum RK_Collider2DShapeKind
+{
+  RK_Collider2DShapeKind_Rect,
+  RK_Collider2DShapeKind_Circle,
+  RK_Collider2DShapeKind_Edge,
+  RK_Collider2DShapeKind_Polygon,
+  RK_Collider2DShapeKind_COUNT,
+} RK_Collider2DShapeKind;
+
+typedef enum RK_Rigidbody2DBodyKind
+{
+  RK_Rigidbody2DBodyKind_Dynamic,
+  RK_Rigidbody2DBodyKind_Kinematic,
+  RK_Rigidbody2DBodyKind_Static,
+  RK_Rigidbody2DBodyKind_COUNT,
+} RK_Rigidbody2DBodyKind;
+
 /////////////////////////////////////////////////////////////////////////////////////////
 //- Render bucket
 
@@ -174,13 +191,15 @@ typedef U64                              RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_PointLight       (RK_NodeTypeFlags)(1ull<<8)
 #define RK_NodeTypeFlag_SpotLight        (RK_NodeTypeFlags)(1ull<<9)
 #define RK_NodeTypeFlag_Sprite2D         (RK_NodeTypeFlags)(1ull<<10)
-#define RK_NodeTypeFlag_AnimatedSprite2D (RK_NodeTypeFlags)(1ull<<11)
-#define RK_NodeTypeFlag_TileMapLayer     (RK_NodeTypeFlags)(1ull<<12)
-#define RK_NodeTypeFlag_TileMap          (RK_NodeTypeFlags)(1ull<<13)
-#define RK_NodeTypeFlag_Particle3D       (RK_NodeTypeFlags)(1ull<<14)
-#define RK_NodeTypeFlag_HookSpring3D     (RK_NodeTypeFlags)(1ull<<15)
-#define RK_NodeTypeFlag_Constraint3D     (RK_NodeTypeFlags)(1ull<<16)
-#define RK_NodeTypeFlag_Rigidbody3D      (RK_NodeTypeFlags)(1ull<<17)
+#define RK_NodeTypeFlag_Collider2D       (RK_NodeTypeFlags)(1ull<<11)
+// TODO(XXX): Rigidbody2D
+#define RK_NodeTypeFlag_AnimatedSprite2D (RK_NodeTypeFlags)(1ull<<12)
+#define RK_NodeTypeFlag_TileMapLayer     (RK_NodeTypeFlags)(1ull<<13)
+#define RK_NodeTypeFlag_TileMap          (RK_NodeTypeFlags)(1ull<<14)
+#define RK_NodeTypeFlag_Particle3D       (RK_NodeTypeFlags)(1ull<<15)
+#define RK_NodeTypeFlag_HookSpring3D     (RK_NodeTypeFlags)(1ull<<16)
+#define RK_NodeTypeFlag_Constraint3D     (RK_NodeTypeFlags)(1ull<<17)
+#define RK_NodeTypeFlag_Rigidbody3D      (RK_NodeTypeFlags)(1ull<<18)
 
 #define RK_NodeTypeFlag_Drawable (RK_NodeTypeFlag_MeshInstance3D | RK_NodeTypeFlag_Sprite2D | RK_NodeTypeFlag_AnimatedSprite2D)
 
@@ -663,6 +682,28 @@ struct RK_Sprite2D
   F_RasterFlags text_raster_flags;
 };
 
+typedef struct RK_Collider2D RK_Collider2D;
+struct RK_Collider2D
+{
+  RK_Collider2D *next;
+  RK_Collider2DShapeKind shape;
+  union
+  {
+    struct
+    {
+      F32 w;
+      F32 h;
+    } rect;
+
+    struct
+    {
+      F32 radius;
+    } circle;
+
+    // TODO: triangle
+  } size;
+};
+
 typedef struct RK_AnimatedSprite2D RK_AnimatedSprite2D;
 struct RK_AnimatedSprite2D
 {
@@ -827,6 +868,7 @@ struct RK_Node
   RK_PointLight                 *point_light;
   RK_SpotLight                  *spot_light;
   RK_Sprite2D                   *sprite2d;
+  RK_Collider2D                 *collider2d;
   RK_AnimatedSprite2D           *animated_sprite2d;
   RK_TileMapLayer               *tilemap_layer;
   RK_TileMap                    *tilemap;
@@ -905,6 +947,7 @@ struct RK_NodeBucket
   RK_PointLight       *first_free_point_light;
   RK_SpotLight        *first_free_spot_light;
   RK_Sprite2D         *first_free_sprite2d;
+  RK_Collider2D       *first_free_collider2d;
   RK_AnimatedSprite2D *first_free_animated_sprite2d;
   RK_TileMapLayer     *first_free_tilemap_layer;
   RK_TileMap          *first_free_tilemap;
@@ -1210,6 +1253,18 @@ struct RK_State
 
   // Views (UI)
   RK_View               views[RK_ViewKind_COUNT];
+
+  // Animation
+  // reset at the beginning of a frame
+  struct
+  {
+    F32 vast_rate;
+    F32 fast_rate;
+    F32 fish_rate;
+    F32 slow_rate;
+    F32 slug_rate;
+    F32 slaf_rate;
+  } animation;
 
   struct
   {

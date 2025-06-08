@@ -1,6 +1,8 @@
 /////////////////////////////////////////////////////////////////////////////////////////
 // Basic Type/Enum
 
+// TODO(BUG): the window resizing seem to effect the delta_secs somehow
+
 typedef U64 S5_EntityFlags;
 #define S5_EntityFlag_Boid (S5_EntityFlags)(1ull<<0)
 
@@ -173,18 +175,10 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_camera)
   }
 
   // animating
-  // TODO(XXX): compute this once at the beginning of the frame
-  F32 vast_rate = 1 - pow_f32(2, (-60.f * ui_state->animation_dt));
-  F32 fast_rate = 1 - pow_f32(2, (-50.f * ui_state->animation_dt));
-  F32 fish_rate = 1 - pow_f32(2, (-40.f * ui_state->animation_dt));
-  F32 slow_rate = 1 - pow_f32(2, (-30.f * ui_state->animation_dt));
-  F32 slug_rate = 1 - pow_f32(2, (-15.f * ui_state->animation_dt));
-  F32 slaf_rate = 1 - pow_f32(2, (-8.f * ui_state->animation_dt));
-
-  camera->viewport_world.x0 += fast_rate * (camera->viewport_world_target.x0 - camera->viewport_world.x0);
-  camera->viewport_world.x1 += fast_rate * (camera->viewport_world_target.x1 - camera->viewport_world.x1);
-  camera->viewport_world.y0 += fast_rate * (camera->viewport_world_target.y0 - camera->viewport_world.y0);
-  camera->viewport_world.y1 += fast_rate * (camera->viewport_world_target.y1 - camera->viewport_world.y1);
+  camera->viewport_world.x0 += rk_state->animation.fast_rate * (camera->viewport_world_target.x0 - camera->viewport_world.x0);
+  camera->viewport_world.x1 += rk_state->animation.fast_rate * (camera->viewport_world_target.x1 - camera->viewport_world.x1);
+  camera->viewport_world.y0 += rk_state->animation.fast_rate * (camera->viewport_world_target.y0 - camera->viewport_world.y0);
+  camera->viewport_world.y1 += rk_state->animation.fast_rate * (camera->viewport_world_target.y1 - camera->viewport_world.y1);
 
   // update
   node->camera3d->orthographic.top    = camera->viewport_world.y0;
@@ -195,6 +189,8 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_camera)
 
 RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
 {
+  printf("dt_secs: %f\n", ctx->dt_sec);
+
   S5_Scene *s = scene->custom_data;
   RK_NodeBucket *node_bucket = scene->node_bucket;
   s->world_mouse = s5_world_position_from_mouse(rk_state->cursor, rk_state->window_dim, ctx->proj_view_inv_m);
@@ -209,7 +205,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
     for(RK_Node *n = slot->first; n != 0; n = n->hash_next)
     {
       // TODO(XXX): we should only add Collider2D instead of Sprite2D
-      if(n->type_flags & RK_NodeTypeFlag_Sprite2D)
+      if(n->type_flags & RK_NodeTypeFlag_Collider2D)
       {
         Vec2F32 position = n->node2d->transform.position;
         Rng2F32 src_rect = rk_rect_from_sprite2d(n->sprite2d, position);
@@ -348,7 +344,6 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_game_ui)
 
 RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
 {
-  // TODO(XXX): ajust these settings to make control feel more natural
   S5_Scene *s = scene->custom_data;
   S5_Submarine *submarine = node->custom_data;
   RK_Transform2D *transform = &node->node2d->transform;
@@ -451,8 +446,9 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
     n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
     n->sprite2d->shape = RK_Sprite2DShapeKind_Circle;
     n->sprite2d->size.circle.radius = radius;
-    n->sprite2d->color = v4f32(0.1,0,0,0.1);
+    n->sprite2d->color = v4f32(0.1,0,0,0.5);
     n->sprite2d->omit_texture = 1;
+    n->sprite2d->draw_edge = 1;
     n->node2d->transform.position = position;
     n->node2d->z_index = 1;
   }
@@ -880,11 +876,13 @@ rk_scene_entry__5()
         Rng1U32 spwan_range_y = {0, 3000};
         U32 spwan_dim_x = dim_1u32(spwan_range_x);
         U32 spwan_dim_y = dim_1u32(spwan_range_y);
+
+        // spawn boids
         for(U64 i = 0; i < 230; i++)
         {
           F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
           F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;
-          RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D, 0, "flock_%I64u", i);
+          RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Collider2D|RK_NodeTypeFlag_Sprite2D, 0, "flock_%I64u", i);
           node->node2d->transform.position = v2f32(x, y);
           node->sprite2d->anchor = RK_Sprite2DAnchorKind_TopLeft;
           node->sprite2d->shape = RK_Sprite2DShapeKind_Rect;
