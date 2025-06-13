@@ -21,4 +21,15 @@
 # else
 #  error OS graphical layer not implemented for this operating system.
 # endif
+
+#if OS_FEATURE_AUDIO
+# if OS_WINDOWS
+#  include "os/audio/win32/os_audio_win32.c"
+# elif OS_LINUX
+#  include "os/audio/linux/os_audio_linux.c"
+# else
+#  error OS audio layer not implemented for this operating system.
+# endif
+#endif
+
 #endif

@@ -144,8 +144,8 @@ ui_state_alloc(void)
   }
 
   ui->drag_state_arena = arena_alloc();
-  ui->box_table_size = 4096;
-  ui->box_table      = push_array(arena, UI_BoxHashSlot, ui->box_table_size);
+  ui->box_table_size   = 4096;
+  ui->box_table        = push_array(arena, UI_BoxHashSlot, ui->box_table_size);
 
   UI_InitStackNils(ui);
   return ui;
@@ -520,7 +520,6 @@ ui_end_build(void)
     }
     if(os_window_is_focused(ui_state->os_wnd) || !ui_box_is_nil(active))
     {
-      // TODO(k): after a while, this function will run very slow, maybe we need to clear some resource here
       os_set_cursor(cursor);
     }
   }

@@ -1148,22 +1148,22 @@ r_window_equip(OS_Handle os_wnd)
 internal R_Handle
 r_vulkan_handle_from_window(R_Vulkan_Window *window)
 {
-    R_Handle handle = {0};
-    handle.u64[0] = (U64)window;
-    handle.u64[1] = window->generation;
-    return handle;
+  R_Handle handle = {0};
+  handle.u64[0] = (U64)window;
+  handle.u64[1] = window->generation;
+  return handle;
 }
 
 internal R_Vulkan_Window *
 r_vulkan_window_from_handle(R_Handle handle)
 {
-    R_Vulkan_Window *wnd = (R_Vulkan_Window *)handle.u64[0];
-    // TODO(k): do we need this?
-    // if(wnd->generation != handle.u64[1]) {
-    //         return NULL;
-    // }
-    AssertAlways(wnd->generation == handle.u64[1]);
-    return wnd;
+  R_Vulkan_Window *wnd = (R_Vulkan_Window *)handle.u64[0];
+  // TODO(k): do we need this?
+  // if(wnd->generation != handle.u64[1]) {
+  //         return NULL;
+  // }
+  AssertAlways(wnd->generation == handle.u64[1]);
+  return wnd;
 }
 
 internal
@@ -1206,7 +1206,7 @@ void r_vulkan_window_resize(R_Vulkan_Window *window)
   // the old swap chain as soon as you're finished using it
   // vkDeviceWaitIdle(device->h);
 
-  // In theory it can be possible for the swapchain image format to change during an applications'lifetime, e.g. when moving a window from an standard range to an high dynamic range monitor
+  // In theory it can be possible for the swapchain image format to change during an applications's lifetime, e.g. when moving a window from an standard range to an high dynamic range monitor
   // This may require the application to recreate the renderpass to make sure the change between dynamic ranges is properly reflected
 
   VkFormat old_swapchain_format = render_targets->swapchain.format;
@@ -1942,9 +1942,8 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
   //    issue than the standard vertical sync. This is commonly known as "triple buffering", although the existence of three buffers alone does not necessarily mean that
   //    the framerate is unlocked
   // Only the VK_PRESENT_MODE_FIFO_KHR mode is guaranteed to be available, so we will default to that
-  // VkPresentModeKHR selected_present_mode = VK_PRESENT_MODE_FIFO_KHR;
-  // TODO(k): select 4 in production
-  VkPresentModeKHR preferred_prest_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+  // VkPresentModeKHR preferred_prest_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+  VkPresentModeKHR preferred_prest_mode = VK_PRESENT_MODE_FIFO_KHR;
   // TODO: is this working?
   VkPresentModeKHR selected_prest_mode  = VK_PRESENT_MODE_IMMEDIATE_KHR;
   for(U64 i = 0; i < surface->prest_mode_count; i++)
@@ -4824,7 +4823,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
-  // Cleanup deprecated render targets
+  // destroy deprecated render targets
 
   for(R_Vulkan_RenderTargets *t = r_vulkan_state->first_to_free_render_targets; t != 0;)
   {
@@ -5243,6 +5242,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           else
           {
             scissor.offset = (VkOffset2D){(U32)group_params->clip.p0.x, (U32)group_params->clip.p0.y};
+            scissor.offset.x = Max(scissor.offset.x, 0);
+            scissor.offset.y = Max(scissor.offset.y, 0);
             Vec2F32 clip_dim = dim_2f32(group_params->clip);
             scissor.extent = (VkExtent2D){(U32)clip_dim.x, (U32)clip_dim.y};
             Assert(!(clip_dim.x == 0 && clip_dim.y == 0));

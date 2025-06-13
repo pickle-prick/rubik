@@ -30,6 +30,7 @@ gcc_out="-o"
 # --- Per-Build Settings ------------------------------------------------------
 link_dll="-fPIC"
 link_os_gfx="-lvulkan -lX11 -lXext -lXxf86vm -lXrandr -lXi -lXcursor -lXfixes"
+link_os_audio="-lasound"
 
 # --- Choose Compile/Link Lines -----------------------------------------------
 if [ -v gcc ];     then compile_debug="$gcc_debug"; fi
@@ -77,7 +78,7 @@ fi
 
 # --- Build Everything (@build_targets) ---------------------------------------
 cd build
-if [ -v rubik ];                 then didbuild=1 && $compile ../src/rubik/rubik_main.c                                     $compile_link $link_os_gfx $out rubik; fi
+if [ -v rubik ];                 then didbuild=1 && $compile ../src/rubik/rubik_main.c                                     $compile_link $link_os_gfx $link_os_audio $out rubik; fi
 cd ..
 
 # --- Warn On No Builds -------------------------------------------------------

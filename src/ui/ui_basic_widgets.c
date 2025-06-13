@@ -212,10 +212,10 @@ internal UI_BOX_CUSTOM_DRAW(ui_line_edit_draw)
 internal UI_Signal
 ui_line_edit(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, U64 *edit_string_size_out, String8 pre_edit_value, String8 string)
 {
-  // Make key
+  // make key
   UI_Key key = ui_key_from_string(ui_active_seed_key(), string);
 
-  // Calculate focus
+  // calculate focus
   B32 is_auto_focus_hot    = ui_is_key_auto_focus_hot(key);
   B32 is_auto_focus_active = ui_is_key_auto_focus_active(key);
   ui_push_focus_hot(is_auto_focus_hot ? UI_FocusKind_On : UI_FocusKind_Null);
@@ -227,7 +227,7 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, 
   B32 is_focus_active_disabled = (!is_focus_active && ui_top_focus_active() == UI_FocusKind_On);
 
   ui_set_next_hover_cursor(is_focus_active ? OS_Cursor_IBar : OS_Cursor_HandPoint);
-  // Build top-level box
+  // build top-level box
   UI_Box *box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|
       UI_BoxFlag_DrawBorder|
       UI_BoxFlag_MouseClickable|
@@ -235,7 +235,7 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, 
       UI_BoxFlag_KeyboardClickable|
       UI_BoxFlag_DrawHotEffects,
       key);
-  // Take navigation actions for editing
+  // take navigation actions for editing
   if(is_focus_active)
   {
     Temp scratch = scratch_begin(0,0);
@@ -244,13 +244,16 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, 
     {
       String8 edit_string = str8(edit_buffer, edit_string_size_out[0]);
 
-      // Don't consume anything that doesn't fit a single-line's operations
-      if((n->v.kind != UI_EventKind_Edit && n->v.kind != UI_EventKind_Navigate && n->v.kind != UI_EventKind_Text) || n->v.delta_2s32.y != 0) { continue; }
+      // don't consume anything that doesn't fit a single-line's operations
+      if((n->v.kind != UI_EventKind_Edit && n->v.kind != UI_EventKind_Navigate && n->v.kind != UI_EventKind_Text) || n->v.delta_2s32.y != 0)
+      {
+        continue;
+      }
 
-      // Map this action to an TxtOp
+      // map this action to an TxtOp
       UI_TxtOp op = ui_single_line_txt_op_from_event(scratch.arena, &n->v, edit_string, *cursor, *mark);
 
-      // Perform replace range
+      // perform replace range
       if(!txt_pt_match(op.range.min, op.range.max) || op.replace.size != 0)
       {
         String8 new_string = ui_push_string_replace_range(scratch.arena, edit_string, r1s64(op.range.min.column, op.range.max.column), op.replace);
@@ -259,17 +262,17 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, 
         edit_string_size_out[0] = new_string.size;
       }
 
-      // Commit op's changed cursor & mark to caller-provided state
+      // commit op's changed cursor & mark to caller-provided state
       *cursor = op.cursor;
       *mark = op.mark;
 
-      // Consume event
+      // consume event
       ui_eat_event(events, n);
     }
     scratch_end(scratch);
   }
 
-  // Build contents
+  // build contents
   TxtPt mouse_pt = {0};
   UI_Parent(box)
   {
@@ -301,7 +304,7 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, 
     }
   }
 
-  // Interact
+  // interact
   UI_Signal sig = ui_signal_from_box(box);
 
   if(!is_focus_active && sig.f&(UI_SignalFlag_DoubleClicked|UI_SignalFlag_KeyboardPressed))
@@ -761,7 +764,7 @@ ui_scroll_list_end(void)
     UI_Signal sig = ui_signal_from_box(scrollable_container_box);
     if(sig.scroll.y != 0)
     {
-      S64 new_idx = ui_scroll_list_scroll_pt_ptr->idx - sig.scroll.y;
+      S64 new_idx = ui_scroll_list_scroll_pt_ptr->idx + sig.scroll.y;
       new_idx = clamp_1s64(ui_scroll_list_scroll_idx_rng, new_idx);
       ui_scroll_pt_target_idx(ui_scroll_list_scroll_pt_ptr, new_idx);
     }

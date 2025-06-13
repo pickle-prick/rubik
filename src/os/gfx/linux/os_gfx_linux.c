@@ -43,16 +43,46 @@ os_gfx_init(void)
   os_lnx_gfx_state = push_array(arena, OS_LNX_GfxState, 1);
   os_lnx_gfx_state->arena = arena;
   os_lnx_gfx_state->display = XOpenDisplay(0);
-
+  
   //- rjf: calculate atoms
   os_lnx_gfx_state->wm_delete_window_atom        = XInternAtom(os_lnx_gfx_state->display, "WM_DELETE_WINDOW", 0);
   os_lnx_gfx_state->wm_sync_request_atom         = XInternAtom(os_lnx_gfx_state->display, "_NET_WM_SYNC_REQUEST", 0);
   os_lnx_gfx_state->wm_sync_request_counter_atom = XInternAtom(os_lnx_gfx_state->display, "_NET_WM_SYNC_REQUEST_COUNTER", 0);
-
+  
+  //- rjf: open im
+  os_lnx_gfx_state->xim = XOpenIM(os_lnx_gfx_state->display, 0, 0, 0);
+  
   //- rjf: fill out gfx info
-  os_lnx_gfx_state->gfx_info.double_click_time = 0.2f;
+  os_lnx_gfx_state->gfx_info.double_click_time = 0.5f;
   os_lnx_gfx_state->gfx_info.caret_blink_time = 0.5f;
   os_lnx_gfx_state->gfx_info.default_refresh_rate = 60.f;
+  
+  //- rjf: fill out cursors
+  {
+    struct
+    {
+      OS_Cursor cursor;
+      unsigned int id;
+    }
+    map[] =
+    {
+      {OS_Cursor_Pointer,         XC_left_ptr},
+      {OS_Cursor_IBar,            XC_xterm},
+      {OS_Cursor_LeftRight,       XC_sb_h_double_arrow},
+      {OS_Cursor_UpDown,          XC_sb_v_double_arrow},
+      {OS_Cursor_DownRight,       XC_bottom_right_corner},
+      {OS_Cursor_DownLeft,        XC_bottom_left_corner},
+      {OS_Cursor_UpRight,         XC_top_right_corner},
+      {OS_Cursor_UpLeft,          XC_top_left_corner},
+      {OS_Cursor_UpDownLeftRight, XC_fleur},
+      {OS_Cursor_HandPoint,       XC_hand1},
+      {OS_Cursor_Disabled,        XC_X_cursor},
+    };
+    for EachElement(idx, map)
+    {
+      os_lnx_gfx_state->cursors[map[idx].cursor] = XCreateFontCursor(os_lnx_gfx_state->display, map[idx].id);
+    }
+  }
 }
 
 ////////////////////////////////
@@ -84,8 +114,10 @@ os_get_clipboard_text(Arena *arena)
 //~ rjf: @os_hooks Windows (Implemented Per-OS)
 
 internal OS_Handle
-os_window_open(Vec2F32 resolution, OS_WindowFlags flags, String8 title)
+os_window_open(Rng2F32 rect, OS_WindowFlags flags, String8 title)
 {
+  Vec2F32 resolution = dim_2f32(rect);
+
   //- rjf: allocate window
   OS_LNX_Window *w = os_lnx_gfx_state->free_window;
   if(w)
@@ -101,25 +133,22 @@ os_window_open(Vec2F32 resolution, OS_WindowFlags flags, String8 title)
 
   //- rjf: create window & equip with x11 info
   w->window = XCreateWindow(os_lnx_gfx_state->display,
-                            XDefaultRootWindow(os_lnx_gfx_state->display),
-                            0, 0, resolution.x, resolution.y,
-                            0,
-                            CopyFromParent,
-                            InputOutput,
-                            CopyFromParent,
-                            0,
-                            0);
+      XDefaultRootWindow(os_lnx_gfx_state->display),
+      0, 0, resolution.x, resolution.y,
+      0,
+      CopyFromParent,
+      InputOutput,
+      CopyFromParent,
+      0,
+      0);
   XSelectInput(os_lnx_gfx_state->display, w->window,
-               ExposureMask|
-               PointerMotionMask|
-               ButtonPressMask|
-               ButtonReleaseMask|
-               KeyPressMask|
-               KeyReleaseMask|
-               // NOTE(k): for detecting ConfigureNotify (window resizing)
-               StructureNotifyMask|
-               // NOTE(k): for detecting window focus in/out
-               FocusChangeMask);
+      ExposureMask|
+      PointerMotionMask|
+      ButtonPressMask|
+      ButtonReleaseMask|
+      KeyPressMask|
+      KeyReleaseMask|
+      FocusChangeMask);
   Atom protocols[] =
   {
     os_lnx_gfx_state->wm_delete_window_atom,
@@ -132,6 +161,13 @@ os_window_open(Vec2F32 resolution, OS_WindowFlags flags, String8 title)
     w->counter_xid = XSyncCreateCounter(os_lnx_gfx_state->display, initial_value);
   }
   XChangeProperty(os_lnx_gfx_state->display, w->window, os_lnx_gfx_state->wm_sync_request_counter_atom, XA_CARDINAL, 32, PropModeReplace, (U8 *)&w->counter_xid, 1);
+
+  //- rjf: create xic
+  w->xic = XCreateIC(os_lnx_gfx_state->xim,
+      XNInputStyle, XIMPreeditNothing|XIMStatusNothing,
+      XNClientWindow, w->window,
+      XNFocusWindow, w->window,
+      NULL);
 
   //- rjf: attach name
   Temp scratch = scratch_begin(0, 0);
@@ -148,6 +184,19 @@ internal void
 os_window_close(OS_Handle handle)
 {
   if(os_handle_match(handle, os_handle_zero())) {return;}
+  OS_LNX_Window *w = (OS_LNX_Window *)handle.u64[0];
+  XDestroyWindow(os_lnx_gfx_state->display, w->window);
+}
+
+internal void
+os_window_set_title(OS_Handle handle, String8 title)
+{
+  if(os_handle_match(handle, os_handle_zero())) {return;}
+  Temp scratch = scratch_begin(0, 0);
+  OS_LNX_Window *w = (OS_LNX_Window *)handle.u64[0];
+  String8 title_copy = push_str8_copy(scratch.arena, title);
+  XStoreName(os_lnx_gfx_state->display, w->window, (char *)title_copy.str);
+  scratch_end(scratch);
 }
 
 internal void
@@ -249,41 +298,22 @@ os_window_push_custom_title_bar_client_area(OS_Handle handle, Rng2F32 rect)
 internal Rng2F32
 os_rect_from_window(OS_Handle handle)
 {
-  return r2f32p(0, 0, 0, 0);
+  if(os_handle_match(handle, os_handle_zero())) {return r2f32p(0, 0, 0, 0);}
+  OS_LNX_Window *w = (OS_LNX_Window *)handle.u64[0];
+  XWindowAttributes atts = {0};
+  Status s = XGetWindowAttributes(os_lnx_gfx_state->display, w->window, &atts);
+  Rng2F32 result = r2f32p((F32)atts.x, (F32)atts.y, (F32)atts.x + (F32)atts.width, (F32)atts.y + (F32)atts.height);
+  return result;
 }
 
 internal Rng2F32
 os_client_rect_from_window(OS_Handle handle, B32 forced)
 {
-  Rng2F32 rect = {0};
   OS_LNX_Window *w = (OS_LNX_Window *)handle.u64[0];
-
-  // NOTE(k): cached value is updated by events, in some cased, we need get rect first before any events processing
-  if(forced)
-  {
-    // NOTE(k): this is a slow operation
-    if(!os_handle_match(handle, os_handle_zero()))
-    {
-      Window root;
-      int x_return,y_return;
-      unsigned int width_return,height_return,border_width_return,depth_return;
-      XGetGeometry(os_lnx_gfx_state->display, w->window,
-                   &root, &x_return,&y_return, &width_return,&height_return,
-                   &border_width_return, &depth_return);
-      rect.p0.x = 0;
-      rect.p0.y = 0;
-      rect.p1.x = width_return;
-      rect.p1.y = height_return;
-    }
-  }
-  else
-  {
-    rect.p0.x = 0;
-    rect.p0.y = 0;
-    rect.p1.x = w->client_dim.x;
-    rect.p1.y = w->client_dim.y;
-  }
-  return rect;
+  XWindowAttributes atts = {0};
+  Status s = XGetWindowAttributes(os_lnx_gfx_state->display, w->window, &atts);
+  Rng2F32 result = r2f32p(0, 0, (F32)atts.width, (F32)atts.height);
+  return result;
 }
 
 internal F32
@@ -399,84 +429,15 @@ os_send_wakeup_event(void)
   
 }
 
-internal OS_Key
-os_lnx_os_key_from_keysym(U32 keysym) {
-  OS_Key key = OS_Key_Null;
-  switch(keysym)
-  {
-    default:
-    {
-      if(0){}
-      else if(XK_F1 <= keysym && keysym <= XK_F24) { key = (OS_Key)(OS_Key_F1 + (keysym - XK_F1)); }
-      else if('0' <= keysym && keysym <= '9')      { key = OS_Key_0 + (keysym-'0'); }
-    }break;
-    case XK_Escape: {key = OS_Key_Esc;};break;
-    case XK_Return: {key = OS_Key_Return;}break;
-    case XK_BackSpace: {key = OS_Key_Backspace;};break;
-    case XK_Left: {key = OS_Key_Left;}break;
-    case XK_Right: {key = OS_Key_Right;}break;
-    case XK_Up: {key = OS_Key_Up;}break;
-    case XK_Down: {key = OS_Key_Down;}break;
-    case '-':{key = OS_Key_Minus;}break;
-    case '=':{key = OS_Key_Equal;}break;
-    case '[':{key = OS_Key_LeftBracket;}break;
-    case ']':{key = OS_Key_RightBracket;}break;
-    case ';':{key = OS_Key_Semicolon;}break;
-    case '\'':{key = OS_Key_Quote;}break;
-    case '.':{key = OS_Key_Period;}break;
-    case ',':{key = OS_Key_Comma;}break;
-    case '/':{key = OS_Key_Slash;}break;
-    case '\\':{key = OS_Key_BackSlash;}break;
-    case '\t':{key = OS_Key_Tab;}break;
-    case 'a':case 'A':{key = OS_Key_A;}break;
-    case 'b':case 'B':{key = OS_Key_B;}break;
-    case 'c':case 'C':{key = OS_Key_C;}break;
-    case 'd':case 'D':{key = OS_Key_D;}break;
-    case 'e':case 'E':{key = OS_Key_E;}break;
-    case 'f':case 'F':{key = OS_Key_F;}break;
-    case 'g':case 'G':{key = OS_Key_G;}break;
-    case 'h':case 'H':{key = OS_Key_H;}break;
-    case 'i':case 'I':{key = OS_Key_I;}break;
-    case 'j':case 'J':{key = OS_Key_J;}break;
-    case 'k':case 'K':{key = OS_Key_K;}break;
-    case 'l':case 'L':{key = OS_Key_L;}break;
-    case 'm':case 'M':{key = OS_Key_M;}break;
-    case 'n':case 'N':{key = OS_Key_N;}break;
-    case 'o':case 'O':{key = OS_Key_O;}break;
-    case 'p':case 'P':{key = OS_Key_P;}break;
-    case 'q':case 'Q':{key = OS_Key_Q;}break;
-    case 'r':case 'R':{key = OS_Key_R;}break;
-    case 's':case 'S':{key = OS_Key_S;}break;
-    case 't':case 'T':{key = OS_Key_T;}break;
-    case 'u':case 'U':{key = OS_Key_U;}break;
-    case 'v':case 'V':{key = OS_Key_V;}break;
-    case 'w':case 'W':{key = OS_Key_W;}break;
-    case 'x':case 'X':{key = OS_Key_X;}break;
-    case 'y':case 'Y':{key = OS_Key_Y;}break;
-    case 'z':case 'Z':{key = OS_Key_Z;}break;
-    case ' ':{key = OS_Key_Space;}break;
-  }
-  return key;
-}
-
 internal OS_EventList
 os_get_events(Arena *arena, B32 wait)
 {
   OS_EventList evts = {0};
-
   for(;XPending(os_lnx_gfx_state->display) > 0 || (wait && evts.count == 0);)
   {
     XEvent evt = {0};
     XNextEvent(os_lnx_gfx_state->display, &evt);
-
-    // Update cursor
-    if(os_lnx_gfx_state->cursor != os_lnx_gfx_state->next_cursor)
-    {
-      os_lnx_gfx_state->cursor = os_lnx_gfx_state->next_cursor;
-      OS_LNX_Window *window = os_lnx_window_from_x11window(evt.xclient.window);
-      XDefineCursor(os_lnx_gfx_state->display, evt.xclient.window, os_lnx_gfx_state->cursor);
-    }
-
+    B32 set_mouse_cursor = 0;
     switch(evt.type)
     {
       default:{}break;
@@ -489,23 +450,112 @@ os_get_events(Arena *arena, B32 wait)
         if(evt.xkey.state & ShiftMask)   { modifiers |= OS_Modifier_Shift; }
         if(evt.xkey.state & ControlMask) { modifiers |= OS_Modifier_Ctrl; }
         if(evt.xkey.state & Mod1Mask)    { modifiers |= OS_Modifier_Alt; }
-
-        // rjf: map keycode -> keysym
-        U32 keysym = XLookupKeysym(&evt.xkey, 0);
-
+        
+        // rjf: map keycode -> keysym & codepoint
+        OS_LNX_Window *window = os_lnx_window_from_x11window(evt.xkey.window);
+        KeySym keysym = 0;
+        U8 text[256] = {0};
+        U64 text_size = Xutf8LookupString(window->xic, &evt.xkey, (char *)text, sizeof(text), &keysym, 0);
+        
         // rjf: map keysym -> OS_Key
-        OS_Key key = os_lnx_os_key_from_keysym(keysym);
-
-        // rjf: push event
-        OS_LNX_Window *window = os_lnx_window_from_x11window(evt.xclient.window);
-        OS_Event *e = os_event_list_push_new(arena, &evts, evt.type == KeyPress ? OS_EventKind_Press : OS_EventKind_Release);
-        e->window.u64[0] = (U64)window;
-        e->modifiers     = modifiers;
-        e->key           = key;
-
-        if(keysym >= 32 && keysym < 127 && e->kind == OS_EventKind_Press && !(e->modifiers & OS_Modifier_Ctrl)) {
-          e->kind      = OS_EventKind_Text;
-          e->character = os_codepoint_from_modifiers_and_key(e->modifiers, e->key);
+        B32 is_right_sided = 0;
+        OS_Key key = OS_Key_Null;
+        switch(keysym)
+        {
+          default:
+          {
+            if(0){}
+            else if(XK_F1 <= keysym && keysym <= XK_F24) { key = (OS_Key)(OS_Key_F1 + (keysym - XK_F1)); }
+            else if('0' <= keysym && keysym <= '9')      { key = OS_Key_0 + (keysym-'0'); }
+          }break;
+          case XK_Escape:{key = OS_Key_Esc;};break;
+          case XK_BackSpace:{key = OS_Key_Backspace;}break;
+          case XK_Delete:{key = OS_Key_Delete;}break;
+          case XK_Return:{key = OS_Key_Return;}break;
+          case XK_Pause:{key = OS_Key_Pause;}break;
+          case XK_Tab:{key = OS_Key_Tab;}break;
+          case XK_Left:{key = OS_Key_Left;}break;
+          case XK_Right:{key = OS_Key_Right;}break;
+          case XK_Up:{key = OS_Key_Up;}break;
+          case XK_Down:{key = OS_Key_Down;}break;
+          case XK_Home:{key = OS_Key_Home;}break;
+          case XK_End:{key = OS_Key_End;}break;
+          case XK_Page_Up:{key = OS_Key_PageUp;}break;
+          case XK_Page_Down:{key = OS_Key_PageDown;}break;
+          case XK_Alt_L:{ key = OS_Key_Alt; }break;
+          case XK_Alt_R:{ key = OS_Key_Alt; is_right_sided = 1;}break;
+          case XK_Shift_L:{ key = OS_Key_Shift; }break;
+          case XK_Shift_R:{ key = OS_Key_Shift; is_right_sided = 1;}break;
+          case XK_Control_L:{ key = OS_Key_Ctrl; }break;
+          case XK_Control_R:{ key = OS_Key_Ctrl; is_right_sided = 1;}break;
+          case '-':{key = OS_Key_Minus;}break;
+          case '=':{key = OS_Key_Equal;}break;
+          case '[':{key = OS_Key_LeftBracket;}break;
+          case ']':{key = OS_Key_RightBracket;}break;
+          case ';':{key = OS_Key_Semicolon;}break;
+          case '\'':{key = OS_Key_Quote;}break;
+          case '.':{key = OS_Key_Period;}break;
+          case ',':{key = OS_Key_Comma;}break;
+          case '/':{key = OS_Key_Slash;}break;
+          case '\\':{key = OS_Key_BackSlash;}break;
+          case '\t':{key = OS_Key_Tab;}break;
+          case '`':{key = OS_Key_Tick;}break;
+          case 'a':case 'A':{key = OS_Key_A;}break;
+          case 'b':case 'B':{key = OS_Key_B;}break;
+          case 'c':case 'C':{key = OS_Key_C;}break;
+          case 'd':case 'D':{key = OS_Key_D;}break;
+          case 'e':case 'E':{key = OS_Key_E;}break;
+          case 'f':case 'F':{key = OS_Key_F;}break;
+          case 'g':case 'G':{key = OS_Key_G;}break;
+          case 'h':case 'H':{key = OS_Key_H;}break;
+          case 'i':case 'I':{key = OS_Key_I;}break;
+          case 'j':case 'J':{key = OS_Key_J;}break;
+          case 'k':case 'K':{key = OS_Key_K;}break;
+          case 'l':case 'L':{key = OS_Key_L;}break;
+          case 'm':case 'M':{key = OS_Key_M;}break;
+          case 'n':case 'N':{key = OS_Key_N;}break;
+          case 'o':case 'O':{key = OS_Key_O;}break;
+          case 'p':case 'P':{key = OS_Key_P;}break;
+          case 'q':case 'Q':{key = OS_Key_Q;}break;
+          case 'r':case 'R':{key = OS_Key_R;}break;
+          case 's':case 'S':{key = OS_Key_S;}break;
+          case 't':case 'T':{key = OS_Key_T;}break;
+          case 'u':case 'U':{key = OS_Key_U;}break;
+          case 'v':case 'V':{key = OS_Key_V;}break;
+          case 'w':case 'W':{key = OS_Key_W;}break;
+          case 'x':case 'X':{key = OS_Key_X;}break;
+          case 'y':case 'Y':{key = OS_Key_Y;}break;
+          case 'z':case 'Z':{key = OS_Key_Z;}break;
+          case ' ':{key = OS_Key_Space;}break;
+        }
+        
+        // rjf: push text event
+        if(evt.type == KeyPress && text_size != 0)
+        {
+          for(U64 off = 0; off < text_size;)
+          {
+            UnicodeDecode decode = utf8_decode(text+off, text_size-off);
+            if(decode.codepoint != 0 && (decode.codepoint >= 32 || decode.codepoint == '\t'))
+            {
+              OS_Event *e = os_event_list_push_new(arena, &evts, OS_EventKind_Text);
+              e->window.u64[0] = (U64)window;
+              e->character = decode.codepoint;
+            }
+            if(decode.inc == 0)
+            {
+              break;
+            }
+            off += decode.inc;
+          }
+        }
+        
+        // rjf: push key event
+        {
+          OS_Event *e = os_event_list_push_new(arena, &evts, evt.type == KeyPress ? OS_EventKind_Press : OS_EventKind_Release);
+          e->window.u64[0] = (U64)window;
+          e->modifiers = modifiers;
+          e->key = key;
+          e->right_sided = is_right_sided;
         }
       }break;
       //- rjf: mouse button presses/releases
@@ -514,33 +564,39 @@ os_get_events(Arena *arena, B32 wait)
       {
         // rjf: determine flags
         OS_Modifiers modifiers = 0;
-        if(evt.xkey.state & ShiftMask)   { modifiers |= OS_Modifier_Shift; }
-        if(evt.xkey.state & ControlMask) { modifiers |= OS_Modifier_Ctrl; }
-        if(evt.xkey.state & Mod1Mask)    { modifiers |= OS_Modifier_Alt; }
-
+        if(evt.xbutton.state & ShiftMask)   { modifiers |= OS_Modifier_Shift; }
+        if(evt.xbutton.state & ControlMask) { modifiers |= OS_Modifier_Ctrl; }
+        if(evt.xbutton.state & Mod1Mask)    { modifiers |= OS_Modifier_Alt; }
+        
         // rjf: map button -> OS_Key
         OS_Key key = OS_Key_Null;
-        Vec2F32 delta = {0};
-        OS_EventKind kind = evt.type == ButtonPress ? OS_EventKind_Press : OS_EventKind_Release;
         switch(evt.xbutton.button)
         {
           default:{}break;
           case Button1:{key = OS_Key_LeftMouseButton;}break;
           case Button2:{key = OS_Key_MiddleMouseButton;}break;
           case Button3:{key = OS_Key_RightMouseButton;}break;
-          case Button4:{delta.y = +30.0f; kind = OS_EventKind_Scroll;}break;
-          case Button5:{delta.y = -30.0f; kind = OS_EventKind_Scroll;}break;
         }
-
+        
         // rjf: push event
-        OS_LNX_Window *window = os_lnx_window_from_x11window(evt.xclient.window);
-        OS_Event *e = os_event_list_push_new(arena, &evts, kind);
-        e->window.u64[0] = (U64)window;
-        e->modifiers = modifiers;
-        e->key = key;
-        e->delta = delta;
-        e->pos.x = (F32)evt.xmotion.x;
-        e->pos.y = (F32)evt.xmotion.y;
+        OS_LNX_Window *window = os_lnx_window_from_x11window(evt.xbutton.window);
+        if(key != OS_Key_Null)
+        {
+          OS_Event *e = os_event_list_push_new(arena, &evts, evt.type == ButtonPress ? OS_EventKind_Press : OS_EventKind_Release);
+          e->window.u64[0] = (U64)window;
+          e->modifiers = modifiers;
+          e->key = key;
+          e->pos = v2f32((F32)evt.xbutton.x, (F32)evt.xbutton.y);
+        }
+        else if(evt.xbutton.button == Button4 ||
+                evt.xbutton.button == Button5)
+        {
+          OS_Event *e = os_event_list_push_new(arena, &evts, OS_EventKind_Scroll);
+          e->window.u64[0] = (U64)window;
+          e->modifiers = modifiers;
+          e->delta = v2f32(0, evt.xbutton.button == Button4 ? -1.f : +1.f);
+          e->pos = v2f32((F32)evt.xbutton.x, (F32)evt.xbutton.y);
+        }
       }break;
 
       //- rjf: mouse motion
@@ -551,6 +607,7 @@ os_get_events(Arena *arena, B32 wait)
         e->window.u64[0] = (U64)window;
         e->pos.x = (F32)evt.xmotion.x;
         e->pos.y = (F32)evt.xmotion.y;
+        set_mouse_cursor = 1;
       }break;
 
       //- rjf: window focus/unfocus
@@ -592,6 +649,21 @@ os_get_events(Arena *arena, B32 wait)
           }
         }
       }break;
+    }
+    if(set_mouse_cursor)
+    {
+      Window root_window = 0;
+      Window child_window = 0;
+      int root_rel_x = 0;
+      int root_rel_y = 0;
+      int child_rel_x = 0;
+      int child_rel_y = 0;
+      unsigned int mask = 0;
+      if(XQueryPointer(os_lnx_gfx_state->display, XDefaultRootWindow(os_lnx_gfx_state->display), &root_window, &child_window, &root_rel_x, &root_rel_y, &child_rel_x, &child_rel_y, &mask))
+      {
+        XDefineCursor(os_lnx_gfx_state->display, child_window, os_lnx_gfx_state->cursors[os_lnx_gfx_state->last_set_cursor]);
+        XFlush(os_lnx_gfx_state->display);
+      }
     }
   }
   return evts;
@@ -683,26 +755,7 @@ os_mouse_from_window(OS_Handle handle)
 internal void
 os_set_cursor(OS_Cursor cursor)
 {
-  String8 cursor_name = {0};
-  Cursor c;
-  // = XcursorLibraryLoadCursor(dpy, "sb_v_double_arrow");
-  switch(cursor)
-  {
-    case OS_Cursor_Pointer:         {cursor_name = str8_lit("arrow");}break;
-    case OS_Cursor_IBar:            {cursor_name = str8_lit("xterm");}break;
-    case OS_Cursor_LeftRight:       {cursor_name = str8_lit("sb_h_double_arrow");}break;
-    case OS_Cursor_UpDown:          {cursor_name = str8_lit("sb_v_double_arrow");}break;
-    case OS_Cursor_DownRight:       {cursor_name = str8_lit("bottom_right_corner");}break;
-    case OS_Cursor_DownLeft:        {cursor_name = str8_lit("bottom_left_corner");}break;
-    case OS_Cursor_UpRight:         {cursor_name = str8_lit("top_right_corner");}break;
-    case OS_Cursor_UpLeft:          {cursor_name = str8_lit("top_left_corner");}break;
-    case OS_Cursor_UpDownLeftRight: {cursor_name = str8_lit("move");}break;
-    case OS_Cursor_HandPoint:       {cursor_name = str8_lit("hand2");}break;
-    default:                        {cursor_name = str8_lit("arrow");}break;
-  }
-
-  c = XcursorLibraryLoadCursor(os_lnx_gfx_state->display, (char *)cursor_name.str);
-  os_lnx_gfx_state->next_cursor = c;
+  os_lnx_gfx_state->last_set_cursor = cursor;
 }
 
 internal void 

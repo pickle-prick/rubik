@@ -1,17 +1,16 @@
 /////////////////////////////////////////////////////////////////////////////////////////
 // Basic Type/Enum
 
-// TODO(BUG): the window resizing seem to effect the delta_secs somehow
-
 typedef U64 S5_EntityFlags;
-#define S5_EntityFlag_Boid (S5_EntityFlags)(1ull<<0)
+#define S5_EntityFlag_Boid     (S5_EntityFlags)(1ull<<0)
+#define S5_EntityFlag_Resource (S5_EntityFlags)(1ull<<1)
 
-// typedef enum S5_ResourceKind
-// {
-//   S5_ResourceKind_AirBag,
-//   S5_ResourceKind_Battery,
-//   S5_ResourceKind_COUNT,
-// } S5_ResourceKind;
+typedef enum S5_ResourceKind
+{
+  S5_ResourceKind_AirBag,
+  S5_ResourceKind_Battery,
+  S5_ResourceKind_COUNT,
+} S5_ResourceKind;
 
 typedef struct S5_Camera S5_Camera;
 struct S5_Camera
@@ -29,29 +28,26 @@ struct S5_Scene
   // per-frame build artifacts
   Vec2F32 world_mouse;
   QuadTree *root_quad;
+};
 
-  // editor view
-  struct
+typedef struct S5_Resource S5_Resource;
+struct S5_Resource
+{
+  S5_ResourceKind kind;
+  union
   {
-    Rng2F32 rect;
-    B32 show;
+    struct
+    {
+      F32 oxygen;
+    } airbag;
 
-    // txt input buffer
-    TxtPt txt_cursor;
-    TxtPt txt_mark;
-    B32 txt_has_draft;
-    U8 *txt_edit_buffer;
-    U8 txt_edit_buffer_size;
-    U64 txt_edit_string_size;
-  } debug_ui;
+    struct
+    {
+      F32 kwh;
+    } battery;
 
-  struct
-  {
-    F32 w_target;
-    F32 w_separation;
-    F32 w_alignment;
-    F32 w_cohesion;
-  } debug;
+    F32 v[1];
+  } value;
 };
 
 typedef struct S5_Submarine S5_Submarine;
@@ -68,6 +64,12 @@ struct S5_Submarine
   B32 is_scanning;
   F32 scan_radius;
   F32 scan_t;
+
+  // health?
+
+  // resource
+  F32 oxygen;
+  F32 power_kwh;
 };
 
 typedef struct S5_Flock S5_Flock;
@@ -136,9 +138,11 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_camera)
     camera->viewport_world_target.p0 = sub_2f32(camera->viewport_world.p0, v);
     camera->viewport_world_target.p1 = sub_2f32(camera->viewport_world.p1, v);
   }
+
+  // zoom
   if(rk_state->sig.scroll.x != 0 || rk_state->sig.scroll.y != 0)
   {
-    F32 d = 1 - 0.03*rk_state->sig.scroll.y;
+    F32 d = 1 + 0.03*rk_state->sig.scroll.y;
     Vec2F32 dim = dim_2f32(camera->viewport_world_target);
     dim.x *= d;
     dim.y *= d;
@@ -189,8 +193,6 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_camera)
 
 RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
 {
-  printf("dt_secs: %f\n", ctx->dt_sec);
-
   S5_Scene *s = scene->custom_data;
   RK_NodeBucket *node_bucket = scene->node_bucket;
   s->world_mouse = s5_world_position_from_mouse(rk_state->cursor, rk_state->window_dim, ctx->proj_view_inv_m);
@@ -240,11 +242,12 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
     //   U64 count = 0;
     //   for(U64 i = 0; i < darray_size(nodes); i++)
     //   {
-    //     if(nodes[i]->custom_flags & S5_EntityFlag_Boid)
+    //     if(nodes[i]->custom_flags & S5_EntityFlag_Resource)
     //     {
     //       count++;
     //     }
     //   }
+    //   printf("resource count in range: %lu\n", count);
     // }
     // scratch_end(scratch);
   }
@@ -257,93 +260,31 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_game_ui)
   RK_Node *submarine_node = rk_node_from_handle(&s->submarine);
   S5_Submarine *submarine = submarine_node->custom_data;
 
-  // DEBUG UI
-  D_BucketScope(rk_state->bucket_rect)
-    RK_UI_Pane(&s->debug_ui.rect, &s->debug_ui.show, str8_lit("Debug"))
-  {
-      UI_Row
-      {
-        ui_labelf("flock w_target");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_f32_edit(&s->debug.w_target, -100, 100,
-                    &s->debug_ui.txt_cursor, &s->debug_ui.txt_mark,
-                    s->debug_ui.txt_edit_buffer, s->debug_ui.txt_edit_buffer_size,
-                    &s->debug_ui.txt_edit_string_size, &s->debug_ui.txt_has_draft,
-                    str8_lit("w_target###w_target"));
-      }
-
-      ui_spacer(ui_em(0.3,0));
-
-      UI_Row
-      {
-        ui_labelf("flock w_separation");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_f32_edit(&s->debug.w_separation, -100, 100,
-                    &s->debug_ui.txt_cursor, &s->debug_ui.txt_mark,
-                    s->debug_ui.txt_edit_buffer, s->debug_ui.txt_edit_buffer_size,
-                    &s->debug_ui.txt_edit_string_size, &s->debug_ui.txt_has_draft,
-                    str8_lit("w_separation###w_separation"));
-      }
-
-      ui_spacer(ui_em(0.3,0));
-
-      UI_Row
-      {
-        ui_labelf("flock w_alignment");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_f32_edit(&s->debug.w_alignment, -100, 100,
-                    &s->debug_ui.txt_cursor, &s->debug_ui.txt_mark,
-                    s->debug_ui.txt_edit_buffer, s->debug_ui.txt_edit_buffer_size,
-                    &s->debug_ui.txt_edit_string_size, &s->debug_ui.txt_has_draft,
-                    str8_lit("w_alignment###w_alignment"));
-      }
-
-      ui_spacer(ui_em(0.3,0));
-
-      UI_Row
-      {
-        ui_labelf("flock w_cohesion");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_f32_edit(&s->debug.w_cohesion, -100, 100,
-                    &s->debug_ui.txt_cursor, &s->debug_ui.txt_mark,
-                    s->debug_ui.txt_edit_buffer, s->debug_ui.txt_edit_buffer_size,
-                    &s->debug_ui.txt_edit_string_size, &s->debug_ui.txt_has_draft,
-                    str8_lit("w_cohesion###w_cohesion"));
-      }
-  }
-
   D_BucketScope(rk_state->bucket_rect)
   {
-    UI_Box *container;
-    UI_Rect(rk_state->window_rect) UI_ChildLayoutAxis(Axis2_Y)
+    UI_Box *container = 0;
+    UI_Rect(rk_state->window_rect)
+      // UI_Flags(UI_BoxFlag_DrawBackground)
     {
-      container = ui_build_box_from_stringf(0, "game_ui");
+      container = ui_build_box_from_stringf(0, "###game_overlay");
     }
 
-    UI_Parent(container) UI_PrefWidth(ui_pct(1.0,0.0))
+    UI_Parent(container)
     {
-      ui_spacer(ui_px(9.0, 0.0));
-      UI_Row
+      UI_Column
       {
-        ui_spacer(ui_pct(1.0,0.));
-        ui_set_next_pref_width(ui_text_dim(3, 1.0));
         ui_labelf("density: %f", submarine->density);
-      }
-      UI_Row
-      {
-        ui_spacer(ui_pct(1.0,0.));
-        ui_set_next_pref_width(ui_text_dim(3, 1.0));
-        ui_labelf("v: %f %f", submarine->v.x, submarine->v.y);
+        ui_labelf("scan_t: %f", submarine->scan_t);
+        ui_labelf("oxygen: %f", submarine->oxygen);
+        ui_labelf("power_kwh: %f", submarine->power_kwh);
       }
     }
-
-    // TODO(XXX)
-    // sea level indicator
   }
 }
 
 RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
 {
+  Temp scratch = scratch_begin(0,0);
   S5_Scene *s = scene->custom_data;
   S5_Submarine *submarine = node->custom_data;
   RK_Transform2D *transform = &node->node2d->transform;
@@ -365,30 +306,56 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
   // thrust
   if(os_key_is_down(OS_Key_Up))
   {
-    F.y = -10000000;
+    F32 remain_kwh = submarine->power_kwh;
+    remain_kwh -= 10*rk_state->frame_dt;
+    if(remain_kwh >= 0)
+    {
+      submarine->power_kwh = remain_kwh;
+      F.y = -10000000;
+    }
   }
   if(os_key_is_down(OS_Key_Left))
   {
-    F.x = -10000000;
+    F32 remain_kwh = submarine->power_kwh;
+    remain_kwh -= 10*rk_state->frame_dt;
+    if(remain_kwh >= 0)
+    {
+      submarine->power_kwh = remain_kwh;
+      F.x = -10000000;
+    }
   }
   if(os_key_is_down(OS_Key_Right))
   {
-    F.x = 10000000;
+    F32 remain_kwh = submarine->power_kwh;
+    remain_kwh -= 10*rk_state->frame_dt;
+    if(remain_kwh >= 0)
+    {
+      submarine->power_kwh = remain_kwh;
+      F.x = 10000000;
+    }
   }
   if(os_key_is_down(OS_Key_Down))
   {
-    F.y = 10000000;
+    F32 remain_kwh = submarine->power_kwh;
+    remain_kwh -= 10*rk_state->frame_dt;
+    if(remain_kwh >= 0)
+    {
+      submarine->power_kwh = remain_kwh;
+      F.y = 10000000;
+    }
   }
+
+  // TODO: consume kwh
 
   // TODO(XXX): we should move these physics update into fixed_update
   F32 density = submarine->density;
   if(os_key_is_down(OS_Key_W))
   {
-    density -= 300*ctx->dt_sec;
+    density -= 300*rk_state->frame_dt;
   }
   if(os_key_is_down(OS_Key_S))
   {
-    density += 300*ctx->dt_sec;
+    density += 300*rk_state->frame_dt;
   }
   density = Clamp(submarine->min_density, density, submarine->max_density);
 
@@ -398,11 +365,11 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
   F.x += -drag*v.x;
   F.y += -drag*v.y;
   Vec2F32 acc = {F.x/mass, F.y/mass};
-  v.x += acc.x * ctx->dt_sec;
-  v.y += acc.y * ctx->dt_sec;
+  v.x += acc.x * rk_state->frame_dt;
+  v.y += acc.y * rk_state->frame_dt;
   Vec2F32 pos = transform->position;
-  pos.x += v.x * ctx->dt_sec;
-  pos.y += v.y * ctx->dt_sec;
+  pos.x += v.x * rk_state->frame_dt;
+  pos.y += v.y * rk_state->frame_dt;
 
   submarine->v = v;
   transform->position = pos;
@@ -416,7 +383,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
     {
       if(os_evt == 0) continue;
       // TODO(XXX): it's weird here that we can't use OS_EventKind_Pressed
-      if(os_evt->key == OS_Key_Space && os_evt->kind == OS_EventKind_Text)
+      if(os_evt->key == OS_Key_Space && os_evt->kind == OS_EventKind_Press)
       {
         submarine->is_scanning = 1;
       }
@@ -425,7 +392,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
 
   if(submarine->is_scanning)
   {
-    submarine->scan_t += 1 * ctx->dt_sec;
+    submarine->scan_t += 1 * rk_state->frame_dt;
     if(submarine->scan_t > 1.0)
     {
       submarine->scan_t = 0.0;
@@ -471,23 +438,55 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
     n->node2d->transform.position = position;
     n->node2d->z_index = 1;
   }
+
+  // check collision with resource
+  {
+    // TODO: add some helper function to make this easier
+    Vec2F32 position = node->node2d->transform.position;
+    Rng2F32 src_rect = rk_rect_from_sprite2d(node->sprite2d, position);
+    // src_rect = pad_2f32(src_rect, 0.1);
+
+    RK_Node **nodes_in_range = 0;
+    quadtree_query(scratch.arena, s->root_quad, src_rect, (void***)&nodes_in_range);
+    RK_Node **resource_nodes_in_range = 0;
+    for(U64 i = 0; i < darray_size(nodes_in_range); i++)
+    {
+      RK_Node *n = nodes_in_range[i];
+      if(n->custom_flags & S5_EntityFlag_Resource)
+      {
+        darray_push(scratch.arena, resource_nodes_in_range, n);
+      }
+    }
+
+    for(U64 i = 0; i < darray_size(resource_nodes_in_range); i++)
+    {
+      RK_Node *resource_node = resource_nodes_in_range[i];
+      S5_Resource *resource = resource_node->custom_data;
+
+      switch(resource->kind)
+      {
+        case S5_ResourceKind_AirBag:
+        {
+          submarine->oxygen += resource->value.airbag.oxygen;
+        }break;
+        case S5_ResourceKind_Battery:
+        {
+          submarine->power_kwh += resource->value.battery.kwh;
+        }break;
+        default:{InvalidPath;}break;
+      }
+
+      rk_node_release(resource_node);
+    }
+  }
+  scratch_end(scratch);
 }
 
 RK_NODE_CUSTOM_UPDATE(s5_fn_flock)
 {
-  // ProfBeginFunction();
   Temp scratch = scratch_begin(0,0);
   S5_Scene *s = scene->custom_data;
   S5_Flock *flock = node->custom_data;
-
-  // copy global flock parameters in debug mode 
-  if(BUILD_DEBUG)
-  {
-    flock->w_target = s->debug.w_target;
-    flock->w_separation = s->debug.w_separation;
-    flock->w_alignment = s->debug.w_alignment;
-    flock->w_cohesion = s->debug.w_cohesion;
-  }
 
   RK_Node **boids = 0;
   for(RK_Node *child = node->first; child != 0; child = child->next)
@@ -536,10 +535,10 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_flock)
     {
       // TODO(XXX): we should make the direction turning slower
 
-      // F32 dist_self_to_target = length_2f32(sub_2f32(position, submarine_center));
-      // Vec2F32 dir_self_to_target = normalize_2f32(sub_2f32(submarine_center, position)); */ to submarine */
-      Vec2F32 dir_self_to_target = normalize_2f32(sub_2f32(s->world_mouse, position));
-      F32 dist_self_to_target = length_2f32(sub_2f32(s->world_mouse, position)); /* to mouse */
+      F32 dist_self_to_target = length_2f32(sub_2f32(position, submarine_center));
+      Vec2F32 dir_self_to_target = normalize_2f32(sub_2f32(submarine_center, position));
+      // Vec2F32 dir_self_to_target = normalize_2f32(sub_2f32(s->world_mouse, position));
+      // F32 dist_self_to_target = length_2f32(sub_2f32(s->world_mouse, position)); /* to mouse */
 
       F32 angle_rad = ((rand()/(F32)RAND_MAX) * (1.0/2) - (1.0/4));
       F32 cos_a = cos_f32(angle_rad);
@@ -659,17 +658,15 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_flock)
     }
 
     // F32 scale = 1.0 * (rand()/(F32)RAND_MAX) * (1);
-    Vec2F32 vel = scale_2f32(acc, ctx->dt_sec*boid->motivation);
+    Vec2F32 vel = scale_2f32(acc, rk_state->frame_dt*boid->motivation);
     boid->acc = acc;
     boid->target_vel = vel;
   }
   scratch_end(scratch);
-  // ProfEnd();
 }
 
 RK_NODE_CUSTOM_UPDATE(s5_fn_boid)
 {
-  // ProfBeginFunction();
   S5_Scene *s = scene->custom_data;
   S5_Boid *fish = node->custom_data;
   RK_Sprite2D *sprite2d = node->sprite2d;
@@ -685,18 +682,6 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_boid)
 
   B32 is_visiable = dist_to_submarine < submarine->viewport_radius;
 
-  // smooth velocity
-  // animating
-  // TODO(XXX): compute this once at the beginning of the frame
-  // F32 vast_rate = 1 - pow_f32(2, (-60.f * ui_state->animation_dt));
-  // F32 fast_rate = 1 - pow_f32(2, (-50.f * ui_state->animation_dt));
-  // F32 fish_rate = 1 - pow_f32(2, (-40.f * ui_state->animation_dt));
-  // F32 slow_rate = 1 - pow_f32(2, (-30.f * ui_state->animation_dt));
-  // F32 slug_rate = 1 - pow_f32(2, (-15.f * ui_state->animation_dt));
-  // F32 slaf_rate = 1 - pow_f32(2, (-8.f * ui_state->animation_dt));
-  // fish->vel.x += vast_rate * (fish->target_vel.x-fish->vel.x);
-  // fish->vel.y += vast_rate * (fish->target_vel.y-fish->vel.y);
-
   fish->vel = mix_2f32(fish->target_vel, fish->vel, 0.7);
   // fish->vel = fish->target_vel;
 
@@ -707,7 +692,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_boid)
   // F32 speed = Clamp(0, vel_mag, 900);
   // fish->vel = scale_2f32(vel_normalized, speed);
 
-  Vec2F32 d_position = scale_2f32(fish->vel, ctx->dt_sec);
+  Vec2F32 d_position = scale_2f32(fish->vel, rk_state->frame_dt);
   position = add_2f32(position, d_position);
   node->node2d->transform.position = position;
 
@@ -727,8 +712,6 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_boid)
     sprite2d->color.w = 1;
     sprite2d->draw_edge = 1;
   }
-  // ProfEnd();
-  return;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -747,7 +730,7 @@ rk_scene_entry__5()
   rk_push_res_bucket(ret->res_bucket);
   rk_push_handle_seed(ret->handle_seed);
 
-  /////////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////
   // scene settings
 
   ret->omit_grid = 1;
@@ -756,21 +739,6 @@ rk_scene_entry__5()
 
   // scene data
   S5_Scene *scene = rk_scene_push_custom_data(ret, S5_Scene);
-  {
-    scene->debug_ui.rect = r2f32p(rk_state->window_rect.x1/2.0,
-                                  rk_state->window_rect.y1/2.0,
-                                  rk_state->window_rect.x1/2.0 + 900,
-                                  rk_state->window_rect.y1/2.0 + 600);
-
-    scene->debug_ui.show                 = 1;
-    scene->debug_ui.txt_cursor           = (TxtPt){0};
-    scene->debug_ui.txt_mark             = (TxtPt){0};
-    scene->debug_ui.txt_has_draft        = 0;
-    U64 edit_buffer_size = 100;
-    scene->debug_ui.txt_edit_buffer_size = edit_buffer_size;
-    scene->debug_ui.txt_edit_buffer      = push_array(ret->arena, U8, edit_buffer_size);
-    scene->debug_ui.txt_edit_string_size = 0;
-  }
 
   // 2d viewport
   // Rng2F32 viewport_screen = {0,0,600,600};
@@ -835,7 +803,7 @@ rk_scene_entry__5()
     // submarine
     RK_Node *submarine_node = 0;
     {
-      RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D, 0, "submarine");
+      RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Collider2D|RK_NodeTypeFlag_Sprite2D, 0, "submarine");
       node->node2d->transform.position = v2f32(900., -150.);
       node->sprite2d->anchor = RK_Sprite2DAnchorKind_TopLeft;
       node->sprite2d->size.rect = v2f32(900,300);
@@ -852,12 +820,10 @@ rk_scene_entry__5()
       submarine->density = S5_SEA_FLUID_DENSITY/2.0;
       submarine->min_density = S5_SEA_FLUID_DENSITY/2.0;
       submarine->max_density = S5_SEA_FLUID_DENSITY;
+      submarine->oxygen = 100.0;
+      submarine->power_kwh = 100.0;
     }
     scene->submarine = rk_handle_from_node(submarine_node);
-    scene->debug.w_target = 50000;
-    scene->debug.w_separation = 60000;
-    scene->debug.w_alignment = 2000;
-    scene->debug.w_cohesion = 15000;
 
     // flock and boids
     for(U64 j = 0; j < 1; j++)
@@ -878,7 +844,7 @@ rk_scene_entry__5()
         U32 spwan_dim_y = dim_1u32(spwan_range_y);
 
         // spawn boids
-        for(U64 i = 0; i < 230; i++)
+        for(U64 i = 0; i < 360; i++)
         {
           F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
           F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;
@@ -892,12 +858,51 @@ rk_scene_entry__5()
           node->sprite2d->draw_edge = 1;
           node->custom_flags |= S5_EntityFlag_Boid;
           rk_node_push_fn(node, s5_fn_boid);
-          submarine_node = node;
           S5_Boid *boid = rk_node_push_custom_data(node, S5_Boid);
           boid->min_depth = y - 30;
           boid->max_depth = y + 30;
           boid->motivation = 1.0;
         }
+      }
+    }
+
+    // spawn some resources
+    {
+      Rng1U32 spwan_range_x = {0, 3000};
+      Rng1U32 spwan_range_y = {0, 3000};
+      U32 spwan_dim_x = dim_1u32(spwan_range_x);
+      U32 spwan_dim_y = dim_1u32(spwan_range_y);
+      for(U64 i = 0; i < 30; i++)
+      {
+        F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
+        F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;
+
+        RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Collider2D|RK_NodeTypeFlag_Sprite2D, 0, "resource_%I64u", i);
+        node->node2d->transform.position = v2f32(x, y);
+        node->sprite2d->anchor = RK_Sprite2DAnchorKind_TopLeft;
+        node->sprite2d->shape = RK_Sprite2DShapeKind_Rect;
+        node->sprite2d->size.rect = v2f32(100,100);
+        node->sprite2d->color = v4f32(0.3,0.1,0.1,1.);
+        node->sprite2d->omit_texture = 1;
+        node->sprite2d->draw_edge = 1;
+        node->custom_flags = S5_EntityFlag_Resource;
+        S5_Resource *resource = rk_node_push_custom_data(node, S5_Resource);
+
+        S5_ResourceKind resource_kind = (U64)(rand()%S5_ResourceKind_COUNT);
+        switch(resource_kind)
+        {
+          case S5_ResourceKind_AirBag:
+          {
+            resource->value.airbag.oxygen = 30.0;
+            node->sprite2d->color = v4f32(0.1,0.3,0.1,1.);
+          }break;
+          case S5_ResourceKind_Battery:
+          {
+            resource->value.battery.kwh = 30.0;
+          }break;
+          default:{InvalidPath;}break;
+        }
+        resource->kind = resource_kind;
       }
     }
   }

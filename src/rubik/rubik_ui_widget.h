@@ -11,7 +11,7 @@ internal UI_Signal rk_icon_buttonf(RK_IconKind kind, char *fmt, ...);
 //~ k: Floating/Fixed Panes
 
 // floating pane
-internal UI_Box*   rk_ui_pane_begin(Rng2F32 *rect, B32 *open, String8 string);
+internal UI_Box*   rk_ui_pane_begin(Rng2F32 *rect, B32 *open, B32 *collapsed, String8 string);
 internal UI_Signal rk_ui_pane_end(void);
 internal UI_Box*   rk_ui_dropdown_begin(String8 string);
 internal UI_Signal rk_ui_dropdown_end(void);

@@ -62,7 +62,7 @@ rk_ui_draw()
       d_push_transparency(box->transparency);
     }
 
-    //- k: draw drop_shadw
+    // draw drop_shadw
     if(box->flags & UI_BoxFlag_DrawDropShadow)
     {
       Rng2F32 drop_shadow_rect = shift_2f32(pad_2f32(box->rect, 8), v2f32(4, 4));
@@ -70,10 +70,10 @@ rk_ui_draw()
       d_rect(drop_shadow_rect, drop_shadow_color, 0.8f, 0, 8.f);
     }
 
-    //- k: draw background
+    // draw background
     if(box->flags & UI_BoxFlag_DrawBackground)
     {
-      // Main rectangle
+      // main rectangle
       R_Rect2DInst *inst = d_rect(pad_2f32(box->rect, 1), box->palette->colors[UI_ColorCode_Background], 0, 0, 1.f);
       MemoryCopyArray(inst->corner_radii, box->corner_radii);
 
@@ -86,7 +86,7 @@ rk_ui_draw()
         }
         F32 t = box->hot_t * (1-effective_active_t);
 
-        // Brighten
+        // brighten
         {
           R_Rect2DInst *inst = d_rect(box->rect, v4f32(0, 0, 0, 0), 0, 0, 1.f);
           Vec4F32 color = rk_rgba_from_theme_color(RK_ThemeColor_Hover);
@@ -112,7 +112,7 @@ rk_ui_draw()
           MemoryCopyArray(inst->corner_radii, box->corner_radii);
         }
 
-        // Active effect extension
+        // active effect extension
         if(box->flags & UI_BoxFlag_DrawActiveEffects)
         {
           Vec4F32 shadow_color = rk_rgba_from_theme_color(RK_ThemeColor_Hover);
@@ -166,13 +166,13 @@ rk_ui_draw()
       }
     }
 
-    // Draw string
+    // draw string
     if(box->flags & UI_BoxFlag_DrawText)
     {
       // TODO: handle font color
       Vec2F32 text_position = ui_box_text_position(box);
 
-      // Max width
+      // max width
       F32 max_x = 100000.0f;
       F_Run ellipses_run = {0};
 
@@ -185,14 +185,14 @@ rk_ui_draw()
       d_truncated_fancy_run_list(text_position, &box->display_string_runs, max_x, ellipses_run);
     }
 
-    // Draw image
+    // draw image
     if(box->flags & UI_BoxFlag_DrawImage)
     {
       d_img(box->rect, box->src, box->albedo_tex, v4f32(1,1,1,1), 0., 0., 0.);
     }
 
     // NOTE(k): draw focus viz
-    if(1)
+    if(0)
     {
       B32 focused = (box->flags & (UI_BoxFlag_FocusHot|UI_BoxFlag_FocusActive) &&
           box->flags & UI_BoxFlag_Clickable);
@@ -698,7 +698,7 @@ rk_res_from_handle(RK_Handle *handle)
 // State accessor/mutator
 
 internal void
-rk_init(OS_Handle os_wnd)
+rk_init(OS_Handle os_wnd, R_Handle r_wnd)
 {
   Arena *arena = arena_alloc();
   rk_state = push_array(arena, RK_State, 1);
@@ -712,11 +712,11 @@ rk_init(OS_Handle os_wnd)
     rk_state->res_node_bucket = rk_node_bucket_make(arena, 4096-1);
     rk_state->res_bucket      = rk_res_bucket_make(arena, 4096-1);
     rk_state->os_wnd          = os_wnd;
+    rk_state->r_wnd           = r_wnd;
     rk_state->dpi             = os_dpi_from_window(os_wnd);
     rk_state->last_dpi        = rk_state->last_dpi;
     rk_state->window_rect     = os_client_rect_from_window(os_wnd, 1);
     rk_state->window_dim      = dim_2f32(rk_state->window_rect);
-    rk_state->begin_us        = os_now_microseconds();
 
     for(U64 i = 0; i < ArrayCount(rk_state->drawlists); i++)
     {
@@ -812,6 +812,11 @@ rk_init(OS_Handle os_wnd)
     view->arena = arena_alloc();
   }
 
+  if(BUILD_DEBUG)
+  {
+    rk_state->views_enabled[RK_ViewKind_Stats] = 1;
+  }
+
   rk_state->function_registry_size = 1000;
   rk_state->function_registry = push_array(arena, RK_FunctionSlot, rk_state->function_registry_size);
 
@@ -822,13 +827,13 @@ rk_init(OS_Handle os_wnd)
 internal Arena *
 rk_frame_arena()
 {
-  return rk_state->frame_arenas[rk_state->frame_counter % ArrayCount(rk_state->frame_arenas)];
+  return rk_state->frame_arenas[rk_state->frame_index % ArrayCount(rk_state->frame_arenas)];
 }
 
 internal RK_DrawList *
 rk_frame_drawlist()
 {
-  return rk_state->drawlists[rk_state->frame_counter % ArrayCount(rk_state->drawlists)];
+  return rk_state->drawlists[rk_state->frame_index % ArrayCount(rk_state->drawlists)];
 }
 
 internal void
@@ -1531,12 +1536,9 @@ rk_font_size_from_slot(RK_FontSlot slot)
 internal void rk_ui_stats(void)
 {
   RK_Scene *scene = rk_top_scene();
+
   typedef struct RK_Stats_State RK_Stats_State;
-  struct RK_Stats_State
-  {
-    B32 show;
-    Rng2F32 rect;
-  };
+  struct RK_Stats_State { };
 
   RK_View *view = rk_view_from_kind(RK_ViewKind_Stats);
   RK_Stats_State *stats = view->custom_data;
@@ -1545,57 +1547,69 @@ internal void rk_ui_stats(void)
   {
     stats = push_array(view->arena, RK_Stats_State, 1);
     view->custom_data = stats;
-
-    stats->show = 1;
-    stats->rect = rk_state->window_rect;
-    {
-      F32 default_width = rk_state->window_dim.x * 0.3f;
-      F32 default_height = rk_state->window_dim.x * 0.15f;
-      F32 default_margin = ui_top_font_size()*1.3;
-      stats->rect.x0 = stats->rect.x1 - default_width;
-      stats->rect.y1 = stats->rect.y0 + default_height;
-      stats->rect = pad_2f32(stats->rect, -default_margin);
-    }
   }
 
   // collect ui box cache count
-  U64 ui_cache_count = 0;
-  for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
+  // U64 ui_cache_count = 0;
+  // for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
+  // {
+  //   for(UI_Box *box = ui_state->box_table[slot_idx].hash_first; !ui_box_is_nil(box); box = box->hash_next)
+  //   {
+  //     AssertAlways(!ui_key_match(box->key, ui_key_zero()));
+  //     ui_cache_count++;
+  //   }
+  // }
+
+  B32 enabled = rk_state->views_enabled[RK_ViewKind_Stats];
+  if(!enabled) return;
+
+  UI_Box *container = 0;
+  UI_Rect(rk_state->window_rect)
+    UI_ChildLayoutAxis(Axis2_X)
   {
-    for(UI_Box *box = ui_state->box_table[slot_idx].hash_first; !ui_box_is_nil(box); box = box->hash_next)
-    {
-      AssertAlways(!ui_key_match(box->key, ui_key_zero()));
-      ui_cache_count++;
-    }
+    container = ui_build_box_from_stringf(0, "###stats_container");
   }
 
-  UI_Transparency(0.1) RK_UI_Pane(&stats->rect, &stats->show, str8_lit("STATS###stats"))
-    UI_TextAlignment(UI_TextAlign_Left)
-    UI_TextPadding(9)
+  UI_Parent(container)
+  {
+    ui_spacer(ui_pct(1.0, 0.0));
+
+    // stats, push to the right side of screen  
+    UI_Box *stats_container;
+    UI_ChildLayoutAxis(Axis2_Y)
+      UI_PrefWidth(ui_px(800, 1.0))
+      UI_PrefHeight(ui_children_sum(0.0))
+      UI_Flags(UI_BoxFlag_DrawBorder)
     {
+      stats_container = ui_build_box_from_stringf(0, "###stats_body");
+    }
+
+    UI_Parent(stats_container)
+      UI_TextAlignment(UI_TextAlign_Left)
+      UI_TextPadding(9)
+      UI_Transparency(0.1)
+    {
+      // collect some values
+      U64 last_frame_index = rk_state->frame_index > 0 ? rk_state->frame_index-1 : 0;
+      U64 last_frame_us = rk_state->frame_time_us_history[last_frame_index%ArrayCount(rk_state->frame_time_us_history)];
+
       UI_Row
       {
-        ui_labelf("frame time ms");
+        ui_labelf("frame");
         ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%.3f", (rk_state->debug.frame_dt_us/1000.0));
+        ui_labelf("%.3fms", (F32)last_frame_us/1000.0);
       }
       UI_Row
       {
-        ui_labelf("cpu time ms");
+        ui_labelf("cpu time");
         ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%.3f", (rk_state->debug.cpu_dt_us/1000.0));
-      }
-      UI_Row
-      {
-        ui_labelf("gpu time ms");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%.3f", (rk_state->debug.gpu_dt_us/1000.0));
+        ui_labelf("%.3fms", (F32)rk_state->cpu_time_us/1000.0);
       }
       UI_Row
       {
         ui_labelf("fps");
         ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%.2f", 1 / (rk_state->debug.frame_dt_us/1000000.0));
+        ui_labelf("%.2f", 1.0 / (last_frame_us/1000000.0));
       }
       UI_Row
       {
@@ -1617,16 +1631,22 @@ internal void rk_ui_stats(void)
       }
       UI_Row
       {
+        ui_labelf("hot_pixel_key");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%I64u", rk_state->hot_pixel_key);
+      }
+      UI_Row
+      {
         ui_labelf("ui_last_build_box_count");
         ui_spacer(ui_pct(1.0, 0.0));
         ui_labelf("%lu", ui_state->last_build_box_count);
       }
-      UI_Row
-      {
-        ui_labelf("ui_cache_count");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%lu", ui_cache_count);
-      }
+      // UI_Row
+      // {
+      //   ui_labelf("ui_cache_count");
+      //   ui_spacer(ui_pct(1.0, 0.0));
+      //   ui_labelf("%lu", ui_cache_count);
+      // }
       UI_Row
       {
         ui_labelf("ui_build_box_count");
@@ -1658,16 +1678,15 @@ internal void rk_ui_stats(void)
         ui_labelf("%lu", scene->node_bucket->node_count);
       }
     }
+  }
 }
 
 internal void rk_ui_inspector(void)
 {
-  ProfBeginFunction();
   RK_Scene *scene = rk_top_scene();
 
   // unpack active camera
   RK_Node *camera_node = rk_node_from_handle(&scene->active_camera);
-  AssertAlways(camera_node != 0 && "No active camera was found");
   RK_Camera3D *camera = camera_node->camera3d;
   RK_Transform3D *camera_transform = &camera_node->node3d->transform;
   Mat4x4F32 camera_xform = camera_node->fixed_xform;
@@ -1678,7 +1697,8 @@ internal void rk_ui_inspector(void)
   typedef struct RK_Inspector_State RK_Inspector_State;
   struct RK_Inspector_State
   {
-    B32 show;
+    B32 collapsed;
+
     B32 show_scene_cfg;
     B32 show_tree;
     B32 show_camera_cfg;
@@ -1689,79 +1709,82 @@ internal void rk_ui_inspector(void)
     Rng2F32 rect;
 
     String8 scene_path_to_save;
-    U64 scene_path_to_save_buffer_size;
+    U8 scene_path_to_save_buffer[256];
     S64 last_active_row; // -1 is used to indicate no selection
 
     // txt input buffer
     TxtPt txt_cursor;
     TxtPt txt_mark;
+
     B32 txt_has_draft;
-    U8 *txt_edit_buffer;
-    U8 txt_edit_buffer_size;
+    U8 txt_edit_buffer[300];
     U64 txt_edit_string_size;
   };
 
-  RK_View *inspector_view = rk_view_from_kind(RK_ViewKind_SceneInspector);
-  RK_Inspector_State *inspector = inspector_view->custom_data;
-  if(inspector == 0)
+  RK_View *view = rk_view_from_kind(RK_ViewKind_SceneInspector);
+
+  // init view data
+  RK_Inspector_State *state = view->custom_data;
+  if(state == 0)
   {
-    inspector = push_array(inspector_view->arena, RK_Inspector_State, 1);
-    inspector_view->custom_data = inspector;
+    state = push_array(view->arena, RK_Inspector_State, 1);
+    view->custom_data = state;
 
-    inspector->show            = 1;
-    inspector->show_scene_cfg  = 1;
-    inspector->show_tree       = 1;
-    inspector->show_camera_cfg = 1;
-    inspector->show_gizmo_cfg  = 1;
-    inspector->show_light_cfg  = 1;
-    inspector->show_node_cfg   = 1;
+    state->collapsed       = 0;
+    state->show_scene_cfg  = 1;
+    state->show_tree       = 1;
+    state->show_camera_cfg = 1;
+    state->show_gizmo_cfg  = 1;
+    state->show_light_cfg  = 1;
+    state->show_node_cfg   = 1;
 
-    inspector->scene_path_to_save_buffer_size = Max(scene->save_path.size*2, 1000);
-    inspector->scene_path_to_save.str = push_array(inspector_view->arena, U8, inspector->scene_path_to_save_buffer_size);
-    inspector->scene_path_to_save.size = scene->save_path.size;
-    MemoryCopy(inspector->scene_path_to_save.str, scene->save_path.str, scene->save_path.size);
-    inspector->last_active_row = -1;
+    state->last_active_row = -1;
 
-    inspector->txt_cursor           = (TxtPt){0};
-    inspector->txt_mark             = (TxtPt){0};
-    inspector->txt_has_draft        = 0;
-    inspector->txt_edit_buffer_size = 100;
-    inspector->txt_edit_buffer      = push_array(inspector_view->arena, U8, inspector->txt_edit_buffer_size);
-    inspector->txt_edit_string_size = 0;
+    state->txt_cursor           = (TxtPt){0};
+    state->txt_mark             = (TxtPt){0};
+    state->txt_has_draft        = 0;
 
-    inspector->rect = rk_state->window_rect;
+    state->rect = rk_state->window_rect;
     {
       F32 default_width  = 800;
       F32 default_margin = 30;
-      inspector->rect.x1 = 800;
-      inspector->rect = pad_2f32(inspector->rect, -default_margin);
+      state->rect.x1 = 800;
+      state->rect = pad_2f32(state->rect, -default_margin);
     }
   }
 
-  // Animation rate
-  F32 fast_rate = 1 - pow_f32(2, (-40.f * rk_state->dt_sec));
+  B32 *open = &rk_state->views_enabled[RK_ViewKind_SceneInspector];
+  if(!(*open)) return;
 
-  // Build top-level panel container
+  // TODO: move rect into screen
+
+  // build top-level panel container
   UI_Box *pane;
   UI_Transparency(0.1)
   {
-    pane = rk_ui_pane_begin(&inspector->rect, &inspector->show, str8_lit("INSPECTOR"));
+    pane = rk_ui_pane_begin(&state->rect, open, &state->collapsed, str8_lit("INSPECTOR"));
   }
 
   ui_spacer(ui_em(0.215, 0.f));
 
-  /////////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////
   // scene
 
-  local_persist B32 o = 1;
-  RK_UI_Tab(str8_lit("scene"), &inspector->show_scene_cfg, ui_em(0.1,0), ui_em(0.1,0))
+  RK_UI_Tab(str8_lit("scene"), &state->show_scene_cfg, ui_em(0.1,0), ui_em(0.1,0))
   {
     // scene path
     UI_Flags(UI_BoxFlag_ClickToFocus)
     {
-      if(ui_committed(ui_line_edit(&inspector->txt_cursor, &inspector->txt_mark, inspector->scene_path_to_save.str, inspector->scene_path_to_save_buffer_size, &inspector->txt_edit_string_size, inspector->scene_path_to_save, str8_lit("###scene_path"))))
+      if(ui_committed(ui_line_edit(&state->txt_cursor,
+                                   &state->txt_mark,
+                                   state->scene_path_to_save.str,
+                                   ArrayCount(state->scene_path_to_save_buffer),
+                                   &state->txt_edit_string_size,
+                                   state->scene_path_to_save, str8_lit("###scene_path"))))
       {
-        inspector->scene_path_to_save.size = inspector->txt_edit_string_size;                        
+        String8 string = str8(state->scene_path_to_save_buffer, state->txt_edit_string_size);
+        state->scene_path_to_save = push_str8_copy_static(string, state->scene_path_to_save_buffer);
+        state->scene_path_to_save.size = state->txt_edit_string_size;                        
       }
     }
 
@@ -1832,17 +1855,17 @@ internal void rk_ui_inspector(void)
     }
   }
 
-  /////////////////////////////////////////////////////////////////////////////////////
-  // Scene tree
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // scene tree
 
-  RK_UI_Tab(str8_lit("tree"), &inspector->show_tree, ui_em(0.1,0), ui_em(0.1,0))
+  RK_UI_Tab(str8_lit("tree"), &state->show_tree, ui_em(0.1,0), ui_em(0.1,0))
   {
     F32 row_height = ui_top_font_size()*1.3;
     // F32 list_height = row_height*30.f;
     F32 list_height = rk_state->window_dim.y*0.3;
     ui_set_next_pref_size(Axis2_Y, ui_px(list_height, 0.0));
     ui_set_next_child_layout_axis(Axis2_Y);
-    if(!inspector->show_scene_cfg)
+    if(!state->show_scene_cfg)
     {
       ui_set_next_flags(UI_BoxFlag_Disabled);
     }
@@ -1862,7 +1885,7 @@ internal void rk_ui_inspector(void)
     UI_ScrollListSignal scroll_list_sig = {0};
     // TODO(k): move these to some kind of view state
     local_persist UI_ScrollPt scroller = {0};
-    scroller.off -= scroller.off * fast_rate;
+    scroller.off -= scroller.off * rk_state->animation.fast_rate;
     if(abs_f32(scroller.off) < 0.01) scroller.off = 0;
     Rng1S64 visible_row_rng = {0};
 
@@ -1897,7 +1920,7 @@ internal void rk_ui_inspector(void)
           if(ui_clicked(label) && !is_active)
           {
             rk_scene_active_node_set(scene, root->key, 0);
-            inspector->last_active_row = row_idx;
+            state->last_active_row = row_idx;
             active_row = row_idx;
           }
         }
@@ -1913,9 +1936,9 @@ internal void rk_ui_inspector(void)
       }
       scratch_end(scratch);
 
-      if(active_row != inspector->last_active_row && active_row >= 0)
+      if(active_row != state->last_active_row && active_row >= 0)
       {
-        inspector->last_active_row = active_row;
+        state->last_active_row = active_row;
         ui_scroll_pt_target_idx(&scroller, active_row);
       }
     }
@@ -1923,460 +1946,460 @@ internal void rk_ui_inspector(void)
 
   ui_spacer(ui_em(0.215, 0.f));
 
-  // Camera settings
-  RK_UI_Tab(str8_lit("camera"), &inspector->show_camera_cfg, ui_em(0.1,0), ui_em(0.6,0))
-  {
-    UI_Row
-    {
-      ui_labelf("shading");
-      ui_spacer(ui_pct(1.0, 0.0));
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // camera settings
 
-      UI_TextAlignment(UI_TextAlign_Center) for(U64 k = 0; k < RK_ViewportShadingKind_COUNT; k++)
-      {
-        if(camera->viewport_shading == k)
-        {
-          ui_set_next_palette(ui_build_palette(ui_top_palette(), .background = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
-        }
-        if(ui_clicked(ui_button(rk_viewport_shading_kind_display_string_table[k]))) {camera->viewport_shading = k;}
-      }
-    }
+  // RK_UI_Tab(str8_lit("camera"), &state->show_camera_cfg, ui_em(0.1,0), ui_em(0.6,0))
+  // {
+  //   UI_Row
+  //   {
+  //     ui_labelf("shading");
+  //     ui_spacer(ui_pct(1.0, 0.0));
 
-    ui_spacer(ui_em(0.5, 1.0));
+  //     UI_TextAlignment(UI_TextAlign_Center) for(U64 k = 0; k < RK_ViewportShadingKind_COUNT; k++)
+  //     {
+  //       if(camera->viewport_shading == k)
+  //       {
+  //         ui_set_next_palette(ui_build_palette(ui_top_palette(), .background = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
+  //       }
+  //       if(ui_clicked(ui_button(rk_viewport_shading_kind_display_string_table[k]))) {camera->viewport_shading = k;}
+  //     }
+  //   }
 
-    UI_Row
-    {
-      ui_labelf("viewport");
-      ui_spacer(ui_pct(1.0, 0.0));
-      ui_f32_edit(&camera->viewport.x0, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X0###viewport_x0"));
-      ui_f32_edit(&camera->viewport.x1, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X1###viewport_x1"));
-      ui_f32_edit(&camera->viewport.y0, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y0###viewport_y0"));
-      ui_f32_edit(&camera->viewport.y1, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y1###viewport_y1"));
-    }
-  }
+  //   ui_spacer(ui_em(0.5, 1.0));
 
-  ui_spacer(ui_em(0.2f, 0.f));
+  //   UI_Row
+  //   {
+  //     ui_labelf("viewport");
+  //     ui_spacer(ui_pct(1.0, 0.0));
+  //     ui_f32_edit(&camera->viewport.x0, -100, 100, &state->txt_cursor, &state->txt_mark, state->txt_edit_buffer, state->txt_edit_buffer_size, &state->txt_edit_string_size, &state->txt_has_draft, str8_lit("X0###viewport_x0"));
+  //     ui_f32_edit(&camera->viewport.x1, -100, 100, &state->txt_cursor, &state->txt_mark, state->txt_edit_buffer, state->txt_edit_buffer_size, &state->txt_edit_string_size, &state->txt_has_draft, str8_lit("X1###viewport_x1"));
+  //     ui_f32_edit(&camera->viewport.y0, -100, 100, &state->txt_cursor, &state->txt_mark, state->txt_edit_buffer, state->txt_edit_buffer_size, &state->txt_edit_string_size, &state->txt_has_draft, str8_lit("Y0###viewport_y0"));
+  //     ui_f32_edit(&camera->viewport.y1, -100, 100, &state->txt_cursor, &state->txt_mark, state->txt_edit_buffer, state->txt_edit_buffer_size, &state->txt_edit_string_size, &state->txt_has_draft, str8_lit("Y1###viewport_y1"));
+  //   }
+  // }
 
-  /////////////////////////////////////////////////////////////////////////////////////
-  // Gizmo settings
+  // ui_spacer(ui_em(0.2f, 0.f));
 
-  RK_UI_Tab(str8_lit("camera"), &inspector->show_gizmo_cfg, ui_em(0.1,0), ui_em(0.6,0))
-  {
-    UI_Row
-    {
-      ui_labelf("omit_gizmo");
-      ui_spacer(ui_pct(1.f,0.f));
-      rk_ui_checkbox(&scene->omit_gizmo3d);
-    }
+  // ///////////////////////////////////////////////////////////////////////////////////////
+  // // gizmo settings
 
-    ui_spacer(ui_em(0.2f, 0.f));
+  // RK_UI_Tab(str8_lit("camera"), &inspector->show_gizmo_cfg, ui_em(0.1,0), ui_em(0.6,0))
+  // {
+  //   UI_Row
+  //   {
+  //     ui_labelf("omit_gizmo");
+  //     ui_spacer(ui_pct(1.f,0.f));
+  //     rk_ui_checkbox(&scene->omit_gizmo3d);
+  //   }
 
-    UI_Row
-    {
-      ui_labelf("mode");
-      ui_spacer(ui_pct(1.0, 0.0));
-      UI_TextAlignment(UI_TextAlign_Center) for(U64 k = 0; k < RK_Gizmo3DMode_COUNT; k++)
-      {
-        if(scene->gizmo3d_mode == k)
-        {
-          ui_set_next_palette(ui_build_palette(ui_top_palette(), .background = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
-        }
-        if(ui_clicked(ui_button(rk_gizmo3d_mode_display_string_table[k]))) {scene->gizmo3d_mode = k;}
-      }
-      ui_spacer(ui_em(0.5, 1.0));
-    }
-  }
+  //   ui_spacer(ui_em(0.2f, 0.f));
 
-  ui_spacer(ui_em(0.2f, 0.f));
+  //   UI_Row
+  //   {
+  //     ui_labelf("mode");
+  //     ui_spacer(ui_pct(1.0, 0.0));
+  //     UI_TextAlignment(UI_TextAlign_Center) for(U64 k = 0; k < RK_Gizmo3DMode_COUNT; k++)
+  //     {
+  //       if(scene->gizmo3d_mode == k)
+  //       {
+  //         ui_set_next_palette(ui_build_palette(ui_top_palette(), .background = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)));
+  //       }
+  //       if(ui_clicked(ui_button(rk_gizmo3d_mode_display_string_table[k]))) {scene->gizmo3d_mode = k;}
+  //     }
+  //     ui_spacer(ui_em(0.5, 1.0));
+  //   }
+  // }
 
-  /////////////////////////////////////////////////////////////////////////////////////
-  // Active Node
+  // ui_spacer(ui_em(0.2f, 0.f));
 
-  RK_UI_Tab(str8_lit("node"), &inspector->show_node_cfg, ui_em(0.1,0), ui_em(0.6,0)) if(active_node)
-  {
-    // basic info
-    {
-      ui_set_next_child_layout_axis(Axis2_X);
-      UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
-      UI_Parent(header_box)
-      {
-        ui_spacer(ui_em(0.3f,0.f));
-        ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
-        ui_labelf("basic");
-      }
+  // ///////////////////////////////////////////////////////////////////////////////////////
+  // // active Node
 
-      UI_Row
-      {
-        ui_labelf("name");
-        ui_spacer(ui_pct(1.f,0.f));
-        ui_label(active_node->name);
-      }
+  // RK_UI_Tab(str8_lit("node"), &inspector->show_node_cfg, ui_em(0.1,0), ui_em(0.6,0)) if(active_node)
+  // {
+  //   // basic info
+  //   {
+  //     ui_set_next_child_layout_axis(Axis2_X);
+  //     UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+  //     UI_Parent(header_box)
+  //     {
+  //       ui_spacer(ui_em(0.3f,0.f));
+  //       ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+  //       ui_labelf("basic");
+  //     }
 
-      UI_Row
-      {
-        ui_labelf("key");
-        ui_spacer(ui_pct(1.f,0.f));
-        ui_labelf("%lu", active_node->key);
-      }
+  //     UI_Row
+  //     {
+  //       ui_labelf("name");
+  //       ui_spacer(ui_pct(1.f,0.f));
+  //       ui_label(active_node->name);
+  //     }
 
-      if(active_node->parent) UI_Row
-      {
-        ui_labelf("parent");
-        ui_spacer(ui_pct(1.f,0.f));
-        ui_label(active_node->parent->name);
-      }
+  //     UI_Row
+  //     {
+  //       ui_labelf("key");
+  //       ui_spacer(ui_pct(1.f,0.f));
+  //       ui_labelf("%lu", active_node->key);
+  //     }
 
-      UI_Row
-      {
-        ui_labelf("children_count");
-        ui_spacer(ui_pct(1.f,0.f));
-        ui_labelf("%lu", active_node->children_count);
-      }
-    }
+  //     if(active_node->parent) UI_Row
+  //     {
+  //       ui_labelf("parent");
+  //       ui_spacer(ui_pct(1.f,0.f));
+  //       ui_label(active_node->parent->name);
+  //     }
 
-    ui_spacer(ui_em(0.9, 0.f));
+  //     UI_Row
+  //     {
+  //       ui_labelf("children_count");
+  //       ui_spacer(ui_pct(1.f,0.f));
+  //       ui_labelf("%lu", active_node->children_count);
+  //     }
+  //   }
 
-    ////////////////////////////////
-    //~ equipment info
+  //   ui_spacer(ui_em(0.9, 0.f));
 
-    ////////////////////////////////
-    //- node2d
+  //   /////////////////////////////////////////////////////////////////////////////////////
+  //   // equipment info
 
-    if(active_node->type_flags & RK_NodeTypeFlag_Node2D)
-    {
-      UI_Box *container;
-      UI_ChildLayoutAxis(Axis2_Y) UI_PrefHeight(ui_children_sum(0.f))
-      {
-        container = ui_build_box_from_stringf(0, "node2d_detail");
-      }
+  //   ////////////////////////////////
+  //   // node2d
 
-      UI_Parent(container)
-      {
-        RK_Transform2D *transform2d = &active_node->node2d->transform;
+  //   if(active_node->type_flags & RK_NodeTypeFlag_Node2D)
+  //   {
+  //     UI_Box *container;
+  //     UI_ChildLayoutAxis(Axis2_Y) UI_PrefHeight(ui_children_sum(0.f))
+  //     {
+  //       container = ui_build_box_from_stringf(0, "node2d_detail");
+  //     }
 
-        ui_set_next_child_layout_axis(Axis2_X);
-        UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
-        UI_Parent(header_box)
-        {
-          ui_spacer(ui_em(0.3f,0.f));
-          ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
-          ui_labelf("node2d");
-        }
+  //     UI_Parent(container)
+  //     {
+  //       RK_Transform2D *transform2d = &active_node->node2d->transform;
 
-        UI_Row
-        {
-          ui_labelf("position");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&transform2d->position.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
-          ui_f32_edit(&transform2d->position.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
-        }
+  //       ui_set_next_child_layout_axis(Axis2_X);
+  //       UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+  //       UI_Parent(header_box)
+  //       {
+  //         ui_spacer(ui_em(0.3f,0.f));
+  //         ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+  //         ui_labelf("node2d");
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("scale");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&transform2d->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###scale_x"));
-          ui_f32_edit(&transform2d->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###scale_y"));
-        }
+  //       UI_Row
+  //       {
+  //         ui_labelf("position");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&transform2d->position.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
+  //         ui_f32_edit(&transform2d->position.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("rotation");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&transform2d->rotation, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###rot"));
-        }
-      }
-    }
+  //       UI_Row
+  //       {
+  //         ui_labelf("scale");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&transform2d->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###scale_x"));
+  //         ui_f32_edit(&transform2d->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###scale_y"));
+  //       }
 
-    ////////////////////////////////
-    //- node3d
+  //       UI_Row
+  //       {
+  //         ui_labelf("rotation");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&transform2d->rotation, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###rot"));
+  //       }
+  //     }
+  //   }
 
-    if(active_node->type_flags & RK_NodeTypeFlag_Node3D)
-    {
-      UI_Box *container;
-      UI_ChildLayoutAxis(Axis2_Y) UI_PrefHeight(ui_children_sum(0.f))
-      {
-        container = ui_build_box_from_stringf(0, "node3d_detail");
-      }
+  //   ////////////////////////////////
+  //   // node3d
 
-      UI_Parent(container)
-      {
-        RK_Transform3D *transform3d = &active_node->node3d->transform;
+  //   if(active_node->type_flags & RK_NodeTypeFlag_Node3D)
+  //   {
+  //     UI_Box *container;
+  //     UI_ChildLayoutAxis(Axis2_Y) UI_PrefHeight(ui_children_sum(0.f))
+  //     {
+  //       container = ui_build_box_from_stringf(0, "node3d_detail");
+  //     }
 
-        ui_set_next_child_layout_axis(Axis2_X);
-        UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
-        UI_Parent(header_box)
-        {
-          ui_spacer(ui_em(0.3f,0.f));
-          ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
-          ui_labelf("node3d");
-        }
+  //     UI_Parent(container)
+  //     {
+  //       RK_Transform3D *transform3d = &active_node->node3d->transform;
 
-        UI_Row
-        {
-          ui_labelf("position");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&transform3d->position.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
-          ui_f32_edit(&transform3d->position.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
-          ui_f32_edit(&transform3d->position.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
-        }
+  //       ui_set_next_child_layout_axis(Axis2_X);
+  //       UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+  //       UI_Parent(header_box)
+  //       {
+  //         ui_spacer(ui_em(0.3f,0.f));
+  //         ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+  //         ui_labelf("node3d");
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("scale");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&transform3d->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###scale_x"));
-          ui_f32_edit(&transform3d->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###scale_y"));
-          ui_f32_edit(&transform3d->scale.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###scale_z"));
-        }
+  //       UI_Row
+  //       {
+  //         ui_labelf("position");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&transform3d->position.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
+  //         ui_f32_edit(&transform3d->position.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
+  //         ui_f32_edit(&transform3d->position.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("rotation");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&transform3d->rotation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###rot_x"));
-          ui_f32_edit(&transform3d->rotation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###rot_y"));
-          ui_f32_edit(&transform3d->rotation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###rot_z"));
-          ui_f32_edit(&transform3d->rotation.w, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("W###rot_w"));
-        }
-      }
-    }
+  //       UI_Row
+  //       {
+  //         ui_labelf("scale");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&transform3d->scale.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###scale_x"));
+  //         ui_f32_edit(&transform3d->scale.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###scale_y"));
+  //         ui_f32_edit(&transform3d->scale.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###scale_z"));
+  //       }
 
-    ////////////////////////////////
-    //- directional light
+  //       UI_Row
+  //       {
+  //         ui_labelf("rotation");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&transform3d->rotation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###rot_x"));
+  //         ui_f32_edit(&transform3d->rotation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###rot_y"));
+  //         ui_f32_edit(&transform3d->rotation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###rot_z"));
+  //         ui_f32_edit(&transform3d->rotation.w, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("W###rot_w"));
+  //       }
+  //     }
+  //   }
 
-    if(active_node->type_flags & RK_NodeTypeFlag_DirectionalLight)
-    {
-      UI_Box *container;
-      UI_ChildLayoutAxis(Axis2_Y) UI_PrefHeight(ui_children_sum(0.f))
-      {
-        container = ui_build_box_from_stringf(0, "directionlgith_detail");
-      }
+  //   ////////////////////////////////
+  //   // directional light
 
-      UI_Parent(container)
-      {
-        RK_DirectionalLight *light = active_node->directional_light;
-        ui_set_next_child_layout_axis(Axis2_X);
-        UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
-        UI_Parent(header_box)
-        {
-          ui_spacer(ui_em(0.3f,0.f));
-          ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
-          ui_labelf("directional light");
-        }
+  //   if(active_node->type_flags & RK_NodeTypeFlag_DirectionalLight)
+  //   {
+  //     UI_Box *container;
+  //     UI_ChildLayoutAxis(Axis2_Y) UI_PrefHeight(ui_children_sum(0.f))
+  //     {
+  //       container = ui_build_box_from_stringf(0, "directionlgith_detail");
+  //     }
 
-        UI_Row
-        {
-          ui_labelf("direction");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_x"));
-          ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_y"));
-          ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_z"));
-        }
+  //     UI_Parent(container)
+  //     {
+  //       RK_DirectionalLight *light = active_node->directional_light;
+  //       ui_set_next_child_layout_axis(Axis2_X);
+  //       UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+  //       UI_Parent(header_box)
+  //       {
+  //         ui_spacer(ui_em(0.3f,0.f));
+  //         ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+  //         ui_labelf("directional light");
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("color");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
-          ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
-          ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
-        }
-      }
-    }
+  //       UI_Row
+  //       {
+  //         ui_labelf("direction");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_x"));
+  //         ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_y"));
+  //         ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_z"));
+  //       }
 
-    ////////////////////////////////
-    //- point light
+  //       UI_Row
+  //       {
+  //         ui_labelf("color");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
+  //         ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
+  //         ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
+  //       }
+  //     }
+  //   }
 
-    if(active_node->type_flags & RK_NodeTypeFlag_PointLight)
-    {
-      UI_Box *container;
-      UI_ChildLayoutAxis(Axis2_Y) UI_PrefHeight(ui_children_sum(0.f))
-      {
-        container = ui_build_box_from_stringf(0, "pointlight_detail");
-      }
+  //   ////////////////////////////////
+  //   // point light
 
-      UI_Parent(container)
-      {
-        RK_PointLight *light = active_node->point_light;
-        ui_set_next_child_layout_axis(Axis2_X);
-        UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
-        UI_Parent(header_box)
-        {
-          ui_spacer(ui_em(0.3f,0.f));
-          ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
-          ui_labelf("point light");
-        }
+  //   if(active_node->type_flags & RK_NodeTypeFlag_PointLight)
+  //   {
+  //     UI_Box *container;
+  //     UI_ChildLayoutAxis(Axis2_Y) UI_PrefHeight(ui_children_sum(0.f))
+  //     {
+  //       container = ui_build_box_from_stringf(0, "pointlight_detail");
+  //     }
 
-        UI_Row
-        {
-          ui_labelf("color");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
-          ui_f32_edit(&light->color.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
-          ui_f32_edit(&light->color.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
-        }
+  //     UI_Parent(container)
+  //     {
+  //       RK_PointLight *light = active_node->point_light;
+  //       ui_set_next_child_layout_axis(Axis2_X);
+  //       UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+  //       UI_Parent(header_box)
+  //       {
+  //         ui_spacer(ui_em(0.3f,0.f));
+  //         ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+  //         ui_labelf("point light");
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("attenuation");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&light->attenuation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("C###constant"));
-          ui_f32_edit(&light->attenuation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("L###linear"));
-          ui_f32_edit(&light->attenuation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Q###quadratic"));
-        }
+  //       UI_Row
+  //       {
+  //         ui_labelf("color");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
+  //         ui_f32_edit(&light->color.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
+  //         ui_f32_edit(&light->color.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("range");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&light->range, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("R###range"));
-        }
+  //       UI_Row
+  //       {
+  //         ui_labelf("attenuation");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&light->attenuation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("C###constant"));
+  //         ui_f32_edit(&light->attenuation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("L###linear"));
+  //         ui_f32_edit(&light->attenuation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Q###quadratic"));
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("intensity");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&light->intensity, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("I###intensity"));
-        }
-      }
-    }
+  //       UI_Row
+  //       {
+  //         ui_labelf("range");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&light->range, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("R###range"));
+  //       }
 
-    ////////////////////////////////
-    //- spot light
+  //       UI_Row
+  //       {
+  //         ui_labelf("intensity");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&light->intensity, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("I###intensity"));
+  //       }
+  //     }
+  //   }
 
-    if(active_node->type_flags & RK_NodeTypeFlag_SpotLight)
-    {
-      UI_Box *container;
-      UI_ChildLayoutAxis(Axis2_Y) UI_PrefHeight(ui_children_sum(0.f))
-      {
-        container = ui_build_box_from_stringf(0, "spotlight_detail");
-      }
+  //   ////////////////////////////////
+  //   // spot light
 
-      UI_Parent(container)
-      {
-        RK_SpotLight *light = active_node->spot_light;
-        ui_set_next_child_layout_axis(Axis2_X);
-        UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
-        UI_Parent(header_box)
-        {
-          ui_spacer(ui_em(0.3f,0.f));
-          ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
-          ui_labelf("spot light");
-        }
+  //   if(active_node->type_flags & RK_NodeTypeFlag_SpotLight)
+  //   {
+  //     UI_Box *container;
+  //     UI_ChildLayoutAxis(Axis2_Y) UI_PrefHeight(ui_children_sum(0.f))
+  //     {
+  //       container = ui_build_box_from_stringf(0, "spotlight_detail");
+  //     }
 
-        UI_Row
-        {
-          ui_labelf("color");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
-          ui_f32_edit(&light->color.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
-          ui_f32_edit(&light->color.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
-        }
+  //     UI_Parent(container)
+  //     {
+  //       RK_SpotLight *light = active_node->spot_light;
+  //       ui_set_next_child_layout_axis(Axis2_X);
+  //       UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+  //       UI_Parent(header_box)
+  //       {
+  //         ui_spacer(ui_em(0.3f,0.f));
+  //         ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+  //         ui_labelf("spot light");
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("attenuation");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&light->attenuation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("C###attenuation_constant"));
-          ui_f32_edit(&light->attenuation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("L###attenuation_linear"));
-          ui_f32_edit(&light->attenuation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Q###attenuation_quadratic"));
-        }
+  //       UI_Row
+  //       {
+  //         ui_labelf("color");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&light->color.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_x"));
+  //         ui_f32_edit(&light->color.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_y"));
+  //         ui_f32_edit(&light->color.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###color_z"));
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("direction");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_x"));
-          ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###direction_y"));
-          ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###direction_z"));
-        }
+  //       UI_Row
+  //       {
+  //         ui_labelf("attenuation");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&light->attenuation.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("C###attenuation_constant"));
+  //         ui_f32_edit(&light->attenuation.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("L###attenuation_linear"));
+  //         ui_f32_edit(&light->attenuation.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Q###attenuation_quadratic"));
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("range");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&light->range, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("R###range"));
-        }
+  //       UI_Row
+  //       {
+  //         ui_labelf("direction");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###direction_x"));
+  //         ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###direction_y"));
+  //         ui_f32_edit(&light->direction.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###direction_z"));
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("intensity");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&light->intensity, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("I###intensity"));
-        }
-      }
-    }
+  //       UI_Row
+  //       {
+  //         ui_labelf("range");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&light->range, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("R###range"));
+  //       }
 
-    ////////////////////////////////
-    //- particle 3d
+  //       UI_Row
+  //       {
+  //         ui_labelf("intensity");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&light->intensity, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("I###intensity"));
+  //       }
+  //     }
+  //   }
 
-    if(active_node->type_flags & RK_NodeTypeFlag_Particle3D)
-    {
-      UI_Box *container;
-      UI_ChildLayoutAxis(Axis2_Y) UI_PrefHeight(ui_children_sum(0.f))
-      {
-        container = ui_build_box_from_stringf(0, "particle3d_detail");
-      }
+  //   ////////////////////////////////
+  //   // particle 3d
 
-      UI_Parent(container)
-      {
-        RK_Particle3D *p = active_node->particle3d;
-        ui_set_next_child_layout_axis(Axis2_X);
-        UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
-        UI_Parent(header_box)
-        {
-          ui_spacer(ui_em(0.3f,0.f));
-          ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
-          ui_labelf("particle3d");
-        }
+  //   if(active_node->type_flags & RK_NodeTypeFlag_Particle3D)
+  //   {
+  //     UI_Box *container;
+  //     UI_ChildLayoutAxis(Axis2_Y) UI_PrefHeight(ui_children_sum(0.f))
+  //     {
+  //       container = ui_build_box_from_stringf(0, "particle3d_detail");
+  //     }
 
-        UI_Row
-        {
-          ui_labelf("position");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&p->v.x.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
-          ui_f32_edit(&p->v.x.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
-          ui_f32_edit(&p->v.x.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
-        }
+  //     UI_Parent(container)
+  //     {
+  //       RK_Particle3D *p = active_node->particle3d;
+  //       ui_set_next_child_layout_axis(Axis2_X);
+  //       UI_Box *header_box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+  //       UI_Parent(header_box)
+  //       {
+  //         ui_spacer(ui_em(0.3f,0.f));
+  //         ui_set_next_pref_width(ui_text_dim(3.f, 0.f));
+  //         ui_labelf("particle3d");
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("velocity");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&p->v.v.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###vel_x"));
-          ui_f32_edit(&p->v.v.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###vel_y"));
-          ui_f32_edit(&p->v.v.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###vel_z"));
-        }
+  //       UI_Row
+  //       {
+  //         ui_labelf("position");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&p->v.x.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###pos_x"));
+  //         ui_f32_edit(&p->v.x.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###pos_y"));
+  //         ui_f32_edit(&p->v.x.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###pos_z"));
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("mass");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&p->v.m, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("M###mass"));
-        }
+  //       UI_Row
+  //       {
+  //         ui_labelf("velocity");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&p->v.v.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###vel_x"));
+  //         ui_f32_edit(&p->v.v.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###vel_y"));
+  //         ui_f32_edit(&p->v.v.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###vel_z"));
+  //       }
 
-        UI_Row
-        {
-          ui_labelf("force");
-          ui_spacer(ui_pct(1.0, 0.0));
-          ui_f32_edit(&p->v.f.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###force_x"));
-          ui_f32_edit(&p->v.f.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###force_y"));
-          ui_f32_edit(&p->v.f.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###force_z"));
-        }
-      }
-    }
-  }
+  //       UI_Row
+  //       {
+  //         ui_labelf("mass");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&p->v.m, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("M###mass"));
+  //       }
+
+  //       UI_Row
+  //       {
+  //         ui_labelf("force");
+  //         ui_spacer(ui_pct(1.0, 0.0));
+  //         ui_f32_edit(&p->v.f.x, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("X###force_x"));
+  //         ui_f32_edit(&p->v.f.y, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Y###force_y"));
+  //         ui_f32_edit(&p->v.f.z, -100, 100, &inspector->txt_cursor, &inspector->txt_mark, inspector->txt_edit_buffer, inspector->txt_edit_buffer_size, &inspector->txt_edit_string_size, &inspector->txt_has_draft, str8_lit("Z###force_z"));
+  //       }
+  //     }
+  //   }
+  // }
   rk_ui_pane_end();
-  ProfEnd();
 }
 
 internal void rk_ui_profiler(void)
 {
-  ProfBeginFunction();
   typedef struct RK_Profiler_State RK_Profiler_State;
   struct RK_Profiler_State
   {
-    B32 show;
+    B32 collapsed;
     Rng2F32 rect;
     UI_ScrollPt table_scroller;
   };
@@ -2388,7 +2411,6 @@ internal void rk_ui_profiler(void)
     profiler = push_array(view->arena, RK_Profiler_State, 1);
     view->custom_data = profiler;
 
-    profiler->show = 1;
     profiler->rect = rk_state->window_rect;
     {
       F32 default_width = rk_state->window_dim.x * 0.6f;
@@ -2400,11 +2422,16 @@ internal void rk_ui_profiler(void)
     }
   }
 
+  B32 *open = &rk_state->views_enabled[RK_ViewKind_Profiler];
+  if(!(*open)) return;
+
+  // TODO: handle window resizing
+
   // Top-level pane 
   UI_Box *container_box;
   UI_Transparency(0.1)
   {
-    container_box = rk_ui_pane_begin(&profiler->rect, &profiler->show, str8_lit("PROFILER"));
+    container_box = rk_ui_pane_begin(&profiler->rect, open, &profiler->collapsed, str8_lit("PROFILER"));
   }
 
   ui_spacer(ui_px(ui_top_font_size()*0.215, 0.f));
@@ -2433,7 +2460,7 @@ internal void rk_ui_profiler(void)
   Rng2F32 content_rect = container_box->rect;
   content_rect.y0 = header_box->rect.y1;
 
-  // Content
+  // content
   ProfTickInfo *pf_tick = ProfTickPst();
   U64 prof_node_count = 0;
   if(pf_tick != 0 && pf_tick->node_hash_table != 0)
@@ -2454,12 +2481,8 @@ internal void rk_ui_profiler(void)
     scroll_list_params.cursor_min_is_empty_selection[Axis2_Y] = 0;
   }
 
-  // Animation rate
-  F32 fast_rate = 1 - pow_f32(2, (-40.f * rk_state->dt_sec));
-
-  // Animating scroller pt
-  // TODO(k): we should move this part into RK_View
-  profiler->table_scroller.off -= profiler->table_scroller.off * fast_rate;
+  // animating scroller pt
+  profiler->table_scroller.off -= profiler->table_scroller.off * rk_state->animation.fast_rate;
   if(abs_f32(profiler->table_scroller.off) < 0.01) profiler->table_scroller.off = 0;
 
   UI_ScrollListSignal scroll_list_sig = {0};
@@ -2510,138 +2533,359 @@ internal void rk_ui_profiler(void)
 
   ui_pop_pref_height();
   rk_ui_pane_end();
-  ProfEnd();
 }
 
-/////////////////////////////////
-// Frame
-
-internal D_Bucket *
-rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
+internal void
+rk_ui_terminal(void)
 {
-  ProfBeginFunction();
-
-  RK_Scene *scene = rk_state->active_scene;
-
-  /////////////////////////////////////////////////////////////////////////////////////
-  // Begin of the frame
+  typedef struct RK_Terminal_State RK_Terminal_State;
+  struct RK_Terminal_State
   {
-    // free scenes
+    F32 height;
+    B32 last_open;
+    Arena *history_arena;
+    UI_ScrollPt scroller;
+    String8List history;
+    Rng1S64 visible_row_rng;
+    U64 edit_line_size;
+    U8 edit_line_buffer[300];
+
+    // txt input buffer
+    TxtPt txt_cursor;
+    TxtPt txt_mark;
+  };
+  RK_View *view = rk_view_from_kind(RK_ViewKind_Terminal);
+  RK_Terminal_State *state = view->custom_data;
+  if(state == 0)
+  {
+    state = push_array(view->arena, RK_Terminal_State, 1);
+    // TODO: make it resizable
+    state->height = 500;
+    state->history_arena = arena_alloc();
+
+    view->custom_data = state;
+  }
+
+  B32 *open = &rk_state->views_enabled[RK_ViewKind_Terminal];
+  state->last_open = *open;
+
+  {
+    OS_Event *os_evt_first = rk_state->os_events.first;
+    OS_Event *os_evt_opl = rk_state->os_events.last + 1;
+    for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
     {
-      RK_Scene *s = rk_state->first_to_free_scene;
-      if(s != 0 && (rk_state->frame_counter-s->frame_idx) > MAX_FRAMES_IN_FLIGHT)
+      if(os_evt == 0) continue;
+      B32 taken = 0;
+
+      if(os_evt->key == OS_Key_Tick && os_evt->kind == OS_EventKind_Press && (os_evt->modifiers & OS_Modifier_Ctrl))
       {
-        while(s)
+        *open = !(*open);
+        taken = 1;
+      }
+
+      if(taken) os_eat_event(&rk_state->os_events, os_evt);
+    }
+  }
+
+  // focus input ui box if it was disabled last frame
+  B32 focus = !state->last_open;
+
+  if(*open)
+  {
+    // container
+    UI_Box *container_box;
+    Rng2F32 rect = {0,0, rk_state->window_dim.x, state->height};
+    UI_Rect(rect)
+      UI_Transparency(0.3)
+      UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBackground)
+      UI_ChildLayoutAxis(Axis2_Y)
+    {
+      container_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "terminal");
+    }
+
+    UI_Parent(container_box)
+      UI_PrefWidth(ui_pct(1.0,1.0))
+    {
+      ///////////////////////////////////////////////////////////////////////////////////
+      // history scroll area
+
+      {
+        F32 pref_row_height = ui_top_font_size()*1.3f;
+        F32 scroll_area_height = state->height-ui_top_pref_width().value;
+        U64 visible_row_count = scroll_area_height/pref_row_height;
+        F32 row_height = scroll_area_height/round_f32(visible_row_count);
+
+        UI_ScrollListParams scroll_list_params = {0};
         {
-          RK_Scene *next = s->next;
-          SLLStackPop(rk_state->first_to_free_scene);
-          rk_scene_release(s);
-          s = next;
+          Vec2F32 rect_dim = v2f32(rk_state->window_dim.x, scroll_area_height);
+          scroll_list_params.flags = UI_ScrollListFlag_All;
+          scroll_list_params.row_height_px = row_height;
+          scroll_list_params.dim_px = rect_dim;
+          scroll_list_params.item_range = r1s64(0, state->history.node_count);
+          scroll_list_params.cursor_min_is_empty_selection[Axis2_Y] = 0;
+        }
+
+        state->scroller.off -= state->scroller.off * rk_state->animation.fast_rate;
+        if(abs_f32(state->scroller.off) < 0.01) state->scroller.off = 0;
+
+        UI_ScrollListSignal scroll_list_sig = {0};
+        U64 row_index = 0;
+        UI_ScrollList(&scroll_list_params, &state->scroller, 0, 0, &state->visible_row_rng, &scroll_list_sig)
+        {
+          for(String8Node *line = state->history.first; line != 0; line = line->next)
+          {
+            if(row_index >= state->visible_row_rng.min && row_index <= state->visible_row_rng.max)
+            {
+              UI_Signal sig = ui_button(line->string);
+              UI_Box *b = sig.box;
+            }
+            row_index++;
+          }
+        }
+      }
+
+      ///////////////////////////////////////////////////////////////////////////////////
+      // input area
+
+      UI_Flags(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
+      {
+        UI_Flags(UI_BoxFlag_ClickToFocus)
+        {
+          UI_Signal sig = ui_line_edit(&state->txt_cursor,
+                                           &state->txt_mark,
+                                           state->edit_line_buffer,
+                                           ArrayCount(state->edit_line_buffer),
+                                           &state->edit_line_size,
+                                           str8_lit(""),
+                                           str8_lit("###line_edit"));
+          UI_Box *line_edit_box = sig.box;
+
+          if(focus)
+          {
+            ui_set_auto_focus_active_key(line_edit_box->key);
+            // TODO(BUG): txt_pt postion is wrong for the first character, find out why later 
+          }
+
+          if(ui_committed(sig))
+          {
+            // scroll to bottom
+            U64 scroll_diff = 0;
+            if(state->history.node_count > 0)
+            {
+              U64 last_row_index = state->history.node_count-1;
+              if(last_row_index >= state->visible_row_rng.max)
+              {
+                scroll_diff = last_row_index-state->visible_row_rng.max;
+              }
+            }
+
+            String8 line = push_str8_copy(state->history_arena, str8(state->edit_line_buffer, state->edit_line_size));
+            str8_list_push(state->history_arena, &state->history, line);
+
+            // handle cmd
+            if(str8_match(line, str8_lit("show inspector"), 0))
+            {
+              rk_state->views_enabled[RK_ViewKind_SceneInspector] = !rk_state->views_enabled[RK_ViewKind_SceneInspector];
+            }
+            if(str8_match(line, str8_lit("show profiler"), 0))
+            {
+              rk_state->views_enabled[RK_ViewKind_Profiler] = !rk_state->views_enabled[RK_ViewKind_Profiler];
+            }
+
+            // clear edit_buffer
+            state->edit_line_size = 0;
+
+            if(scroll_diff > 0)
+            {
+              ui_scroll_pt_target_idx(&state->scroller, state->visible_row_rng.min+scroll_diff);
+            }
+          }
         }
       }
     }
+  }
+}
 
-    // free nodes
+internal B32
+rk_frame(void)
+{
+  Temp scratch = scratch_begin(0,0); 
+  RK_Scene *scene = rk_state->active_scene;
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // free scenes & nodes
+
+  {
+    RK_Node *n = scene->node_bucket->first_to_free_node;
+    while(n != 0)
     {
-      RK_Node *n = scene->node_bucket->first_to_free_node;
-      while(n != 0)
-      {
-        RK_Node *next = n->free_next;
-        SLLStackPop_N(scene->node_bucket->first_to_free_node, free_next);
-        rk_node_release(n);
-        n = next;
-      }
-
-      n = rk_state->node_bucket->first_to_free_node;
-      while(n != 0)
-      {
-        RK_Node *next = n->free_next;
-        SLLStackPop_N(rk_state->node_bucket->first_to_free_node, free_next);
-        rk_node_release(n);
-        n = next;
-      }
+      RK_Node *next = n->free_next;
+      SLLStackPop_N(scene->node_bucket->first_to_free_node, free_next);
+      rk_node_release(n);
+      n = next;
     }
 
-    if(rk_state->next_active_scene != 0)
+    n = rk_state->node_bucket->first_to_free_node;
+    while(n != 0)
     {
-      scene = rk_state->next_active_scene;
-      rk_state->active_scene = scene;
-      SLLStackPop(rk_state->next_active_scene);
+      RK_Node *next = n->free_next;
+      SLLStackPop_N(rk_state->node_bucket->first_to_free_node, free_next);
+      rk_node_release(n);
+      n = next;
     }
+  }
 
-    scene->frame_idx = rk_state->frame_counter;
-    rk_push_node_bucket(scene->node_bucket);
-    rk_push_res_bucket(scene->res_bucket);
-    rk_push_scene(scene);
-    rk_push_handle_seed(scene->handle_seed);
-
-    rk_state->os_events          = os_events;
-    rk_state->dt_us              = dt_us;
-    rk_state->dt_sec             = dt_us/1000000.0f;
-    rk_state->dt_ms              = dt_us/1000.0f;
-    rk_state->elapsed_sec        = (os_now_microseconds()-rk_state->begin_us)/1000000.0;
-    rk_state->last_window_rect   = rk_state->window_rect;
-    rk_state->last_window_dim    = dim_2f32(rk_state->last_window_rect);
-    rk_state->window_res_changed = rk_state->window_rect.x0 == rk_state->last_window_rect.x0 && rk_state->window_rect.x1 == rk_state->last_window_rect.x1 && rk_state->window_rect.y0 == rk_state->last_window_rect.y0 && rk_state->window_rect.y1 == rk_state->last_window_rect.y1;
-    rk_state->window_rect        = os_client_rect_from_window(rk_state->os_wnd, 0);
-    rk_state->window_dim         = dim_2f32(rk_state->window_rect);
-    rk_state->last_cursor        = rk_state->cursor;
+  {
+    RK_Scene *s = rk_state->first_to_free_scene;
+    if(s != 0 && (rk_state->frame_index-s->frame_index) > MAX_FRAMES_IN_FLIGHT)
     {
-      Vec2F32 cursor = os_mouse_from_window(rk_state->os_wnd);
-      if(cursor.x >= 0 && cursor.x <= rk_state->window_dim.x &&
-         cursor.y >= 0 && cursor.y <= rk_state->window_dim.y)
+      while(s)
       {
-        rk_state->cursor = cursor;
+        RK_Scene *next = s->next;
+        SLLStackPop(rk_state->first_to_free_scene);
+        rk_scene_release(s);
+        s = next;
       }
     }
-    rk_state->cursor_delta       = sub_2f32(rk_state->cursor, rk_state->last_cursor);
-    rk_state->last_dpi           = rk_state->dpi;
-    rk_state->dpi                = os_dpi_from_window(rk_state->os_wnd);
-
-    // animation
-    rk_state->animation.vast_rate = 1 - pow_f32(2, (-60.f * ui_state->animation_dt));
-    rk_state->animation.fast_rate = 1 - pow_f32(2, (-50.f * ui_state->animation_dt));
-    rk_state->animation.fish_rate = 1 - pow_f32(2, (-40.f * ui_state->animation_dt));
-    rk_state->animation.slow_rate = 1 - pow_f32(2, (-30.f * ui_state->animation_dt));
-    rk_state->animation.slug_rate = 1 - pow_f32(2, (-15.f * ui_state->animation_dt));
-    rk_state->animation.slaf_rate = 1 - pow_f32(2, (-8.f * ui_state->animation_dt));
-
-    // clear frame gizmo drawlist
-    rk_drawlist_reset(rk_frame_drawlist());
-
-    // clear physics states
-    scene->particle3d_system.first_particle   = 0;
-    scene->particle3d_system.last_particle    = 0;
-    scene->particle3d_system.particle_count   = 0;
-    scene->particle3d_system.first_force      = 0;
-    scene->particle3d_system.last_force       = 0;
-    scene->particle3d_system.force_count      = 0;
-    scene->particle3d_system.first_constraint = 0;
-    scene->particle3d_system.last_constraint  = 0;
-    scene->particle3d_system.constraint_count = 0;
-
-    scene->rigidbody3d_system.first_body       = 0;
-    scene->rigidbody3d_system.last_body        = 0;
-    scene->rigidbody3d_system.body_count       = 0;
-    scene->rigidbody3d_system.first_force      = 0;
-    scene->rigidbody3d_system.last_force       = 0;
-    scene->rigidbody3d_system.force_count      = 0;
-    scene->rigidbody3d_system.first_constraint = 0;
-    scene->rigidbody3d_system.last_constraint  = 0;
-    scene->rigidbody3d_system.constraint_count = 0;
-
-    arena_clear(rk_frame_arena());
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
-  // Unpack active camera
+  // prepare current scene
+
+  // set next scene if we have any
+  if(rk_state->next_active_scene != 0)
+  {
+    scene = rk_state->next_active_scene;
+    rk_state->active_scene = scene;
+    SLLStackPop(rk_state->next_active_scene);
+  }
+
+  scene->frame_index = rk_state->frame_index;
+  rk_push_scene(scene);
+  rk_push_node_bucket(scene->node_bucket);
+  rk_push_res_bucket(scene->res_bucket);
+  rk_push_handle_seed(scene->handle_seed);
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // do per-frame resets
+
+  rk_drawlist_reset(rk_frame_drawlist());
+  arena_clear(rk_frame_arena());
+
+  // clear physics states
+  scene->particle3d_system.first_particle   = 0;
+  scene->particle3d_system.last_particle    = 0;
+  scene->particle3d_system.particle_count   = 0;
+  scene->particle3d_system.first_force      = 0;
+  scene->particle3d_system.last_force       = 0;
+  scene->particle3d_system.force_count      = 0;
+  scene->particle3d_system.first_constraint = 0;
+  scene->particle3d_system.last_constraint  = 0;
+  scene->particle3d_system.constraint_count = 0;
+
+  scene->rigidbody3d_system.first_body       = 0;
+  scene->rigidbody3d_system.last_body        = 0;
+  scene->rigidbody3d_system.body_count       = 0;
+  scene->rigidbody3d_system.first_force      = 0;
+  scene->rigidbody3d_system.last_force       = 0;
+  scene->rigidbody3d_system.force_count      = 0;
+  scene->rigidbody3d_system.first_constraint = 0;
+  scene->rigidbody3d_system.last_constraint  = 0;
+  scene->rigidbody3d_system.constraint_count = 0;
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // get events from os
+  
+  rk_state->os_events          = os_get_events(scratch.arena, 0);
+  rk_state->last_window_rect   = rk_state->window_rect;
+  rk_state->last_window_dim    = dim_2f32(rk_state->last_window_rect);
+  rk_state->window_res_changed = rk_state->window_rect.x0 == rk_state->last_window_rect.x0 && rk_state->window_rect.x1 == rk_state->last_window_rect.x1 && rk_state->window_rect.y0 == rk_state->last_window_rect.y0 && rk_state->window_rect.y1 == rk_state->last_window_rect.y1;
+  rk_state->window_rect        = os_client_rect_from_window(rk_state->os_wnd, 0);
+  rk_state->window_dim         = dim_2f32(rk_state->window_rect);
+  rk_state->last_cursor        = rk_state->cursor;
+  {
+    Vec2F32 cursor = os_mouse_from_window(rk_state->os_wnd);
+    if(cursor.x >= 0 && cursor.x <= rk_state->window_dim.x &&
+       cursor.y >= 0 && cursor.y <= rk_state->window_dim.y)
+    {
+      rk_state->cursor = cursor;
+    }
+  }
+  rk_state->cursor_delta       = sub_2f32(rk_state->cursor, rk_state->last_cursor);
+  rk_state->last_dpi           = rk_state->dpi;
+  rk_state->dpi                = os_dpi_from_window(rk_state->os_wnd);
+
+  // animation
+  rk_state->animation.vast_rate = 1 - pow_f32(2, (-60.f * ui_state->animation_dt));
+  rk_state->animation.fast_rate = 1 - pow_f32(2, (-50.f * ui_state->animation_dt));
+  rk_state->animation.fish_rate = 1 - pow_f32(2, (-40.f * ui_state->animation_dt));
+  rk_state->animation.slow_rate = 1 - pow_f32(2, (-30.f * ui_state->animation_dt));
+  rk_state->animation.slug_rate = 1 - pow_f32(2, (-15.f * ui_state->animation_dt));
+  rk_state->animation.slaf_rate = 1 - pow_f32(2, (-8.f * ui_state->animation_dt));
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // calculate avg length in us of last many frames
+
+  U64 frame_time_history_avg_us = 0;
+  {
+    U64 num_frames_in_history = Min(ArrayCount(rk_state->frame_time_us_history), rk_state->frame_index);
+    U64 frame_time_history_sum_us = 0;
+    if(num_frames_in_history > 0)
+    {
+      for(U64 i = 0; i < num_frames_in_history; i++)
+      {
+        frame_time_history_sum_us += rk_state->frame_time_us_history[i];
+      }
+      frame_time_history_avg_us = frame_time_history_sum_us/num_frames_in_history;
+    }
+  }
+  // printf("avg fps: %f\n", 1.0/(frame_time_history_avg_us/1000000.0));
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // pick target hz
+
+  // pick among a number of sensible targets to snap to, given how well we've been performing
+  F32 target_hz = os_get_gfx_info()->default_refresh_rate;
+  if(rk_state->frame_index > 32)
+  {
+    F32 possible_alternate_hz_targets[] = {target_hz, 60.f, 120.f, 144.f, 240.f};
+    F32 best_target_hz = target_hz;
+    S64 best_target_hz_frame_time_us_diff = max_S64;
+    for(U64 idx = 0; idx < ArrayCount(possible_alternate_hz_targets); idx += 1)
+    {
+      F32 candidate = possible_alternate_hz_targets[idx];
+      if(candidate <= target_hz)
+      {
+        U64 candidate_frame_time_us = 1000000/(U64)candidate;
+        S64 frame_time_us_diff = (S64)frame_time_history_avg_us - (S64)candidate_frame_time_us;
+        if(abs_s64(frame_time_us_diff) < best_target_hz_frame_time_us_diff &&
+           frame_time_history_avg_us < candidate_frame_time_us + candidate_frame_time_us/4)
+        {
+          best_target_hz = candidate;
+          best_target_hz_frame_time_us_diff = frame_time_us_diff;
+        }
+      }
+    }
+    target_hz = best_target_hz;
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // frame_dt
+
+  rk_state->frame_dt = 1.f/target_hz;
+
+  // begin measuring actual per-frame work
+  U64 begin_time_us = os_now_microseconds();
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // unpack current camera
 
   RK_Node *camera_node = rk_node_from_handle(&scene->active_camera);
   AssertAlways(camera_node != 0 && "No active camera was found");
   RK_Camera3D *camera = camera_node->camera3d;
   Mat4x4F32 camera_xform = camera_node->fixed_xform;
 
-  //- polygon mode
+  // polygon mode
   R_GeoPolygonKind polygon_mode;
   switch(camera->viewport_shading)
   {
@@ -2651,7 +2895,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     default:                                     {InvalidPath;}break;
   }
 
-  //- view/projection (NOTE(k): behind by one frame)
+  // view/projection (NOTE(k): behind by one frame)
   Mat4x4F32 view_m = inverse_4x4f32(camera_xform);
   Mat4x4F32 proj_m;
   Vec3F32 eye = camera_node->fixed_position;
@@ -2678,8 +2922,10 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
   Mat4x4F32 proj_view_m = mul_4x4f32(proj_m, view_m);
   Mat4x4F32 proj_view_inv_m = inverse_4x4f32(proj_view_m);
 
-  /////////////////////////////////////////////////////////////////////////////////////
-  // Remake drawing buckets every frame
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // remake drawing buckets every frame
+
+  d_begin_frame();
 
   // rect
   rk_state->bucket_rect = d_bucket_make();
@@ -2714,7 +2960,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     }
   }
 
-  // geo front [gizmo]
+  // geo front, for example we want gizmo drawn on top of scene
   {
     D_Bucket **bucket = &rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front];
     *bucket = d_bucket_make();
@@ -2734,36 +2980,13 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     }
   }
 
-  // geo screen [ui stuff?]
-  // {
-  //   D_Bucket **bucket = &rk_state->bucket_geo3d[RK_GeoBucketKind_Screen];
-  //   *bucket = d_bucket_make();
-  //   D_BucketScope(*bucket)
-  //   {
-  //     Rng2F32 viewport = rk_state->window_rect;
-  //     Mat4x4F32 view_m = mat_4x4f32(1.0);
-  //     Mat4x4F32 proj_m = make_orthographic_vulkan_4x4f32(viewport.x0, viewport.x1, viewport.y1, viewport.y0, 0.1, 1.f);
-  //     R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, proj_m);
-  //     pass_params->omit_light = 1;
-  //     pass_params->omit_grid = 1;
-  //     pass_params->lights = push_array(rk_frame_arena(), R_Light3D, MAX_LIGHTS_PER_PASS);
-  //     pass_params->materials = push_array(rk_frame_arena(), R_Material3D, MAX_MATERIALS_PER_PASS);
-  //     pass_params->textures = push_array(rk_frame_arena(), R_PackedTextures, MAX_MATERIALS_PER_PASS);
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // build ui
 
-  //     // load default material
-  //     pass_params->materials[0].diffuse_color = v4f32(1,1,1,1);
-  //     pass_params->materials[0].opacity = 1.0f;
-  //     pass_params->material_count = 1;
-  //   }
-  // }
-
-  /////////////////////////////////////////////////////////////////////////////////////
-  //~ Build ui
-
-  //- Build event list for ui
+  // build event list for ui
   UI_EventList ui_events = {0};
-  OS_Event *os_evt_first = os_events.first;
-  OS_Event *os_evt_opl = os_events.last + 1;
+  OS_Event *os_evt_first = rk_state->os_events.first;
+  OS_Event *os_evt_opl = rk_state->os_events.last + 1;
   for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
   {
     // if(os_window_is_focused(window))
@@ -2845,7 +3068,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     if(os_evt->kind == OS_EventKind_WindowClose) {rk_state->window_should_close = 1;}
   }
 
-  // Begin build ui
+  // begin build ui
   {
     // Gather font info
     F_Tag main_font = rk_font_from_slot(RK_FontSlot_Main);
@@ -2887,7 +3110,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     }
 
     // Begin & push initial stack values
-    ui_begin_build(rk_state->os_wnd, &ui_events, &icon_info, &widget_palette_info, &animation_info, rk_state->dt_sec);
+    ui_begin_build(rk_state->os_wnd, &ui_events, &icon_info, &widget_palette_info, &animation_info, rk_state->frame_dt);
 
     ui_push_font(main_font);
     ui_push_font_size(main_font_size);
@@ -2898,57 +3121,50 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     ui_push_palette(rk_palette_from_code(RK_PaletteCode_Base));
   }
 
-  // Game view (debug/game ui)
-  {
-    rk_ui_inspector();
-    rk_ui_stats();
-    rk_ui_profiler();
-  }
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // draw game view
 
-  // Process events for game logic
-  {
+  // TODO: change drawing order if cursor is clicked on one of the views
+  rk_ui_inspector();
+  rk_ui_stats();
+  rk_ui_profiler();
+  rk_ui_terminal();
 
-    OS_Event *os_evt_first = os_events.first;
-    OS_Event *os_evt_opl = os_events.last + 1;
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // process events for game logic
+
+  {
+    OS_Event *os_evt_first = rk_state->os_events.first;
+    OS_Event *os_evt_opl = rk_state->os_events.last + 1;
     for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
     {
       if(os_evt == 0) continue;
+      B32 taken = 0;
       // if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
       if(os_evt->key == OS_Key_S && os_evt->kind == OS_EventKind_Press && (os_evt->modifiers & OS_Modifier_Ctrl))
       {
         rk_scene_to_tscn(scene);
+        taken = 1;
       }
+
+      if(taken) os_eat_event(&rk_state->os_events, os_evt);
     }
   }
+
+  /////////////////////////////////////////////////////////////////////////////////////
+  // update & draw scene
 
   // UI Box for game viewport (handle user interaction)
   ui_set_next_rect(rk_state->window_rect);
   UI_Box *overlay = ui_build_box_from_string(UI_BoxFlag_MouseClickable|UI_BoxFlag_ClickToFocus|UI_BoxFlag_Scroll|UI_BoxFlag_DisableFocusOverlay, str8_lit("###game_overlay"));
-
   RK_Node *active_node = rk_node_from_handle(&scene->active_node);
 
-  /////////////////////////////////////////////////////////////////////////////////////
-  //~ Update/draw node in the scene tree
-
-  /////////////////////////////////////////////////////////////////////////////////////
-  // animation rates
-
-  F32 vast_rate = 1 - pow_f32(2, (-60.f * rk_state->dt_sec));
-  F32 fast_rate = 1 - pow_f32(2, (-50.f * rk_state->dt_sec));
-  F32 fish_rate = 1 - pow_f32(2, (-40.f * rk_state->dt_sec));
-  F32 slow_rate = 1 - pow_f32(2, (-30.f * rk_state->dt_sec));
-  F32 slug_rate = 1 - pow_f32(2, (-15.f * rk_state->dt_sec));
-  F32 slaf_rate = 1 - pow_f32(2, (-8.f  * rk_state->dt_sec));
-
-  ProfScope("update/draw game")
   {
     RK_FrameContext ctx =
     {
-      .dt_sec = rk_state->dt_sec,
       .eye = eye,
       .proj_m = proj_m,
       .view_m = view_m,
-      .os_events = os_events,
       .proj_view_m = proj_view_m,
       .proj_view_inv_m = proj_view_inv_m,
     };
@@ -2966,8 +3182,9 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     // R_Pass *geo_screen_pass = r_pass_from_kind(d_thread_ctx->arena, &geo_screen_bucket->passes, R_PassKind_Geo3D, 1);
     // R_PassParams_Geo3D *geo_screen_params = geo_screen_pass->params_geo3d;
 
-    /////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////
     // Update passes
+
     // NOTE(k): we need two update passes (1: update_fn, 2: the rest of update)
     //          the reason is update_fn could modify the node tree which makes transient not working
 
@@ -2995,7 +3212,6 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     R_PackedTextures *textures = geo_back_params->textures;
     U64 *material_count = &geo_back_params->material_count;
 
-    Temp scratch = scratch_begin(0,0);
     U64 drawable_count = 0;
     U64 drawable_cap = 1000;
     RK_Node **nodes_to_draw = push_array(scratch.arena, RK_Node*, drawable_cap);
@@ -3015,23 +3231,21 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
       //   fn->f(node, scene, &ctx);
       // }
 
-      /////////////////////////////////////////////////////////////////////////////
-      // update animation t(s)
+      ///////////////////////////////////////////////////////////////////////////////////
+      // update node hot_t/active_t
 
       B32 is_hot = rk_key_match(scene->hot_key, node->key);
       B32 is_active = rk_key_match(scene->active_key, node->key);
 
-      // determine rates
-      F32 hot_rate      = fast_rate;
-      F32 active_rate   = fast_rate;
-      F32 disabled_rate = slow_rate;
-      F32 focus_rate    = fast_rate;
+      // determine animation rate
+      F32 hot_rate = rk_state->animation.fast_rate;
+      F32 active_rate = rk_state->animation.fast_rate;
 
-      // animate t
+      // update animate t
       node->hot_t    += hot_rate * ((F32)is_hot - node->hot_t);
       node->active_t += active_rate * ((F32)is_active - node->active_t);
 
-      /////////////////////////////////////////////////////////////////////////////
+      ///////////////////////////////////////////////////////////////////////////////////
       // update node transform based on it's type flags
 
       B32 has_transform = 0;
@@ -3182,7 +3396,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         // play animation if there is any
         if(!rk_handle_is_zero(anim_player->playback.curr))
         {
-          anim_player->playback.pos += rk_state->dt_sec;
+          anim_player->playback.pos += rk_state->frame_dt;
           RK_Animation *animation = (RK_Animation*)rk_res_unwrap(rk_res_from_handle(&anim_player->playback.curr));
           if(anim_player->playback.pos > animation->duration_sec && anim_player->playback.loop)
           {
@@ -3360,7 +3574,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         // animation
         if(sprite->is_animating)
         {
-          sprite->ts_ms += rk_state->dt_ms;
+          sprite->ts_ms += rk_state->frame_dt;
         }
 
         RK_SpriteSheetTag *tag = 0;
@@ -3390,7 +3604,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
         F32 frame_duration_acc = 0;
 
         // find the frame
-        // TODO(XXX): linear search for now, we can do better
+        // TODO(XXX): linear search for now, we could do better
         for(U64 i = tag->from; i <= tag->to; i++)
         {
           frame_duration_acc += sheet->frames[i].duration;
@@ -3451,8 +3665,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
           }
         }
 
-        /////////////////////////////////////////////////////////////////////////
-        // material
+        /////////////////////////////////////////////////////////////////////////////////
+        // unpack & upload material
 
         U64 mat_idx = 0; // 0 is the default material
         if(camera->viewport_shading == RK_ViewportShadingKind_Material)
@@ -3506,7 +3720,7 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
           }
         }
 
-        /////////////////////////////////////////////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////
         // draw mesh
 
         R_Mesh3DInst *inst = d_mesh(mesh->vertices, mesh->indices, 0,0, mesh->indice_count,
@@ -3525,30 +3739,27 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
       }
 
     }
-    scratch_end(scratch);
   }
 
   // NOTE(k): there could be ui elements within node update
   rk_state->sig = ui_signal_from_box(overlay);
 
-  /////////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////
   // Update hot/active key
 
+  scene->hot_key = rk_key_make(rk_state->hot_pixel_key, 0);
+  if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
   {
-    scene->hot_key = rk_key_make(hot_key, 0);
-    if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
-    {
-      scene->active_key = scene->hot_key;
-      rk_scene_active_node_set(scene, scene->active_key, 1);
-    }
-    if(rk_state->sig.f & UI_SignalFlag_LeftReleased)
-    {
-      scene->active_key = rk_key_zero();
-    }
+    scene->active_key = scene->hot_key;
+    rk_scene_active_node_set(scene, scene->active_key, 1);
+  }
+  if(rk_state->sig.f & UI_SignalFlag_LeftReleased)
+  {
+    scene->active_key = rk_key_zero();
   }
 
-  /////////////////////////////////////////////////////////////////////////////////////
-  // handle cursors
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // handle cursor (hide/show/wrap)
 
   if(camera->hide_cursor && (!rk_state->cursor_hidden))
   {
@@ -3567,7 +3778,9 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     rk_state->cursor = cursor;
   }
 
-  // Draw gizmo3d
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // draw gizmo3d
+
   if(!scene->omit_gizmo3d)
   {
     if(active_node)
@@ -4012,15 +4225,8 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     }
   }
 
-  // TODO(XXX): we should change the name of drawlist, it could be generic
-  // TODO(XXX): performance issue when enabled, find out why
-  // build gizmo drawlists
-  ProfBegin("drawlist build");
-  rk_drawlist_build(rk_frame_drawlist());
-  ProfEnd();
-
-  /////////////////////////////////////////////////////////////////////////////////////
-  // Draw ui
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // draw ui
 
   ui_end_build();
   ProfScope("draw ui") D_BucketScope(rk_state->bucket_rect)
@@ -4028,41 +4234,83 @@ rk_frame(OS_EventList os_events, U64 dt_us, U64 hot_key)
     rk_ui_draw();
   }
 
-  /////////////////////////////////////////////////////////////////////////////////////
-  // Physics
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // do physics
 
   // particle system
-  // TODO(XXX): we should use fixed step to do physics
-  // ph_step_ps(&scene->particle3d_system, rk_state->dt_sec);
-  ph_step_rs(&scene->rigidbody3d_system, rk_state->dt_sec);
+  // TODO(XXX): we could use fixed step to do physics
+  // ph_step_ps(&scene->particle3d_system, rk_state->frame_dt);
+  // ph_step_rs(&scene->rigidbody3d_system, rk_state->frame_dt);
 
-  /////////////////////////////////////////////////////////////////////////////////////
-  // End of frame
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // end of frame
 
   rk_pop_node_bucket();
   rk_pop_res_bucket();
   rk_pop_scene();
   rk_pop_handle_seed();
 
-  /////////////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////
   // concate draw buckets
 
-  D_Bucket *ret = d_bucket_make();
-  d_push_bucket(ret);
-  // NOTE(k): check if there is anything in passes, we don't a empty geo pass (pass is not cheap)
-  if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo2D]))       {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo2D], 0);}
-  // TODO(XXX): only for test, make it composiable
-  // d_noise(r2f32p(0,0,0,0), rk_state->elapsed_sec);
-  d_edge(rk_state->elapsed_sec);
-  if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back]))  {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back], 0);}
-  if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front])) {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front], 0);}
-  if(!d_bucket_is_empty(rk_state->bucket_rect))                              {d_sub_bucket(rk_state->bucket_rect, 0);}
-  d_crt(0.05, 1.15, rk_state->elapsed_sec);
-  d_pop_bucket();
+  D_Bucket *bucket = d_bucket_make();
+  D_BucketScope(bucket)
+  {
+    // NOTE(k): check if there is anything in passes, we don't a empty geo pass (pass is not cheap)
+    if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo2D]))       {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo2D], 0);}
+    // TODO(XXX): only for test, make it composiable
+    // d_noise(r2f32p(0,0,0,0), rk_state->elapsed_sec);
+    d_edge(rk_state->time_in_seconds);
+    if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back]))  {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back], 0);}
+    if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front])) {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front], 0);}
+    if(!d_bucket_is_empty(rk_state->bucket_rect))                              {d_sub_bucket(rk_state->bucket_rect, 0);}
+    d_crt(0.05, 1.15, rk_state->time_in_seconds);
+  }
 
-  ProfEnd();
-  rk_state->frame_counter++;
-  return ret;
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // submit work
+
+  // build frame drawlist before we submit draw bucket
+  rk_drawlist_build(rk_frame_drawlist());
+
+  // submit
+  r_begin_frame();
+  r_window_begin_frame(rk_state->os_wnd, rk_state->r_wnd);
+  d_submit_bucket(rk_state->os_wnd, rk_state->r_wnd, bucket);
+  rk_state->hot_pixel_key = r_window_end_frame(rk_state->r_wnd, rk_state->cursor);
+  r_end_frame();
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // wait if we still have some cpu time left
+
+  // TODO: use cpu sleep instead of spinning cpu here
+  U64 frame_time_target_cap_us = (U64)(1000000/target_hz);
+  U64 work_us = os_now_microseconds()-begin_time_us;
+  rk_state->cpu_time_us = work_us;
+  while(work_us < frame_time_target_cap_us)
+  {
+    work_us = os_now_microseconds()-begin_time_us;
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // determine frame time, record it into history
+
+  U64 end_time_us = os_now_microseconds();
+  U64 frame_time_us = end_time_us-begin_time_us;
+  rk_state->frame_time_us_history[rk_state->frame_index%ArrayCount(rk_state->frame_time_us_history)] = frame_time_us;
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // bump frame time counters
+
+  rk_state->frame_index++;
+  rk_state->time_in_seconds += rk_state->frame_dt;
+  rk_state->time_in_us += frame_time_us;
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // end
+
+  scratch_end(scratch);
+  return !rk_state->window_should_close;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -4134,93 +4382,6 @@ rk_drawlist_build(RK_DrawList *drawlist)
   r_buffer_copy(drawlist->indices, indices, drawlist->indice_buffer_cmt);
   scratch_end(scratch);
 }
-
-// internal void
-// rk_drawlist_build(RK_DrawList *drawlist)
-// {
-//   U64 vertex_count = 0;
-//   U64 indice_count = 0;
-//   for(RK_DrawNode *n = drawlist->first; n != 0; n = n->next)
-//   {
-//     vertex_count += n->vertex_count;
-//     indice_count += n->indice_count;
-//   }
-//   U64 vertex_buffer_size = vertex_count * sizeof(R_Vertex);
-//   U64 indice_buffer_size = indice_count * sizeof(U32);
-// 
-//   if(drawlist->vertex_buffer_cap < vertex_buffer_size)
-//   {
-//     r_buffer_release(drawlist->vertex_buffer);
-//     drawlist->vertex_buffer = r_buffer_alloc(R_ResourceKind_Stream, vertex_buffer_size*2, 0, 0);
-//   }
-//   if(drawlist->indice_buffer_cap < indice_buffer_size)
-//   {
-//     r_buffer_release(drawlist->indice_buffer);
-//     drawlist->indice_buffer = r_buffer_alloc(R_ResourceKind_Stream, indice_buffer_size*2, 0, 0);
-//   }
-// 
-//   R_Handle vertex_buffer = drawlist->vertex_buffer;
-//   R_Handle indice_buffer = drawlist->indice_buffer;
-// 
-//   Temp scratch = scratch_begin(0,0);
-//   R_Vertex *vertices = push_array(scratch.arena, R_Vertex, vertex_count);
-//   U64 vertex_idx = 0;
-//   U32 *indices = push_array(scratch.arena, U32, indice_count);
-//   U64 indice_idx = 0;
-// 
-//   U64 node_count = 0;
-//   for(RK_DrawNode *n = drawlist->first; n != 0; n = n->next)
-//   {
-//     // copy vertex
-//     U64 vertex_copy_size = n->vertex_count * sizeof(R_Vertex);
-//     U64 indice_copy_size = n->indice_count * sizeof(U32);
-//     MemoryCopy(vertices+vertex_idx, n->vertices, vertex_copy_size);
-//     MemoryCopy(indices+indice_idx, n->indices, indice_copy_size);
-// 
-//     // NOTE(k): we would use multiple pass here (geo3d back, geo3d front, screen space)
-//     D_BucketScope(n->draw_bucket)
-//     {
-//       // handle color and albedo texture
-//       /////////////////////////////////////////////////////////////////////////////
-// 
-//       R_Pass *pass = r_pass_from_kind(d_thread_ctx->arena, &n->draw_bucket->passes, R_PassKind_Geo3D, 1);
-//       R_PassParams_Geo3D *pass_params = pass->params_geo3d;
-// 
-//       U64 mat_idx = pass_params->material_count;
-//       pass_params->materials[mat_idx].diffuse_color = n->color;
-//       pass_params->materials[mat_idx].opacity = 1.0;
-//       pass_params->materials[mat_idx].has_diffuse_texture = !r_handle_match(n->albedo_tex, r_handle_zero());
-//       pass_params->textures[mat_idx].array[R_GeoTexKind_Diffuse] = n->albedo_tex;
-//       pass_params->material_count++;
-// 
-//       // draw inst
-//       /////////////////////////////////////////////////////////////////////////////
-// 
-//       // NOTE(k): mesh group stored as hash map which don't contain the order, that's why we get flicker (we may need a submit ordered group list)
-//       R_Mesh3DInst *inst = d_mesh(vertex_buffer, indice_buffer, vertex_idx*sizeof(R_Vertex), indice_idx*sizeof(U32), n->indice_count,
-//                                   n->topology, n->polygon, R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB,
-//                                   0,0,mat_idx, n->line_width, 1);
-// 
-//       inst->xform = n->xform;
-//       inst->xform_inv = inverse_4x4f32(n->xform);
-//       inst->key = n->key.u64[0];
-//       inst->draw_edge = n->draw_edge;
-//       inst->depth_test = !n->disable_depth;
-//       inst->omit_light = n->omit_light;
-//     }
-// 
-//     vertex_idx += n->vertex_count;
-//     indice_idx += n->indice_count;
-//     node_count++;
-//   }
-//   Assert(node_count == drawlist->node_count);
-// 
-//   // upload buffer with new content
-//   r_buffer_copy(vertex_buffer, vertices, vertex_buffer_size);
-//   r_buffer_copy(indice_buffer, indices, indice_buffer_size);
-// 
-//   scratch_end(scratch);
-// }
 
 internal void
 rk_drawlist_reset(RK_DrawList *drawlist)
@@ -4897,7 +5058,6 @@ rk_gizmo3d_box(RK_Key key, Vec3F32 origin, Vec3F32 i_hat, Vec3F32 j_hat, Vec3F32
                                 R_GeoVertexFlag_TexCoord|R_GeoVertexFlag_Normals|R_GeoVertexFlag_RGB,
                                 0, 0,
                                 mat_idx, 1.0, 1);
-
     inst->xform = xform;
     inst->xform_inv = inverse_4x4f32(xform);
     inst->key = key.u64[0];

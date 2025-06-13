@@ -128,6 +128,7 @@ typedef enum RK_ViewKind
   RK_ViewKind_Stats,
   RK_ViewKind_SceneInspector,
   RK_ViewKind_Profiler,
+  RK_ViewKind_Terminal,
   RK_ViewKind_COUNT,
 } RK_ViewKind;
 
@@ -789,9 +790,6 @@ struct RK_Rigidbody3D
 typedef struct RK_FrameContext RK_FrameContext;
 struct RK_FrameContext
 {
-  OS_EventList os_events;
-  F32 dt_sec;
-
   Vec3F32 eye; /* world position of camera */
   Mat4x4F32 proj_m;
   Mat4x4F32 view_m;
@@ -982,7 +980,7 @@ struct RK_Scene
 {
   RK_Scene             *next;
 
-  U64                  frame_idx;
+  U64                  frame_index;
   // Storage
   Arena*               arena;
   RK_NodeBucket*       node_bucket;
@@ -1184,38 +1182,38 @@ struct RK_State
   Arena                 *arena;
   RK_Scene              *active_scene;
   Arena                 *frame_arenas[2];
-  U64                   frame_counter;
 
-  //- Interaction
+  R_Handle              r_wnd;
   OS_Handle             os_wnd;
   OS_EventList          os_events;
 
   //- UI overlay signal (used for handle user input)
   UI_Signal             sig;
 
-  //- Delta
-  U64                   dt_us;
-  F32                   dt_sec;
-  F32                   dt_ms;
-
-  //- elapsed time
-  U64                   begin_us;
-  F32                   elapsed_sec;
-
-  //- Global storage buckets
+  // global storage buckets
   RK_NodeBucket         *node_bucket;
   RK_NodeBucket         *res_node_bucket;
   RK_ResourceBucket     *res_bucket;
 
-  //- Drawing buckets
+  // drawing buckets
   D_Bucket              *bucket_rect;
   // TODO(XXX): renaming is needed
   D_Bucket              *bucket_geo[RK_GeoBucketKind_COUNT];
 
-  //- Gizmos drawlists
+  // drawlists
   RK_DrawList           *drawlists[2];
 
-  //- Window
+  // frame history info
+  U64                   frame_index;
+  U64                   frame_time_us_history[64];
+  F64                   time_in_seconds;
+  U64                   time_in_us;
+
+  // frame parameters
+  F32                   frame_dt;
+  F32                   cpu_time_us;
+
+  // window
   Rng2F32               window_rect;
   Vec2F32               window_dim;
   Rng2F32               last_window_rect;
@@ -1225,37 +1223,40 @@ struct RK_State
   F32                   last_dpi;
   B32                   window_should_close;
 
-  //- Cursor
+  // cursor
   Vec2F32               cursor;
   Vec2F32               last_cursor;
   Vec2F32               cursor_delta;
   B32                   cursor_hidden;
 
+  // hot pixel key from renderer
+  U64                   hot_pixel_key;
+
   // TODO(k): for serilization, kind weird, find a better way
-  //- Functions
+  // function registry
   RK_FunctionSlot       *function_registry;
   U64                   function_registry_size;
 
-  //- Scene templates
+  // scene templates
   RK_SceneTemplate      *templates;
   U64                   template_count;
 
-  //- Theme
+  // theme
   RK_Theme              cfg_theme_target;
   RK_Theme              cfg_theme;
   F_Tag                 cfg_font_tags[RK_FontSlot_COUNT];
 
-  //- Palette
+  // palette
   UI_Palette            cfg_ui_debug_palettes[RK_PaletteCode_COUNT]; // derivative from theme
 
-  //- Global Settings
+  // global Settings
   RK_SettingVal         setting_vals[RK_SettingCode_COUNT];
 
-  // Views (UI)
+  // views (UI)
   RK_View               views[RK_ViewKind_COUNT];
+  B32                   views_enabled[RK_ViewKind_COUNT];
 
-  // Animation
-  // reset at the beginning of a frame
+  // animation
   struct
   {
     F32 vast_rate;
@@ -1265,13 +1266,6 @@ struct RK_State
     F32 slug_rate;
     F32 slaf_rate;
   } animation;
-
-  struct
-  {
-    U64 frame_dt_us;
-    U64 cpu_dt_us;
-    U64 gpu_dt_us;
-  } debug;
 
   RK_Scene              *next_active_scene;
   RK_Scene              *first_to_free_scene;
@@ -1348,7 +1342,7 @@ internal RK_Resource* rk_res_from_handle(RK_Handle *h);
 /////////////////////////////////
 //~ State accessor/mutator
 
-internal void             rk_init(OS_Handle os_wnd);
+internal void             rk_init(OS_Handle os_wnd, R_Handle r_wnd);
 internal Arena*           rk_frame_arena();
 internal RK_DrawList*     rk_frame_drawlist();
 internal void             rk_register_function(String8 name, RK_NodeCustomUpdateFunctionType *ptr);
@@ -1432,12 +1426,13 @@ internal F32   rk_font_size_from_slot(RK_FontSlot slot);
 internal void rk_ui_stats(void);
 internal void rk_ui_inspector(void);
 internal void rk_ui_profiler(void);
+internal void rk_ui_terminal(void);
 
 /////////////////////////////////
 //~ Frame
 
 internal void      rk_ui_draw(void);
-internal D_Bucket* rk_frame(OS_EventList os_events, U64 dt, U64 hot_key);
+internal B32       rk_frame(void);
 
 /////////////////////////////////
 // Dynamic drawing (in immediate mode fashion)

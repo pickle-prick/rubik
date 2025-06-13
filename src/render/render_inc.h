@@ -4,6 +4,7 @@
 ////////////////////////////////
 //~ rjf: Backend Constants
 
+// TODO: move it some where in the main
 #define R_BACKEND_VULKAN 1
 
 #if R_BACKEND_VULKAN

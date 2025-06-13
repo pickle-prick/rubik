@@ -23,7 +23,7 @@
 // frames in flight, the CPU could get ahead of the GPU, because the work load
 // of the GPU could be too larger for it to handle, so the CPU would end up
 // waiting a lot, adding frames of latency Generally extra latency isn't desired
-#define MAX_FRAMES_IN_FLIGHT 2
+#define MAX_FRAMES_IN_FLIGHT 1
 // support max 4K with 32x32 sized tile
 #define TILE_SIZE 32
 #define MAX_TILES_PER_PASS ((3840*2160)/(TILE_SIZE*TILE_SIZE))

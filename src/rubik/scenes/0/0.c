@@ -90,14 +90,14 @@ RK_NODE_CUSTOM_UPDATE(s0_fn_rotating_spot_light)
   AnimatedSpotLight *data = node->custom_data;
 
   // Animation rate
-  F32 slow_rate = 1 - pow_f32(2, (-90.f * ctx->dt_sec));
-  F32 fast_rate = 1 - pow_f32(2, (-40.f * ctx->dt_sec));
+  F32 slow_rate = 1 - pow_f32(2, (-90.f * rk_state->frame_dt));
+  F32 fast_rate = 1 - pow_f32(2, (-40.f * rk_state->frame_dt));
 
   // animating intensity
   // light->intensity += fast_rate * (light->intensity > 0.999f ? 0 : 1 - light->intensity);
   // light->range += slow_rate * (data->target_range - light->range);
 
-  QuatF32 r = make_rotate_quat_f32(data->rotation_axis, 0.3*ctx->dt_sec);
+  QuatF32 r = make_rotate_quat_f32(data->rotation_axis, 0.3*rk_state->frame_dt);
   node->node3d->transform.rotation = mul_quat_f32(r, node->node3d->transform.rotation);
 }
 

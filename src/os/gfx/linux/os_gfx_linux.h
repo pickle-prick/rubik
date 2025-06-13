@@ -10,6 +10,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/extensions/sync.h>
+#include <X11/cursorfont.h>
 #include <X11/extensions/Xfixes.h>
 #include <X11/keysym.h>
 #include <X11/keysymdef.h>
@@ -25,6 +26,7 @@ struct OS_LNX_Window
     OS_LNX_Window *next;
     OS_LNX_Window *prev;
     Window window;
+    XIC xic;
     XID counter_xid;
     U64 counter_value;
     B32 focus_out;
@@ -37,17 +39,18 @@ struct OS_LNX_Window
 typedef struct OS_LNX_GfxState OS_LNX_GfxState;
 struct OS_LNX_GfxState
 {
-    Arena *arena;
-    Display *display;
-    OS_LNX_Window *first_window;
-    OS_LNX_Window *last_window;
-    OS_LNX_Window *free_window;
-    Atom wm_delete_window_atom;
-    Atom wm_sync_request_atom;
-    Atom wm_sync_request_counter_atom;
-    OS_GfxInfo gfx_info;
-    Cursor cursor;
-    Cursor next_cursor;
+  Arena *arena;
+  Display *display;
+  XIM xim;
+  OS_LNX_Window *first_window;
+  OS_LNX_Window *last_window;
+  OS_LNX_Window *free_window;
+  Atom wm_delete_window_atom;
+  Atom wm_sync_request_atom;
+  Atom wm_sync_request_counter_atom;
+  Cursor cursors[OS_Cursor_COUNT];
+  OS_Cursor last_set_cursor;
+  OS_GfxInfo gfx_info;
 };
 
 ////////////////////////////////
@@ -61,6 +64,5 @@ global OS_LNX_GfxState *os_lnx_gfx_state = 0;
 internal OS_LNX_Window *os_lnx_window_from_x11window(Window window);
 internal OS_LNX_Window *os_lnx_window_from_handle(OS_Handle window);
 internal Window        os_lnx_x11window_from_handle(OS_Handle window);
-internal OS_Key        os_lnx_os_key_from_keysym(U32 keysym);
 
 #endif // OS_GFX_LINUX_H

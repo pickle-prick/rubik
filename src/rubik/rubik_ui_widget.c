@@ -67,7 +67,7 @@ internal UI_Signal rk_icon_buttonf(RK_IconKind kind, char *fmt, ...)
 //~ k: Floating/Fixed Panes
 
 internal UI_Box *
-rk_ui_pane_begin(Rng2F32 *rect, B32 *open, String8 string)
+rk_ui_pane_begin(Rng2F32 *rect, B32 *open, B32 *collapsed, String8 string)
 {
   //- k: build bouding box for resizing
   {
@@ -316,12 +316,15 @@ rk_ui_pane_begin(Rng2F32 *rect, B32 *open, String8 string)
   UI_Parent(header_box)
   {
     ui_set_next_pref_size(Axis2_X, ui_px(39,1.0));
-    if(ui_clicked(ui_expanderf(*open, "###expander"))) { *open = !(*open); }
+    if(ui_clicked(ui_expanderf(!*collapsed, "###expander"))) { *collapsed = !(*collapsed); }
     ui_set_next_pref_size(Axis2_X, ui_text_dim(3, 1.f));
     ui_label(string);
     ui_spacer(ui_pct(1.0, 0.f));
     ui_set_next_pref_size(Axis2_X, ui_px(39,1.f));
-    if(ui_clicked(ui_closef("###close"))) { /* TODO */ }
+    if(ui_clicked(ui_closef("###close")))
+    {
+      *open = 0;
+    }
   }
   UI_Signal header_signal = ui_signal_from_box(header_box);
   if(ui_dragging(header_signal))
@@ -344,7 +347,7 @@ rk_ui_pane_begin(Rng2F32 *rect, B32 *open, String8 string)
 
   //- k: build the content container
   F32 content_height = rect_dim.y - header_box->fixed_size.y;
-  if(!(*open)) { ui_set_next_flags(UI_BoxFlag_Disabled); }
+  if(*collapsed) { ui_set_next_flags(UI_BoxFlag_Disabled); }
 
   ui_set_next_pref_height(ui_px(content_height, 0.0));
   ui_set_next_child_layout_axis(Axis2_Y);

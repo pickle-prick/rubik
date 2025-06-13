@@ -10,10 +10,11 @@ main_thread_base_entry_point(int argc, char **argv)
     String8List command_line_argument_strings = os_string_list_from_argcv(scratch.arena, argc, argv);
     CmdLine cmdline = cmd_line_from_string_list(scratch.arena, command_line_argument_strings);
 
-    // NOTE: preload modules
+    // NOTE: preload modules/systems
     fp_init();
     f_init();
     os_gfx_init();
+    os_audio_init();
 
     entry_point(&cmdline);
     scratch_end(scratch);
