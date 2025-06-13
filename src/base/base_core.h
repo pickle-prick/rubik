@@ -172,42 +172,49 @@
 ////////////////////////////////
 //~ rjf: Atomic Operations
 
-#if OS_WINDOWS
-# include <windows.h>
-# include <tmmintrin.h>
-# include <wmmintrin.h>
+#if COMPILER_MSVC
 # include <intrin.h>
 # if ARCH_X64
-#  define ins_atomic_u64_eval(x) InterlockedAdd64((volatile __int64 *)(x), 0)
-#  define ins_atomic_u64_inc_eval(x) InterlockedIncrement64((volatile __int64 *)(x))
-#  define ins_atomic_u64_dec_eval(x) InterlockedDecrement64((volatile __int64 *)(x))
-#  define ins_atomic_u64_eval_assign(x,c) InterlockedExchange64((volatile __int64 *)(x),(c))
-#  define ins_atomic_u64_add_eval(x,c) InterlockedAdd64((volatile __int64 *)(x), c)
+#  define ins_atomic_u64_eval(x)                 *((volatile U64 *)(x))
+#  define ins_atomic_u64_inc_eval(x)             InterlockedIncrement64((volatile __int64 *)(x))
+#  define ins_atomic_u64_dec_eval(x)             InterlockedDecrement64((volatile __int64 *)(x))
+#  define ins_atomic_u64_eval_assign(x,c)        InterlockedExchange64((volatile __int64 *)(x),(c))
+#  define ins_atomic_u64_add_eval(x,c)           InterlockedAdd64((volatile __int64 *)(x), c)
 #  define ins_atomic_u64_eval_cond_assign(x,k,c) InterlockedCompareExchange64((volatile __int64 *)(x),(k),(c))
-#  define ins_atomic_u32_eval(x,c) InterlockedAdd((volatile LONG *)(x), 0)
-#  define ins_atomic_u32_eval_assign(x,c) InterlockedExchange((volatile LONG *)(x),(c))
+#  define ins_atomic_u32_eval(x)                 *((volatile U32 *)(x))
+#  define ins_atomic_u32_inc_eval(x)             InterlockedIncrement((volatile LONG *)x)
+#  define ins_atomic_u32_eval_assign(x,c)        InterlockedExchange((volatile LONG *)(x),(c))
 #  define ins_atomic_u32_eval_cond_assign(x,k,c) InterlockedCompareExchange((volatile LONG *)(x),(k),(c))
-#  define ins_atomic_ptr_eval_assign(x,c) (void*)ins_atomic_u64_eval_assign((volatile __int64 *)(x), (__int64)(c))
+#  define ins_atomic_u32_add_eval(x,c)           InterlockedAdd((volatile LONG *)(x), c)
 # else
-#  error Atomic intrinsics not defined for this operating system / architecture combination.
+#  error Atomic intrinsics not defined for this compiler / architecture combination.
 # endif
-#elif OS_LINUX
-# if ARCH_X64
-#  define ins_atomic_u64_eval(x) __sync_fetch_and_add((volatile U64 *)(x), 0)
-#  define ins_atomic_u64_inc_eval(x) __sync_fetch_and_add((volatile U64 *)(x), 1)
-#  define ins_atomic_u64_dec_eval(x) __sync_fetch_and_sub((volatile U64 *)(x), 1)
-#  define ins_atomic_u64_eval_assign(x,c) __sync_lock_test_and_set((volatile U64 *)(x),(c))
-#  define ins_atomic_u64_add_eval(x,c) __sync_fetch_and_add((volatile U64 *)(x), c)
-#  define ins_atomic_u64_eval_cond_assign(x,k,c) __sync_val_compare_and_swap((volatile U64 *)(x),(c),(k))
-#  define ins_atomic_u32_eval(x,c) __sync_fetch_and_add((volatile U32 *)(x), 0)
-#  define ins_atomic_u32_eval_assign(x,c) __sync_lock_test_and_set((volatile U32 *)(x),(c))
-#  define ins_atomic_u32_eval_cond_assign(x,k,c) __sync_val_compare_and_swap((volatile U32 *)(x),(c),(k))
-#  define ins_atomic_ptr_eval_assign(x,c) (void*)ins_atomic_u64_eval_assign((volatile U64 *)(x), (U64)(c))
-# else
-#  error Atomic intrinsics not defined for this operating system / architecture combination.
-# endif
+#elif COMPILER_CLANG || COMPILER_GCC
+#  define ins_atomic_u64_eval(x)                 __atomic_load_n(x, __ATOMIC_SEQ_CST)
+#  define ins_atomic_u64_inc_eval(x)             (__atomic_fetch_add((volatile U64 *)(x), 1, __ATOMIC_SEQ_CST) + 1)
+#  define ins_atomic_u64_dec_eval(x)             (__atomic_fetch_sub((volatile U64 *)(x), 1, __ATOMIC_SEQ_CST) - 1)
+#  define ins_atomic_u64_eval_assign(x,c)        __atomic_exchange_n(x, c, __ATOMIC_SEQ_CST)
+#  define ins_atomic_u64_add_eval(x,c)           (__atomic_fetch_add((volatile U64 *)(x), c, __ATOMIC_SEQ_CST) + (c))
+#  define ins_atomic_u64_eval_cond_assign(x,k,c) ({ U64 _new = (c); __atomic_compare_exchange_n((volatile U64 *)(x),&_new,(k),0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST); _new; })
+#  define ins_atomic_u32_eval(x)                 __atomic_load_n(x, __ATOMIC_SEQ_CST)
+#  define ins_atomic_u32_inc_eval(x)             (__atomic_fetch_add((volatile U32 *)(x), 1, __ATOMIC_SEQ_CST) + 1)
+#  define ins_atomic_u32_add_eval(x,c)           (__atomic_fetch_add((volatile U32 *)(x), c, __ATOMIC_SEQ_CST) + (c))
+#  define ins_atomic_u32_eval_assign(x,c)        __atomic_exchange_n(x, c, __ATOMIC_SEQ_CST)
+#  define ins_atomic_u32_eval_cond_assign(x,k,c) ({ U32 _new = (c); __atomic_compare_exchange_n((volatile U32 *)(x),&_new,(k),0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST); _new; })
 #else
-# error Atomic intrinsics not defined for this operating system.
+#  error Atomic intrinsics not defined for this compiler / architecture.
+#endif
+
+#if ARCH_64BIT
+# define ins_atomic_ptr_eval_cond_assign(x,k,c) (void*)ins_atomic_u64_eval_cond_assign((volatile U64 *)(x), (U64)(k), (U64)(c))
+# define ins_atomic_ptr_eval_assign(x,c)        (void*)ins_atomic_u64_eval_assign((volatile U64 *)(x), (U64)(c))
+# define ins_atomic_ptr_eval(x)                 (void*)ins_atomic_u64_eval((volatile U64 *)x)
+#elif ARCH_32BIT
+# define ins_atomic_ptr_eval_cond_assign(x,k,c) (void*)ins_atomic_u32_eval_cond_assign((volatile U32 *)(x), (U32)(k), (U32)(c))
+# define ins_atomic_ptr_eval_assign(x,c)        (void*)ins_atomic_u32_eval_assign((volatile U32 *)(x), (U32)(c))
+# define ins_atomic_ptr_eval(x)                 (void*)ins_atomic_u32_eval((volatile U32 *)x)
+#else
+# error Atomic intrinsics for pointers not defined for this architecture.
 #endif
 
 ////////////////////////////////
@@ -335,6 +342,9 @@ C_LINKAGE void __asan_unpoison_memory_region(void const volatile *addr, size_t s
 #define IsPow2OrZero(x)    ((((x) - 1)&(x)) == 0)
 
 #define ExtractBit(word, idx) (((word) >> (idx)) & 1)
+#define Extract8(word, pos)   (((word) >> ((pos)*8))  & max_U8)
+#define Extract16(word, pos)  (((word) >> ((pos)*16)) & max_U16)
+#define Extract32(word, pos)  (((word) >> ((pos)*32)) & max_U32)
 
 #if LANG_CPP
 # define zero_struct {}
@@ -369,7 +379,29 @@ typedef void VoidProc(void);
 typedef struct U128 U128;
 struct U128
 {
+  U8 u8[16];
+  U16 u16[8];
+  U32 u32[4];
   U64 u64[2];
+};
+typedef union U256 U256;
+union U256
+{
+  U8 u8[32];
+  U16 u16[16];
+  U32 u32[8];
+  U64 u64[4];
+  U128 u128[2];
+};
+typedef union U512 U512;
+union U512
+{
+  U8 u8[64];
+  U16 u16[32];
+  U32 u32[16];
+  U64 u64[8];
+  U128 u128[4];
+  U256 u256[2];
 };
 
 ////////////////////////////////
@@ -530,20 +562,20 @@ StaticAssert(sizeof(Guid) == 16, g_guid_size_check);
 typedef struct HashNode HashNode;
 struct HashNode
 {
-    U64           key;
-    HashNode *hash_next;
-    HashNode *hash_prev;
+  U64           key;
+  HashNode *hash_next;
+  HashNode *hash_prev;
 
-    union
-    {
-        F32 f32;
-        F64 f64;
-        S32 s32;
-        S64 s64;
-        U32 u32;
-        U64 u64;
-        void *ptr;
-    } value;
+  union
+  {
+    F32 f32;
+    F64 f64;
+    S32 s32;
+    S64 s64;
+    U32 u32;
+    U64 u64;
+    void *ptr;
+  } value;
 };
 
 typedef struct HashSlot HashSlot;
@@ -882,5 +914,9 @@ internal U64 ring_read(U8 *ring_base, U64 ring_size, U64 ring_pos, void *dst_dat
 //~ rjf: Sorts
 
 #define quick_sort(ptr, count, element_size, cmp_function) qsort((ptr), (count), (element_size), (int (*)(const void *, const void *))(cmp_function))
+
+////////////////////////////////
+
+internal U64 u64_array_bsearch(U64 *arr, U64 count, U64 value);
 
 #endif // BASE_CORE_H

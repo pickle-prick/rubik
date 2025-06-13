@@ -2559,9 +2559,10 @@ rk_ui_terminal(void)
   if(state == 0)
   {
     state = push_array(view->arena, RK_Terminal_State, 1);
-    // TODO: make it resizable
     state->height = 500;
     state->history_arena = arena_alloc();
+    state->txt_cursor.column = 1;
+    state->txt_mark.column = 1;
 
     view->custom_data = state;
   }

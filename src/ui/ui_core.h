@@ -38,7 +38,28 @@ typedef enum UI_MouseButtonKind {
     UI_MouseButtonKind_COUNT
 } UI_MouseButtonKind;
 
-////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
+//~ rjf: Codepath Permissions
+
+typedef U32 UI_PermissionFlags;
+enum
+{
+  UI_PermissionFlag_ClicksLeft        = (1<<0),
+  UI_PermissionFlag_ClicksMiddle      = (1<<1),
+  UI_PermissionFlag_ClicksRight       = (1<<2),
+  UI_PermissionFlag_ScrollX           = (1<<3),
+  UI_PermissionFlag_ScrollY           = (1<<4),
+  UI_PermissionFlag_KeyboardPrimary   = (1<<5),
+  UI_PermissionFlag_KeyboardSecondary = (1<<6),
+  UI_PermissionFlag_Text              = (1<<7),
+  
+  //- rjf bundles
+  UI_PermissionFlag_Keyboard = (UI_PermissionFlag_KeyboardPrimary|UI_PermissionFlag_KeyboardSecondary),
+  UI_PermissionFlag_Clicks = (UI_PermissionFlag_ClicksLeft|UI_PermissionFlag_ClicksMiddle|UI_PermissionFlag_ClicksRight),
+  UI_PermissionFlag_All = 0xffffffff,
+};
+
+/////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: Focus Types
 
 typedef enum UI_FocusKind
@@ -89,6 +110,7 @@ enum
   UI_EventFlag_CapAtLine           = (1<<6),
   UI_EventFlag_ExplicitDirectional = (1<<7),
   UI_EventFlag_Reorder             = (1<<8),
+  UI_EventFlag_Secondary           = (1<<9),
 };
 
 typedef enum UI_EventDeltaUnit
@@ -381,6 +403,7 @@ struct UI_Box
   UI_BoxFlags                  flags;
   Vec2F32                      fixed_position;
   Vec2F32                      fixed_size;
+  Vec2F32                      min_size;
   UI_Size                      pref_size[Axis2_COUNT];
   Axis2                        child_layout_axis;
   U64                          child_count;
@@ -558,6 +581,9 @@ internal void     ui_pop_corner_radius(void);
 #define UI_FixedHeight(v) DeferLoop(ui_push_fixed_height(v), ui_pop_fixed_height())
 #define UI_PrefWidth(v) DeferLoop(ui_push_pref_width(v), ui_pop_pref_width())
 #define UI_PrefHeight(v) DeferLoop(ui_push_pref_height(v), ui_pop_pref_height())
+#define UI_MinWidth(v) DeferLoop(ui_push_min_width(v), ui_pop_min_width())
+#define UI_MinHeight(v) DeferLoop(ui_push_min_height(v), ui_pop_min_height())
+#define UI_PermissionFlags(v) DeferLoop(ui_push_permission_flags(v), ui_pop_permission_flags())
 #define UI_Flags(v) DeferLoop(ui_push_flags(v), ui_pop_flags())
 #define UI_FocusHot(v) DeferLoop(ui_push_focus_hot(v), ui_pop_focus_hot())
 #define UI_FocusActive(v) DeferLoop(ui_push_focus_active(v), ui_pop_focus_active())
@@ -667,7 +693,7 @@ internal B32     ui_key_match(UI_Key a, UI_Key b);
 //~ rjf: Event Type Functions
 
 internal UI_EventNode *ui_event_list_push(Arena *arena, UI_EventList *list, UI_Event *v);
-internal void ui_eat_event(UI_EventList *list, UI_EventNode *node);
+internal void ui_eat_event_node(UI_EventList *list, UI_EventNode *node);
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: Text Operation Functions
@@ -736,6 +762,16 @@ internal F_Tag             ui_icon_font(void);
 internal String8           ui_icon_string_from_kind(UI_IconKind icon_kind);
 internal Vec2F32           ui_mouse(void);
 internal F32               ui_dt(void);
+
+//- rjf: event pumping
+internal B32 ui_next_event(UI_Event **ev);
+internal void ui_eat_event(UI_Event *ev);
+
+//- rjf: event consumption helpers
+internal B32 ui_key_press(OS_Modifiers mods, OS_Key key);
+internal B32 ui_key_release(OS_Modifiers mods, OS_Key key);
+internal B32 ui_text(U32 character);
+internal B32 ui_slot_press(UI_EventActionSlot slot);
 
 //- rjf: drag data
 internal Vec2F32           ui_drag_start_mouse(void);

@@ -90,7 +90,7 @@ ui_event_list_push(Arena *arena, UI_EventList *list, UI_Event *v)
   return n;
 }
 
-internal void ui_eat_event(UI_EventList *list, UI_EventNode *node)
+internal void ui_eat_event_node(UI_EventList *list, UI_EventNode *node)
 {
   DLLRemove(list->first, list->last, node);
   list->count -= 1;
@@ -179,6 +179,165 @@ internal F_Tag ui_icon_font(void) { return ui_state->icon_info.icon_font; }
 internal String8 ui_icon_string_from_kind(UI_IconKind icon_kind) { return ui_state->icon_info.icon_kind_text_map[icon_kind]; }
 internal Vec2F32 ui_mouse(void) { return ui_state->mouse; }
 internal F32 ui_dt(void) { return ui_state->animation_dt; }
+
+//- rjf: event pumping
+
+internal B32
+ui_next_event(UI_Event **ev)
+{
+  UI_EventList *events = ui_state->events;
+  UI_EventNode *start_node = events->first;
+  if(ev[0] != 0)
+  {
+    start_node = CastFromMember(UI_EventNode, v, ev[0]);
+    start_node = start_node->next;
+    ev[0] = 0;
+  }
+  if(start_node != 0)
+  {
+    UI_PermissionFlags perms = ui_top_permission_flags();
+    for(UI_EventNode *n = start_node; n != 0; n = n->next)
+    {
+      B32 good = 1;
+      if(!(perms & UI_PermissionFlag_ClicksLeft) &&
+         (n->v.kind == UI_EventKind_Press ||
+          n->v.kind == UI_EventKind_Release) &&
+         (n->v.key == OS_Key_LeftMouseButton))
+      {
+        good = 0;
+      }
+      if(!(perms & UI_PermissionFlag_ClicksMiddle) &&
+         (n->v.kind == UI_EventKind_Press ||
+          n->v.kind == UI_EventKind_Release) &&
+         (n->v.key == OS_Key_MiddleMouseButton))
+      {
+        good = 0;
+      }
+      if(!(perms & UI_PermissionFlag_ClicksRight) &&
+         (n->v.kind == UI_EventKind_Press ||
+          n->v.kind == UI_EventKind_Release) &&
+         (n->v.key == OS_Key_RightMouseButton))
+      {
+        good = 0;
+      }
+      if(!(perms & UI_PermissionFlag_ScrollX) && (n->v.kind == UI_EventKind_Scroll) && (n->v.delta_2f32.x != 0 || n->v.modifiers == OS_Modifier_Shift))
+      {
+        good = 0;
+      }
+      if(!(perms & UI_PermissionFlag_ScrollY) && (n->v.kind == UI_EventKind_Scroll) && n->v.delta_2f32.y != 0 && n->v.modifiers == 0)
+      {
+        good = 0;
+      }
+      if((n->v.kind == UI_EventKind_Press ||
+          n->v.kind == UI_EventKind_Release ||
+          n->v.kind == UI_EventKind_Navigate ||
+          n->v.kind == UI_EventKind_Edit) &&
+         (n->v.key != OS_Key_LeftMouseButton &&
+          n->v.key != OS_Key_MiddleMouseButton &&
+          n->v.key != OS_Key_RightMouseButton))
+      {
+        if((perms & UI_PermissionFlag_Keyboard) == UI_PermissionFlag_KeyboardSecondary)
+        {
+          good = !!(n->v.flags & UI_EventFlag_Secondary);
+        }
+        else if(!(perms & UI_PermissionFlag_Keyboard))
+        {
+          good = 0;
+        }
+      }
+      else if(!(perms & UI_PermissionFlag_Text) && (n->v.kind == UI_EventKind_Text))
+      {
+        good = 0;
+      }
+      if(good)
+      {
+        ev[0] = &n->v;
+        break;
+      }
+    }
+  }
+  B32 result = !!ev[0];
+  return result;
+}
+
+internal void
+ui_eat_event(UI_Event *ev)
+{
+  if(ev != 0)
+  {
+    UI_EventNode *n = CastFromMember(UI_EventNode, v, ev);
+    ui_eat_event_node(ui_state->events, n);
+  }
+}
+
+//- rjf: event consumption helpers
+
+internal B32
+ui_key_press(OS_Modifiers mods, OS_Key key)
+{
+  B32 result = 0;
+  for(UI_Event *evt = 0; ui_next_event(&evt);)
+  {
+    if(evt->kind == UI_EventKind_Press && evt->key == key && evt->modifiers == mods)
+    {
+      result = 1;
+      ui_eat_event(evt);
+      break;
+    }
+  }
+  return result;
+}
+
+internal B32
+ui_key_release(OS_Modifiers mods, OS_Key key)
+{
+  B32 result = 0;
+  for(UI_Event *evt = 0; ui_next_event(&evt);)
+  {
+    if(evt->kind == UI_EventKind_Release && evt->key == key && evt->modifiers == mods)
+    {
+      result = 1;
+      ui_eat_event(evt);
+      break;
+    }
+  }
+  return result;
+}
+
+internal B32
+ui_text(U32 character)
+{
+  B32 result = 0;
+  Temp scratch = scratch_begin(0, 0);
+  String8 character_text = str8_from_32(scratch.arena, str32(&character, 1));
+  for(UI_Event *evt = 0; ui_next_event(&evt);)
+  {
+    if(evt->kind == UI_EventKind_Text && str8_match(character_text, evt->string, 0))
+    {
+      result = 1;
+      ui_eat_event(evt);
+      break;
+    }
+  }
+  scratch_end(scratch);
+  return result;
+}
+
+internal B32
+ui_slot_press(UI_EventActionSlot slot)
+{
+  B32 result = 0;
+  for(UI_Event *evt = 0; ui_next_event(&evt);)
+  {
+    if(evt->kind == UI_EventKind_Press && evt->slot == slot)
+    {
+      result = 1;
+      ui_eat_event(evt);
+      break;
+    }
+  }
+  return result;
+}
 
 //- rjf: drag data
 internal Vec2F32
@@ -721,6 +880,12 @@ ui_layout_enforce_constraints__in_place_rec(UI_Box *root, Axis2 axis)
     }
   }
 
+  //- rjf: enforce clamps
+  for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
+  {
+    child->fixed_size.v[axis] = Max(child->fixed_size.v[axis], child->min_size.v[axis]);
+  }
+
   //- rjf: recurse
   for(UI_Box *child = root->first; !ui_box_is_nil(child); child = child->next)
   {
@@ -920,6 +1085,9 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
     {
       box->pref_size[Axis2_Y] = ui_state->pref_height_stack.top->v;
     }
+
+    box->min_size.v[Axis2_X] = ui_state->min_width_stack.top->v;
+    box->min_size.v[Axis2_Y] = ui_state->min_height_stack.top->v;
 
     B32 is_auto_focus_active = ui_is_key_auto_focus_active(key);
     B32 is_auto_focus_hot    = ui_is_key_auto_focus_hot(key);
@@ -1376,7 +1544,7 @@ ui_signal_from_box(UI_Box *box)
     //- k: taken -> eat event
     if(taken)
     {
-      ui_eat_event(ui_state->events, n);
+      ui_eat_event(evt);
     }
   }
 

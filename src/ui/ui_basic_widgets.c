@@ -189,7 +189,7 @@ internal UI_BOX_CUSTOM_DRAW(ui_line_edit_draw)
   TxtPt mark = draw_data->mark;
   F32 cursor_pixel_off = f_dim_from_tag_size_string(font, font_size, 0, tab_size, str8_prefix(edited_string, cursor.column-1)).x;
   F32 mark_pixel_off   = f_dim_from_tag_size_string(font, font_size, 0, tab_size, str8_prefix(edited_string, mark.column-1)).x;
-  F32 cursor_thickness = ClampBot(4.f, font_size/6.f);
+  F32 cursor_thickness = ClampBot(6.f, font_size/10.f);
   Rng2F32 cursor_rect =
   {
     text_position.x + cursor_pixel_off - cursor_thickness*0.50f,
@@ -235,6 +235,7 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, 
       UI_BoxFlag_KeyboardClickable|
       UI_BoxFlag_DrawHotEffects,
       key);
+
   // take navigation actions for editing
   if(is_focus_active)
   {
@@ -267,7 +268,7 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, 
       *mark = op.mark;
 
       // consume event
-      ui_eat_event(events, n);
+      ui_eat_event_node(events, n);
     }
     scratch_end(scratch);
   }
@@ -842,7 +843,7 @@ ui_f32_edit(F32 *n, F32 min, F32 max, TxtPt *cursor, TxtPt *mark, U8 *edit_buffe
       *mark = op.mark;
 
       // Consume event
-      ui_eat_event(events, n);
+      ui_eat_event(&n->v);
     }
     scratch_end(scratch);
   }

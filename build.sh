@@ -19,17 +19,19 @@ if [ -v profile ];   then auto_compile_flags="-DPROFILE=1"; echo "[profiling ena
 clang_common='-I../src/ -I../local/ -g -Wno-unknown-warning-option -fdiagnostics-absolute-paths -Wall -Wno-missing-braces -Wno-unused-function -Wno-writable-strings -Wno-unused-value -Wno-unused-variable -Wno-unused-local-typedef -Wno-deprecated-register -Wno-deprecated-declarations -Wno-unused-but-set-variable -Wno-single-bit-bitfield-constant-conversion -Wno-compare-distinct-pointer-types -Wno-initializer-overrides -Wno-incompatible-pointer-types-discards-qualifiers -Wno-for-loop-analysis -Xclang -flto-visibility-public-std -D_USE_MATH_DEFINES -Dstrdup=_strdup -Dgnu_printf=printf'
 clang_debug="$compiler -g -O0 -DBUILD_DEBUG=1 ${clang_common} ${auto_compile_flags}"
 clang_release="$compiler -g -O2 -DBUILD_DEBUG=0 ${clang_common} ${auto_compile_flags}"
-clang_link="-lpthread -lm -lrt -ldl -lstdc++"
+clang_link="-lpthread -lm -lrt -ldl"
 clang_out="-o"
 gcc_common='-I../src/ -I../local/ -g -Wno-unknown-warning-option -Wall -Wno-missing-braces -Wno-unused-function -Wno-attributes -Wno-unused-value -Wno-unused-variable -Wno-unused-local-typedef -Wno-deprecated-declarations -Wno-unused-but-set-variable -Wno-compare-distinct-pointer-types -D_USE_MATH_DEFINES -Dstrdup=_strdup -Dgnu_printf=printf -fzero-init-padding-bits=unions -std=gnu17'
-gcc_debug="$compiler -g3 -pg -O0 -DBUILD_DEBUG=1 ${gcc_common} ${auto_compile_flags}"
+gcc_debug="$compiler -g3 -O0 -DBUILD_DEBUG=1 ${gcc_common} ${auto_compile_flags}"
 gcc_release="$compiler -g -O2 -DBUILD_DEBUG=0 ${gcc_common} ${auto_compile_flags}"
-gcc_link="-lpthread -lm -lrt -ldl -lstdc++"
+gcc_link="-lpthread -lm -lrt -ldl"
 gcc_out="-o"
 
 # --- Per-Build Settings ------------------------------------------------------
 link_dll="-fPIC"
-link_os_gfx="-lvulkan -lX11 -lXext -lXxf86vm -lXrandr -lXi -lXcursor -lXfixes"
+# link_os_gfx="-lX11 -lXext -lXxf86vm -lXrandr -lXi -lXcursor -lXfixes"
+link_os_gfx="-lX11 -lXext -lXfixes"
+link_render="-lvulkan"
 link_os_audio="-lasound"
 
 # --- Choose Compile/Link Lines -----------------------------------------------
@@ -59,7 +61,7 @@ then
 fi
 
 # --- Compile Shaders ---------------------------------------------------------
-if [ -v no_shader ]; then echo "[skipping no_shader]"; fi
+if [ -v no_shader ]; then echo "[skipping shader]"; fi
 if [ ! -v no_shader ]; then
   shader_in_dir="./src/render/vulkan/shader"
   shader_out_dir="./src/render/vulkan/shader"
@@ -78,7 +80,7 @@ fi
 
 # --- Build Everything (@build_targets) ---------------------------------------
 cd build
-if [ -v rubik ];                 then didbuild=1 && $compile ../src/rubik/rubik_main.c                                     $compile_link $link_os_gfx $link_os_audio $out rubik; fi
+if [ -v rubik ]; then didbuild=1 && $compile ../src/rubik/rubik_main.c  $compile_link $link_os_gfx $link_render $link_os_audio $out rubik; fi
 cd ..
 
 # --- Warn On No Builds -------------------------------------------------------
