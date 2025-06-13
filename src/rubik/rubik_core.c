@@ -1579,7 +1579,7 @@ internal void rk_ui_stats(void)
     UI_ChildLayoutAxis(Axis2_Y)
       UI_PrefWidth(ui_px(800, 1.0))
       UI_PrefHeight(ui_children_sum(0.0))
-      UI_Flags(UI_BoxFlag_DrawBorder)
+      UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow)
     {
       stats_container = ui_build_box_from_stringf(0, "###stats_body");
     }

@@ -29,12 +29,80 @@ os_set_main_audio_device(OS_Handle handle)
   os_lnx_audio_state->main_device = device;
 }
 
+internal void
+os_lnx_audio_frames_mix(F32 *dst, F32 *src, U64 frame_count, F32 volume, F32 pan)
+{
+  U64 channel_count = os_lnx_audio_state->main_device->config.playback.channel_count;
+
+  // considering pan if it's stereo
+  if(channel_count == 2)
+  {
+    F32 left = pan;
+    F32 right = 1.0 - left;
+
+    // fast sine approximation in [0..1] for pan law: y = 0.5f*x*(3 - x*x);
+    F32 levels[2] = { volume*0.5f*left*(3.0f - left*left), volume*0.5f*right*(3.0f - right*right) };
+
+    for(U64 frame_index = 0; frame_index < frame_count; frame_index++)
+    {
+      dst[0] += src[0]*levels[0];
+      dst[1] += src[1]*levels[1];
+      dst += 2;
+      src += 2;
+    }
+  }
+  else
+  {
+    for(U64 sample_index = 0; sample_index < frame_count*channel_count; sample_index++)
+    {
+      // output accumulates input multiplied by volume
+      *dst += (*src) * volume;
+      dst++;
+      src++;
+    }
+  }
+}
+
 // this function will be called when miniaudio needs more data
 // all the mixing takes place here
 internal void
-os_lnx_device_output_callback(ma_device *pDevice, void *pFramesOut, const void *pFramesInput, ma_uint32 frameCount)
+os_lnx_device_output_callback(ma_device *device, void *frames_out, const void *frames_in, ma_uint32 frame_count)
 {
+  // NOTE(k): this thread is spawned by ma, we can't safely use scratch arena here
 
+  // mixing is basically just an accumulation, we need to initialize the output buffer to 0
+  MemoryZero(frames_out, frame_count*device->playback.channels*ma_get_bytes_per_sample(device->playback.format));
+
+  // TODO(k): using a mutex here for thread-safety which makes things not real-time
+  // this is unlikely to be necessary for this project, but may want to consider how you might want to avoid this
+  ma_mutex_lock(&os_lnx_audio_state->lock);
+
+  U64 channel_count = os_lnx_audio_state->main_device->config.playback.channel_count;
+  U64 sample_count = frame_count*channel_count;
+
+  Temp scratch = scratch_begin(0,0);
+  F32 *dst = (F32*)frames_out;
+  F32 *src = push_array(scratch.arena, F32, sample_count);
+  B32 dirty = 0;
+  for(OS_LNX_AudioBuffer *buffer = os_lnx_audio_state->first_process_audio_buffer; buffer != 0; buffer = buffer->next)
+  {
+    if(buffer->playing || (!buffer->paused))
+    {
+      if(dirty)
+      {
+        MemoryZero(src, sizeof(F32)*sample_count);
+      }
+
+      // buffer output callback
+      // TODO: read it from it's internal format
+      buffer->output_callback((void*)src, frame_count);
+      buffer->frames_processed += frame_count;
+      // TODO: frame_cursor and looping (mainly for music)
+      os_lnx_audio_frames_mix(dst, src, frame_count, buffer->volume, buffer->pan);
+    }
+  }
+  scratch_end(scratch);
+  ma_mutex_unlock(&os_lnx_audio_state->lock);
 }
 
 // device
@@ -54,11 +122,12 @@ os_audio_device_open(void)
 
   // unpack params
   // TODO: pass these params from the caller
-  OS_AudioFormat playback_format = OS_AudioFormat_S16;
-  U64 playback_channel_count = 2;
+  // NOTE(k): using f32 as format because it simplifies mixing
+  OS_AudioFormat playback_format = OS_AudioFormat_F32;
+  U64 playback_channel_count = 1;
   OS_AudioFormat capture_format = OS_AudioFormat_S16;
   U64 capture_channel_count = 1;
-  U64 sample_rate = 0; // use device sample rate 
+  U64 sample_rate = 48000; // use device sample rate 
 
   struct
   {
@@ -95,11 +164,11 @@ os_audio_device_open(void)
   device->config.capture.channel_count = capture_channel_count;
   device->config.sample_rate = sample_rate;
 
-  // char *src = device->handle.playback.name;
-  // U64 copy_size = Min(ArrayCount(device->playback_name), strlen(src));
-  // MemoryCopy(device->playback_name, src, copy_size);
-  // src = device->handle.capture.name;
-  // copy_size = Min(ArrayCount(device->capture_name), strlen(src));
+  char *src = device->handle.playback.name;
+  U64 copy_size = Min(ArrayCount(device->playback_name), strlen(src));
+  MemoryCopy(device->playback_name, src, copy_size);
+  src = device->handle.capture.name;
+  copy_size = Min(ArrayCount(device->capture_name), strlen(src));
 
   OS_Handle ret = os_lnx_handle_from_audio_device(device);
   return ret;
@@ -118,7 +187,7 @@ os_audio_device_start(OS_Handle handle)
   if(device)
   {
     ma_result err = ma_device_start(&device->handle);
-    Assert(err == MA_SUCCESS);
+    AssertAlways(err == MA_SUCCESS);
   }
 }
 
@@ -138,7 +207,6 @@ os_audio_device_set_master_volume(OS_Handle device, F32 volume)
 
 // audio stream functions
 
-// load audio stream (to stream audio pcm data)
 internal OS_Handle
 os_audio_stream_alloc(U32 sample_rate, U32 sample_size, U32 channel_count)
 {
@@ -156,14 +224,11 @@ os_audio_stream_alloc(U32 sample_rate, U32 sample_size, U32 channel_count)
   stream->sample_rate   = sample_rate;
   stream->sample_size   = sample_size;
   stream->channel_count = channel_count;
+  stream->buffer.pan    = 0.5;
+  stream->buffer.volume = 1.0;
 
-  // TODO: alloc a audio buffer (don't know what's that)
-
-  ma_format dst_format = ((sample_size == 8)? ma_format_u8 : ((sample_size == 16)? ma_format_s16 : ma_format_f32));
-
-  // // the size of a streaming buffer must be at least double the size of period
-  // U64 period_size = os_lnx_audio_state->main_device->handle.playback.internalPeriodSizeInFrames;
-
+  // push it into stack for processing/mixing
+  DLLPushBack(os_lnx_audio_state->first_process_audio_buffer, os_lnx_audio_state->last_process_audio_buffer, &stream->buffer);
   OS_Handle ret = os_lnx_handle_from_audio_stream(stream);
   return ret;
 }
@@ -183,22 +248,119 @@ os_lnx_audio_buffer_play(OS_LNX_AudioBuffer *buffer)
 }
 
 internal void
+os_lnx_audio_buffer_pause(OS_LNX_AudioBuffer *buffer)
+{
+  if(buffer)
+  {
+    ma_mutex_lock(&os_lnx_audio_state->lock);
+    buffer->playing = 0;
+    buffer->paused = 1;
+    ma_mutex_unlock(&os_lnx_audio_state->lock);
+  }
+}
+
+internal void
+os_lnx_audio_buffer_resume(OS_LNX_AudioBuffer *buffer)
+{
+  if(buffer)
+  {
+    ma_mutex_lock(&os_lnx_audio_state->lock);
+    buffer->playing = 1;
+    buffer->paused = 0;
+    ma_mutex_unlock(&os_lnx_audio_state->lock);
+  }
+}
+
+internal void
+os_lnx_audio_buffer_set_output_callback(OS_LNX_AudioBuffer *buffer, OS_AudioOutputCallback cb)
+{
+  if(buffer)
+  {
+    ma_mutex_lock(&os_lnx_audio_state->lock);
+    buffer->output_callback = cb;
+    ma_mutex_unlock(&os_lnx_audio_state->lock);
+  }
+}
+
+internal void
+os_lnx_audio_buffer_set_volume(OS_LNX_AudioBuffer *buffer, F32 volume)
+{
+  if(buffer)
+  {
+    ma_mutex_lock(&os_lnx_audio_state->lock);
+    buffer->volume = volume;
+    ma_mutex_unlock(&os_lnx_audio_state->lock);
+  }
+}
+
+internal void
+os_lnx_audio_buffer_set_pan(OS_LNX_AudioBuffer *buffer, F32 pan)
+{
+  if(buffer)
+  {
+    ma_mutex_lock(&os_lnx_audio_state->lock);
+    buffer->pan = pan;
+    ma_mutex_unlock(&os_lnx_audio_state->lock);
+  }
+}
+
+internal void
 os_audio_stream_play(OS_Handle handle)
 {
   OS_LNX_AudioStream *stream = os_lnx_audio_stream_from_handle(handle);
   if(stream)
   {
-    os_lnx_audio_buffer_play(stream->buffer);
+    os_lnx_audio_buffer_play(&stream->buffer);
   }
 }
 
 internal void
-os_audio_stream_callback_set(OS_Handle handle, OS_AudioOutputCallback cb)
+os_audio_stream_pause(OS_Handle handle)
 {
   OS_LNX_AudioStream *stream = os_lnx_audio_stream_from_handle(handle);
   if(stream)
   {
-    stream->buffer->output_callback = cb;
+    os_lnx_audio_buffer_pause(&stream->buffer);
+  }
+}
+
+internal void
+os_audio_stream_resume(OS_Handle handle)
+{
+  OS_LNX_AudioStream *stream = os_lnx_audio_stream_from_handle(handle);
+  if(stream)
+  {
+    os_lnx_audio_buffer_resume(&stream->buffer);
+  }
+}
+
+internal void
+os_audio_stream_set_output_callback(OS_Handle handle, OS_AudioOutputCallback cb)
+{
+  OS_LNX_AudioStream *stream = os_lnx_audio_stream_from_handle(handle);
+  if(stream)
+  {
+    os_lnx_audio_buffer_set_output_callback(&stream->buffer, cb);
+  }
+}
+
+internal void
+os_audio_stream_set_volume(OS_Handle handle, F32 volume)
+{
+  OS_LNX_AudioStream *stream = os_lnx_audio_stream_from_handle(handle);
+  if(stream)
+  {
+    os_lnx_audio_buffer_set_volume(&stream->buffer, volume);
+  }
+}
+
+internal void
+os_audio_stream_set_pan(OS_Handle handle, F32 pan)
+{
+  OS_LNX_AudioStream *stream = os_lnx_audio_stream_from_handle(handle);
+  if(stream)
+  {
+    os_lnx_audio_buffer_set_pan(&stream->buffer, pan);
   }
 }
 
@@ -209,7 +371,6 @@ os_lnx_handle_from_audio_device(OS_LNX_AudioDevice *device)
   if(device)
   {
     ret.u64[0] = (U64)device;
-    // ret.u64[1] = device->generation;
   }
   return ret;
 }

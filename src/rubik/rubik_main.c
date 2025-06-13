@@ -74,9 +74,6 @@ entry_point(CmdLine *cmd_line)
   os_set_main_audio_device(main_audio_device);
   os_audio_device_start(main_audio_device);
 
-  // TODO(TESTING)
-  // OS_Handle audio_stream = os_audio_stream_alloc(48000, sizeof(F32), 2);
-
   // render initialization
   r_init((char *)window_title.str, os_wnd, BUILD_DEBUG);
   R_Handle r_wnd = r_window_equip(os_wnd);

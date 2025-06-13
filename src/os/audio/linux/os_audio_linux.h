@@ -5,6 +5,13 @@
 // Audio Backend Includes
 
 // #include "os/audio/linux/alsa/alsa.h"
+
+#define MA_ON_THREAD_ENTRY     \
+  TCTX tctx_;                  \
+  tctx_init_and_equip(&tctx_);
+#define MA_ON_THREAD_EXIT      \
+  tctx_release();
+
 #include "external/miniaudio/miniaudio.h"
 
 typedef struct OS_LNX_AudioDeviceConfig OS_LNX_AudioDeviceConfig;
@@ -52,7 +59,7 @@ struct OS_LNX_AudioBuffer
   OS_LNX_AudioBuffer *prev;
 
   F32 volume;
-  F32 pitch;
+  // F32 pitch;
   F32 pan;
 
   B32 playing;
@@ -63,6 +70,8 @@ struct OS_LNX_AudioBuffer
   U64 frame_cursor_pos;
   U64 frames_processed;
 
+  // TODO: how do we reuse this, buffer size could vary for music stream
+  //       maybe use a ring buffer?
   U8 *data; // data buffer, on music stream keeps filling
 
   OS_AudioOutputCallback output_callback;
@@ -72,8 +81,9 @@ typedef struct OS_LNX_AudioStream OS_LNX_AudioStream;
 struct OS_LNX_AudioStream
 {
   OS_LNX_AudioStream *next;
+  OS_LNX_AudioStream *prev;
 
-  OS_LNX_AudioBuffer *buffer;
+  OS_LNX_AudioBuffer buffer;
 
   U32 sample_rate;   // frequency (samples per second)
   U32 sample_size;   // bit depth (bits per sample): 8, 16, 32 (24 not supported)
@@ -98,7 +108,6 @@ struct OS_LNX_AudioState
   // free list
   OS_LNX_AudioDevice *first_free_audio_device;
   OS_LNX_AudioStream *first_free_audio_stream;
-  OS_LNX_AudioBuffer *first_free_audio_buffer;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -106,7 +115,17 @@ struct OS_LNX_AudioState
 global OS_LNX_AudioState *os_lnx_audio_state = 0;
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// handle
+// AudioBuffer
+
+internal void os_lnx_audio_buffer_play(OS_LNX_AudioBuffer *buffer);
+internal void os_lnx_audio_buffer_pause(OS_LNX_AudioBuffer *buffer);
+internal void os_lnx_audio_buffer_resume(OS_LNX_AudioBuffer *buffer);
+internal void os_lnx_audio_buffer_set_output_callback(OS_LNX_AudioBuffer *buffer, OS_AudioOutputCallback cb);
+internal void os_lnx_audio_buffer_set_volume(OS_LNX_AudioBuffer *buffer, F32 volume);
+internal void os_lnx_audio_buffer_set_pan(OS_LNX_AudioBuffer *buffer, F32 pan);
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Handle
 
 internal OS_Handle           os_lnx_handle_from_audio_device(OS_LNX_AudioDevice *device);
 internal OS_LNX_AudioDevice* os_lnx_audio_device_from_handle(OS_Handle handle);

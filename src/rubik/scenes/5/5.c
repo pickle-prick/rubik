@@ -25,6 +25,8 @@ struct S5_Scene
   RK_Handle sea;
   RK_Handle submarine;
 
+  OS_Handle speaker_stream;
+
   // per-frame build artifacts
   Vec2F32 world_mouse;
   QuadTree *root_quad;
@@ -100,6 +102,32 @@ struct S5_Boid
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Helper Functions
+
+internal void
+s5_audio_stream_output_callback(void *buffer, U64 frame_count)
+{
+  // TESTING
+  local_persist F32 time = 0;
+  F32 frame_time_step = 1.0/48000;
+  F32 *dst = buffer;
+
+  for(U64 i = 0; i < frame_count; i++)
+  {
+    F32 value = sinf(440.0 * tau32 * time);
+    if(value >= 0)
+    {
+      value = 0.3;
+    }
+    else
+    {
+      value = -0.3;
+    }
+    *dst = value;
+    // *dst = sinf(440.0 * tau32 * time);
+    time += frame_time_step;
+    dst++;
+  }
+}
 
 internal Vec2F32
 s5_world_position_from_mouse(Vec2F32 mouse, Vec2F32 resolution_dim, Mat4x4F32 proj_view_inv_m)
@@ -194,8 +222,18 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_camera)
 RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
 {
   S5_Scene *s = scene->custom_data;
+  S5_Submarine *submarine = rk_node_from_handle(&s->submarine)->custom_data;
   RK_NodeBucket *node_bucket = scene->node_bucket;
   s->world_mouse = s5_world_position_from_mouse(rk_state->cursor, rk_state->window_dim, ctx->proj_view_inv_m);
+
+  if(submarine->scan_t > 0.001)
+  {
+    os_audio_stream_set_volume(s->speaker_stream, 0.5);
+  }
+  else
+  {
+    os_audio_stream_set_volume(s->speaker_stream, 0);
+  }
 
   // TODO(XXX): not ideal, how can find a resonal bounds for the world 
   // we may want to collect the 2d world bounds for sprite2d
@@ -264,7 +302,6 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_game_ui)
   {
     UI_Box *container = 0;
     UI_Rect(rk_state->window_rect)
-      // UI_Flags(UI_BoxFlag_DrawBackground)
     {
       container = ui_build_box_from_stringf(0, "###game_overlay");
     }
@@ -739,6 +776,12 @@ rk_scene_entry__5()
 
   // scene data
   S5_Scene *scene = rk_scene_push_custom_data(ret, S5_Scene);
+  OS_Handle speaker_stream = os_audio_stream_alloc(48000, sizeof(F32), 1);
+  os_audio_stream_set_output_callback(speaker_stream, s5_audio_stream_output_callback);
+  os_audio_stream_play(speaker_stream);
+  os_audio_stream_set_volume(speaker_stream, 0.1);
+  // os_audio_stream_pause(speaker_stream);
+  scene->speaker_stream = speaker_stream;
 
   // 2d viewport
   // Rng2F32 viewport_screen = {0,0,600,600};
@@ -844,7 +887,7 @@ rk_scene_entry__5()
         U32 spwan_dim_y = dim_1u32(spwan_range_y);
 
         // spawn boids
-        for(U64 i = 0; i < 360; i++)
+        for(U64 i = 0; i < 100; i++)
         {
           F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
           F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;

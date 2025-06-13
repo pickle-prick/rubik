@@ -1,4 +1,5 @@
 global U64 global_update_tick_idx = 0;
+global U64 global_time_start_us = 0;
 
 internal void
 main_thread_base_entry_point(int argc, char **argv)
@@ -16,6 +17,7 @@ main_thread_base_entry_point(int argc, char **argv)
     os_gfx_init();
     os_audio_init();
 
+    global_time_start_us = os_now_microseconds();
     entry_point(&cmdline);
     scratch_end(scratch);
 }
