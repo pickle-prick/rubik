@@ -17,14 +17,9 @@ layout(push_constant) uniform PushConstants
 precision mediump float;
 #endif
 
-// float random(vec2 st)
-// {
-//   return fract(sin(dot(st.xy, vec2(12.9898,78.233)))* 43758.5453123);
-// }
-
-float random(vec2 _st)
+float random(vec2 st)
 {
-  return fract(sin(dot(_st.xy, vec2(12.9898,78.233)))* 43758.5453123);
+  return fract(sin(dot(st.xy, vec2(12.9898,78.233)))*43758.5453123*push.time);
 }
 
 // Based on Morgan McGuire @morgan3d
@@ -65,32 +60,8 @@ float fbm(vec2 _st)
 void main()
 {
   vec2 st = gl_FragCoord.xy/push.resolution.xy;
-
-  // float rnd = random(st);
-  // vec4 noise = vec4(vec3(rnd),0.0);
-  // vec4 tex_clr = out_color = texture(stage_sampler, in_tex);
-  // out_color = noise*0.1 + tex_clr;
-
-  // st += st * abs(sin(u_time*0.1)*3.0);
-  vec3 color = vec3(0.0);
-
-  vec2 q = vec2(0.);
-  q.x = fbm( st + 0.00*push.time);
-  q.y = fbm( st + vec2(1.0));
-
-  vec2 r = vec2(0.);
-  r.x = fbm( st + 1.0*q + vec2(1.7,9.2)+ 0.15*push.time);
-  r.y = fbm( st + 1.0*q + vec2(8.3,2.8)+ 0.126*push.time);
-
-  float f = fbm(st+r);
-
-  // color = mix(vec3(0.101961,0.619608,0.666667), vec3(0.666667,0.666667,0.498039), clamp((f*f)*4.0,0.0,1.0));
-  // color = mix(color, vec3(0,0,0.164706), clamp(length(q),0.0,1.0));
-  // color = mix(color, vec3(0.666667,1,1), clamp(length(r.x),0.0,1.0));
-
-  color = mix(vec3(0.,0.,0.), vec3(0.,0,0), clamp((f*f)*4.0,0.0,1.0));
-  color = mix(color, vec3(0.013,0.013,0.013), clamp(length(q),0.0,1.0));
-  color = mix(color, vec3(0.,0,0), clamp(length(r.x),0.0,1.0));
-
-  out_color = vec4((f*f*f+.6*f*f+.5*f)*color,1.);
+  float rnd = random(st);
+  vec4 noise = vec4(vec3(rnd),0.0);
+  vec4 tex_clr = texture(stage_sampler, in_tex);
+  out_color = noise*0.05 + tex_clr;
 }

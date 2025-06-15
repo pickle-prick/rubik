@@ -2598,7 +2598,7 @@ rk_ui_terminal(void)
     Rng2F32 rect = {0,0, rk_state->window_dim.x, state->height};
     UI_Rect(rect)
       UI_Transparency(0.3)
-      UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBackground)
+      UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_KeyboardClickable|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBackground)
       UI_ChildLayoutAxis(Axis2_Y)
     {
       container_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "terminal");
@@ -2653,18 +2653,17 @@ rk_ui_terminal(void)
         UI_Flags(UI_BoxFlag_ClickToFocus)
         {
           UI_Signal sig = ui_line_edit(&state->txt_cursor,
-                                           &state->txt_mark,
-                                           state->edit_line_buffer,
-                                           ArrayCount(state->edit_line_buffer),
-                                           &state->edit_line_size,
-                                           str8_lit(""),
-                                           str8_lit("###line_edit"));
+                                       &state->txt_mark,
+                                       state->edit_line_buffer,
+                                       ArrayCount(state->edit_line_buffer),
+                                       &state->edit_line_size,
+                                       str8_lit(""),
+                                       str8_lit("###line_edit"));
           UI_Box *line_edit_box = sig.box;
 
           if(focus)
           {
             ui_set_auto_focus_active_key(line_edit_box->key);
-            // TODO(BUG): txt_pt postion is wrong for the first character, find out why later 
           }
 
           if(ui_committed(sig))
@@ -2840,7 +2839,6 @@ rk_frame(void)
       frame_time_history_avg_us = frame_time_history_sum_us/num_frames_in_history;
     }
   }
-  // printf("avg fps: %f\n", 1.0/(frame_time_history_avg_us/1000000.0));
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // pick target hz
@@ -4260,8 +4258,8 @@ rk_frame(void)
     // NOTE(k): check if there is anything in passes, we don't a empty geo pass (pass is not cheap)
     if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo2D]))       {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo2D], 0);}
     // TODO(XXX): only for test, make it composiable
-    // d_noise(r2f32p(0,0,0,0), rk_state->elapsed_sec);
     d_edge(rk_state->time_in_seconds);
+    // d_noise(r2f32p(0,0,0,0), rk_state->time_in_seconds);
     if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back]))  {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back], 0);}
     if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front])) {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front], 0);}
     if(!d_bucket_is_empty(rk_state->bucket_rect))                              {d_sub_bucket(rk_state->bucket_rect, 0);}
@@ -4534,8 +4532,16 @@ rk_rect_from_sprite2d(RK_Sprite2D *sprite2d, Vec2F32 pos)
   return ret;
 }
 
+// TODO: revisiting is needed
 internal void
-rk_sprite2d_equip_string(Arena *arena, RK_Sprite2D *sprite2d, String8 string, F_Tag font, F32 font_size, Vec4F32 font_color, U64 tab_size, F_RasterFlags text_raster_flags)
+rk_sprite2d_equip_string(Arena *arena,
+                         RK_Sprite2D *sprite2d,
+                         String8 string,
+                         F_Tag font,
+                         F32 font_size,
+                         Vec4F32 font_color,
+                         U64 tab_size,
+                         F_RasterFlags text_raster_flags)
 {
   D_FancyStringNode fancy_string_n = {0};
   fancy_string_n.next = 0;

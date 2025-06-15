@@ -424,9 +424,9 @@ RK_NODE_CUSTOM_UPDATE(s3_fn_cell)
   {
 
     rk_sprite2d_equip_string(rk_frame_arena(), sprite2d,
-        push_str8f(scratch.arena, "%I64u", strength),
-        rk_state->cfg_font_tags[RK_FontSlot_Game],
-        sprite2d->size.y, v4f32(1,1,1,1), 4, F_RasterFlag_Smooth);
+                             push_str8f(scratch.arena, "%I64u", strength),
+                             rk_state->cfg_font_tags[RK_FontSlot_Game],
+                             sprite2d->size.y, v4f32(1,1,1,1), 4, F_RasterFlag_Smooth);
   }
   else
   {

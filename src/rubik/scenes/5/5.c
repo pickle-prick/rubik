@@ -26,6 +26,7 @@ struct S5_Scene
   RK_Handle submarine;
 
   OS_Handle speaker_stream;
+  OS_Handle sound;
 
   // per-frame build artifacts
   Vec2F32 world_mouse;
@@ -97,7 +98,7 @@ struct S5_Boid
   F32 last_motivation_update_time;
 };
 
-#define S5_SEA_FLUID_DENSITY 1025.0
+#define S5_SEA_FLUID_DENSITY    1025.0
 #define S5_SCALE_WORLD_TO_METER 0.001
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -106,26 +107,21 @@ struct S5_Boid
 internal void
 s5_audio_stream_output_callback(void *buffer, U64 frame_count)
 {
-  // TESTING
-  local_persist F32 time = 0;
-  F32 frame_time_step = 1.0/48000;
+  local_persist F32 phase = 0;
+  // TODO: use device sample size here
+  F32 phase_step = (440.0f * tau32) / 44100.0f;
   F32 *dst = buffer;
 
   for(U64 i = 0; i < frame_count; i++)
   {
-    F32 value = sinf(440.0 * tau32 * time);
-    if(value >= 0)
+    // TODO: use device channel count here
+    for(U64 c = 0; c < 2; c++)
     {
-      value = 0.3;
+      F32 value = sinf(phase);
+      *dst++ = (value >= 0) ? 0.3f : -0.3f;
     }
-    else
-    {
-      value = -0.3;
-    }
-    *dst = value;
-    // *dst = sinf(440.0 * tau32 * time);
-    time += frame_time_step;
-    dst++;
+    phase += phase_step;
+    if(phase > tau32) phase -= tau32; // wrap phase
   }
 }
 
@@ -228,7 +224,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
 
   if(submarine->scan_t > 0.001)
   {
-    os_audio_stream_set_volume(s->speaker_stream, 0.5);
+    os_audio_stream_set_volume(s->speaker_stream, 0.1);
   }
   else
   {
@@ -271,23 +267,24 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
     n->node2d->transform.position = position;
     n->node2d->z_index = -1;
 
-    // Temp scratch = scratch_begin(0,0);
-    // {
-    //   Rng2F32 debug_rect = rk_rect_from_sprite2d(n->sprite2d, position);
-    //   RK_Node **nodes = 0;
-    //   quadtree_query(scratch.arena, s->root_quad, debug_rect, (void***)&nodes);
+    Temp scratch = scratch_begin(0,0);
+    {
+      Rng2F32 debug_rect = rk_rect_from_sprite2d(n->sprite2d, position);
+      RK_Node **nodes = 0;
+      quadtree_query(scratch.arena, s->root_quad, debug_rect, (void***)&nodes);
 
-    //   U64 count = 0;
-    //   for(U64 i = 0; i < darray_size(nodes); i++)
-    //   {
-    //     if(nodes[i]->custom_flags & S5_EntityFlag_Resource)
-    //     {
-    //       count++;
-    //     }
-    //   }
-    //   printf("resource count in range: %lu\n", count);
-    // }
-    // scratch_end(scratch);
+      U64 count = 0;
+      for(U64 i = 0; i < darray_size(nodes); i++)
+      {
+        if(nodes[i]->custom_flags & S5_EntityFlag_Boid)
+        {
+          count++;
+        }
+      }
+      String8 string = push_str8f(rk_frame_arena(), "%I64u", count);
+      rk_debug_gfx(30, add_2f32(rk_state->cursor, v2f32(30, 0)), v4f32(1,1,1,1),string);
+    }
+    scratch_end(scratch);
   }
 }
 
@@ -309,6 +306,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_game_ui)
     UI_Parent(container)
     {
       UI_Column
+        UI_Flags(UI_BoxFlag_DrawBorder)
       {
         ui_labelf("density: %f", submarine->density);
         ui_labelf("scan_t: %f", submarine->scan_t);
@@ -348,7 +346,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
     if(remain_kwh >= 0)
     {
       submarine->power_kwh = remain_kwh;
-      F.y = -10000000;
+      F.y = -1000000;
     }
   }
   if(os_key_is_down(OS_Key_Left))
@@ -358,7 +356,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
     if(remain_kwh >= 0)
     {
       submarine->power_kwh = remain_kwh;
-      F.x = -10000000;
+      F.x = -1000000;
     }
   }
   if(os_key_is_down(OS_Key_Right))
@@ -368,7 +366,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
     if(remain_kwh >= 0)
     {
       submarine->power_kwh = remain_kwh;
-      F.x = 10000000;
+      F.x = 1000000;
     }
   }
   if(os_key_is_down(OS_Key_Down))
@@ -378,11 +376,14 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
     if(remain_kwh >= 0)
     {
       submarine->power_kwh = remain_kwh;
-      F.y = 10000000;
+      F.y = 1000000;
     }
   }
 
-  // TODO: consume kwh
+  if(ui_key_press(0, OS_Key_W))
+  {
+    os_sound_play(s->sound);
+  }
 
   // TODO(XXX): we should move these physics update into fixed_update
   F32 density = submarine->density;
@@ -412,19 +413,9 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
   transform->position = pos;
   submarine->density = density;
 
+  if(ui_key_press(0, OS_Key_Space))
   {
-    OS_EventList os_events = rk_state->os_events;
-    OS_Event *os_evt_first = os_events.first;
-    OS_Event *os_evt_opl = os_events.last + 1;
-    for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
-    {
-      if(os_evt == 0) continue;
-      // TODO(XXX): it's weird here that we can't use OS_EventKind_Pressed
-      if(os_evt->key == OS_Key_Space && os_evt->kind == OS_EventKind_Press)
-      {
-        submarine->is_scanning = 1;
-      }
-    }
+    submarine->is_scanning = 1;
   }
 
   if(submarine->is_scanning)
@@ -887,7 +878,7 @@ rk_scene_entry__5()
         U32 spwan_dim_y = dim_1u32(spwan_range_y);
 
         // spawn boids
-        for(U64 i = 0; i < 100; i++)
+        for(U64 i = 0; i < 300; i++)
         {
           F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
           F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;
@@ -949,6 +940,10 @@ rk_scene_entry__5()
       }
     }
   }
+
+  // TESTING
+  OS_Handle sound = os_sound_from_file("./src/rubik/scenes/5/0a-0.wav");
+  scene->sound = sound;
 
   ret->root = rk_handle_from_node(root);
   rk_pop_scene();

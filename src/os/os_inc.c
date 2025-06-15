@@ -2,6 +2,9 @@
 #if OS_FEATURE_GRAPHICAL
 # include "os/gfx/os_gfx.c"
 #endif
+#if OS_FEATURE_AUDIO
+# include "os/audio/os_audio.c"
+#endif
 
 #if OS_WINDOWS
 # include "os/core/win32/os_core_win32.c"

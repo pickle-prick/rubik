@@ -29,10 +29,12 @@ os_set_main_audio_device(OS_Handle handle)
   os_lnx_audio_state->main_device = device;
 }
 
+// device
+
 internal void
 os_lnx_audio_frames_mix(F32 *dst, F32 *src, U64 frame_count, F32 volume, F32 pan)
 {
-  U64 channel_count = os_lnx_audio_state->main_device->config.playback.channel_count;
+  U64 channel_count = os_lnx_audio_state->main_device->m_device.playback.channels;
 
   // considering pan if it's stereo
   if(channel_count == 2)
@@ -77,7 +79,7 @@ os_lnx_device_output_callback(ma_device *device, void *frames_out, const void *f
   // this is unlikely to be necessary for this project, but may want to consider how you might want to avoid this
   ma_mutex_lock(&os_lnx_audio_state->lock);
 
-  U64 channel_count = os_lnx_audio_state->main_device->config.playback.channel_count;
+  U64 channel_count = os_lnx_audio_state->main_device->m_device.playback.channels;
   U64 sample_count = frame_count*channel_count;
 
   Temp scratch = scratch_begin(0,0);
@@ -93,11 +95,36 @@ os_lnx_device_output_callback(ma_device *device, void *frames_out, const void *f
         MemoryZero(src, sizeof(F32)*sample_count);
       }
 
-      // buffer output callback
-      // TODO: read it from it's internal format
-      buffer->output_callback((void*)src, frame_count);
-      buffer->frames_processed += frame_count;
-      // TODO: frame_cursor and looping (mainly for music)
+      switch(buffer->kind)
+      {
+        case OS_LNX_AudioBufferKind_Stream:
+        {
+          // buffer output callback
+          // TODO: read it from it's internal format
+          buffer->output_callback((void*)src, frame_count);
+          buffer->frames_processed += frame_count;
+          dirty = 1;
+        }break;
+        case OS_LNX_AudioBufferKind_Static:
+        {
+          U64 frame_count_to_read = frame_count;
+
+          F32 *dst = src;
+          S16 *src = &((S16*)buffer->bytes)[buffer->frame_cursor_pos];
+          while(frame_count_to_read > 0 && buffer->frame_cursor_pos < buffer->frame_count-1)
+          {
+            // NOTE(k): since we are loading all sound/music as s16, we need to convert it into f32
+            // TODO(k): handle audio stream channels dynamiclly
+            *(dst++) = *src / (F32)max_S16;
+            *(dst++) = *src / (F32)max_S16;
+            src++;
+            buffer->frame_cursor_pos++;
+            frame_count_to_read--;
+          }
+        }break;
+        default:{InvalidPath;}break;
+      }
+
       os_lnx_audio_frames_mix(dst, src, frame_count, buffer->volume, buffer->pan);
     }
   }
@@ -121,13 +148,12 @@ os_audio_device_open(void)
   MemoryZeroStruct(device);
 
   // unpack params
-  // TODO: pass these params from the caller
   // NOTE(k): using f32 as format because it simplifies mixing
-  OS_AudioFormat playback_format = OS_AudioFormat_F32;
-  U64 playback_channel_count = 1;
+  OS_AudioFormat playback_format = OS_LNX_AUDIO_DEVICE_PLAYBACK_FORMAT;
+  U64 playback_channel_count = OS_LNX_AUDIO_DEVICE_PLAYBACK_CHANNELS;
   OS_AudioFormat capture_format = OS_AudioFormat_S16;
   U64 capture_channel_count = 1;
-  U64 sample_rate = 48000; // use device sample rate 
+  U64 sample_rate = OS_LNX_AUDIO_DEVICE_SAMPLE_RATE; // NOTE(k): we could set it to 0 to use device default sample rate 
 
   struct
   {
@@ -135,11 +161,12 @@ os_audio_device_open(void)
     ma_format dst;
   } format_map[] =
   {
-    {OS_AudioFormat_U8,  ma_format_u8},
-    {OS_AudioFormat_S16, ma_format_s16},
-    {OS_AudioFormat_S24, ma_format_s24},
-    {OS_AudioFormat_S32, ma_format_s32},
-    {OS_AudioFormat_F32, ma_format_f32},
+    {OS_AudioFormat_NULL, ma_format_unknown},
+    {OS_AudioFormat_U8,   ma_format_u8},
+    {OS_AudioFormat_S16,  ma_format_s16},
+    {OS_AudioFormat_S24,  ma_format_s24},
+    {OS_AudioFormat_S32,  ma_format_s32},
+    {OS_AudioFormat_F32,  ma_format_f32},
   };
 
   ma_result err;
@@ -154,21 +181,8 @@ os_audio_device_open(void)
   config.dataCallback       = os_lnx_device_output_callback;
   config.pUserData          = NULL;
 
-  err = ma_device_init(&os_lnx_audio_state->context, &config, &device->handle);
+  err = ma_device_init(&os_lnx_audio_state->context, &config, &device->m_device);
   Assert(err == MA_SUCCESS);
-
-  // fill info
-  device->config.playback.format = playback_format;
-  device->config.playback.channel_count = playback_channel_count;
-  device->config.capture.format = capture_format;
-  device->config.capture.channel_count = capture_channel_count;
-  device->config.sample_rate = sample_rate;
-
-  char *src = device->handle.playback.name;
-  U64 copy_size = Min(ArrayCount(device->playback_name), strlen(src));
-  MemoryCopy(device->playback_name, src, copy_size);
-  src = device->handle.capture.name;
-  copy_size = Min(ArrayCount(device->capture_name), strlen(src));
 
   OS_Handle ret = os_lnx_handle_from_audio_device(device);
   return ret;
@@ -186,7 +200,7 @@ os_audio_device_start(OS_Handle handle)
   OS_LNX_AudioDevice *device = os_lnx_audio_device_from_handle(handle);
   if(device)
   {
-    ma_result err = ma_device_start(&device->handle);
+    ma_result err = ma_device_start(&device->m_device);
     AssertAlways(err == MA_SUCCESS);
   }
 }
@@ -195,16 +209,47 @@ internal void
 os_audio_device_stop(OS_Handle handle)
 {
   OS_LNX_AudioDevice *device = os_lnx_audio_device_from_handle(handle);
-  ma_result err = ma_device_stop(&device->handle);
-  Assert(err == MA_SUCCESS);
+  if(device)
+  {
+    ma_result err = ma_device_stop(&device->m_device);
+    Assert(err == MA_SUCCESS);
+  }
 }
 
 internal void
-os_audio_device_set_master_volume(OS_Handle device, F32 volume)
+os_audio_device_set_master_volume(OS_Handle handle, F32 volume)
 {
-  NotImplemented;
+  OS_LNX_AudioDevice *device = os_lnx_audio_device_from_handle(handle);
+  if(device)
+  {
+    ma_mutex_lock(&os_lnx_audio_state->lock);
+    device->master_volume = volume;
+    ma_mutex_unlock(&os_lnx_audio_state->lock);
+  }
 }
 
+internal OS_AudioDeviceConfig
+os_audio_deivce_cfg(OS_Handle handle)
+{
+  OS_AudioDeviceConfig ret = {0};
+  OS_LNX_AudioDevice *device = os_lnx_audio_device_from_handle(handle);
+  if(device)
+  {
+    ret.state = (OS_AudioDeviceState)ma_device_get_state(&device->m_device);
+    ret.sample_rate = device->m_device.sampleRate;
+
+    ret.playback.name = str8_cstring(device->m_device.playback.name);
+    ret.playback.format = (OS_AudioFormat)device->m_device.playback.format;
+    ret.playback.channel_count = device->m_device.playback.channels;
+
+    ret.capture.name = str8_cstring(device->m_device.capture.name);
+    ret.capture.format = (OS_AudioFormat)device->m_device.capture.format;
+    ret.capture.channel_count = device->m_device.capture.channels;
+  }
+  return ret;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
 // audio stream functions
 
 internal OS_Handle
@@ -224,11 +269,11 @@ os_audio_stream_alloc(U32 sample_rate, U32 sample_size, U32 channel_count)
   stream->sample_rate   = sample_rate;
   stream->sample_size   = sample_size;
   stream->channel_count = channel_count;
-  stream->buffer.pan    = 0.5;
-  stream->buffer.volume = 1.0;
 
-  // push it into stack for processing/mixing
-  DLLPushBack(os_lnx_audio_state->first_process_audio_buffer, os_lnx_audio_state->last_process_audio_buffer, &stream->buffer);
+  OS_LNX_AudioBuffer *audio_buffer = os_lnx_audio_buffer_alloc(0);
+  audio_buffer->kind = OS_LNX_AudioBufferKind_Stream;
+  stream->buffer = audio_buffer;
+
   OS_Handle ret = os_lnx_handle_from_audio_stream(stream);
   return ret;
 }
@@ -310,7 +355,7 @@ os_audio_stream_play(OS_Handle handle)
   OS_LNX_AudioStream *stream = os_lnx_audio_stream_from_handle(handle);
   if(stream)
   {
-    os_lnx_audio_buffer_play(&stream->buffer);
+    os_lnx_audio_buffer_play(stream->buffer);
   }
 }
 
@@ -320,7 +365,7 @@ os_audio_stream_pause(OS_Handle handle)
   OS_LNX_AudioStream *stream = os_lnx_audio_stream_from_handle(handle);
   if(stream)
   {
-    os_lnx_audio_buffer_pause(&stream->buffer);
+    os_lnx_audio_buffer_pause(stream->buffer);
   }
 }
 
@@ -330,7 +375,7 @@ os_audio_stream_resume(OS_Handle handle)
   OS_LNX_AudioStream *stream = os_lnx_audio_stream_from_handle(handle);
   if(stream)
   {
-    os_lnx_audio_buffer_resume(&stream->buffer);
+    os_lnx_audio_buffer_resume(stream->buffer);
   }
 }
 
@@ -340,7 +385,7 @@ os_audio_stream_set_output_callback(OS_Handle handle, OS_AudioOutputCallback cb)
   OS_LNX_AudioStream *stream = os_lnx_audio_stream_from_handle(handle);
   if(stream)
   {
-    os_lnx_audio_buffer_set_output_callback(&stream->buffer, cb);
+    os_lnx_audio_buffer_set_output_callback(stream->buffer, cb);
   }
 }
 
@@ -350,7 +395,7 @@ os_audio_stream_set_volume(OS_Handle handle, F32 volume)
   OS_LNX_AudioStream *stream = os_lnx_audio_stream_from_handle(handle);
   if(stream)
   {
-    os_lnx_audio_buffer_set_volume(&stream->buffer, volume);
+    os_lnx_audio_buffer_set_volume(stream->buffer, volume);
   }
 }
 
@@ -360,9 +405,144 @@ os_audio_stream_set_pan(OS_Handle handle, F32 pan)
   OS_LNX_AudioStream *stream = os_lnx_audio_stream_from_handle(handle);
   if(stream)
   {
-    os_lnx_audio_buffer_set_pan(&stream->buffer, pan);
+    os_lnx_audio_buffer_set_pan(stream->buffer, pan);
   }
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Sound
+
+internal OS_LNX_AudioBuffer *
+os_lnx_audio_buffer_alloc(U64 byte_count)
+{
+  OS_LNX_AudioBuffer *ret = 0;
+
+  U8 *bytes = 0;
+  U64 byte_cap = 0;
+
+  // TODO: some buffer is used as streaming, so do we need to handle them differently
+
+  for(OS_LNX_AudioBuffer *candidate = os_lnx_audio_state->first_free_audio_buffer;
+      candidate != 0;
+      candidate = candidate->next)
+  {
+    if(candidate->byte_cap >= byte_count)
+    {
+      F32 waste_tolerance_pct = 0.1;
+      U64 waste_byte_count_allowed = candidate->byte_cap*waste_tolerance_pct;
+      if((candidate->byte_cap-byte_count) <= waste_byte_count_allowed)
+      {
+        DLLRemove(os_lnx_audio_state->first_free_audio_buffer,
+                  os_lnx_audio_state->last_free_audio_buffer,
+                  candidate);
+        byte_cap = candidate->byte_cap;
+        bytes = candidate->bytes;
+        ret = candidate;
+        break;
+      }
+    }
+  }
+
+  if(ret == 0)
+  {
+    bytes = push_array(os_lnx_audio_state->arena, U8, byte_count);
+    byte_cap = byte_count;
+    ret = push_array_no_zero(os_lnx_audio_state->arena, OS_LNX_AudioBuffer, 1);
+  }
+
+  MemoryZeroStruct(ret);
+  ret->bytes = bytes;
+  ret->byte_count = byte_count;
+  ret->byte_cap = byte_cap;
+  ret->volume = 1.0;
+  ret->pan = 0.5;
+  ret->paused = 1;
+  // push it into stack for processing/mixing
+  DLLPushBack(os_lnx_audio_state->first_process_audio_buffer, os_lnx_audio_state->last_process_audio_buffer, ret);
+  return ret;
+}
+
+internal void
+os_lnx_audio_buffer_release(OS_LNX_AudioBuffer *audio_buffer)
+{
+  DLLRemove(os_lnx_audio_state->first_process_audio_buffer, 
+            os_lnx_audio_state->last_process_audio_buffer,
+            audio_buffer);
+  DLLPushBack(os_lnx_audio_state->first_free_audio_buffer,
+              os_lnx_audio_state->last_free_audio_buffer,
+              audio_buffer);
+}
+
+internal OS_LNX_Sound *
+os_lnx_sound_alloc(void)
+{
+  OS_LNX_Sound *ret = os_lnx_audio_state->first_free_sound;
+  if(ret)
+  {
+    SLLStackPop(os_lnx_audio_state->first_free_sound);
+  }
+  else
+  {
+    ret = push_array_no_zero(os_lnx_audio_state->arena, OS_LNX_Sound, 1);
+  }
+  MemoryZeroStruct(ret);
+  return ret;
+}
+
+internal void
+os_lnx_sound_release(OS_LNX_Sound *sound)
+{
+  os_lnx_audio_buffer_release(sound->buffer);
+  SLLStackPush(os_lnx_audio_state->first_free_sound, sound);
+}
+
+internal OS_Handle
+os_sound_from_file(char *filename)
+{
+  Temp scratch = scratch_begin(0,0);
+  OS_AudioWave *wave = os_wave_from_file(scratch.arena, filename);
+  OS_Handle ret = os_sound_from_wave(wave);
+  scratch_end(scratch);
+  return ret;
+}
+
+internal OS_Handle
+os_sound_from_wave(OS_AudioWave *wave)
+{
+  OS_LNX_Sound *sound = os_lnx_sound_alloc();
+  OS_LNX_AudioBuffer *audio_buffer = os_lnx_audio_buffer_alloc(wave->byte_count);
+  audio_buffer->frame_count = wave->frame_count;
+  MemoryCopy(audio_buffer->bytes, wave->bytes, wave->byte_count);
+
+  sound->buffer = audio_buffer;
+  sound->frame_count = wave->frame_count;
+  return os_lnx_handle_from_sound(sound);
+}
+
+internal void
+os_sound_play(OS_Handle handle)
+{
+  OS_LNX_Sound *sound = os_lnx_sound_from_handle(handle);
+  if(sound)
+  {
+    os_lnx_audio_buffer_play(sound->buffer);
+  }
+}
+
+internal void
+os_sound_pause(OS_Handle handle)
+{
+
+}
+
+internal void
+os_sound_resume(OS_Handle handle)
+{
+
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// handle
 
 internal OS_Handle
 os_lnx_handle_from_audio_device(OS_LNX_AudioDevice *device)
@@ -397,5 +577,23 @@ internal OS_LNX_AudioStream *
 os_lnx_audio_stream_from_handle(OS_Handle handle)
 {
   OS_LNX_AudioStream *ret = (OS_LNX_AudioStream*)handle.u64[0];
+  return ret;
+}
+
+internal OS_Handle
+os_lnx_handle_from_sound(OS_LNX_Sound *sound)
+{
+  OS_Handle ret = {0};
+  if(sound)
+  {
+    ret.u64[0] = (U64)sound;
+  }
+  return ret;
+}
+
+internal OS_LNX_Sound *
+os_lnx_sound_from_handle(OS_Handle handle)
+{
+  OS_LNX_Sound *ret = (OS_LNX_Sound*)handle.u64[0];
   return ret;
 }

@@ -205,9 +205,9 @@ A list of the layers in the codebase and their associated namespaces is below:
     - [ ] D3D11
     - [ ] WEBGPU
 - [ ] Async task architecture (Ref: Parallelizing the Naughty Dog Engine Using Fibers)
-- [ ] Audio
+- [X] Audio (PARTIAL)
 - [ ] Performance
-    - [] optimize geo3d pass
+    - [ ] optimize geo3d pass
 - [X] Unicode support
 
 ## Reference
