@@ -24,7 +24,7 @@ typedef enum OS_AudioDeviceState
 
 
 // TODO: revisit this
-typedef void (*OS_AudioOutputCallback)(void *buffer, U64 frame_count);
+typedef void (*OS_AudioOutputCallback)(void *buffer, U64 frame_count, U64 channel_count);
 
 typedef struct OS_AudioDeviceConfig OS_AudioDeviceConfig;
 struct OS_AudioDeviceConfig

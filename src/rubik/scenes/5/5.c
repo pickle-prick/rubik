@@ -1,3 +1,226 @@
+typedef struct EnvelopeADSR EnvelopeADSR;
+struct EnvelopeADSR
+{
+  F64 attack_time;
+  F64 decay_time;
+  F64 release_time;
+  F64 substain_amp;
+  F64 start_amp;
+};
+
+typedef enum OSC_Kind
+{
+  OSC_Kind_Sin,
+  OSC_Kind_Square,
+  OSC_Kind_Triangle,
+  OSC_Kind_Saw,
+  OSC_Kind_Random,
+  OSC_Kind_COUNT,
+} OSC_Kind;
+
+typedef struct Instrument Instrument;
+typedef struct Note Note;
+struct Note
+{
+  Note *next;
+  Note *prev;
+
+  // id?
+  F64 on_time;
+  F64 off_time;
+  B32 active;
+  Instrument *src;
+};
+
+typedef struct InstrumentOSCNode InstrumentOSCNode;
+struct InstrumentOSCNode
+{
+  InstrumentOSCNode *next;
+  F64 hz;
+  OSC_Kind kind;
+};
+
+typedef struct Instrument Instrument;
+struct Instrument
+{
+  String8 name;
+  EnvelopeADSR env;
+  InstrumentOSCNode *first_osc;
+  U64 osc_node_count;
+  F32 volume; // 0-1
+};
+
+internal Instrument *
+instrument_push(Arena *arena, String8 name)
+{
+  Instrument *ret = push_array(arena, Instrument, 1);
+  ret->name = push_str8_copy(arena, name);
+  return ret;
+}
+
+internal InstrumentOSCNode *
+instrument_push_osc(Arena *arena, Instrument *instrument)
+{
+  InstrumentOSCNode *ret = push_array(arena, InstrumentOSCNode, 1);
+  SLLStackPush(instrument->first_osc, ret);
+  instrument->osc_node_count++;
+  return ret;
+}
+
+internal Note *
+note_alloc()
+{
+  // TODO: use a free list
+  Note *ret = push_array_no_zero(rk_state->arena, Note, 1);
+  return ret;
+}
+
+typedef struct Channel Channel;
+struct Channel
+{
+  Channel *next;
+  Channel *prev;
+
+  Instrument *instrument;
+  String8 beats;
+};
+
+typedef struct Sequencer Sequencer;
+struct Sequencer
+{
+  Sequencer *next;
+  Sequencer *prev;
+
+  F32 tempo; // beats per minute (BPM)
+  U64 beat_count; //main beat
+  U64 subbeat_count;
+  U64 total_subbeat_count;
+  F32 subbeat_time;
+  F32 duration;
+
+  // inc
+  U64 curr_subbeat_index;
+  F64 local_time;
+  F64 overdo_time;
+
+  Channel *first_channel;
+  Channel *last_channel;
+  U64 channel_count;
+  B32 loop;
+  F32 volume;
+};
+
+internal Channel *
+sequencer_push_channel(Arena *arena, Sequencer *seq)
+{
+  Channel *ret = push_array(arena, Channel, 1);
+  DLLPushBack(seq->first_channel, seq->last_channel, ret);
+  seq->channel_count++;
+  return ret;
+}
+
+internal F32 amp_from_envelope(EnvelopeADSR *envelope, F64 time, F64 on_time, F64 off_time)
+{
+  // TODO
+  F64 ret = time > off_time ? 0 : 1.0;
+  return ret;
+}
+
+internal F64 osc(F64 hz, F64 time, OSC_Kind kind)
+{
+  F64 ret;
+  F64 w = hz*tau32; // angular velocity (radians per second)
+  switch(kind)
+  {
+    case OSC_Kind_Sin:
+    {
+      ret = sin(w*time);
+    }break;
+    case OSC_Kind_Square:
+    {
+      ret = sin(w*time) > 0.0 ? 1.0 : -1.0;
+    }break;
+    case OSC_Kind_Triangle:
+    {
+      ret = asin(sin(w*time) * 2.0 / pi32);
+    }break;
+    case OSC_Kind_Saw:
+    {
+      ret = (2.0/pi32) * (hz * pi32 * fmod(time, 1.0/hz) - (pi32/2.0));
+    }break;
+    case OSC_Kind_Random:
+    {
+      ret = 2.0 * ((F64)rand() / (F64)RAND_MAX) - 1.0;
+    }break;
+    default:{InvalidPath;}break;
+  }
+  return ret;
+}
+
+internal F32 sound_from_instrument(Instrument *instrument, F64 time)
+{
+  F32 ret = 0;
+  for(InstrumentOSCNode *osc_node = instrument->first_osc;
+      osc_node != 0;
+      osc_node = osc_node->next)
+  {
+    F32 value = osc(osc_node->hz, time, osc_node->kind);
+    ret += value;
+  }
+  return ret;
+}
+
+// TODO: move to rk_state or somewhere else
+global Sequencer *global_seq = 0;
+global Note* first_note_process = 0;
+global Note* last_note_process = 0;
+global U64 note_count=  0;
+
+internal void sequencer_advance(Sequencer *seq, F64 advance_time, F64 wall_time)
+{
+  F64 local_time = seq->local_time;
+
+  U64 curr_subbeat_index = seq->curr_subbeat_index;
+
+  F32 start_time = wall_time+seq->overdo_time;
+  F64 time_to_process = advance_time-seq->overdo_time;
+
+  while(curr_subbeat_index < seq->total_subbeat_count && time_to_process > 0)
+  {
+    // process channels 
+    for(Channel *c = seq->first_channel; c != 0; c = c->next)
+    {
+      if(c->beats.str[curr_subbeat_index] == 'X')
+      {
+        Note *n = note_alloc();
+        n->on_time = start_time;
+        n->off_time = start_time+seq->subbeat_time;
+        n->active = 1;
+        n->src = c->instrument;
+        DLLPushBack(first_note_process, last_note_process, n);
+        note_count++;
+      }
+    }
+
+    // increment
+    time_to_process -= seq->subbeat_time;
+    start_time += seq->subbeat_time;
+    seq->local_time += seq->subbeat_time;
+    curr_subbeat_index++;
+
+    // wrap if looping
+    if(curr_subbeat_index == seq->total_subbeat_count && seq->loop)
+    {
+      curr_subbeat_index = 0;
+      local_time = 0;
+    }
+  }
+  AssertAlways(time_to_process <= 0);
+  seq->overdo_time = time_to_process < 0 ? seq->subbeat_time+time_to_process : 0;
+  seq->curr_subbeat_index = curr_subbeat_index;
+  seq->local_time = local_time;
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 // Basic Type/Enum
 
@@ -31,6 +254,7 @@ struct S5_Scene
   // per-frame build artifacts
   Vec2F32 world_mouse;
   QuadTree *root_quad;
+  RK_Node **nodes;
 };
 
 typedef struct S5_Resource S5_Resource;
@@ -105,23 +329,71 @@ struct S5_Boid
 // Helper Functions
 
 internal void
-s5_audio_stream_output_callback(void *buffer, U64 frame_count)
+s5_audio_stream_output_callback(void *buffer, U64 frame_count, U64 channel_count)
 {
-  local_persist F32 phase = 0;
-  // TODO: use device sample size here
-  F32 phase_step = (440.0f * tau32) / 44100.0f;
+  // local_persist F64 time = 0;
+  // F32 time_per_sample = 1 / 44100.0f;
+  // F32 *dst = buffer;
+
+  // for(U64 i = 0; i < frame_count; i++)
+  // {
+  //   for(U64 c = 0; c < channel_count; c++)
+  //     F32 value = osc(440.0, time, OSC_Kind_Saw) +
+  //                 osc(440.0 * 2.0, time, OSC_Kind_Square) +
+  //                 osc(440.0 * 2.0, time, OSC_Kind_Sin);
+  //     *dst++ = value;
+  //   }
+  //   time += time_per_sample;
+  // }
+
+
+  local_persist F64 time = 0;
+  F32 time_per_frame = 1 / 44100.0f;
   F32 *dst = buffer;
+
+  // TODO: we need some thread lock here
+  // TODO: add os_audio_thread_lock/unlock
+
+  // advancing sequencers
+  F32 advance_time = time_per_frame*frame_count;
+  sequencer_advance(global_seq, advance_time, time);
 
   for(U64 i = 0; i < frame_count; i++)
   {
-    // TODO: use device channel count here
-    for(U64 c = 0; c < 2; c++)
+    for(Note *note = first_note_process; note != 0; note = note->next)
     {
-      F32 value = sinf(phase);
-      *dst++ = (value >= 0) ? 0.3f : -0.3f;
+      Instrument *instrument = note->src;
+      if(note->active)
+      {
+        // TODO: get if envelope has ended
+        F32 amp = amp_from_envelope(&instrument->env, time, note->on_time, note->off_time);
+        if(note->off_time <= time)  note->active = 0;
+        if(amp > 0.0)
+        {
+          F32 value = sound_from_instrument(instrument, time-note->on_time);
+          printf("value: %f\n", value);
+          for(U64 c = 0; c < channel_count; c++)
+          {
+            *(dst+c) += value*amp;
+          }
+        }
+      }
     }
-    phase += phase_step;
-    if(phase > tau32) phase -= tau32; // wrap phase
+    printf("note_count: %lu\n", note_count);
+    dst += channel_count;
+    time += time_per_frame;
+  }
+
+  // TODO: remove dead notes
+  for(Note *note = first_note_process; note != 0;)
+  {
+    Note *next = note->next;
+    if(!note->active)
+    {
+      DLLRemove(first_note_process, last_note_process, note);
+      note_count--;
+    }
+    note = next;
   }
 }
 
@@ -218,18 +490,15 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_camera)
 RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
 {
   S5_Scene *s = scene->custom_data;
-  S5_Submarine *submarine = rk_node_from_handle(&s->submarine)->custom_data;
   RK_NodeBucket *node_bucket = scene->node_bucket;
   s->world_mouse = s5_world_position_from_mouse(rk_state->cursor, rk_state->window_dim, ctx->proj_view_inv_m);
+  RK_Node *submarine_node = rk_node_from_handle(&s->submarine);
+  S5_Submarine *submarine = submarine_node->custom_data;
 
-  if(submarine->scan_t > 0.001)
-  {
-    os_audio_stream_set_volume(s->speaker_stream, 0.1);
-  }
-  else
-  {
-    os_audio_stream_set_volume(s->speaker_stream, 0);
-  }
+  os_audio_stream_set_volume(s->speaker_stream, 0.1);
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // build quadtree for Collider2D
 
   // TODO(XXX): not ideal, how can find a resonal bounds for the world 
   // we may want to collect the 2d world bounds for sprite2d
@@ -251,6 +520,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
   }
   s->root_quad = root_quad;
 
+  ///////////////////////////////////////////////////////////////////////////////////////
   // draw a debug rect
   if(BUILD_DEBUG) RK_Parent_Scope(rk_node_from_handle(&scene->root))
   {
@@ -286,6 +556,47 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
     }
     scratch_end(scratch);
   }
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // collect world nodes
+
+  RK_Node **nodes = 0;
+  for(U64 slot_index = 0; slot_index < node_bucket->hash_table_size; slot_index++)
+  {
+    for(RK_Node *node = node_bucket->hash_table[slot_index].first; node != 0; node = node->next)
+    {
+      darray_push(rk_frame_arena(), nodes, node);
+    }
+  }
+  s->nodes = nodes;
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // hide sprite2d if it's no within player's viewport
+
+  // TODO(Performance): this one is quite slow
+  ProfBegin("visiable check");
+  for(U64 i = 0; i < darray_size(nodes); i++)
+  {
+    RK_Node *node = nodes[i];
+    if(node->custom_flags & (S5_EntityFlag_Boid|S5_EntityFlag_Resource))
+    {
+      Vec2F32 submarine_center = submarine_node->node2d->transform.position;
+      submarine_center = add_2f32(submarine_center, scale_2f32(submarine_node->sprite2d->size.rect, 0.5));
+      F32 dist_to_submarine = length_2f32(sub_2f32(submarine_center, node->node2d->transform.position));
+      B32 is_visiable = dist_to_submarine < submarine->viewport_radius;
+      if(!is_visiable)
+      {
+        node->sprite2d->color.w = 0;
+        node->sprite2d->draw_edge = 0;
+      }
+      else
+      {
+        node->sprite2d->color.w = 1;
+        node->sprite2d->draw_edge = 1;
+      }
+    }
+  }
+  ProfEnd();
 }
 
 RK_NODE_CUSTOM_UPDATE(s5_fn_game_ui)
@@ -505,6 +816,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
       }
 
       rk_node_release(resource_node);
+      os_sound_play(s->sound);
     }
   }
   scratch_end(scratch);
@@ -707,8 +1019,12 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_boid)
   Vec2F32 submarine_center = submarine_node->node2d->transform.position;
   submarine_center = add_2f32(submarine_center, scale_2f32(submarine_node->sprite2d->size.rect, 0.5));
   F32 dist_to_submarine = length_2f32(sub_2f32(submarine_center, node->node2d->transform.position));
-
   B32 is_visiable = dist_to_submarine < submarine->viewport_radius;
+
+  // if(dist_to_submarine < 100.0)
+  // {
+  //   os_sound_play(s->sound);
+  // }
 
   fish->vel = mix_2f32(fish->target_vel, fish->vel, 0.7);
   // fish->vel = fish->target_vel;
@@ -728,17 +1044,6 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_boid)
   if(update_dt > 6.0)
   {
     fish->motivation = 1 + (rand()/(F32)RAND_MAX) * 1;
-  }
-
-  if(!is_visiable)
-  {
-    sprite2d->color.w = 0;
-    sprite2d->draw_edge = 0;
-  }
-  else
-  {
-    sprite2d->color.w = 1;
-    sprite2d->draw_edge = 1;
   }
 }
 
@@ -944,6 +1249,45 @@ rk_scene_entry__5()
   // TESTING
   OS_Handle sound = os_sound_from_file("./src/rubik/scenes/5/0a-0.wav");
   scene->sound = sound;
+
+  // TESTING (sequencer)
+  // create some instruments
+  Instrument *instrument_beep = instrument_push(ret->arena, str8_lit("beep"));
+  {
+    InstrumentOSCNode *osc;
+    osc = instrument_push_osc(ret->arena, instrument_beep);
+    osc->hz = 880.0;
+    osc->kind = OSC_Kind_Square;
+  }
+  Instrument *instrument_boop = instrument_push(ret->arena, str8_lit("boop"));
+  {
+    InstrumentOSCNode *osc;
+    osc = instrument_push_osc(ret->arena, instrument_boop);
+    osc->hz = 440.0;
+    osc->kind = OSC_Kind_Square;
+  }
+
+  F32 tempo = 120.0;
+  global_seq = push_array(ret->arena, Sequencer, 1);
+  global_seq->tempo = tempo;
+  global_seq->beat_count = 4;
+  global_seq->subbeat_count = 4;
+  global_seq->total_subbeat_count = 16;
+  global_seq->loop = 1;
+  global_seq->volume = 1.0;
+  global_seq->subbeat_time = (60.0/tempo) / (F32)4; // seconds per subbeat
+  global_seq->duration = (60.0/tempo) * 4; // total duration of this sequence
+
+  {
+    Channel *channel = sequencer_push_channel(ret->arena, global_seq);
+    channel->beats = str8_lit("X...X...X...X...");
+    channel->instrument = instrument_beep;
+  }
+  {
+    Channel *channel = sequencer_push_channel(ret->arena, global_seq);
+    channel->beats = str8_lit(".X...X...X...X..");
+    channel->instrument = instrument_boop;
+  }
 
   ret->root = rk_handle_from_node(root);
   rk_pop_scene();

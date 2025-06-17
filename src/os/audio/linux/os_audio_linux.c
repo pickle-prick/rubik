@@ -101,7 +101,7 @@ os_lnx_device_output_callback(ma_device *device, void *frames_out, const void *f
         {
           // buffer output callback
           // TODO: read it from it's internal format
-          buffer->output_callback((void*)src, frame_count);
+          buffer->output_callback((void*)src, frame_count, channel_count);
           buffer->frames_processed += frame_count;
           dirty = 1;
         }break;

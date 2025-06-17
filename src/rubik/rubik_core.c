@@ -2637,7 +2637,7 @@ rk_ui_terminal(void)
           {
             if(row_index >= state->visible_row_rng.min && row_index <= state->visible_row_rng.max)
             {
-              UI_Signal sig = ui_button(line->string);
+              UI_Signal sig = ui_label(line->string);
               UI_Box *b = sig.box;
             }
             row_index++;
