@@ -223,8 +223,8 @@ internal String8 str8_skip_chop_whitespace(String8 string);
 
 internal String8 push_str8_cat(Arena *arena, String8 s1, String8 s2);
 internal String8 push_str8_copy(Arena *arena, String8 s);
-internal String8 push_str8_copy_static_(String8 s, U8 *backed, U64 backed_size);
-#define push_str8_copy_static(s,b) push_str8_copy_static_(s,b,ArrayCount(b))
+internal String8 push_str8_copy_static_(String8 src, U8 *dst, U64 backed_size);
+#define push_str8_copy_static(s,b) push_str8_copy_static_(s,b,ArrayCount(b)-1)
 internal String8 push_str8fv(Arena *arena, char *fmt, va_list args);
 internal String8 push_str8f(Arena *arena, char *fmt, ...);
 

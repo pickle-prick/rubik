@@ -35,11 +35,12 @@
 #include "draw/draw.h"
 #include "ui/ui_inc.h"
 #include "serialize/serialize_inc.h"
-#include "./physics/physics_inc.h"
-#include "./rubik_core.h"
-#include "./rubik_ui_widget.h"
-#include "./rubik_asset.h"
-#include "./scenes/rubik_scenes_inc.h"
+#include "synth/synth.h"
+#include "physics/physics_inc.h"
+#include "rubik_core.h"
+#include "rubik_ui_widget.h"
+#include "rubik_asset.h"
+#include "scenes/rubik_scenes_inc.h"
 
 // [c]
 #include "base/base_inc.c"
@@ -50,11 +51,12 @@
 #include "draw/draw.c"
 #include "ui/ui_inc.c"
 #include "serialize/serialize_inc.c"
-#include "./physics/physics_inc.c"
-#include "./rubik_core.c"
-#include "./rubik_ui_widget.c"
-#include "./rubik_asset.c"
-#include "./scenes/rubik_scenes_inc.c"
+#include "synth/synth.c"
+#include "physics/physics_inc.c"
+#include "rubik_core.c"
+#include "rubik_ui_widget.c"
+#include "rubik_asset.c"
+#include "scenes/rubik_scenes_inc.c"
 
 internal void
 entry_point(CmdLine *cmd_line)
@@ -71,10 +73,11 @@ entry_point(CmdLine *cmd_line)
   OS_Handle os_wnd = os_window_open(r2f32p(0,0, window_rect.x, window_rect.y), 0, window_title);
   os_window_first_paint(os_wnd);
 
-  // init audio
+  // init main audio device
   OS_Handle main_audio_device = os_audio_device_open();
   os_set_main_audio_device(main_audio_device);
   os_audio_device_start(main_audio_device);
+  os_audio_set_master_volume(1.0);
 
   // render initialization
   r_init((char *)window_title.str, os_wnd, BUILD_DEBUG);

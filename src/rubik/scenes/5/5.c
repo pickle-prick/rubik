@@ -1,226 +1,3 @@
-typedef struct EnvelopeADSR EnvelopeADSR;
-struct EnvelopeADSR
-{
-  F64 attack_time;
-  F64 decay_time;
-  F64 release_time;
-  F64 substain_amp;
-  F64 start_amp;
-};
-
-typedef enum OSC_Kind
-{
-  OSC_Kind_Sin,
-  OSC_Kind_Square,
-  OSC_Kind_Triangle,
-  OSC_Kind_Saw,
-  OSC_Kind_Random,
-  OSC_Kind_COUNT,
-} OSC_Kind;
-
-typedef struct Instrument Instrument;
-typedef struct Note Note;
-struct Note
-{
-  Note *next;
-  Note *prev;
-
-  // id?
-  F64 on_time;
-  F64 off_time;
-  B32 active;
-  Instrument *src;
-};
-
-typedef struct InstrumentOSCNode InstrumentOSCNode;
-struct InstrumentOSCNode
-{
-  InstrumentOSCNode *next;
-  F64 hz;
-  OSC_Kind kind;
-};
-
-typedef struct Instrument Instrument;
-struct Instrument
-{
-  String8 name;
-  EnvelopeADSR env;
-  InstrumentOSCNode *first_osc;
-  U64 osc_node_count;
-  F32 volume; // 0-1
-};
-
-internal Instrument *
-instrument_push(Arena *arena, String8 name)
-{
-  Instrument *ret = push_array(arena, Instrument, 1);
-  ret->name = push_str8_copy(arena, name);
-  return ret;
-}
-
-internal InstrumentOSCNode *
-instrument_push_osc(Arena *arena, Instrument *instrument)
-{
-  InstrumentOSCNode *ret = push_array(arena, InstrumentOSCNode, 1);
-  SLLStackPush(instrument->first_osc, ret);
-  instrument->osc_node_count++;
-  return ret;
-}
-
-internal Note *
-note_alloc()
-{
-  // TODO: use a free list
-  Note *ret = push_array_no_zero(rk_state->arena, Note, 1);
-  return ret;
-}
-
-typedef struct Channel Channel;
-struct Channel
-{
-  Channel *next;
-  Channel *prev;
-
-  Instrument *instrument;
-  String8 beats;
-};
-
-typedef struct Sequencer Sequencer;
-struct Sequencer
-{
-  Sequencer *next;
-  Sequencer *prev;
-
-  F32 tempo; // beats per minute (BPM)
-  U64 beat_count; //main beat
-  U64 subbeat_count;
-  U64 total_subbeat_count;
-  F32 subbeat_time;
-  F32 duration;
-
-  // inc
-  U64 curr_subbeat_index;
-  F64 local_time;
-  F64 overdo_time;
-
-  Channel *first_channel;
-  Channel *last_channel;
-  U64 channel_count;
-  B32 loop;
-  F32 volume;
-};
-
-internal Channel *
-sequencer_push_channel(Arena *arena, Sequencer *seq)
-{
-  Channel *ret = push_array(arena, Channel, 1);
-  DLLPushBack(seq->first_channel, seq->last_channel, ret);
-  seq->channel_count++;
-  return ret;
-}
-
-internal F32 amp_from_envelope(EnvelopeADSR *envelope, F64 time, F64 on_time, F64 off_time)
-{
-  // TODO
-  F64 ret = time > off_time ? 0 : 1.0;
-  return ret;
-}
-
-internal F64 osc(F64 hz, F64 time, OSC_Kind kind)
-{
-  F64 ret;
-  F64 w = hz*tau32; // angular velocity (radians per second)
-  switch(kind)
-  {
-    case OSC_Kind_Sin:
-    {
-      ret = sin(w*time);
-    }break;
-    case OSC_Kind_Square:
-    {
-      ret = sin(w*time) > 0.0 ? 1.0 : -1.0;
-    }break;
-    case OSC_Kind_Triangle:
-    {
-      ret = asin(sin(w*time) * 2.0 / pi32);
-    }break;
-    case OSC_Kind_Saw:
-    {
-      ret = (2.0/pi32) * (hz * pi32 * fmod(time, 1.0/hz) - (pi32/2.0));
-    }break;
-    case OSC_Kind_Random:
-    {
-      ret = 2.0 * ((F64)rand() / (F64)RAND_MAX) - 1.0;
-    }break;
-    default:{InvalidPath;}break;
-  }
-  return ret;
-}
-
-internal F32 sound_from_instrument(Instrument *instrument, F64 time)
-{
-  F32 ret = 0;
-  for(InstrumentOSCNode *osc_node = instrument->first_osc;
-      osc_node != 0;
-      osc_node = osc_node->next)
-  {
-    F32 value = osc(osc_node->hz, time, osc_node->kind);
-    ret += value;
-  }
-  return ret;
-}
-
-// TODO: move to rk_state or somewhere else
-global Sequencer *global_seq = 0;
-global Note* first_note_process = 0;
-global Note* last_note_process = 0;
-global U64 note_count=  0;
-
-internal void sequencer_advance(Sequencer *seq, F64 advance_time, F64 wall_time)
-{
-  F64 local_time = seq->local_time;
-
-  U64 curr_subbeat_index = seq->curr_subbeat_index;
-
-  F32 start_time = wall_time+seq->overdo_time;
-  F64 time_to_process = advance_time-seq->overdo_time;
-
-  while(curr_subbeat_index < seq->total_subbeat_count && time_to_process > 0)
-  {
-    // process channels 
-    for(Channel *c = seq->first_channel; c != 0; c = c->next)
-    {
-      if(c->beats.str[curr_subbeat_index] == 'X')
-      {
-        Note *n = note_alloc();
-        n->on_time = start_time;
-        n->off_time = start_time+seq->subbeat_time;
-        n->active = 1;
-        n->src = c->instrument;
-        DLLPushBack(first_note_process, last_note_process, n);
-        note_count++;
-      }
-    }
-
-    // increment
-    time_to_process -= seq->subbeat_time;
-    start_time += seq->subbeat_time;
-    seq->local_time += seq->subbeat_time;
-    curr_subbeat_index++;
-
-    // wrap if looping
-    if(curr_subbeat_index == seq->total_subbeat_count && seq->loop)
-    {
-      curr_subbeat_index = 0;
-      local_time = 0;
-    }
-  }
-  AssertAlways(time_to_process <= 0);
-  seq->overdo_time = time_to_process < 0 ? seq->subbeat_time+time_to_process : 0;
-  seq->curr_subbeat_index = curr_subbeat_index;
-  seq->local_time = local_time;
-}
-
 /////////////////////////////////////////////////////////////////////////////////////////
 // Basic Type/Enum
 
@@ -235,6 +12,19 @@ typedef enum S5_ResourceKind
   S5_ResourceKind_COUNT,
 } S5_ResourceKind;
 
+typedef enum S5_SoundKind
+{
+  S5_SoundKind_GainResource,
+  S5_SoundKind_COUNT,
+} S5_SoundKind;
+
+typedef enum S5_SequencerKind
+{
+  S5_SequencerKind_SonarScan,
+  S5_SequencerKind_Warning,
+  S5_SequencerKind_COUNT,
+} S5_SequencerKind;
+
 typedef struct S5_Camera S5_Camera;
 struct S5_Camera
 {
@@ -248,8 +38,10 @@ struct S5_Scene
   RK_Handle sea;
   RK_Handle submarine;
 
-  OS_Handle speaker_stream;
-  OS_Handle sound;
+  // NOTE: not serializable (loaded from scene setup function)
+  SY_Sequencer *sequencers[S5_SequencerKind_COUNT];
+  // TODO: sounds should be loaded as resource  
+  OS_Handle sounds[S5_SoundKind_COUNT];
 
   // per-frame build artifacts
   Vec2F32 world_mouse;
@@ -327,75 +119,6 @@ struct S5_Boid
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Helper Functions
-
-internal void
-s5_audio_stream_output_callback(void *buffer, U64 frame_count, U64 channel_count)
-{
-  // local_persist F64 time = 0;
-  // F32 time_per_sample = 1 / 44100.0f;
-  // F32 *dst = buffer;
-
-  // for(U64 i = 0; i < frame_count; i++)
-  // {
-  //   for(U64 c = 0; c < channel_count; c++)
-  //     F32 value = osc(440.0, time, OSC_Kind_Saw) +
-  //                 osc(440.0 * 2.0, time, OSC_Kind_Square) +
-  //                 osc(440.0 * 2.0, time, OSC_Kind_Sin);
-  //     *dst++ = value;
-  //   }
-  //   time += time_per_sample;
-  // }
-
-
-  local_persist F64 time = 0;
-  F32 time_per_frame = 1 / 44100.0f;
-  F32 *dst = buffer;
-
-  // TODO: we need some thread lock here
-  // TODO: add os_audio_thread_lock/unlock
-
-  // advancing sequencers
-  F32 advance_time = time_per_frame*frame_count;
-  sequencer_advance(global_seq, advance_time, time);
-
-  for(U64 i = 0; i < frame_count; i++)
-  {
-    for(Note *note = first_note_process; note != 0; note = note->next)
-    {
-      Instrument *instrument = note->src;
-      if(note->active)
-      {
-        // TODO: get if envelope has ended
-        F32 amp = amp_from_envelope(&instrument->env, time, note->on_time, note->off_time);
-        if(note->off_time <= time)  note->active = 0;
-        if(amp > 0.0)
-        {
-          F32 value = sound_from_instrument(instrument, time-note->on_time);
-          printf("value: %f\n", value);
-          for(U64 c = 0; c < channel_count; c++)
-          {
-            *(dst+c) += value*amp;
-          }
-        }
-      }
-    }
-    printf("note_count: %lu\n", note_count);
-    dst += channel_count;
-    time += time_per_frame;
-  }
-
-  // TODO: remove dead notes
-  for(Note *note = first_note_process; note != 0;)
-  {
-    Note *next = note->next;
-    if(!note->active)
-    {
-      DLLRemove(first_note_process, last_note_process, note);
-      note_count--;
-    }
-    note = next;
-  }
-}
 
 internal Vec2F32
 s5_world_position_from_mouse(Vec2F32 mouse, Vec2F32 resolution_dim, Mat4x4F32 proj_view_inv_m)
@@ -494,8 +217,6 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
   s->world_mouse = s5_world_position_from_mouse(rk_state->cursor, rk_state->window_dim, ctx->proj_view_inv_m);
   RK_Node *submarine_node = rk_node_from_handle(&s->submarine);
   S5_Submarine *submarine = submarine_node->custom_data;
-
-  os_audio_stream_set_volume(s->speaker_stream, 0.1);
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // build quadtree for Collider2D
@@ -691,11 +412,6 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
     }
   }
 
-  if(ui_key_press(0, OS_Key_W))
-  {
-    os_sound_play(s->sound);
-  }
-
   // TODO(XXX): we should move these physics update into fixed_update
   F32 density = submarine->density;
   if(os_key_is_down(OS_Key_W))
@@ -731,6 +447,10 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
 
   if(submarine->is_scanning)
   {
+    if(!s->sequencers[S5_SequencerKind_SonarScan]->playing)
+    {
+      sy_sequencer_play(s->sequencers[S5_SequencerKind_SonarScan]);
+    }
     submarine->scan_t += 1 * rk_state->frame_dt;
     if(submarine->scan_t > 1.0)
     {
@@ -739,6 +459,13 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
     }
 
     submarine->scan_t = Clamp(0, submarine->scan_t, 1);
+  }
+  else
+  {
+    if(s->sequencers[S5_SequencerKind_SonarScan]->playing)
+    {
+      sy_sequencer_pause(s->sequencers[S5_SequencerKind_SonarScan]);
+    }
   }
 
   // draw viewport
@@ -816,7 +543,6 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
       }
 
       rk_node_release(resource_node);
-      os_sound_play(s->sound);
     }
   }
   scratch_end(scratch);
@@ -1048,7 +774,121 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_boid)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// Scene Entry
+// Scene Setup & Entry
+
+// TODO: support setup in serialization
+RK_SCENE_SETUP(s5_setup)
+{
+  S5_Scene *s = scene->custom_data;
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // load sounds
+
+  s->sounds[S5_SoundKind_GainResource] = os_sound_from_file("./src/rubik/scenes/5/0a-0.wav");
+
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // load instruments
+
+  SY_Instrument *instrument_beep = sy_instrument_alloc(str8_lit("beep"));
+  {
+    SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_beep);
+    osc->hz = 880.0;
+    osc->kind = SY_OSC_Kind_Square;
+  }
+  SY_Instrument *instrument_boop = sy_instrument_alloc(str8_lit("boop"));
+  {
+    SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_boop);
+    osc->hz = 440.0;
+    osc->kind = SY_OSC_Kind_Square;
+  }
+  // Echo: Softer, lower sine wave to simulate sonar reflection
+  SY_Instrument *instrument_echo = sy_instrument_alloc(str8_lit("echo"));
+  {
+    SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_echo);
+    osc->hz = 440.0f;               // Lower than ping
+    osc->kind = SY_OSC_Kind_Sin;    // Still clean and smooth
+    // osc->volume = 0.5f;          // Softer than ping
+    // osc->attack_time = 0.01f;
+    // osc->decay_time = 0.4f;
+    // osc->sustain_time = 0.0f;
+    // osc->release_time = 0.3f;
+  }
+  // Ping: Sonar-like clean sine tone with subtle fade out
+  SY_Instrument *instrument_ping = sy_instrument_alloc(str8_lit("ping"));
+  {
+    SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_ping);
+    osc->hz = 660.0f;                // Mid-high pitch, sonar-like
+    osc->kind = SY_OSC_Kind_Sin;     // Smooth tone, good for ping
+    // osc->volume = 1.0f;
+    // osc->attack_time = 0.01f;
+    // osc->decay_time = 0.3f;       // quick fade-out to simulate echo
+    // osc->sustain_time = 0.0f;
+    // osc->release_time = 0.2f;
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // load sequencers
+
+  for(U64 kind = 0; kind < S5_SequencerKind_COUNT; kind++)
+  {
+    switch(kind)
+    {
+      case S5_SequencerKind_SonarScan:
+      {
+        F32 tempo = 60.0f; // slower tempo for sonar feel
+        SY_Sequencer *seq = sy_sequencer_alloc();
+        seq->tempo = tempo;
+        seq->beat_count = 4;
+        seq->subbeat_count = 4;
+        seq->total_subbeat_count = 16;
+        seq->loop = 1;
+        seq->volume = 1.0f;
+        seq->subbeat_time = (60.0f / tempo) / (F32)4; // seconds per subbeat
+        seq->duration = (60.0f / tempo) * 4; // total duration of this sequence
+
+        {
+          SY_Channel *channel = sy_sequencer_push_channel(seq);
+          channel->beats = str8_lit("X..............."); // single sonar ping at start
+          channel->instrument = instrument_ping; // sonar-style ping
+        }
+        {
+          SY_Channel *channel = sy_sequencer_push_channel(seq);
+          channel->beats = str8_lit("....X..........."); // slight echo or second ping
+          channel->instrument = instrument_echo; // softer/different instrument
+        }
+
+        s->sequencers[kind] = seq;
+      }break;
+      case S5_SequencerKind_Warning:
+      {
+        F32 tempo = 120.0;
+        SY_Sequencer *seq = sy_sequencer_alloc();
+        seq->tempo = tempo;
+        seq->beat_count = 4;
+        seq->subbeat_count = 4;
+        seq->total_subbeat_count = 16;
+        seq->loop = 1;
+        seq->volume = 1.0;
+        seq->subbeat_time = (60.0/tempo) / (F32)4; // seconds per subbeat
+        seq->duration = (60.0/tempo) * 4; // total duration of this sequence
+
+        {
+          SY_Channel *channel = sy_sequencer_push_channel(seq);
+          channel->beats = str8_lit("X...X...X...X...");
+          channel->instrument = instrument_beep;
+        }
+        {
+          SY_Channel *channel = sy_sequencer_push_channel(seq);
+          channel->beats = str8_lit(".XX..XX..XX..XX.");
+          channel->instrument = instrument_boop;
+        }
+        s->sequencers[kind] = seq;
+      }break;
+      default:{InvalidPath;}break;
+    }
+  }
+}
 
 internal RK_Scene *
 rk_scene_entry__5()
@@ -1072,12 +912,6 @@ rk_scene_entry__5()
 
   // scene data
   S5_Scene *scene = rk_scene_push_custom_data(ret, S5_Scene);
-  OS_Handle speaker_stream = os_audio_stream_alloc(48000, sizeof(F32), 1);
-  os_audio_stream_set_output_callback(speaker_stream, s5_audio_stream_output_callback);
-  os_audio_stream_play(speaker_stream);
-  os_audio_stream_set_volume(speaker_stream, 0.1);
-  // os_audio_stream_pause(speaker_stream);
-  scene->speaker_stream = speaker_stream;
 
   // 2d viewport
   // Rng2F32 viewport_screen = {0,0,600,600};
@@ -1246,53 +1080,12 @@ rk_scene_entry__5()
     }
   }
 
-  // TESTING
-  OS_Handle sound = os_sound_from_file("./src/rubik/scenes/5/0a-0.wav");
-  scene->sound = sound;
-
-  // TESTING (sequencer)
-  // create some instruments
-  Instrument *instrument_beep = instrument_push(ret->arena, str8_lit("beep"));
-  {
-    InstrumentOSCNode *osc;
-    osc = instrument_push_osc(ret->arena, instrument_beep);
-    osc->hz = 880.0;
-    osc->kind = OSC_Kind_Square;
-  }
-  Instrument *instrument_boop = instrument_push(ret->arena, str8_lit("boop"));
-  {
-    InstrumentOSCNode *osc;
-    osc = instrument_push_osc(ret->arena, instrument_boop);
-    osc->hz = 440.0;
-    osc->kind = OSC_Kind_Square;
-  }
-
-  F32 tempo = 120.0;
-  global_seq = push_array(ret->arena, Sequencer, 1);
-  global_seq->tempo = tempo;
-  global_seq->beat_count = 4;
-  global_seq->subbeat_count = 4;
-  global_seq->total_subbeat_count = 16;
-  global_seq->loop = 1;
-  global_seq->volume = 1.0;
-  global_seq->subbeat_time = (60.0/tempo) / (F32)4; // seconds per subbeat
-  global_seq->duration = (60.0/tempo) * 4; // total duration of this sequence
-
-  {
-    Channel *channel = sequencer_push_channel(ret->arena, global_seq);
-    channel->beats = str8_lit("X...X...X...X...");
-    channel->instrument = instrument_beep;
-  }
-  {
-    Channel *channel = sequencer_push_channel(ret->arena, global_seq);
-    channel->beats = str8_lit(".X...X...X...X..");
-    channel->instrument = instrument_boop;
-  }
-
   ret->root = rk_handle_from_node(root);
   rk_pop_scene();
   rk_pop_node_bucket();
   rk_pop_res_bucket();
   rk_pop_handle_seed();
+
+  s5_setup(ret);
   return ret;
 }

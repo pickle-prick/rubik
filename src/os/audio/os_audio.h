@@ -66,13 +66,13 @@ struct OS_AudioWave
 // global state
 internal void os_audio_init(void);
 internal void os_set_main_audio_device(OS_Handle device);
+internal void os_audio_set_master_volume(F32 volume);
 
 // device
 internal OS_Handle            os_audio_device_open(void);
 internal void                 os_audio_device_close(OS_Handle handle);
 internal void                 os_audio_device_start(OS_Handle handle);
 internal void                 os_audio_device_stop(OS_Handle handle);
-internal void                 os_audio_device_set_master_volume(OS_Handle device, F32 volume);
 internal OS_AudioDeviceConfig os_audio_deivce_cfg(OS_Handle device);
 
 // audio stream functions

@@ -16,6 +16,7 @@ RK_ScenesTable:
     `#include "../$(a.id)/$(a.id).c"`
 }
 
+// TODO: just use function table
 @data(RK_SceneTemplate) @c_file rk_scene_templates:
 {
   @expand(RK_ScenesTable a)
@@ -43,6 +44,7 @@ RK_FunctionTable:
   {s5_fn_flock}
   {s5_fn_boid}
   {s5_fn_game_ui}
+  {s5_setup}
   // {s4_fn_guy_controlled}
 }
 

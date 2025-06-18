@@ -29,6 +29,20 @@ os_set_main_audio_device(OS_Handle handle)
   os_lnx_audio_state->main_device = device;
 }
 
+internal void
+os_audio_set_master_volume(F32 volume)
+{
+  OS_LNX_AudioDevice *device = os_lnx_audio_state->main_device;
+  if(device)
+  {
+    ma_mutex_lock(&os_lnx_audio_state->lock);
+    device->master_volume = volume;
+    ma_result err = ma_device_set_master_volume(&device->m_device, volume);
+    AssertAlways(err == MA_SUCCESS);
+    ma_mutex_unlock(&os_lnx_audio_state->lock);
+  }
+}
+
 // device
 
 internal void
@@ -213,18 +227,6 @@ os_audio_device_stop(OS_Handle handle)
   {
     ma_result err = ma_device_stop(&device->m_device);
     Assert(err == MA_SUCCESS);
-  }
-}
-
-internal void
-os_audio_device_set_master_volume(OS_Handle handle, F32 volume)
-{
-  OS_LNX_AudioDevice *device = os_lnx_audio_device_from_handle(handle);
-  if(device)
-  {
-    ma_mutex_lock(&os_lnx_audio_state->lock);
-    device->master_volume = volume;
-    ma_mutex_unlock(&os_lnx_audio_state->lock);
   }
 }
 

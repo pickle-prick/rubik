@@ -1013,12 +1013,17 @@ struct RK_Scene
   // custom data
   void*                custom_data;
 
-  String8              reset_fn;
+  // TODO: to be implemented
+  String8              setup_fn; // run once after initialization
+  String8              reset_fn; // load default configuration
   String8              name;
   String8              save_path;
 
   U64                  handle_seed;
 };
+
+#define RK_SCENE_SETUP(name) void name(RK_Scene *scene)
+typedef RK_SCENE_SETUP(RK_SceneSetupFunctionType);
 
 ////////////////////////////////
 //~ k: Setting Types
@@ -1119,7 +1124,6 @@ typedef struct RK_FunctionEntry RK_FunctionEntry;
 struct RK_FunctionEntry
 {
   String8 name;
-  // RK_NodeCustomUpdateFunctionType *fn;
   void *fn;
 };
 

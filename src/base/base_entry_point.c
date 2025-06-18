@@ -12,10 +12,11 @@ main_thread_base_entry_point(int argc, char **argv)
     CmdLine cmdline = cmd_line_from_string_list(scratch.arena, command_line_argument_strings);
 
     // NOTE: preload modules/systems
-    fp_init();
-    f_init();
     os_gfx_init();
     os_audio_init();
+    fp_init();
+    f_init();
+    sy_init();
 
     global_time_start_us = os_now_microseconds();
     entry_point(&cmdline);
