@@ -22,9 +22,59 @@ sy_init(void)
 internal F32
 sy_amp_from_envelope(SY_EnvelopeADSR *envelope, F64 time, F64 on_time, F64 off_time, B32 *out_finished)
 {
-  // TODO: to be implemented
+#if 1
   F64 ret = time > off_time ? 0 : 1.0;
-  *out_finished = time > off_time ? 0 : 1;
+  *out_finished = time > off_time;
+#else
+  // TODO: this is wrong, fix it later
+  F64 ret = 0.0;
+  F64 release_amp = 0.0;
+
+  // unpack params
+  F64 attack_time  = envelope->attack_time;
+  F64 decay_time   = envelope->decay_time;
+  F64 release_time = envelope->release_time;
+  F32 start_amp    = envelope->start_amp;
+  F32 substain_amp = envelope->substain_amp;
+
+  B32 on = on_time >= time && (time < off_time || off_time < on_time);
+
+  if(on)
+  {
+    F64 life_time = time-on_time;
+
+    if(life_time <= attack_time)
+      ret = (life_time/attack_time) * start_amp;
+
+    if(life_time > attack_time && life_time <= (attack_time+decay_time))
+      ret = ((life_time-attack_time) / decay_time) * (substain_amp-start_amp) + start_amp;
+
+    if(life_time > (attack_time+decay_time))
+      ret = substain_amp;
+  }
+  else
+  {
+    F64 life_time = off_time - on_time;
+    if(life_time <= attack_time)
+      release_amp = (life_time / attack_time) * start_amp;
+
+    if (life_time > attack_time && life_time <= (attack_time + decay_time))
+      release_amp = ((life_time - attack_time) / decay_time) * (substain_amp - start_amp) + start_amp;
+
+    if (life_time > (attack_time + decay_time))
+      release_amp = substain_amp;
+
+    ret = ((time - off_time) / release_time) * (0.0 - release_amp) + release_amp;
+  }
+
+  // amp should not be negative
+  if(ret <= 0.01)
+  {
+    ret = 0.0;
+  }
+
+  *out_finished = ret == 0.0;
+#endif
   return ret;
 }
 
@@ -178,7 +228,7 @@ sy_sequencer_alloc()
 }
 
 internal void
-sy_sequencer_play(SY_Sequencer *sequencer)
+sy_sequencer_play(SY_Sequencer *sequencer, B32 reset_if_repeated)
 {
   if(!sequencer->playing)
   {
@@ -190,6 +240,12 @@ sy_sequencer_play(SY_Sequencer *sequencer)
     DLLPushBack(sy_state->first_sequencer_to_process,
                 sy_state->last_sequencer_to_process,
                 sequencer);
+  }
+  else if(reset_if_repeated)
+  {
+    // reset sequencer progress
+    sequencer->overdo_time = 0.0;
+    sequencer->curr_subbeat_index = 0;
   }
 }
 
@@ -240,9 +296,28 @@ sy_sequencer_advance(SY_Sequencer *seq, F64 advance_time, F64 wall_time)
 {
   F64 local_time = seq->local_time;
   U64 curr_subbeat_index = seq->curr_subbeat_index;
-  F32 start_time = wall_time+seq->overdo_time;
+  F64 start_time = wall_time+seq->overdo_time;
   F64 time_to_process = advance_time-seq->overdo_time;
-  B32 finished = 0;
+
+  if(time_to_process > 0 && curr_subbeat_index == seq->total_subbeat_count)
+  {
+    if(seq->loop)
+    {
+      curr_subbeat_index = 0;
+      local_time = 0;
+    }
+    else
+    {
+      seq->local_time = 0.0;
+      seq->playing = 0;
+      seq->curr_subbeat_index = 0;
+      DLLRemove(sy_state->first_sequencer_to_process,
+                sy_state->last_sequencer_to_process,
+                seq);
+      return;
+    }
+  }
+
   while(curr_subbeat_index < seq->total_subbeat_count && time_to_process > 0)
   {
     // process channels 
@@ -261,41 +336,13 @@ sy_sequencer_advance(SY_Sequencer *seq, F64 advance_time, F64 wall_time)
     // increment
     time_to_process -= seq->subbeat_time;
     start_time += seq->subbeat_time;
-    seq->local_time += seq->subbeat_time;
+    local_time += seq->subbeat_time;
     curr_subbeat_index++;
-
-    // wrap if looping
-    if(curr_subbeat_index == seq->total_subbeat_count)
-    {
-      if(seq->loop)
-      {
-        curr_subbeat_index = 0;
-        local_time = 0;
-      }
-      else
-      {
-        finished = 1;
-        break;
-      }
-    }
   }
-  if(!finished)
-  {
-    AssertAlways(time_to_process <= 0);
-    seq->overdo_time = time_to_process < 0 ? seq->subbeat_time+time_to_process : 0;
-    seq->curr_subbeat_index = curr_subbeat_index;
-    seq->local_time = local_time;
-  }
-  else
-  {
-    // reset sequencer progress
-    seq->overdo_time = 0.0;
-    seq->curr_subbeat_index = 0;
-    seq->playing = 0;
-    DLLRemove(sy_state->first_sequencer_to_process,
-              sy_state->last_sequencer_to_process,
-              seq);
-  }
+  AssertAlways(time_to_process <= 0);
+  seq->overdo_time = time_to_process < 0 ? -time_to_process : 0;
+  seq->curr_subbeat_index = curr_subbeat_index;
+  seq->local_time = local_time;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -321,7 +368,7 @@ sy_audio_stream_output_callback(void *buffer, U64 frame_count, U64 channel_count
 
   local_persist F64 time = 0;
   // TODO: pass sample rate in here
-  F32 time_per_frame = 1 / 44100.0f;
+  F32 time_per_frame = 1.0 / 44100.0f;
   F32 *dst = buffer;
 
   // TODO: add os_audio_thread_lock/unlock
