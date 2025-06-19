@@ -20,10 +20,11 @@ sy_init(void)
 // Envelop
 
 internal F32
-sy_amp_from_envelope(SY_EnvelopeADSR *envelope, F64 time, F64 on_time, F64 off_time)
+sy_amp_from_envelope(SY_EnvelopeADSR *envelope, F64 time, F64 on_time, F64 off_time, B32 *out_finished)
 {
   // TODO: to be implemented
   F64 ret = time > off_time ? 0 : 1.0;
+  *out_finished = time > off_time ? 0 : 1;
   return ret;
 }
 
@@ -179,35 +180,41 @@ sy_sequencer_alloc()
 internal void
 sy_sequencer_play(SY_Sequencer *sequencer)
 {
-  // reset sequencer progress
-  sequencer->overdo_time = 0.0;
-  sequencer->curr_subbeat_index = 0;
-  sequencer->paused = 0;
-  sequencer->playing = 1;
+  if(!sequencer->playing)
+  {
+    // reset sequencer progress
+    sequencer->overdo_time = 0.0;
+    sequencer->curr_subbeat_index = 0;
 
-  DLLPushBack(sy_state->first_sequencer_to_process,
-              sy_state->last_sequencer_to_process,
-              sequencer);
+    sequencer->playing = 1;
+    DLLPushBack(sy_state->first_sequencer_to_process,
+                sy_state->last_sequencer_to_process,
+                sequencer);
+  }
 }
 
 internal void
 sy_sequencer_pause(SY_Sequencer *sequencer)
 {
-  sequencer->paused = 1;
-  sequencer->playing = 0;
-  DLLRemove(sy_state->first_sequencer_to_process,
-            sy_state->last_sequencer_to_process,
-            sequencer);
+  if(sequencer->playing)
+  {
+    sequencer->playing = 0;
+    DLLRemove(sy_state->first_sequencer_to_process,
+              sy_state->last_sequencer_to_process,
+              sequencer);
+  }
 }
 
 internal void
 sy_sequencer_resume(SY_Sequencer *sequencer)
 {
-  sequencer->paused = 0;
-  sequencer->playing = 1;
-  DLLPushBack(sy_state->first_sequencer_to_process,
-              sy_state->last_sequencer_to_process,
-              sequencer);
+  if(!sequencer->playing)
+  {
+    sequencer->playing = 1;
+    DLLPushBack(sy_state->first_sequencer_to_process,
+                sy_state->last_sequencer_to_process,
+                sequencer);
+  }
 }
 
 internal SY_Channel *
@@ -235,6 +242,7 @@ sy_sequencer_advance(SY_Sequencer *seq, F64 advance_time, F64 wall_time)
   U64 curr_subbeat_index = seq->curr_subbeat_index;
   F32 start_time = wall_time+seq->overdo_time;
   F64 time_to_process = advance_time-seq->overdo_time;
+  B32 finished = 0;
   while(curr_subbeat_index < seq->total_subbeat_count && time_to_process > 0)
   {
     // process channels 
@@ -257,16 +265,37 @@ sy_sequencer_advance(SY_Sequencer *seq, F64 advance_time, F64 wall_time)
     curr_subbeat_index++;
 
     // wrap if looping
-    if(curr_subbeat_index == seq->total_subbeat_count && seq->loop)
+    if(curr_subbeat_index == seq->total_subbeat_count)
     {
-      curr_subbeat_index = 0;
-      local_time = 0;
+      if(seq->loop)
+      {
+        curr_subbeat_index = 0;
+        local_time = 0;
+      }
+      else
+      {
+        finished = 1;
+        break;
+      }
     }
   }
-  AssertAlways(time_to_process <= 0);
-  seq->overdo_time = time_to_process < 0 ? seq->subbeat_time+time_to_process : 0;
-  seq->curr_subbeat_index = curr_subbeat_index;
-  seq->local_time = local_time;
+  if(!finished)
+  {
+    AssertAlways(time_to_process <= 0);
+    seq->overdo_time = time_to_process < 0 ? seq->subbeat_time+time_to_process : 0;
+    seq->curr_subbeat_index = curr_subbeat_index;
+    seq->local_time = local_time;
+  }
+  else
+  {
+    // reset sequencer progress
+    seq->overdo_time = 0.0;
+    seq->curr_subbeat_index = 0;
+    seq->playing = 0;
+    DLLRemove(sy_state->first_sequencer_to_process,
+              sy_state->last_sequencer_to_process,
+              seq);
+  }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -313,9 +342,9 @@ sy_audio_stream_output_callback(void *buffer, U64 frame_count, U64 channel_count
       SY_Instrument *instrument = note->src;
       if(note->active)
       {
-        // TODO: get if envelope has ended
-        F32 amp = sy_amp_from_envelope(&instrument->env, time, note->on_time, note->off_time);
-        if(note->off_time <= time)  note->active = 0;
+        B32 finished = 0;
+        F32 amp = sy_amp_from_envelope(&instrument->env, time, note->on_time, note->off_time, &finished);
+        if(finished) note->active = 0;
         if(amp > 0.0)
         {
           F32 value = sy_sound_from_instrument(instrument, time-note->on_time);

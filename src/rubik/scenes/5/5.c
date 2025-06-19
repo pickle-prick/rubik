@@ -1,4 +1,28 @@
 /////////////////////////////////////////////////////////////////////////////////////////
+// Constants
+
+#define WATER_DENSITY                    1025.0 // kg/m^3 for seawater
+#define GRAVITY                          9.81
+#define DRAG_COEFF                       0.9
+
+#define SUBMARINE_MASS                   1
+// #define SUBMARINE_VOLUME                100
+// #define SUBMARINE_MAX_DENSITY           100
+// #define SUBMARINE_MIN_DENSITY           100
+#define SUBMARINE_OXYGEN_CAP             100
+#define SUBMARINE_BATTERY_CAP            1000 // in joules
+#define SUBMARINE_THRUST_FORCE_CAP       30
+#define SUBMARINE_THRUST_FORCE_INC_STEP  2
+#define SUBMARINE_PULSE_FORCE            90
+#define SUBMARINE_PULSE_COOLDOWN         0.3  // in seconds
+#define SUBMARINE_FORCE_TO_POWER_COEFF   0.1
+// Warning/Critical level
+#define SUBMARINE_OXYGEN_WARNING_LEVEL   SUBMARINE_OXYGEN_CAP*0.3
+#define SUBMARINE_OXYGEN_CRITICAL_LEVEL  SUBMARINE_OXYGEN_CAP*0.1
+#define SUBMARINE_BATTERY_WARNING_LEVEL  SUBMARINE_BATTERY_CAP*0.3
+#define SUBMARINE_BATTERY_CRITICAL_LEVEL SUBMARINE_BATTERY_CAP*0.1
+
+/////////////////////////////////////////////////////////////////////////////////////////
 // Basic Type/Enum
 
 typedef U64 S5_EntityFlags;
@@ -21,7 +45,9 @@ typedef enum S5_SoundKind
 typedef enum S5_SequencerKind
 {
   S5_SequencerKind_SonarScan,
+  S5_SequencerKind_Info,
   S5_SequencerKind_Warning,
+  S5_SequencerKind_Critical,
   S5_SequencerKind_COUNT,
 } S5_SequencerKind;
 
@@ -62,7 +88,7 @@ struct S5_Resource
 
     struct
     {
-      F32 kwh;
+      F32 joules;
     } battery;
 
     F32 v[1];
@@ -74,21 +100,29 @@ struct S5_Submarine
 {
   Vec2F32 v;
   F32 density;
-  F32 min_density;
-  F32 max_density;
-  F32 drag;
-
   F32 viewport_radius;
+  Vec2F32 thrust;
+
+  // TODO: passive and active sonar
+  // TODO: bearing graph
+  // TODO: bearing graph analyzer (object detection, movement detection)
+
+  // TODO: depth
+  // TODO: pressure
+  // TODO: tempature
+  // TODO: salt content
 
   B32 is_scanning;
   F32 scan_radius;
   F32 scan_t;
 
+  F32 pulse_cd_t;
+
   // health?
 
   // resource
   F32 oxygen;
-  F32 power_kwh;
+  F32 battery; // in joules
 };
 
 typedef struct S5_Flock S5_Flock;
@@ -146,9 +180,21 @@ world_pos_from_mouse(Mat4x4F32 proj_view_inv_m)
 /////////////////////////////////////////////////////////////////////////////////////////
 // Update Functions
 
+// TODO: create a separate camera for editing
 RK_NODE_CUSTOM_UPDATE(s5_fn_camera)
 {
+  S5_Scene *s = scene->custom_data;
+  RK_Node *submarine_node = rk_node_from_handle(&s->submarine);
   S5_Camera *camera = node->custom_data;
+
+  // center the view of submarine
+  {
+    node->node3d->transform.position.x = submarine_node->node2d->transform.position.x;
+    node->node3d->transform.position.y = submarine_node->node2d->transform.position.y;
+    Vec2F32 dim = dim_2f32(camera->viewport_world_target);
+    node->node3d->transform.position.x -= dim.x/2.0;
+    node->node3d->transform.position.y -= dim.y/2.0;
+  }
 
   if(rk_state->sig.f & UI_SignalFlag_MiddleDragging)
   {
@@ -343,7 +389,11 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_game_ui)
         ui_labelf("density: %f", submarine->density);
         ui_labelf("scan_t: %f", submarine->scan_t);
         ui_labelf("oxygen: %f", submarine->oxygen);
-        ui_labelf("power_kwh: %f", submarine->power_kwh);
+        ui_labelf("battery: %f", submarine->battery);
+        ui_labelf("thrust: %f %f",
+                  submarine->thrust.x,
+                  submarine->thrust.y);
+        ui_labelf("pulse_cd_t: %f", submarine->pulse_cd_t);
       }
     }
   }
@@ -357,100 +407,159 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
   RK_Transform2D *transform = &node->node2d->transform;
   RK_Node *sea_node = rk_node_from_handle(&s->sea);
   RK_Sprite2D *sprite2d = node->sprite2d;
+  Vec2F32 *position = &node->node2d->transform.position;
 
-  F32 y_in = transform->position.y+sprite2d->size.rect.y-sea_node->node2d->transform.position.y;
-  y_in = Clamp(0, y_in, sprite2d->size.rect.y);
-  F32 volume = (sprite2d->size.rect.x*S5_SCALE_WORLD_TO_METER) * (sprite2d->size.rect.y*S5_SCALE_WORLD_TO_METER);
-  F32 volume_displaced = sprite2d->size.rect.x*y_in*S5_SCALE_WORLD_TO_METER*S5_SCALE_WORLD_TO_METER;
+  // F32 y_in = transform->position.y+sprite2d->size.rect.y-sea_node->node2d->transform.position.y;
+  // y_in = Clamp(0, y_in, sprite2d->size.rect.y);
+  // F32 volume = (sprite2d->size.rect.x*S5_SCALE_WORLD_TO_METER) * (sprite2d->size.rect.y*S5_SCALE_WORLD_TO_METER);
+  // F32 volume_displaced = sprite2d->size.rect.x*y_in*S5_SCALE_WORLD_TO_METER*S5_SCALE_WORLD_TO_METER;
 
-  F32 g = 9.8*1000.0; /* gravitational acceleration */
-  F32 mass = submarine->density * volume;
-  F32 mass_displaced = S5_SEA_FLUID_DENSITY * volume_displaced;
+  // F32 g = 9.8*1000.0; /* gravitational acceleration */
+  // F32 mass = submarine->density * volume;
+  // F32 mass_displaced = S5_SEA_FLUID_DENSITY * volume_displaced;
 
-  // force accmulator
-  Vec2F32 F = {0};
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // Control
 
+  ////////////////////////////////
+  // unpack accmulator
+
+  F32 oxygen = submarine->oxygen;
+  F32 battery = submarine->battery;
+  F32 watts = 0;
+
+  ////////////////////////////////
   // thrust
-  if(os_key_is_down(OS_Key_Up))
+
+  Vec2F32 thrust = {0};
+  thrust = submarine->thrust;
+
+  if(rk_key_press(0, OS_Key_Up))
   {
-    F32 remain_kwh = submarine->power_kwh;
-    remain_kwh -= 10*rk_state->frame_dt;
-    if(remain_kwh >= 0)
-    {
-      submarine->power_kwh = remain_kwh;
-      F.y = -1000000;
-    }
+    thrust.y -= SUBMARINE_THRUST_FORCE_INC_STEP;
   }
-  if(os_key_is_down(OS_Key_Left))
+  if(rk_key_press(0, OS_Key_Down))
   {
-    F32 remain_kwh = submarine->power_kwh;
-    remain_kwh -= 10*rk_state->frame_dt;
-    if(remain_kwh >= 0)
-    {
-      submarine->power_kwh = remain_kwh;
-      F.x = -1000000;
-    }
+    thrust.y += SUBMARINE_THRUST_FORCE_INC_STEP;
   }
-  if(os_key_is_down(OS_Key_Right))
+  if(rk_key_press(0, OS_Key_Left))
   {
-    F32 remain_kwh = submarine->power_kwh;
-    remain_kwh -= 10*rk_state->frame_dt;
-    if(remain_kwh >= 0)
-    {
-      submarine->power_kwh = remain_kwh;
-      F.x = 1000000;
-    }
+    thrust.x -= SUBMARINE_THRUST_FORCE_INC_STEP;
   }
-  if(os_key_is_down(OS_Key_Down))
+  if(rk_key_press(0, OS_Key_Right))
   {
-    F32 remain_kwh = submarine->power_kwh;
-    remain_kwh -= 10*rk_state->frame_dt;
-    if(remain_kwh >= 0)
+    thrust.x += SUBMARINE_THRUST_FORCE_INC_STEP;
+  }
+
+  for(U64 i = 0; i < 2; i++)
+  {
+    F32 force = thrust.v[i];
+    force = ClampTop(SUBMARINE_THRUST_FORCE_CAP, force);
+    thrust.v[i] = force;
+    watts += SUBMARINE_FORCE_TO_POWER_COEFF * force * force;
+  }
+  MemoryCopy(&submarine->thrust, &thrust, sizeof(thrust));
+
+  ////////////////////////////////
+  // pulse (for some percesion control)
+  // TODO: add a cool down
+
+  if(submarine->pulse_cd_t > 0)
+  {
+    submarine->pulse_cd_t = ClampBot(0.0, submarine->pulse_cd_t-rk_state->frame_dt);
+  }
+
+  Vec2F32 pulse = {0};
+  if(submarine->pulse_cd_t == 0.0)
+  {
+    B32 pulse_applied = 0;
+    if(rk_key_press(0, OS_Key_A))
     {
-      submarine->power_kwh = remain_kwh;
-      F.y = 1000000;
+      pulse.x -= SUBMARINE_PULSE_FORCE;
+      watts += SUBMARINE_FORCE_TO_POWER_COEFF * SUBMARINE_PULSE_FORCE * SUBMARINE_PULSE_FORCE;
+      pulse_applied = 1;
+    }
+    if(rk_key_press(0, OS_Key_D))
+    {
+      pulse.x += SUBMARINE_PULSE_FORCE;
+      watts += SUBMARINE_FORCE_TO_POWER_COEFF * SUBMARINE_PULSE_FORCE * SUBMARINE_PULSE_FORCE;
+      pulse_applied = 1;
+    }
+    if(rk_key_press(0, OS_Key_W))
+    {
+      pulse.y -= SUBMARINE_PULSE_FORCE;
+      watts += SUBMARINE_FORCE_TO_POWER_COEFF * SUBMARINE_PULSE_FORCE * SUBMARINE_PULSE_FORCE;
+      pulse_applied = 1;
+    }
+    if(rk_key_press(0, OS_Key_S))
+    {
+      pulse.y += SUBMARINE_PULSE_FORCE;
+      watts += SUBMARINE_FORCE_TO_POWER_COEFF * SUBMARINE_PULSE_FORCE * SUBMARINE_PULSE_FORCE;
+      pulse_applied = 1;
+    }
+
+    if(pulse_applied)
+    {
+      submarine->pulse_cd_t = SUBMARINE_PULSE_COOLDOWN;
     }
   }
 
-  // TODO(XXX): we should move these physics update into fixed_update
-  F32 density = submarine->density;
-  if(os_key_is_down(OS_Key_W))
-  {
-    density -= 300*rk_state->frame_dt;
-  }
-  if(os_key_is_down(OS_Key_S))
-  {
-    density += 300*rk_state->frame_dt;
-  }
-  density = Clamp(submarine->min_density, density, submarine->max_density);
+  ////////////////////////////////
+  // bouyancy force (based on Archimedes' principle)
 
-  F32 drag = 6000;
+  // F32 drag = 0.1;
+  // Vec2F32 v = submarine->v;
+  // // F.y += (mass-mass_displaced)*g;
+  // // F.x += -drag*v.x;
+  // // F.y += -drag*v.y;
+  // Vec2F32 acc = {F.x/mass, F.y/mass};
+  // v.x += acc.x * rk_state->frame_dt;
+  // v.y += acc.y * rk_state->frame_dt;
+  // Vec2F32 pos = transform->position;
+  // pos.x += v.x * rk_state->frame_dt;
+  // pos.y += v.y * rk_state->frame_dt;
+
+  // submarine->v = v;
+  // transform->position = pos;
+  // submarine->density = density;
+
+  ////////////////////////////////
+  // compute velocity
+
+  Vec2F32 net_force = {0};
+  net_force.x += thrust.x;
+  net_force.y += thrust.y;
+  net_force.x += pulse.x;
+  net_force.y += pulse.y;
+
   Vec2F32 v = submarine->v;
-  F.y += (mass-mass_displaced)*g;
-  F.x += -drag*v.x;
-  F.y += -drag*v.y;
-  Vec2F32 acc = {F.x/mass, F.y/mass};
-  v.x += acc.x * rk_state->frame_dt;
-  v.y += acc.y * rk_state->frame_dt;
-  Vec2F32 pos = transform->position;
-  pos.x += v.x * rk_state->frame_dt;
-  pos.y += v.y * rk_state->frame_dt;
+  Vec2F32 net_v = {0};
+  net_v.x = net_force.x / SUBMARINE_MASS;
+  net_v.y = net_force.y / SUBMARINE_MASS;
+  v = add_2f32(v, net_v);
 
+  // apply drag
+  v.x *= (1.0f - DRAG_COEFF * rk_state->frame_dt);
+  v.y *= (1.0f - DRAG_COEFF * rk_state->frame_dt);
+
+  // update velocity
   submarine->v = v;
-  transform->position = pos;
-  submarine->density = density;
+
+  ////////////////////////////////
+  // update position
+  *position = add_2f32(*position, scale_2f32(v, rk_state->frame_dt));
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // visiual stuffs
 
   if(ui_key_press(0, OS_Key_Space))
   {
+    sy_sequencer_play(s->sequencers[S5_SequencerKind_SonarScan], 1);
     submarine->is_scanning = 1;
   }
 
   if(submarine->is_scanning)
   {
-    if(!s->sequencers[S5_SequencerKind_SonarScan]->playing)
-    {
-      sy_sequencer_play(s->sequencers[S5_SequencerKind_SonarScan]);
-    }
     submarine->scan_t += 1 * rk_state->frame_dt;
     if(submarine->scan_t > 1.0)
     {
@@ -460,15 +569,10 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
 
     submarine->scan_t = Clamp(0, submarine->scan_t, 1);
   }
-  else
-  {
-    if(s->sequencers[S5_SequencerKind_SonarScan]->playing)
-    {
-      sy_sequencer_pause(s->sequencers[S5_SequencerKind_SonarScan]);
-    }
-  }
 
+  ////////////////////////////////
   // draw viewport
+
   RK_Parent_Scope(node)
   {
     RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
@@ -479,14 +583,16 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
     n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
     n->sprite2d->shape = RK_Sprite2DShapeKind_Circle;
     n->sprite2d->size.circle.radius = radius;
-    n->sprite2d->color = v4f32(0.1,0,0,0.5);
+    n->sprite2d->color = v4f32(0,0,0.1,0.5);
     n->sprite2d->omit_texture = 1;
     n->sprite2d->draw_edge = 1;
     n->node2d->transform.position = position;
     n->node2d->z_index = 1;
   }
 
+  ////////////////////////////////
   // draw scan circle
+
   if(submarine->is_scanning) RK_Parent_Scope(node)
   {
     RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
@@ -499,13 +605,15 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
     n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
     n->sprite2d->shape = RK_Sprite2DShapeKind_Circle;
     n->sprite2d->size.circle.radius = radius;
-    n->sprite2d->color = v4f32(1,0,0,0.1);
+    n->sprite2d->color = v4f32(0.1,0.1,0,0.1);
     n->sprite2d->omit_texture = 1;
     n->node2d->transform.position = position;
-    n->node2d->z_index = 1;
+    n->node2d->z_index = 1+0.1;
   }
 
-  // check collision with resource
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // collect resources
+
   {
     // TODO: add some helper function to make this easier
     Vec2F32 position = node->node2d->transform.position;
@@ -529,21 +637,78 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
       RK_Node *resource_node = resource_nodes_in_range[i];
       S5_Resource *resource = resource_node->custom_data;
 
+      // os_sound_play(s->sounds[S5_SoundKind_GainResource]);
+      // TODO: fix sy_sequencers_play/... logic, if we have two near consecutive call, the second one will be silenced
+      sy_sequencer_play(s->sequencers[S5_SequencerKind_Info], 1);
+
       switch(resource->kind)
       {
         case S5_ResourceKind_AirBag:
         {
-          submarine->oxygen += resource->value.airbag.oxygen;
+          oxygen += resource->value.airbag.oxygen;
         }break;
         case S5_ResourceKind_Battery:
         {
-          submarine->power_kwh += resource->value.battery.kwh;
+          battery += resource->value.battery.joules;
         }break;
         default:{InvalidPath;}break;
       }
 
       rk_node_release(resource_node);
     }
+  }
+
+  // clamp
+  oxygen = ClampTop(oxygen, SUBMARINE_OXYGEN_CAP);
+  battery = ClampTop(battery, SUBMARINE_BATTERY_CAP);
+
+  // oxygen consuming & update
+  oxygen = ClampBot(0.0, oxygen - 3.0*rk_state->frame_dt);
+  battery = ClampBot(0.0, battery - watts*rk_state->frame_dt);
+  submarine->oxygen = oxygen;
+  submarine->battery = battery;
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // warning if no power or oxygen
+
+  B32 warning = 0;
+  if(submarine->oxygen < SUBMARINE_OXYGEN_WARNING_LEVEL && 
+     submarine->oxygen > SUBMARINE_OXYGEN_CRITICAL_LEVEL)
+  {
+    warning = 1;
+  }
+  if(submarine->battery < SUBMARINE_BATTERY_WARNING_LEVEL && 
+     submarine->battery > SUBMARINE_BATTERY_CRITICAL_LEVEL)
+  {
+    warning = 1;
+  }
+
+  B32 critical = 0;
+  if(submarine->oxygen < SUBMARINE_OXYGEN_CRITICAL_LEVEL)
+  {
+    critical = 1;
+  }
+  if(submarine->battery < SUBMARINE_BATTERY_CRITICAL_LEVEL)
+  {
+    critical = 1;
+  }
+
+  if(warning)
+  {
+    sy_sequencer_play(s->sequencers[S5_SequencerKind_Warning], 0);
+  }
+  else
+  {
+    sy_sequencer_pause(s->sequencers[S5_SequencerKind_Warning]);
+  }
+
+  if(critical)
+  {
+    sy_sequencer_play(s->sequencers[S5_SequencerKind_Critical], 0);
+  }
+  else
+  {
+    sy_sequencer_pause(s->sequencers[S5_SequencerKind_Critical]);
   }
   scratch_end(scratch);
 }
@@ -802,19 +967,7 @@ RK_SCENE_SETUP(s5_setup)
     osc->hz = 440.0;
     osc->kind = SY_OSC_Kind_Square;
   }
-  // Echo: Softer, lower sine wave to simulate sonar reflection
-  SY_Instrument *instrument_echo = sy_instrument_alloc(str8_lit("echo"));
-  {
-    SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_echo);
-    osc->hz = 440.0f;               // Lower than ping
-    osc->kind = SY_OSC_Kind_Sin;    // Still clean and smooth
-    // osc->volume = 0.5f;          // Softer than ping
-    // osc->attack_time = 0.01f;
-    // osc->decay_time = 0.4f;
-    // osc->sustain_time = 0.0f;
-    // osc->release_time = 0.3f;
-  }
-  // Ping: Sonar-like clean sine tone with subtle fade out
+  // ping: sonar-like clean sine tone with subtle fade out
   SY_Instrument *instrument_ping = sy_instrument_alloc(str8_lit("ping"));
   {
     SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_ping);
@@ -825,6 +978,18 @@ RK_SCENE_SETUP(s5_setup)
     // osc->decay_time = 0.3f;       // quick fade-out to simulate echo
     // osc->sustain_time = 0.0f;
     // osc->release_time = 0.2f;
+  }
+  // echo: softer, lower sine wave to simulate sonar reflection
+  SY_Instrument *instrument_echo = sy_instrument_alloc(str8_lit("echo"));
+  {
+    SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_echo);
+    osc->hz = 440.0f;               // Lower than ping
+    osc->kind = SY_OSC_Kind_Sin;    // Still clean and smooth
+    // osc->volume = 0.5f;          // Softer than ping
+    // osc->attack_time = 0.01f;
+    // osc->decay_time = 0.4f;
+    // osc->sustain_time = 0.0f;
+    // osc->release_time = 0.3f;
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -842,11 +1007,10 @@ RK_SCENE_SETUP(s5_setup)
         seq->beat_count = 4;
         seq->subbeat_count = 4;
         seq->total_subbeat_count = 16;
-        seq->loop = 1;
+        seq->loop = 0;
         seq->volume = 1.0f;
         seq->subbeat_time = (60.0f / tempo) / (F32)4; // seconds per subbeat
         seq->duration = (60.0f / tempo) * 4; // total duration of this sequence
-
         {
           SY_Channel *channel = sy_sequencer_push_channel(seq);
           channel->beats = str8_lit("X..............."); // single sonar ping at start
@@ -854,15 +1018,39 @@ RK_SCENE_SETUP(s5_setup)
         }
         {
           SY_Channel *channel = sy_sequencer_push_channel(seq);
-          channel->beats = str8_lit("....X..........."); // slight echo or second ping
+          channel->beats = str8_lit(".....X.........."); // slight echo or second ping
           channel->instrument = instrument_echo; // softer/different instrument
         }
-
+        // TODO: why this won't be played
+        // {
+        //   SY_Channel *channel = sy_sequencer_push_channel(seq);
+        //   channel->beats = str8_lit("..X............."); // slight echo or second ping
+        //   channel->instrument = instrument_echo; // softer/different instrument
+        // }
+        s->sequencers[kind] = seq;
+      }break;
+      case S5_SequencerKind_Info:
+      {
+        F32 tempo = 90.0f; // slower, friendly tempo
+        SY_Sequencer *seq = sy_sequencer_alloc();
+        seq->tempo = tempo;
+        seq->beat_count = 4;
+        seq->subbeat_count = 4;
+        seq->total_subbeat_count = 16;
+        seq->loop = 0;
+        seq->volume = 1.0f;
+        seq->subbeat_time = (60.0f / tempo) / (F32)4;
+        seq->duration = (60.0f / tempo) * 4;
+        {
+          SY_Channel *channel = sy_sequencer_push_channel(seq);
+          channel->beats = str8_lit("X...............");
+          channel->instrument = instrument_boop;
+        }
         s->sequencers[kind] = seq;
       }break;
       case S5_SequencerKind_Warning:
       {
-        F32 tempo = 120.0;
+        F32 tempo = 60.0;
         SY_Sequencer *seq = sy_sequencer_alloc();
         seq->tempo = tempo;
         seq->beat_count = 4;
@@ -872,17 +1060,35 @@ RK_SCENE_SETUP(s5_setup)
         seq->volume = 1.0;
         seq->subbeat_time = (60.0/tempo) / (F32)4; // seconds per subbeat
         seq->duration = (60.0/tempo) * 4; // total duration of this sequence
-
         {
           SY_Channel *channel = sy_sequencer_push_channel(seq);
-          channel->beats = str8_lit("X...X...X...X...");
+          channel->beats = str8_lit("X...X...........");
           channel->instrument = instrument_beep;
         }
+        s->sequencers[kind] = seq;
+      }break;
+      case S5_SequencerKind_Critical:
+      {
+        F32 tempo = 240.0;
+        SY_Sequencer *seq = sy_sequencer_alloc();
+        seq->tempo = tempo;
+        seq->beat_count = 4;
+        seq->subbeat_count = 4;
+        seq->total_subbeat_count = 16;
+        seq->loop = 1;
+        seq->volume = 1.0;
+        seq->subbeat_time = (60.0/tempo) / (F32)4;
+        seq->duration = (60.0/tempo) * 4;
         {
           SY_Channel *channel = sy_sequencer_push_channel(seq);
-          channel->beats = str8_lit(".XX..XX..XX..XX.");
-          channel->instrument = instrument_boop;
+          channel->beats = str8_lit("X.X.X.X.X.X.X.X.");
+          channel->instrument = instrument_beep;
         }
+        // {
+        //   SY_Channel *channel = sy_sequencer_push_channel(seq);
+        //   channel->beats = str8_lit(".X.X.X.X.X.X.X.X");
+        //   channel->instrument = instrument_ping;
+        // }
         s->sequencers[kind] = seq;
       }break;
       default:{InvalidPath;}break;
@@ -979,7 +1185,7 @@ rk_scene_entry__5()
       RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Collider2D|RK_NodeTypeFlag_Sprite2D, 0, "submarine");
       node->node2d->transform.position = v2f32(900., -150.);
       node->sprite2d->anchor = RK_Sprite2DAnchorKind_TopLeft;
-      node->sprite2d->size.rect = v2f32(900,300);
+      node->sprite2d->size.rect = v2f32(60,60);
       node->sprite2d->color = v4f32(0,0,1,1);
       node->sprite2d->omit_texture = 1;
       node->sprite2d->draw_edge = 1;
@@ -987,14 +1193,11 @@ rk_scene_entry__5()
       submarine_node = node;
 
       S5_Submarine *submarine = rk_node_push_custom_data(node, S5_Submarine);
-      submarine->viewport_radius = 1000;
+      submarine->viewport_radius = 500;
       submarine->scan_radius = 1000;
-      submarine->drag = 0.96;
-      submarine->density = S5_SEA_FLUID_DENSITY/2.0;
-      submarine->min_density = S5_SEA_FLUID_DENSITY/2.0;
-      submarine->max_density = S5_SEA_FLUID_DENSITY;
+      submarine->density = S5_SEA_FLUID_DENSITY;
       submarine->oxygen = 100.0;
-      submarine->power_kwh = 100.0;
+      submarine->battery = 1000.0;
     }
     scene->submarine = rk_handle_from_node(submarine_node);
 
@@ -1041,11 +1244,11 @@ rk_scene_entry__5()
 
     // spawn some resources
     {
-      Rng1U32 spwan_range_x = {0, 3000};
-      Rng1U32 spwan_range_y = {0, 3000};
+      Rng1U32 spwan_range_x = {0, 9000};
+      Rng1U32 spwan_range_y = {0, 9000};
       U32 spwan_dim_x = dim_1u32(spwan_range_x);
       U32 spwan_dim_y = dim_1u32(spwan_range_y);
-      for(U64 i = 0; i < 30; i++)
+      for(U64 i = 0; i < 300; i++)
       {
         F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
         F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;
@@ -1071,7 +1274,7 @@ rk_scene_entry__5()
           }break;
           case S5_ResourceKind_Battery:
           {
-            resource->value.battery.kwh = 30.0;
+            resource->value.battery.joules = 100.0;
           }break;
           default:{InvalidPath;}break;
         }

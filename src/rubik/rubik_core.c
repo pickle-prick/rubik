@@ -5073,3 +5073,48 @@ rk_gizmo3d_box(RK_Key key, Vec3F32 origin, Vec3F32 i_hat, Vec3F32 j_hat, Vec3F32
     inst->omit_light = 1;
   }
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// OS events
+
+////////////////////////////////
+// event consumption helpers
+
+internal void
+rk_eat_event(OS_EventList *list, OS_Event *evt)
+{
+  DLLRemove(list->first, list->last, evt);
+  list->count--;
+}
+
+internal B32
+rk_key_press(OS_Modifiers mods, OS_Key key)
+{
+  B32 result = 0;
+  for(OS_Event *evt = rk_state->os_events.first; evt != 0; evt = evt->next)
+  {
+    if(evt->kind == OS_EventKind_Press && evt->key == key && evt->modifiers == mods)
+    {
+      result = 1;
+      rk_eat_event(&rk_state->os_events, evt);
+      break;
+    }
+  }
+  return result;
+}
+internal B32
+rk_key_release(OS_Modifiers mods, OS_Key key)
+{
+
+  B32 result = 0;
+  for(OS_Event *evt = rk_state->os_events.first; evt != 0; evt = evt->next)
+  {
+    if(evt->kind == OS_EventKind_Release && evt->key == key && evt->modifiers == mods)
+    {
+      result = 1;
+      rk_eat_event(&rk_state->os_events, evt);
+      break;
+    }
+  }
+  return result;
+}

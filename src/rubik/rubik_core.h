@@ -1399,46 +1399,54 @@ internal B32 rk_node_is_active(RK_Node *node);
 #define rk_scene_push_custom_data(s, T) (T*)(s->custom_data = push_array_fat(s->arena, T, s))
 #define rk_node_push_custom_data(n, T) (T*)(n->custom_data = push_array_fat(n->owner_bucket->arena_ref, T, n))
 
-/////////////////////////////////
-//~ Magic
+/////////////////////////////////////////////////////////////////////////////////////////
+// Magic
 
-//- Support functions
+////////////////////////////////
+// Support functions
+
 #define RK_SHAPE_SUPPORT_FN(name) Vec2F32 name(void *shape_data, Vec2F32 direction)
 typedef RK_SHAPE_SUPPORT_FN(RK_SHAPE_CUSTOM_SUPPORT_FN);
 RK_SHAPE_SUPPORT_FN(RK_SHAPE_RECT_SUPPORT_FN);
 
-//- GJK
+////////////////////////////////
+// GJK
 // internal B32 gjk(Vec3F32 s1_center, Vec3F32 s2_center, void *s1_data, void *s2_data, RK_SHAPE_CUSTOM_SUPPORT_FN s1_support_fn, RK_SHAPE_CUSTOM_SUPPORT_FN s2_support_fn, Vec3F32 simplex[4]);
 internal Vec2F32 triple_product_2f32(Vec2F32 A, Vec2F32 B, Vec2F32 C);
 
-/////////////////////////////////
-//~ Colors, Fonts, Config
+/////////////////////////////////////////////////////////////////////////////////////////
+// Colors, Fonts, Config
 
-//- colors
+////////////////////////////////
+// color 
+
 internal Vec4F32 rk_rgba_from_theme_color(RK_ThemeColor color);
 
-//- code -> palette
+////////////////////////////////
+// code -> palette
+
 internal UI_Palette *rk_palette_from_code(RK_PaletteCode code);
 
-//- fonts/sizes
+////////////////////////////////
+// fonts/sizes
 internal F_Tag rk_font_from_slot(RK_FontSlot slot);
 internal F32   rk_font_size_from_slot(RK_FontSlot slot);
 
-/////////////////////////////////
-//~ UI widget
+/////////////////////////////////////////////////////////////////////////////////////////
+// UI widget
 
 internal void rk_ui_stats(void);
 internal void rk_ui_inspector(void);
 internal void rk_ui_profiler(void);
 internal void rk_ui_terminal(void);
 
-/////////////////////////////////
-//~ Frame
+/////////////////////////////////////////////////////////////////////////////////////////
+// Frame
 
 internal void      rk_ui_draw(void);
 internal B32       rk_frame(void);
 
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 // Dynamic drawing (in immediate mode fashion)
 
 internal RK_DrawList* rk_drawlist_alloc(Arena *arena, U64 vertex_buffer_cap, U64 indice_buffer_cap);
@@ -1446,8 +1454,8 @@ internal RK_DrawNode* rk_drawlist_push(Arena *arena, RK_DrawList *drawlist, R_Ve
 internal void         rk_drawlist_reset(RK_DrawList *drawlist);
 internal void         rk_drawlist_build(RK_DrawList *drawlist); /* upload buffer from cpu to gpu */
 
-/////////////////////////////////
-//~ Helpers
+/////////////////////////////////////////////////////////////////////////////////////////
+// Helpers
 
 #define FileReadAll(arena, fp, return_data, return_size)                                 \
   do                                                                                     \
@@ -1477,14 +1485,14 @@ internal U64       rk_no_from_filename(String8 filename);
 D_BucketScope(rk_state->bucket_rect) {d_text(font,size,base_align_px,tab_size_px,flags,p,color,string);}
 #define rk_debug_gfx(size,p,color,string) rk_text(rk_state->cfg_font_tags[RK_FontSlot_Code], size, 0, 2, 0, p, color, string)
 
-/////////////////////////////////
-//~ Enum to string
+/////////////////////////////////////////////////////////////////////////////////////////
+// Enum to string
 
 internal String8 rk_string_from_projection_kind(RK_ProjectionKind kind);
 internal String8 rk_string_from_viewport_shading_kind(RK_ViewportShadingKind kind);
 internal String8 rk_string_from_polygon_kind(RK_ViewportShadingKind kind);
 
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 // Scene Type Functions
 
 internal RK_Scene* rk_scene_alloc();
@@ -1492,7 +1500,7 @@ internal void      rk_scene_release(RK_Scene *s);
 internal void      rk_scene_active_camera_set(RK_Scene *s, RK_Node *camera_node);
 internal void      rk_scene_active_node_set(RK_Scene *s, RK_Key key, B32 only_navigation_root);
 
-/////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
 // Gizmo Drawing Functions
 
 internal void rk_gizmo3d_rect(RK_Key key, Rng2F32 dst, Rng2F32 src, R_GeoPolygonKind polygon, Vec4F32 clr, R_Handle albedo_tex, B32 draw_edge);
@@ -1516,5 +1524,15 @@ internal void rk_gizmo3d_box(RK_Key key, Vec3F32 origin, Vec3F32 i_hat, Vec3F32 
 #define rk_gizmo3d_arc_wired(key, origin, normal, raidus, clr, draw_edge) rk_gizmo3d_arc(key, origin, normal, raidus, R_GeoPolygonKind_Line, clr, draw_edge)
 #define rk_gizmo3d_box_filled(key, origin, i_hat, j_hat, size, clr, draw_edge) rk_gizmo3d_box(key, origin, i_hat, j_hat, size, R_GeoPolygonKind_Fill, clr, draw_edge)
 #define rk_gizmo3d_box_wired(key, origin, i_hat, j_hat, size, clr, draw_edge) rk_gizmo3d_box(key, origin, i_hat, j_hat, size, R_GeoPolygonKind_Line, clr, draw_edge)
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// OS events
+
+////////////////////////////////
+// event consumption helpers
+
+internal void rk_eat_event(OS_EventList *list, OS_Event *event);
+internal B32  rk_key_press(OS_Modifiers mods, OS_Key key);
+internal B32  rk_key_release(OS_Modifiers mods, OS_Key key);
 
 #endif

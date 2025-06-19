@@ -10,8 +10,8 @@ struct SY_EnvelopeADSR
   F64 attack_time;
   F64 decay_time;
   F64 release_time;
-  F64 substain_amp;
-  F64 start_amp;
+  F32 substain_amp;
+  F32 start_amp;
 };
 
 typedef enum SY_OSC_Kind
@@ -106,7 +106,6 @@ struct SY_Sequencer
   B32 loop;
   F32 volume;
   B32 playing;
-  B32 paused;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -145,7 +144,7 @@ internal void sy_init(void);
 /////////////////////////////////////////////////////////////////////////////////////////
 // Envelop
 
-internal F32 sy_amp_from_envelope(SY_EnvelopeADSR *envelope, F64 time, F64 on_time, F64 off_time);
+internal F32 sy_amp_from_envelope(SY_EnvelopeADSR *envelope, F64 time, F64 on_time, F64 off_time, B32 *out_finished);
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // OSC
@@ -170,7 +169,7 @@ internal void     sy_notelist_remove(SY_NoteList *list, SY_Note *note);
 // Sequencer
 
 internal SY_Sequencer* sy_sequencer_alloc();
-internal void          sy_sequencer_play(SY_Sequencer *sequencer);
+internal void          sy_sequencer_play(SY_Sequencer *sequencer, B32 reset_if_repeated);
 internal void          sy_sequencer_pause(SY_Sequencer *sequencer);
 internal void          sy_sequencer_resume(SY_Sequencer *sequencer);
 internal SY_Channel*   sy_sequencer_push_channel(SY_Sequencer *sequencer);
