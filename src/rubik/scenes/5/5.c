@@ -30,6 +30,7 @@
 typedef U64 S5_EntityFlags;
 #define S5_EntityFlag_Boid     (S5_EntityFlags)(1ull<<0)
 #define S5_EntityFlag_Resource (S5_EntityFlags)(1ull<<1)
+#define S5_EntityFlag_Predator (S5_EntityFlags)(1ull<<2)
 
 typedef enum S5_ResourceKind
 {
@@ -153,8 +154,54 @@ struct S5_Boid
   F32 last_motivation_update_time;
 };
 
-#define S5_SEA_FLUID_DENSITY    1025.0
-#define S5_SCALE_WORLD_TO_METER 0.001
+typedef struct S5_Predator S5_Predator;
+struct S5_Predator
+{
+
+};
+
+typedef struct S5_Entity S5_Entity;
+struct S5_Entity
+{
+  U64 flags;
+
+  struct
+  {
+
+  } submarine;
+
+  struct
+  {
+
+  } resource;
+
+  struct
+  {
+    F32 w_target;
+    F32 w_separation;
+    F32 w_alignment;
+    F32 w_cohesion;
+  } flock;
+
+  struct
+  {
+    F32 max_depth;
+    F32 min_depth;
+
+    Vec2F32 vel;
+    Vec2F32 acc;
+    Vec2F32 target_vel;
+
+    F32 motivation;
+    F32 last_motivation_update_time;
+
+  } boid;
+
+  struct
+  {
+
+  } predator;
+};
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Helper Functions
@@ -307,6 +354,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_scene_begin)
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // draw a debug rect
+
   if(BUILD_DEBUG) RK_Parent_Scope(rk_node_from_handle(&scene->root))
   {
     Vec2F32 mouse_world = s5_world_position_from_mouse(rk_state->cursor, rk_state->window_dim, ctx->proj_view_inv_m);
@@ -1031,6 +1079,36 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_resource)
   }
 }
 
+RK_NODE_CUSTOM_UPDATE(s5_fn_predator)
+{
+  S5_Scene *s = scene->custom_data;
+  S5_Resource *resource = node->custom_data;
+  RK_Sprite2D *sprite2d = node->sprite2d;
+  RK_Transform2D *transform = &node->node2d->transform;
+
+  Vec2F32 *position = &node->node2d->transform.position;
+  Vec2F32 screen_pos = s5_screen_pos_from_world(*position, ctx->proj_view_m);
+
+  RK_Node *submarine_node = rk_node_from_handle(&s->submarine);
+  S5_Submarine *submarine = submarine_node->custom_data;
+  Vec2F32 submarine_center = submarine_node->node2d->transform.position;
+  submarine_center = add_2f32(submarine_center, scale_2f32(submarine_node->sprite2d->size.rect, 0.5));
+  F32 dist_to_submarine = length_2f32(sub_2f32(submarine_center, *position));
+  Vec2F32 dir_to_submarine = normalize_2f32(sub_2f32(submarine_center, node->node2d->transform.position));
+
+  B32 is_visiable = dist_to_submarine < submarine->viewport_radius;
+  F32 scan_range = mix_1f32(0.0, submarine->scan_radius, submarine->scan_t);
+
+  F32 speed = 100.0;
+  Vec2F32 vel = {0};
+  if(dist_to_submarine < 300.0)
+  {
+   vel = scale_2f32(dir_to_submarine, speed);
+  }
+
+  *position = add_2f32(*position, scale_2f32(vel, rk_state->frame_dt));
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 // Scene Setup & Entry
 
@@ -1043,8 +1121,9 @@ RK_SCENE_SETUP(s5_setup)
   // load sounds
 
   s->sounds[S5_SoundKind_GainResource] = os_sound_from_file("./src/rubik/scenes/5/0a-0.wav");
-  s->sounds[S5_SoundKind_Ambient] = os_sound_from_file("./src/rubik/scenes/5/submarine-0.wav");
-  os_sound_set_volume(s->sounds[S5_SoundKind_Ambient], 1.5);
+  // s->sounds[S5_SoundKind_Ambient] = os_sound_from_file("./src/rubik/scenes/5/submarine-0.wav");
+  s->sounds[S5_SoundKind_Ambient] = os_sound_from_file("./src/rubik/scenes/5/submarine-2.wav");
+  os_sound_set_volume(s->sounds[S5_SoundKind_Ambient], 0.5);
   os_sound_set_looping(s->sounds[S5_SoundKind_Ambient], 1);
   os_sound_play(s->sounds[S5_SoundKind_Ambient]);
 
@@ -1285,7 +1364,7 @@ rk_scene_entry__5()
       S5_Submarine *submarine = rk_node_push_custom_data(node, S5_Submarine);
       submarine->viewport_radius = 500;
       submarine->scan_radius = 500;
-      submarine->density = S5_SEA_FLUID_DENSITY;
+      submarine->density = 1; // TODO: don't have any usage for now
       submarine->oxygen = 300.0;
       submarine->battery = 1000.0;
     }
@@ -1338,7 +1417,7 @@ rk_scene_entry__5()
       Rng1U32 spwan_range_y = {0, 9000};
       U32 spwan_dim_x = dim_1u32(spwan_range_x);
       U32 spwan_dim_y = dim_1u32(spwan_range_y);
-      for(U64 i = 0; i < 300; i++)
+      for(U64 i = 0; i < 100; i++)
       {
         F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
         F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;
@@ -1347,7 +1426,7 @@ rk_scene_entry__5()
         node->node2d->transform.position = v2f32(x, y);
         node->sprite2d->anchor = RK_Sprite2DAnchorKind_TopLeft;
         node->sprite2d->shape = RK_Sprite2DShapeKind_Rect;
-        node->sprite2d->size.rect = v2f32(100,100);
+        node->sprite2d->size.rect = v2f32(30,30);
         node->sprite2d->color = v4f32(0.3,0.1,0.1,1.);
         node->sprite2d->omit_texture = 1;
         node->sprite2d->draw_edge = 1;
@@ -1360,7 +1439,7 @@ rk_scene_entry__5()
         {
           case S5_ResourceKind_AirBag:
           {
-            resource->value.airbag.oxygen = 30.0;
+            resource->value.airbag.oxygen = 100.0;
           }break;
           case S5_ResourceKind_Battery:
           {
@@ -1369,6 +1448,32 @@ rk_scene_entry__5()
           default:{InvalidPath;}break;
         }
         resource->kind = resource_kind;
+      }
+    }
+
+    // spawn some predators
+    {
+      Rng1U32 spwan_range_x = {0, 9000};
+      Rng1U32 spwan_range_y = {0, 9000};
+      U32 spwan_dim_x = dim_1u32(spwan_range_x);
+      U32 spwan_dim_y = dim_1u32(spwan_range_y);
+      for(U64 i = 0; i < 300; i++)
+      {
+        F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
+        F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;
+
+        RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Collider2D|RK_NodeTypeFlag_Sprite2D,
+                                                   0, "predator_%I64u", i);
+        node->node2d->transform.position = v2f32(x, y);
+        node->sprite2d->anchor = RK_Sprite2DAnchorKind_TopLeft;
+        node->sprite2d->shape = RK_Sprite2DShapeKind_Rect;
+        node->sprite2d->size.rect = v2f32(30,30);
+        node->sprite2d->color = v4f32(0.3,0.1,0.1,1.);
+        node->sprite2d->omit_texture = 1;
+        node->sprite2d->draw_edge = 1;
+        node->custom_flags = S5_EntityFlag_Predator;
+        rk_node_push_fn(node, s5_fn_predator);
+        S5_Predator *predator = rk_node_push_custom_data(node, S5_Predator);
       }
     }
   }

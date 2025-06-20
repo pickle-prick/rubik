@@ -12,7 +12,7 @@ RK_SceneTemplate rk_scene_templates[2] =
 {str8_lit_comp("5"), rk_scene_entry__5, },
 };
 
-RK_FunctionEntry rk_scene_function_table[11] =
+RK_FunctionEntry rk_scene_function_table[12] =
 {
 {str8_lit_comp("s0_fn_editor_camera"), s0_fn_editor_camera, },
 {str8_lit_comp("s0_fn_rotating_spot_light"), s0_fn_rotating_spot_light, },
@@ -23,6 +23,7 @@ RK_FunctionEntry rk_scene_function_table[11] =
 {str8_lit_comp("s5_fn_flock"), s5_fn_flock, },
 {str8_lit_comp("s5_fn_boid"), s5_fn_boid, },
 {str8_lit_comp("s5_fn_resource"), s5_fn_resource, },
+{str8_lit_comp("s5_fn_predator"), s5_fn_predator, },
 {str8_lit_comp("s5_fn_game_ui"), s5_fn_game_ui, },
 {str8_lit_comp("s5_setup"), s5_setup, },
 };
