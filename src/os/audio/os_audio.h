@@ -87,6 +87,8 @@ internal void      os_audio_stream_set_pan(OS_Handle stream, F32 pan);
 // sound
 internal OS_Handle os_sound_from_file(char *filename);
 internal OS_Handle os_sound_from_wave(OS_AudioWave *wave);
+internal void      os_sound_set_volume(OS_Handle handle, F32 volume);
+internal void      os_sound_set_looping(OS_Handle handle, B32 looping);
 internal void      os_sound_play(OS_Handle handle);
 internal void      os_sound_pause(OS_Handle handle);
 internal void      os_sound_resume(OS_Handle handle);

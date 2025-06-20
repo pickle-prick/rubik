@@ -122,24 +122,59 @@ os_lnx_device_output_callback(ma_device *device, void *frames_out, const void *f
         case OS_LNX_AudioBufferKind_Static:
         {
           U64 frame_count_to_read = frame_count;
+          // U64 frame_count_read = 0;
+          U64 buffer_channel_count = (buffer->byte_count/buffer->frame_count) / sizeof(S16);
 
           F32 *dst = src;
-          S16 *src = &((S16*)buffer->bytes)[buffer->frame_cursor_pos];
-          while(frame_count_to_read > 0 && buffer->frame_cursor_pos < buffer->frame_count-1)
+          S16 *src = &((S16*)buffer->bytes)[buffer->frame_cursor_pos*buffer_channel_count];
+          AssertAlways(buffer->frame_count > 0);
+
+          while(frame_count_to_read > 0)
           {
+            if(!(buffer->frame_cursor_pos < buffer->frame_count))
+            {
+              buffer->frame_cursor_pos = 0;
+              buffer->frames_processed = 0;
+              if(buffer->looping)
+              {
+                src = &((S16*)buffer->bytes)[buffer->frame_cursor_pos*buffer_channel_count];
+              }
+              else
+              {
+                buffer->paused = 1;
+                buffer->playing = 0;
+                break;
+              }
+            }
+
             // NOTE(k): since we are loading all sound/music as s16, we need to convert it into f32
-            // TODO(k): handle audio stream channels dynamiclly
-            *(dst++) = *src / (F32)max_S16;
-            *(dst++) = *src / (F32)max_S16;
-            src++;
+            if(buffer_channel_count == 1)
+            {
+              *(dst++) = *src / (F32)max_S16;
+              *(dst++) = *src / (F32)max_S16;
+              src++;
+            }
+            else if(buffer_channel_count == 2)
+            {
+              *(dst++) = *(src++) / (F32)max_S16;
+              *(dst++) = *(src++) / (F32)max_S16;
+            }
+            else {NotImplemented;}
+
             buffer->frame_cursor_pos++;
+            buffer->frames_processed++;
+
             frame_count_to_read--;
+            // frame_count_read++;
           }
+
+          dirty = 1;
         }break;
         default:{InvalidPath;}break;
       }
 
-      os_lnx_audio_frames_mix(dst, src, frame_count, buffer->volume, buffer->pan);
+      // TODO: static buffer won't have to fill all frames
+      if(dirty) os_lnx_audio_frames_mix(dst, src, frame_count, buffer->volume, buffer->pan);
     }
   }
   scratch_end(scratch);
@@ -341,6 +376,17 @@ os_lnx_audio_buffer_set_volume(OS_LNX_AudioBuffer *buffer, F32 volume)
 }
 
 internal void
+os_lnx_audio_buffer_set_looping(OS_LNX_AudioBuffer *buffer, B32 looping)
+{
+  if(buffer)
+  {
+    ma_mutex_lock(&os_lnx_audio_state->lock);
+    buffer->looping = looping;
+    ma_mutex_unlock(&os_lnx_audio_state->lock);
+  }
+}
+
+internal void
 os_lnx_audio_buffer_set_pan(OS_LNX_AudioBuffer *buffer, F32 pan)
 {
   if(buffer)
@@ -519,6 +565,26 @@ os_sound_from_wave(OS_AudioWave *wave)
   sound->buffer = audio_buffer;
   sound->frame_count = wave->frame_count;
   return os_lnx_handle_from_sound(sound);
+}
+
+internal void
+os_sound_set_volume(OS_Handle handle, F32 volume)
+{
+  OS_LNX_Sound *sound = os_lnx_sound_from_handle(handle);
+  if(sound)
+  {
+    os_lnx_audio_buffer_set_volume(sound->buffer, volume);
+  }
+}
+
+internal void
+os_sound_set_looping(OS_Handle handle, B32 looping)
+{
+  OS_LNX_Sound *sound = os_lnx_sound_from_handle(handle);
+  if(sound)
+  {
+    os_lnx_audio_buffer_set_looping(sound->buffer, looping);
+  }
 }
 
 internal void

@@ -142,6 +142,7 @@ internal void                os_lnx_audio_buffer_pause(OS_LNX_AudioBuffer *buffe
 internal void                os_lnx_audio_buffer_resume(OS_LNX_AudioBuffer *buffer);
 internal void                os_lnx_audio_buffer_set_output_callback(OS_LNX_AudioBuffer *buffer, OS_AudioOutputCallback cb);
 internal void                os_lnx_audio_buffer_set_volume(OS_LNX_AudioBuffer *buffer, F32 volume);
+internal void                os_lnx_audio_buffer_set_looping(OS_LNX_AudioBuffer *buffer, B32 looping);
 internal void                os_lnx_audio_buffer_set_pan(OS_LNX_AudioBuffer *buffer, F32 pan);
 
 /////////////////////////////////////////////////////////////////////////////////////////

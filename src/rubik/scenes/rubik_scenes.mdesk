@@ -43,6 +43,7 @@ RK_FunctionTable:
   {s5_fn_submarine}
   {s5_fn_flock}
   {s5_fn_boid}
+  {s5_fn_resource}
   {s5_fn_game_ui}
   {s5_setup}
   // {s4_fn_guy_controlled}

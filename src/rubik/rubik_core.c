@@ -996,9 +996,12 @@ rk_node_release(RK_Node *node)
   rk_node_unequip_type_flags(node, node->type_flags);
 
   // free update fn node
-  for(RK_UpdateFnNode *fn_node = node->first_update_fn; fn_node != 0; fn_node = fn_node->next)  
+  for(RK_UpdateFnNode *fn_node = node->first_update_fn; fn_node != 0;)  
   {
+    RK_UpdateFnNode *next = fn_node->next;
+    // NOTE(k): don't need to pop from stack, since we are freeing the node
     SLLStackPush(bucket->first_free_update_fn_node, fn_node);
+    fn_node = next;
   }
 
   // add it to free list

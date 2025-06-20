@@ -5,16 +5,18 @@
 #define GRAVITY                          9.81
 #define DRAG_COEFF                       0.9
 
+#define BOID_MAX_VELOCITY                900
+
 #define SUBMARINE_MASS                   1
 // #define SUBMARINE_VOLUME                100
 // #define SUBMARINE_MAX_DENSITY           100
 // #define SUBMARINE_MIN_DENSITY           100
-#define SUBMARINE_OXYGEN_CAP             100
+#define SUBMARINE_OXYGEN_CAP             300
 #define SUBMARINE_BATTERY_CAP            1000 // in joules
 #define SUBMARINE_THRUST_FORCE_CAP       30
 #define SUBMARINE_THRUST_FORCE_INC_STEP  2
-#define SUBMARINE_PULSE_FORCE            90
-#define SUBMARINE_PULSE_COOLDOWN         0.3  // in seconds
+#define SUBMARINE_PULSE_FORCE            100
+#define SUBMARINE_PULSE_COOLDOWN         0.6  // in seconds
 #define SUBMARINE_FORCE_TO_POWER_COEFF   0.1
 // Warning/Critical level
 #define SUBMARINE_OXYGEN_WARNING_LEVEL   SUBMARINE_OXYGEN_CAP*0.3
@@ -39,6 +41,7 @@ typedef enum S5_ResourceKind
 typedef enum S5_SoundKind
 {
   S5_SoundKind_GainResource,
+  S5_SoundKind_Ambient,
   S5_SoundKind_COUNT,
 } S5_SoundKind;
 
@@ -93,6 +96,8 @@ struct S5_Resource
 
     F32 v[1];
   } value;
+
+  F32 analyze_t;
 };
 
 typedef struct S5_Submarine S5_Submarine;
@@ -162,6 +167,19 @@ s5_world_position_from_mouse(Vec2F32 mouse, Vec2F32 resolution_dim, Mat4x4F32 pr
   F32 moy_ndc = (mouse.y / resolution_dim.y) * 2.f - 1.f;
   Vec4F32 mouse_in_world_4 = transform_4x4f32(proj_view_inv_m, v4f32(mox_ndc, moy_ndc, 1., 1.));
   Vec2F32 ret = v2f32(mouse_in_world_4.x, mouse_in_world_4.y);
+  return ret;
+}
+
+internal Vec2F32
+s5_screen_pos_from_world(Vec2F32 world_pos, Mat4x4F32 proj_view_m)
+{
+  Vec4F32 src = v4f32(world_pos.x, world_pos.y, 0, 1.0);
+  Vec4F32 ndc = transform_4x4f32(proj_view_m, src);
+  F32 x = (ndc.x+1.0)/2.0;
+  F32 y = (ndc.y+1.0)/2.0;
+  x *= rk_state->window_dim.x;
+  y *= rk_state->window_dim.y;
+  Vec2F32 ret = {x, y};
   return ret;
 }
 
@@ -560,6 +578,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
 
   if(submarine->is_scanning)
   {
+    watts += 30;
     submarine->scan_t += 1 * rk_state->frame_dt;
     if(submarine->scan_t > 1.0)
     {
@@ -608,7 +627,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
     n->sprite2d->color = v4f32(0.1,0.1,0,0.1);
     n->sprite2d->omit_texture = 1;
     n->node2d->transform.position = position;
-    n->node2d->z_index = 1+0.1;
+    n->node2d->z_index = 1;
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -636,11 +655,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_submarine)
     {
       RK_Node *resource_node = resource_nodes_in_range[i];
       S5_Resource *resource = resource_node->custom_data;
-
-      // os_sound_play(s->sounds[S5_SoundKind_GainResource]);
-      // TODO: fix sy_sequencers_play/... logic, if we have two near consecutive call, the second one will be silenced
       sy_sequencer_play(s->sequencers[S5_SequencerKind_Info], 1);
-
       switch(resource->kind)
       {
         case S5_ResourceKind_AirBag:
@@ -725,6 +740,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_flock)
     darray_push(scratch.arena, boids, child);
   }
 
+  // TODO: we should use some cone viewport here, boid can't see behind
   RK_Node *submarine_node = rk_node_from_handle(&s->submarine);
   S5_Submarine *submarine = submarine_node->custom_data;
   Vec2F32 submarine_center = submarine_node->node2d->transform.position;
@@ -890,6 +906,15 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_flock)
 
     // F32 scale = 1.0 * (rand()/(F32)RAND_MAX) * (1);
     Vec2F32 vel = scale_2f32(acc, rk_state->frame_dt*boid->motivation);
+    // clamp
+    {
+      F32 vel_len = length_2f32(vel);
+      if(vel_len > BOID_MAX_VELOCITY)
+      {
+        vel = scale_2f32(vel, BOID_MAX_VELOCITY/vel_len);
+      }
+    }
+    // limit vel
     boid->acc = acc;
     boid->target_vel = vel;
   }
@@ -917,7 +942,7 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_boid)
   //   os_sound_play(s->sound);
   // }
 
-  fish->vel = mix_2f32(fish->target_vel, fish->vel, 0.7);
+  fish->vel = mix_2f32(fish->target_vel, fish->vel, 0.3);
   // fish->vel = fish->target_vel;
 
   // fish->vel = fish->target_vel;
@@ -938,6 +963,74 @@ RK_NODE_CUSTOM_UPDATE(s5_fn_boid)
   }
 }
 
+RK_NODE_CUSTOM_UPDATE(s5_fn_resource)
+{
+  S5_Scene *s = scene->custom_data;
+  S5_Resource *resource = node->custom_data;
+  RK_Sprite2D *sprite2d = node->sprite2d;
+  RK_Transform2D *transform = &node->node2d->transform;
+  Vec2F32 size = node->sprite2d->size.rect;
+  Vec2F32 position = node->node2d->transform.position;
+  Vec2F32 screen_pos = s5_screen_pos_from_world(position, ctx->proj_view_m);
+
+  RK_Node *submarine_node = rk_node_from_handle(&s->submarine);
+  S5_Submarine *submarine = submarine_node->custom_data;
+  Vec2F32 submarine_center = submarine_node->node2d->transform.position;
+  submarine_center = add_2f32(submarine_center, scale_2f32(submarine_node->sprite2d->size.rect, 0.5));
+  F32 dist_to_submarine = length_2f32(sub_2f32(submarine_center, node->node2d->transform.position));
+  B32 is_visiable = dist_to_submarine < submarine->viewport_radius;
+  F32 scan_range = mix_1f32(0.0, submarine->scan_radius, submarine->scan_t);
+
+  B32 is_in_scan_range = dist_to_submarine <= scan_range;
+
+  if(!is_visiable)
+  {
+    resource->analyze_t = 0.0;
+  }
+
+  if(resource->analyze_t != 1.0 && fabs(1.0 - resource->analyze_t) < 0.01)
+  {
+    resource->analyze_t = 1.0;
+    sy_sequencer_play(s->sequencers[S5_SequencerKind_Info], 1);
+  }
+
+  B32 is_analyzed = resource->analyze_t == 1.0;
+  B32 is_analyzing = resource->analyze_t > 0.0 && (!is_analyzed);
+
+  if(is_analyzed)
+  {
+    // draw text
+    String8 string = {0};
+    switch(resource->kind)
+    {
+      case S5_ResourceKind_AirBag:
+      {
+        string = str8_lit("AirBag");
+      }break;
+      case S5_ResourceKind_Battery:
+      {
+        string = str8_lit("Battery");
+      }break;
+      default:{InvalidPath;}break;
+    }
+    rk_debug_gfx(30, screen_pos, v4f32(1,1,1,1),string);
+  }
+  else
+  {
+    if(is_analyzing || is_in_scan_range)
+    {
+      resource->analyze_t += 0.5 * rk_state->frame_dt;
+      is_analyzing = 1;
+    }
+  }
+
+  if(is_analyzing)
+  {
+    String8 string = push_str8f(rk_frame_arena(), "%.2f%%", resource->analyze_t);
+    rk_debug_gfx(30, screen_pos, v4f32(1,1,1,1),string);
+  }
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 // Scene Setup & Entry
 
@@ -950,7 +1043,10 @@ RK_SCENE_SETUP(s5_setup)
   // load sounds
 
   s->sounds[S5_SoundKind_GainResource] = os_sound_from_file("./src/rubik/scenes/5/0a-0.wav");
-
+  s->sounds[S5_SoundKind_Ambient] = os_sound_from_file("./src/rubik/scenes/5/submarine-0.wav");
+  os_sound_set_volume(s->sounds[S5_SoundKind_Ambient], 1.5);
+  os_sound_set_looping(s->sounds[S5_SoundKind_Ambient], 1);
+  os_sound_play(s->sounds[S5_SoundKind_Ambient]);
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // load instruments
@@ -1021,12 +1117,6 @@ RK_SCENE_SETUP(s5_setup)
           channel->beats = str8_lit(".....X.........."); // slight echo or second ping
           channel->instrument = instrument_echo; // softer/different instrument
         }
-        // TODO: why this won't be played
-        // {
-        //   SY_Channel *channel = sy_sequencer_push_channel(seq);
-        //   channel->beats = str8_lit("..X............."); // slight echo or second ping
-        //   channel->instrument = instrument_echo; // softer/different instrument
-        // }
         s->sequencers[kind] = seq;
       }break;
       case S5_SequencerKind_Info:
@@ -1170,7 +1260,7 @@ rk_scene_entry__5()
       RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D, 0, "sea");
       node->node2d->transform.position = v2f32(0., 0.);
       node->sprite2d->anchor = RK_Sprite2DAnchorKind_TopLeft;
-      node->sprite2d->size.rect = v2f32(300000,300000);
+      node->sprite2d->size.rect = v2f32(3000,3000);
       // node->sprite2d->color = v4f32(0.,0.1,0.5,1.);
       node->sprite2d->color = v4f32(0,0,0,1);
       node->sprite2d->omit_texture = 1;
@@ -1194,9 +1284,9 @@ rk_scene_entry__5()
 
       S5_Submarine *submarine = rk_node_push_custom_data(node, S5_Submarine);
       submarine->viewport_radius = 500;
-      submarine->scan_radius = 1000;
+      submarine->scan_radius = 500;
       submarine->density = S5_SEA_FLUID_DENSITY;
-      submarine->oxygen = 100.0;
+      submarine->oxygen = 300.0;
       submarine->battery = 1000.0;
     }
     scene->submarine = rk_handle_from_node(submarine_node);
@@ -1262,6 +1352,7 @@ rk_scene_entry__5()
         node->sprite2d->omit_texture = 1;
         node->sprite2d->draw_edge = 1;
         node->custom_flags = S5_EntityFlag_Resource;
+        rk_node_push_fn(node, s5_fn_resource);
         S5_Resource *resource = rk_node_push_custom_data(node, S5_Resource);
 
         S5_ResourceKind resource_kind = (U64)(rand()%S5_ResourceKind_COUNT);
@@ -1270,7 +1361,6 @@ rk_scene_entry__5()
           case S5_ResourceKind_AirBag:
           {
             resource->value.airbag.oxygen = 30.0;
-            node->sprite2d->color = v4f32(0.1,0.3,0.1,1.);
           }break;
           case S5_ResourceKind_Battery:
           {
