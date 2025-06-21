@@ -42,12 +42,15 @@ typedef enum S5_ResourceKind
 {
   S5_ResourceKind_AirBag,
   S5_ResourceKind_Battery,
+  S5_ResourceKind_Part,
   S5_ResourceKind_COUNT,
 } S5_ResourceKind;
 
 typedef enum S5_SoundKind
 {
-  S5_SoundKind_GainResource,
+  S5_SoundKind_GainResource_Part,
+  S5_SoundKind_GainResource_AirBag,
+  S5_SoundKind_GainResource_Battery,
   S5_SoundKind_Ambient,
   S5_SoundKind_COUNT,
 } S5_SoundKind;
@@ -761,16 +764,23 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
     {
       RK_Node *resource_node = resource_nodes_in_range[i];
       S5_Resource *resource = s5_resource_from_node(resource_node);
-      sy_sequencer_play(s->sequencers[S5_SequencerKind_Info], 1);
+      // sy_sequencer_play(s->sequencers[S5_SequencerKind_Info], 1);
       switch(resource->kind)
       {
         case S5_ResourceKind_AirBag:
         {
           oxygen += resource->value.airbag.oxygen;
+          os_sound_play(s->sounds[S5_SoundKind_GainResource_AirBag]);
         }break;
         case S5_ResourceKind_Battery:
         {
           battery += resource->value.battery.joules;
+          os_sound_play(s->sounds[S5_SoundKind_GainResource_Battery]);
+        }break;
+        case S5_ResourceKind_Part:
+        {
+          // TODO: to be implemented
+          os_sound_play(s->sounds[S5_SoundKind_GainResource_Battery]);
         }break;
         default:{InvalidPath;}break;
       }
@@ -795,13 +805,11 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
   // warning if no power or oxygen
 
   B32 warning = 0;
-  if(submarine->oxygen < SUBMARINE_OXYGEN_WARNING_LEVEL && 
-     submarine->oxygen > SUBMARINE_OXYGEN_CRITICAL_LEVEL)
+  if(submarine->oxygen < SUBMARINE_OXYGEN_WARNING_LEVEL)
   {
     warning = 1;
   }
-  if(submarine->battery < SUBMARINE_BATTERY_WARNING_LEVEL && 
-     submarine->battery > SUBMARINE_BATTERY_CRITICAL_LEVEL)
+  if(submarine->battery < SUBMARINE_BATTERY_WARNING_LEVEL)
   {
     warning = 1;
   }
@@ -816,7 +824,7 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
     critical = 1;
   }
 
-  if(warning)
+  if(warning && !critical)
   {
     sy_sequencer_play(s->sequencers[S5_SequencerKind_Warning], 0);
   }
@@ -1182,9 +1190,10 @@ RK_SCENE_SETUP(s5_setup)
   ///////////////////////////////////////////////////////////////////////////////////////
   // load sounds
 
-  s->sounds[S5_SoundKind_GainResource] = os_sound_from_file("./src/rubik/scenes/duskers/0a-0.wav");
-  // s->sounds[S5_SoundKind_Ambient] = os_sound_from_file("./src/rubik/scenes/5/submarine-0.wav");
-  s->sounds[S5_SoundKind_Ambient] = os_sound_from_file("./src/rubik/scenes/duskers/submarine-2.wav");
+  s->sounds[S5_SoundKind_GainResource_AirBag]  = os_sound_from_file("./src/rubik/scenes/duskers/gain_resource_airbag.wav");
+  s->sounds[S5_SoundKind_GainResource_Part]    = os_sound_from_file("./src/rubik/scenes/duskers/gain_resource_part.wav");
+  s->sounds[S5_SoundKind_GainResource_Battery] = os_sound_from_file("./src/rubik/scenes/duskers/gain_resource_part.wav");
+  s->sounds[S5_SoundKind_Ambient]              = os_sound_from_file("./src/rubik/scenes/duskers/submarine-2.wav");
   os_sound_set_volume(s->sounds[S5_SoundKind_Ambient], 0.5);
   os_sound_set_looping(s->sounds[S5_SoundKind_Ambient], 1);
   os_sound_play(s->sounds[S5_SoundKind_Ambient]);
@@ -1510,6 +1519,11 @@ RK_SCENE_DEFAULT(s5_default)
           {
             resource->value.battery.joules = 100.0;
             resource_name = str8_lit("Battery");
+          }break;
+          case S5_ResourceKind_Part:
+          {
+            // TODO: to be implemented
+            resource_name = str8_lit("Part");
           }break;
           default:{InvalidPath;}break;
         }
