@@ -1,53 +1,27 @@
 //~ k: Scenes Table
-@table(id,name)
+@table(name)
 RK_ScenesTable:
 {
-  {0, default}
-  {5, ship}
+  {duskers}
 }
 
 @gen
 {
   @expand(RK_ScenesTable a)
-    `#include "../$(a.id)/$(a.id).h"`
+    `#include "../$(a.name)/$(a.name).h"`
 }
 @gen @c_file {
   @expand(RK_ScenesTable a)
-    `#include "../$(a.id)/$(a.id).c"`
-}
-
-// TODO: just use function table
-@data(RK_SceneTemplate) @c_file rk_scene_templates:
-{
-  @expand(RK_ScenesTable a)
-    ```{str8_lit_comp("$(a.id)"), rk_scene_entry__$(a.id), }```;
+    `#include "../$(a.name)/$(a.name).c"`
 }
 
 //~ k: Scene Function Table
 @table(name)
 RK_FunctionTable:
 {
-  {s0_fn_editor_camera}
-  {s0_fn_rotating_spot_light}
-  {rk_scene_entry__0}
-  // {s4_fn_scene_begin}
-  // {s4_fn_tile_editor}
-  // {s4_fn_tilemap}
-  // {s4_fn_system}
-  // {s4_fn_camera}
-  // {s4_fn_tile}
-  // {rk_scene_entry__4}
-  // {s4_fn_guy}
-  {s5_fn_camera}
-  {s5_fn_scene_begin}
-  {s5_fn_submarine}
-  {s5_fn_flock}
-  {s5_fn_boid}
-  {s5_fn_resource}
-  {s5_fn_predator}
-  {s5_fn_game_ui}
   {s5_setup}
-  // {s4_fn_guy_controlled}
+  {s5_update}
+  {s5_default}
 }
 
 @data(RK_FunctionEntry) @c_file rk_scene_function_table:

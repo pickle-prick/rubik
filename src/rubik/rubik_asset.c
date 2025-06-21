@@ -22,7 +22,9 @@ rk_scene_to_tscn(RK_Scene *scene)
     // scene info
 
     se_str_with_tag(str8_lit("name"), scene->name);
-    if(scene->reset_fn.size) se_str_with_tag(str8_lit("reset_fn"), scene->reset_fn);
+    if(scene->setup_fn_name.size) se_str_with_tag(str8_lit("setup_fn_name"), scene->setup_fn_name);
+    if(scene->update_fn_name.size) se_str_with_tag(str8_lit("update_fn_name"), scene->update_fn_name);
+    if(scene->default_fn_name.size) se_str_with_tag(str8_lit("default_fn_name"), scene->default_fn_name);
     se_v2u64_with_tag(str8_lit("hot_key"), v2u64(scene->hot_key.u64[0], scene->hot_key.u64[1]));
     se_v2u64_with_tag(str8_lit("active_key"), v2u64(scene->active_key.u64[0], scene->active_key.u64[1]));
     se_b32_with_tag(str8_lit("omit_grid"), scene->omit_grid);
@@ -320,7 +322,9 @@ rk_scene_from_tscn(String8 path)
   String8 name = se_str_from_tag(se_node, str8_lit("name"));
   ret->name = push_str8_copy(arena, name);
   ret->save_path = push_str8_copy(arena, path);
-  ret->reset_fn = push_str8_copy(arena, se_str_from_tag(se_node, str8_lit("reset_fn")));
+  ret->setup_fn_name = push_str8_copy(arena, se_str_from_tag(se_node, str8_lit("setup_fn_name")));
+  ret->update_fn_name = push_str8_copy(arena, se_str_from_tag(se_node, str8_lit("udpate_fn_name")));
+  ret->default_fn_name = push_str8_copy(arena, se_str_from_tag(se_node, str8_lit("default_fn_name")));
   ret->hot_key = rk_key_from_v2u64(se_v2u64_from_tag(se_node, str8_lit("hot_key")));
   ret->active_key = rk_key_from_v2u64(se_v2u64_from_tag(se_node, str8_lit("active_key")));
   ret->omit_grid = se_b32_from_tag(se_node, str8_lit("omit_grid"));

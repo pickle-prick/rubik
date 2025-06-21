@@ -3,29 +3,13 @@
 
 //- GENERATED CODE
 
-#include "../0/0.c"
-#include "../5/5.c"
+#include "../duskers/duskers.c"
 C_LINKAGE_BEGIN
-RK_SceneTemplate rk_scene_templates[2] =
+RK_FunctionEntry rk_scene_function_table[3] =
 {
-{str8_lit_comp("0"), rk_scene_entry__0, },
-{str8_lit_comp("5"), rk_scene_entry__5, },
-};
-
-RK_FunctionEntry rk_scene_function_table[12] =
-{
-{str8_lit_comp("s0_fn_editor_camera"), s0_fn_editor_camera, },
-{str8_lit_comp("s0_fn_rotating_spot_light"), s0_fn_rotating_spot_light, },
-{str8_lit_comp("rk_scene_entry__0"), rk_scene_entry__0, },
-{str8_lit_comp("s5_fn_camera"), s5_fn_camera, },
-{str8_lit_comp("s5_fn_scene_begin"), s5_fn_scene_begin, },
-{str8_lit_comp("s5_fn_submarine"), s5_fn_submarine, },
-{str8_lit_comp("s5_fn_flock"), s5_fn_flock, },
-{str8_lit_comp("s5_fn_boid"), s5_fn_boid, },
-{str8_lit_comp("s5_fn_resource"), s5_fn_resource, },
-{str8_lit_comp("s5_fn_predator"), s5_fn_predator, },
-{str8_lit_comp("s5_fn_game_ui"), s5_fn_game_ui, },
 {str8_lit_comp("s5_setup"), s5_setup, },
+{str8_lit_comp("s5_update"), s5_update, },
+{str8_lit_comp("s5_default"), s5_default, },
 };
 
 C_LINKAGE_END

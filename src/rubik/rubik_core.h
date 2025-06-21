@@ -883,6 +883,8 @@ struct RK_Node
   // TODO(k): reuse custom_data memory block based on its size
   void                          *custom_data;
 
+  // TODO(k): do we really need individual udpate function ptr for node or 
+  //          maybe we just use one entry update fn for the scene
   // function pointers
   RK_UpdateFnNode               *first_setup_fn;
   RK_UpdateFnNode               *last_setup_fn;
@@ -976,54 +978,65 @@ struct RK_ResourceBucket
 // Scene
 
 typedef struct RK_Scene RK_Scene;
+#define RK_SCENE_SETUP(name) void name(struct RK_Scene *scene)
+#define RK_SCENE_UPDATE(name) void name(struct RK_Scene *scene, RK_FrameContext *ctx)
+#define RK_SCENE_DEFAULT(name) RK_Scene* name()
+
+typedef RK_SCENE_SETUP(RK_SceneSetupFunctionType);
+typedef RK_SCENE_UPDATE(RK_SceneUpdateFunctionType);
+typedef RK_SCENE_DEFAULT(RK_SceneDefaultFunctionType);
+
 struct RK_Scene
 {
-  RK_Scene             *next;
+  RK_Scene                    *next;
 
-  U64                  frame_index;
+  U64                         frame_index;
   // Storage
-  Arena*               arena;
-  RK_NodeBucket*       node_bucket;
-  RK_NodeBucket*       res_node_bucket;
-  RK_ResourceBucket*   res_bucket;
+  Arena*                      arena;
+  RK_NodeBucket*              node_bucket;
+  RK_NodeBucket*              res_node_bucket;
+  RK_ResourceBucket*          res_bucket;
 
-  RK_Handle            root;
-  RK_Handle            active_camera;
+  RK_Handle                   root;
+  RK_Handle                   active_camera;
 
-  RK_Key               hot_key;
-  RK_Key               active_key;
+  RK_Key                      hot_key;
+  RK_Key                      active_key;
 
-  RK_Handle            active_node;
+  RK_Handle                   active_node;
 
-  B32                  omit_grid;
-  B32                  omit_gizmo3d;
-  B32                  omit_light;
+  B32                         omit_grid;
+  B32                         omit_gizmo3d;
+  B32                         omit_light;
 
   // physics states (particle 3d/2d, rigidbody 3d/2d)
-  PH_Particle3DSystem  particle3d_system;
-  PH_Rigidbody3DSystem rigidbody3d_system;
+  PH_Particle3DSystem         particle3d_system;
+  PH_Rigidbody3DSystem        rigidbody3d_system;
 
   // ambient light
-  Vec4F32              ambient_light;
-  Vec4F32              ambient_scale;
+  Vec4F32                     ambient_light;
+  Vec4F32                     ambient_scale;
 
   // gizmo
-  RK_Gizmo3DMode       gizmo3d_mode;
+  RK_Gizmo3DMode              gizmo3d_mode;
 
   // custom data
-  void*                custom_data;
+  void*                       custom_data;
 
-  // TODO: to be implemented
-  String8              setup_fn; // run once after initialization
-  String8              reset_fn; // load default configuration
-  String8              name;
-  String8              save_path;
+  // NOTE(k): for serialization
+  String8                     setup_fn_name;    // run once after initialization
+  String8                     update_fn_name;   // run once after initialization
+  String8                     default_fn_name;  // load default configuration
 
-  U64                  handle_seed;
+  RK_SceneSetupFunctionType   *setup_fn;
+  RK_SceneUpdateFunctionType  *update_fn;
+  RK_SceneDefaultFunctionType *default_fn;
+
+  String8                     name;
+  String8                     save_path;
+
+  U64                         handle_seed;
 };
-
-#define RK_SCENE_SETUP(name) void name(RK_Scene *scene)
-typedef RK_SCENE_SETUP(RK_SceneSetupFunctionType);
 
 ////////////////////////////////
 //~ k: Setting Types
@@ -1109,14 +1122,6 @@ struct RK_FunctionSlot
 {
   RK_FunctionNode *first;
   RK_FunctionNode *last;
-};
-
-// for mdesk
-typedef struct RK_SceneTemplate RK_SceneTemplate;
-struct RK_SceneTemplate
-{
-  String8 name;
-  RK_Scene*(*fn)(void);
 };
 
 // for mdesk
@@ -1240,10 +1245,6 @@ struct RK_State
   // function registry
   RK_FunctionSlot       *function_registry;
   U64                   function_registry_size;
-
-  // scene templates
-  RK_SceneTemplate      *templates;
-  U64                   template_count;
 
   // theme
   RK_Theme              cfg_theme_target;
@@ -1472,6 +1473,7 @@ internal Mat4x4F32 rk_xform_from_transform3d(RK_Transform3D *transform);
 internal Mat4x4F32 rk_xform_from_trs(Vec3F32 translate, QuatF32 rotation, Vec3F32 scale);
 internal F32       rk_plane_intersect(Vec3F32 ray_start, Vec3F32 ray_end, Vec3F32 plane_normal, Vec3F32 plane_point);
 internal Rng2F32   rk_rect_from_sprite2d(RK_Sprite2D *sprite2d, Vec2F32 pos);
+internal Vec2F32   rk_center_from_sprite2d(RK_Sprite2D *sprite2d, Vec2F32 pos);
 internal void      rk_sprite2d_equip_string(Arena *arena, RK_Sprite2D *sprite2d, String8 string, F_Tag font, F32 font_size, Vec4F32 font_color, U64 tab_size, F_RasterFlags text_raster_flags);
 internal int       rk_node2d_cmp_z_rev(const void *left, const void *right);
 internal int       rk_path_cmp(const void *left_, const void *right_);

@@ -77,7 +77,7 @@ entry_point(CmdLine *cmd_line)
   OS_Handle main_audio_device = os_audio_device_open();
   os_set_main_audio_device(main_audio_device);
   os_audio_device_start(main_audio_device);
-  os_audio_set_master_volume(1.0);
+  os_audio_set_master_volume(0.1);
 
   // render initialization
   r_init((char *)window_title.str, os_wnd, BUILD_DEBUG);
@@ -90,15 +90,12 @@ entry_point(CmdLine *cmd_line)
   // init game state
   rk_init(os_wnd, r_wnd);
 
-  // load scene template and load default scene
-  rk_state->template_count = ArrayCount(rk_scene_templates);
-  rk_state->templates = rk_scene_templates;
   // load scene function table
   for(U64 i = 0; i < ArrayCount(rk_scene_function_table); i++)
   {
     rk_register_function(rk_scene_function_table[i].name, rk_scene_function_table[i].fn);
   }
-  RK_Scene *default_scene = rk_state->templates[1].fn();
+  RK_Scene *default_scene = s5_default();
   // RK_Scene *default_scene = rk_scene_from_tscn(str8_lit("./src/rubik/scenes/4/default.tscn"));
   rk_state->active_scene = default_scene;
 

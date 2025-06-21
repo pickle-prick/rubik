@@ -45,7 +45,4 @@ void main()
     // sample the texture
     out_color = vec4(mix(texture(stage_sampler, uv).rgb,vec3(0.0),apply),1.0);
   }
-
-  // vec4 tex_clr = texture(stage_sampler, in_tex);
-  // out_color = tex_clr;
 }

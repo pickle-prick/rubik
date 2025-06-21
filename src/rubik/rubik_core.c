@@ -1794,40 +1794,37 @@ internal void rk_ui_inspector(void)
     UI_Row
     {
       // templates selection
-      {
-        rk_ui_dropdown_begin(str8_lit("load"));
-        for(U64 i = 0; i < rk_state->template_count; i++)
-        {
-          RK_SceneTemplate t = rk_state->templates[i];
-          if(ui_clicked(ui_button(t.name)))
-          {
-            RK_Scene *new_scene = t.fn();
-            SLLStackPush(rk_state->first_to_free_scene, scene);
-            rk_state->next_active_scene = new_scene;
+      // {
+      //   rk_ui_dropdown_begin(str8_lit("load"));
+      //   for(U64 i = 0; i < rk_state->template_count; i++)
+      //   {
+      //     RK_SceneTemplate t = rk_state->templates[i];
+      //     if(ui_clicked(ui_button(t.name)))
+      //     {
+      //       RK_Scene *new_scene = t.fn();
+      //       SLLStackPush(rk_state->first_to_free_scene, scene);
+      //       rk_state->next_active_scene = new_scene;
 
-            // TODO(XXX): to be removed
-            // U64 name_size = ClampTop(inspector->scene_path_to_save_buffer_size, new_scene->name.size);
-            // inspector->scene_path_to_save.size = name_size;
-            // MemoryCopy(inspector->scene_path_to_save.str, new_scene->name.str, name_size);
-            rk_ui_dropdown_hide();
-          }
-        }
-        rk_ui_dropdown_end();
-      }
+      //       // TODO(XXX): to be removed
+      //       // U64 name_size = ClampTop(inspector->scene_path_to_save_buffer_size, new_scene->name.size);
+      //       // inspector->scene_path_to_save.size = name_size;
+      //       // MemoryCopy(inspector->scene_path_to_save.str, new_scene->name.str, name_size);
+      //       rk_ui_dropdown_hide();
+      //     }
+      //   }
+      //   rk_ui_dropdown_end();
+      // }
 
       if(ui_clicked(ui_buttonf("save")))
       {
         rk_scene_to_tscn(scene);
       }
 
-      if(ui_clicked(ui_buttonf("reset")))
+      if(ui_clicked(ui_buttonf("default")))
       {
-        RK_FunctionNode *src = rk_function_from_string(scene->reset_fn);
-        if(src)
+        if(scene->default_fn)
         {
-          RK_UpdateFnNode *fn_node = src->ptr;
-          RK_Scene*(*fn)(void) = src->ptr;
-          RK_Scene *new = fn();
+          RK_Scene *new = scene->default_fn();
           SLLStackPush(rk_state->first_to_free_scene, scene);
           rk_state->next_active_scene = new;
         }
@@ -2456,8 +2453,8 @@ internal void rk_ui_profiler(void)
     ui_labelf("Cycles n/p");
     ui_labelf("Calls");
     ui_labelf("Cycles per call");
-    ui_labelf("US n/p");
-    ui_labelf("US per call");
+    ui_labelf("MS n/p");
+    ui_labelf("MS per call");
   }
 
   Rng2F32 content_rect = container_box->rect;
@@ -2521,11 +2518,11 @@ internal void rk_ui_profiler(void)
               ui_labelf("%lu", n->cycles_per_call);
               UI_Row
               {
-                ui_labelf("%lu", n->total_us);
+                ui_labelf("%.2f", n->total_us/1000.0);
                 ui_spacer(ui_pct(1.f,0.f));
                 ui_labelf("%.2f", (F32)n->total_us/pf_tick->us);
               }
-              ui_labelf("%lu", n->us_per_call);
+              ui_labelf("%lu", n->us_per_call/1000.0);
             }
           }
           row_idx++;
@@ -3193,19 +3190,24 @@ rk_frame(void)
     RK_Node *root = rk_node_from_handle(&scene->root);
 
     // Pass 1
-    RK_Node *node = root;
-    while(node != 0)
+    if(scene->update_fn)
     {
-      RK_NodeRec rec = rk_node_df_pre(node, 0, 0);
-      for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
-      {
-        fn->f(node, scene, &ctx);
-      }
-      node = rec.next;
+      scene->update_fn(scene, &ctx);
     }
+    // TODO(k): maybe we don't need use update_fn for individual node, instead we use one single udpate entry for the whole scene
+    // RK_Node *node = root;
+    // while(node != 0)
+    // {
+    //   RK_NodeRec rec = rk_node_df_pre(node, 0, 0);
+    //   for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
+    //   {
+    //     fn->f(node, scene, &ctx);
+    //   }
+    //   node = rec.next;
+    // }
 
     // Pass 2
-    node = root;
+    RK_Node *node = root;
     R_Light3D *lights = geo_back_params->lights;
     U64 *light_count = &geo_back_params->light_count;
 
@@ -4262,11 +4264,11 @@ rk_frame(void)
     if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo2D]))       {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo2D], 0);}
     // TODO(XXX): only for test, make it composiable
     d_edge(rk_state->time_in_seconds);
-    // d_noise(r2f32p(0,0,0,0), rk_state->time_in_seconds);
     if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back]))  {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back], 0);}
     if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front])) {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front], 0);}
     if(!d_bucket_is_empty(rk_state->bucket_rect))                              {d_sub_bucket(rk_state->bucket_rect, 0);}
-    d_crt(0.05, 1.15, rk_state->time_in_seconds);
+    d_crt(0.25, 1.15, rk_state->time_in_seconds);
+    d_noise(r2f32p(0,0,0,0), rk_state->time_in_seconds);
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -4532,6 +4534,41 @@ rk_rect_from_sprite2d(RK_Sprite2D *sprite2d, Vec2F32 pos)
   }
   ret.p0 = add_2f32(pos, ret.p0);
   ret.p1 = add_2f32(pos, ret.p1);
+  return ret;
+}
+
+internal Vec2F32
+rk_center_from_sprite2d(RK_Sprite2D *sprite2d, Vec2F32 pos)
+{
+  Vec2F32 ret = pos;
+  Vec2F32 rect_size = sprite2d->size.rect;
+  Vec2F32 half_size = scale_2f32(rect_size, 0.5);
+
+  switch(sprite2d->anchor)
+  {
+    case RK_Sprite2DAnchorKind_TopLeft:
+    {
+      ret.x += half_size.x;
+      ret.y += half_size.y;
+    }break;
+    case RK_Sprite2DAnchorKind_TopRight:
+    {
+      ret.x -= half_size.x;
+      ret.y += half_size.y;
+    }break;
+    case RK_Sprite2DAnchorKind_BottomLeft:
+    {
+      ret.x += half_size.x;
+      ret.y -= half_size.y;
+    }break;
+    case RK_Sprite2DAnchorKind_BottomRight:
+    {
+      ret.x -= half_size.x;
+      ret.y -= half_size.y;
+    }break;
+    case RK_Sprite2DAnchorKind_Center: {/*noop*/}break;
+    default:{InvalidPath;}break;
+  }
   return ret;
 }
 
