@@ -345,6 +345,7 @@ RK_SCENE_UPDATE(s5_update)
         UI_Column
           UI_Flags(UI_BoxFlag_DrawBorder)
           {
+            ui_labelf("level: %.2f", submarine_node->node2d->transform.position.y);
             ui_labelf("vel: %.2f %.2f", submarine->v.x, submarine->v.y);
             ui_labelf("density: %.2f", submarine->density);
             ui_labelf("scan_t: %.2f", submarine->scan_t);
@@ -506,6 +507,7 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
   RK_Node *sea_node = rk_node_from_handle(&s->sea);
   RK_Sprite2D *sprite2d = node->sprite2d;
   Vec2F32 *position = &node->node2d->transform.position;
+  Vec2F32 center = rk_center_from_sprite2d(sprite2d, *position);
 
   // F32 y_in = transform->position.y+sprite2d->size.rect.y-sea_node->node2d->transform.position.y;
   // y_in = Clamp(0, y_in, sprite2d->size.rect.y);
@@ -686,6 +688,31 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
     n->sprite2d->draw_edge = 1;
     n->node2d->transform.position = position;
     n->node2d->z_index = 1;
+  }
+
+  ////////////////////////////////
+  // draw a ball along the viewport circle to indicate submarine direction
+
+  RK_Parent_Scope(node)
+  {
+    Vec2F32 submarine_direction = {0,-1};
+    if(submarine->v.x != 0 || submarine->v.y != 0)
+    {
+      submarine_direction = normalize_2f32(submarine->v);
+    }
+
+    RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
+                                            RK_NodeFlag_Transient, "viewport");
+    Vec2F32 position = scale_2f32(node->sprite2d->size.rect, 0.5);
+    position = add_2f32(position, scale_2f32(submarine_direction, submarine->viewport_radius));
+    n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
+    n->sprite2d->shape = RK_Sprite2DShapeKind_Circle;
+    n->sprite2d->size.circle.radius = 20.0;
+    n->sprite2d->color = v4f32(0.2,0.2,0.1,0.5);
+    n->sprite2d->omit_texture = 1;
+    n->sprite2d->draw_edge = 1;
+    n->node2d->transform.position = position;
+    n->node2d->z_index = 1-0.1;
   }
 
   ////////////////////////////////
@@ -1497,7 +1524,7 @@ RK_SCENE_DEFAULT(s5_default)
       Rng1U32 spwan_range_y = {0, 9000};
       U32 spwan_dim_x = dim_1u32(spwan_range_x);
       U32 spwan_dim_y = dim_1u32(spwan_range_y);
-      for(U64 i = 0; i < 300; i++)
+      for(U64 i = 0; i < 80; i++)
       {
         F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
         F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;

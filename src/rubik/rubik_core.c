@@ -2522,7 +2522,7 @@ internal void rk_ui_profiler(void)
                 ui_spacer(ui_pct(1.f,0.f));
                 ui_labelf("%.2f", (F32)n->total_us/pf_tick->us);
               }
-              ui_labelf("%lu", n->us_per_call/1000.0);
+              ui_labelf("%.2f", n->us_per_call/1000.0);
             }
           }
           row_idx++;
@@ -4266,6 +4266,7 @@ rk_frame(void)
   // concate draw buckets
 
   D_Bucket *bucket = d_bucket_make();
+  ProfBegin("bucket making");
   D_BucketScope(bucket)
   {
     // NOTE(k): check if there is anything in passes, we don't a empty geo pass (pass is not cheap)
@@ -4278,6 +4279,7 @@ rk_frame(void)
     d_crt(0.25, 1.15, rk_state->time_in_seconds);
     d_noise(r2f32p(0,0,0,0), rk_state->time_in_seconds);
   }
+  ProfEnd();
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // submit work
