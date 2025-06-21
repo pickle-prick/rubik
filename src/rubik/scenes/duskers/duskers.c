@@ -149,6 +149,7 @@ struct S5_Flock
 typedef struct S5_Boid S5_Boid;
 struct S5_Boid
 {
+  // TODO: path plotting to be implemented
   F32 max_depth;
   F32 min_depth;
 
@@ -163,7 +164,14 @@ struct S5_Boid
 typedef struct S5_Predator S5_Predator;
 struct S5_Predator
 {
-  
+  F32 current_energy;
+  // energy_cost = k_drag * speed²
+  F32 max_energy;
+  F32 energy_recovery_rate;
+  F32 roaming_speed; // magnitude of velocity
+  F32 burst_speed;
+  F32 k_drag; // energy cost per (speed^2) per second
+  B32 chasing;
 };
 
 typedef struct S5_Detectable S5_Detectable;
@@ -249,24 +257,36 @@ RK_SCENE_UPDATE(s5_update)
   Vec2F32 submarine_center = rk_center_from_sprite2d(submarine_node->sprite2d, submarine_node->node2d->transform.position);
 
   ///////////////////////////////////////////////////////////////////////////////////////
+  // collect world nodes to a flag array for easier looping
+
+  RK_Node **nodes = 0;
+  for(U64 slot_index = 0; slot_index < node_bucket->hash_table_size; slot_index++)
+  {
+    for(RK_Node *node = node_bucket->hash_table[slot_index].first;
+        node != 0;
+        node = node->hash_next)
+    {
+      darray_push(rk_frame_arena(), nodes, node);
+    }
+  }
+  s->nodes = nodes;
+
+  ///////////////////////////////////////////////////////////////////////////////////////
   // build quadtree for Collider2D
 
   // TODO(XXX): not ideal, how can find a resonal bounds for the world 
   // we may want to collect the 2d world bounds for sprite2d
   QuadTree *root_quad = quadtree_push(rk_frame_arena(), r2f32p(-400000,-400000,400000,400000));
 
-  for(U64 slot_idx = 0; slot_idx < node_bucket->hash_table_size; slot_idx++)
+  for(U64 i = 0; i < darray_size(nodes); i++)
   {
-    RK_NodeBucketSlot *slot = &node_bucket->hash_table[slot_idx];
-    for(RK_Node *n = slot->first; n != 0; n = n->hash_next)
+    RK_Node *n = nodes[i];
+    // TODO(XXX): we should only add Collider2D instead of Sprite2D
+    if(n->type_flags & RK_NodeTypeFlag_Collider2D)
     {
-      // TODO(XXX): we should only add Collider2D instead of Sprite2D
-      if(n->type_flags & RK_NodeTypeFlag_Collider2D)
-      {
-        Vec2F32 position = n->node2d->transform.position;
-        Rng2F32 src_rect = rk_rect_from_sprite2d(n->sprite2d, position);
-        quadtree_insert(rk_frame_arena(), root_quad, src_rect, n);
-      }
+      Vec2F32 position = n->node2d->transform.position;
+      Rng2F32 src_rect = rk_rect_from_sprite2d(n->sprite2d, position);
+      quadtree_insert(rk_frame_arena(), root_quad, src_rect, n);
     }
   }
   s->root_quad = root_quad;
@@ -338,21 +358,6 @@ RK_SCENE_UPDATE(s5_update)
       }
     }
   }
-
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // collect world nodes to a flag array for easier looping
-
-  RK_Node **nodes = 0;
-  for(U64 slot_index = 0; slot_index < node_bucket->hash_table_size; slot_index++)
-  {
-    for(RK_Node *node = node_bucket->hash_table[slot_index].first;
-        node != 0;
-        node = node->hash_next)
-    {
-      darray_push(rk_frame_arena(), nodes, node);
-    }
-  }
-  s->nodes = nodes;
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // hide sprite2d if it's no within player's viewport
@@ -1047,9 +1052,9 @@ internal void s5_system_boid(RK_Node *node, RK_Scene *scene, RK_FrameContext *ct
 internal void s5_system_predator(RK_Node *node, RK_Scene *scene, RK_FrameContext *ctx)
 {
   S5_Scene *s = scene->custom_data;
-  S5_Resource *resource = s5_resource_from_node(node);
   RK_Sprite2D *sprite2d = node->sprite2d;
   RK_Transform2D *transform = &node->node2d->transform;
+  S5_Predator *predator = s5_predator_from_node(node);
 
   Vec2F32 *position = &node->node2d->transform.position;
   Vec2F32 screen_pos = s5_screen_pos_from_world(*position, ctx->proj_view_m);
@@ -1060,16 +1065,25 @@ internal void s5_system_predator(RK_Node *node, RK_Scene *scene, RK_FrameContext
   F32 dist_to_submarine = length_2f32(sub_2f32(submarine_center, *position));
   Vec2F32 dir_to_submarine = normalize_2f32(sub_2f32(submarine_center, node->node2d->transform.position));
 
-  B32 is_visiable = dist_to_submarine < submarine->viewport_radius;
-  F32 scan_range = mix_1f32(0.0, submarine->scan_radius, submarine->scan_t);
+  B32 chasing = (predator->chasing && predator->current_energy >= predator->max_energy*0.2 && dist_to_submarine < 500.0) ||
+                (!predator->chasing && dist_to_submarine < 300.0 && predator->current_energy >= predator->max_energy*0.9);
+  F32 speed = 0;
 
-  F32 speed = 100.0;
-  Vec2F32 vel = {0};
-  if(dist_to_submarine < 300.0)
+  if(chasing)
   {
-   vel = scale_2f32(dir_to_submarine, speed);
+    speed = mix_1f32(0.0, predator->burst_speed, predator->current_energy/predator->max_energy);
+  }
+  else
+  {
+    F32 lost_amount = predator->max_energy-predator->current_energy;
+    predator->current_energy += predator->energy_recovery_rate * lost_amount * rk_state->frame_dt;
   }
 
+  predator->current_energy -= predator->k_drag * speed * speed * rk_state->frame_dt;
+  predator->current_energy = Clamp(0.0, predator->current_energy, predator->max_energy);
+
+  Vec2F32 vel = scale_2f32(dir_to_submarine, speed);
+  predator->chasing = chasing;
   *position = add_2f32(*position, scale_2f32(vel, rk_state->frame_dt));
 }
 
@@ -1483,7 +1497,7 @@ RK_SCENE_DEFAULT(s5_default)
       Rng1U32 spwan_range_y = {0, 9000};
       U32 spwan_dim_x = dim_1u32(spwan_range_x);
       U32 spwan_dim_y = dim_1u32(spwan_range_y);
-      for(U64 i = 0; i < 100; i++)
+      for(U64 i = 0; i < 300; i++)
       {
         F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
         F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;
@@ -1501,6 +1515,12 @@ RK_SCENE_DEFAULT(s5_default)
 
         S5_Entity *entity = rk_node_push_custom_data(node, S5_Entity);
         push_str8_copy_static(str8_lit("predator"), entity->detectable.name);
+        entity->predator.current_energy = 600.0;
+        entity->predator.max_energy = 600.0;
+        entity->predator.energy_recovery_rate = 0.7;
+        entity->predator.roaming_speed = 0.0;
+        entity->predator.burst_speed = 200.0;
+        entity->predator.k_drag = 0.002;
       }
     }
   }

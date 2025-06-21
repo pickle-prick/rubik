@@ -2715,6 +2715,7 @@ rk_frame(void)
   ///////////////////////////////////////////////////////////////////////////////////////
   // free scenes & nodes
 
+  ProfScope("free")
   {
     RK_Node *n = scene->node_bucket->first_to_free_node;
     while(n != 0)
@@ -3124,10 +3125,13 @@ rk_frame(void)
   // draw game view
 
   // TODO: change drawing order if cursor is clicked on one of the views
-  rk_ui_inspector();
-  rk_ui_stats();
-  rk_ui_profiler();
-  rk_ui_terminal();
+  ProfScope("rk ui drawing")
+  {
+    rk_ui_inspector();
+    rk_ui_stats();
+    rk_ui_profiler();
+    rk_ui_terminal();
+  }
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // process events for game logic
@@ -3221,6 +3225,7 @@ rk_frame(void)
     RK_Node **nodes_to_draw = push_array(scratch.arena, RK_Node*, drawable_cap);
     // TODO(XXX): debug only
     U64 node_count = 0;
+    ProfBegin("generic update");
     while(node != 0)
     {
       node_count++;
@@ -3492,12 +3497,14 @@ rk_frame(void)
       }
       node = rec.next;
     }
+    ProfEnd();
     AssertAlways(rk_top_node_bucket()->node_count == node_count);
 
     // sorting if needed
     qsort(nodes_to_draw, drawable_count, sizeof(RK_Node*), rk_node2d_cmp_z_rev);
 
     // drawing
+    ProfBegin("main drawing");
     for(U64 i = 0; i < drawable_count; i++)
     {
       RK_Node *node = nodes_to_draw[i];
@@ -3743,6 +3750,7 @@ rk_frame(void)
       }
 
     }
+    ProfEnd();
   }
 
   // NOTE(k): there could be ui elements within node update
@@ -4275,15 +4283,20 @@ rk_frame(void)
   // submit work
 
   // build frame drawlist before we submit draw bucket
-  rk_drawlist_build(rk_frame_drawlist());
+  ProfScope("draw drawlist")
+  {
+    rk_drawlist_build(rk_frame_drawlist());
+  }
 
   // submit
-  r_begin_frame();
-  r_window_begin_frame(rk_state->os_wnd, rk_state->r_wnd);
-  d_submit_bucket(rk_state->os_wnd, rk_state->r_wnd, bucket);
-  rk_state->hot_pixel_key = r_window_end_frame(rk_state->r_wnd, rk_state->cursor);
-  r_end_frame();
-
+  ProfScope("submit")
+  {
+    r_begin_frame();
+    r_window_begin_frame(rk_state->os_wnd, rk_state->r_wnd);
+    d_submit_bucket(rk_state->os_wnd, rk_state->r_wnd, bucket);
+    rk_state->hot_pixel_key = r_window_end_frame(rk_state->r_wnd, rk_state->cursor);
+    r_end_frame();
+  }
   ///////////////////////////////////////////////////////////////////////////////////////
   // wait if we still have some cpu time left
 
