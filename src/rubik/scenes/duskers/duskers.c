@@ -12,8 +12,9 @@
 // #define SUBMARINE_MAX_DENSITY           100
 // #define SUBMARINE_MIN_DENSITY           100
 #define SUBMARINE_OXYGEN_CAP             300
+#define SUBMARINE_HP_CAP                 100
 #define SUBMARINE_BATTERY_CAP            600 // in joules
-#define SUBMARINE_THRUST_FORCE_CAP       8
+#define SUBMARINE_THRUST_FORCE_CAP       6
 #define SUBMARINE_THRUST_FORCE_INC_STEP  2
 #define SUBMARINE_PULSE_FORCE            100
 #define SUBMARINE_PULSE_COOLDOWN         0.6  // in seconds
@@ -43,6 +44,7 @@ typedef enum S5_ResourceKind
   S5_ResourceKind_AirBag,
   S5_ResourceKind_Battery,
   S5_ResourceKind_Part,
+  S5_ResourceKind_Stone,
   S5_ResourceKind_COUNT,
 } S5_ResourceKind;
 
@@ -58,6 +60,7 @@ typedef enum S5_SoundKind
 typedef enum S5_SequencerKind
 {
   S5_SequencerKind_SonarScan,
+  S5_SequencerKind_Radiation,
   S5_SequencerKind_Info,
   S5_SequencerKind_Warning,
   S5_SequencerKind_Critical,
@@ -81,6 +84,8 @@ struct S5_Scene
   RK_Node **nodes;
   // TODO: to be implemented
   Rng2F32 world_bounds;
+  B32 warning;
+  B32 critical;
 };
 
 typedef struct S5_GameCamera S5_GameCamera;
@@ -136,6 +141,9 @@ struct S5_Submarine
   // health?
 
   // resource
+  F32 hp;
+  F32 hp_mins;
+  U64 last_take_hit_us;
   F32 oxygen;
   F32 battery; // in joules
 };
@@ -259,6 +267,9 @@ RK_SCENE_UPDATE(s5_update)
   S5_Submarine *submarine = s5_submarine_from_node(submarine_node);
   Vec2F32 submarine_center = rk_center_from_sprite2d(submarine_node->sprite2d, submarine_node->node2d->transform.position);
 
+  s->warning = 0;
+  s->critical = 0;
+
   ///////////////////////////////////////////////////////////////////////////////////////
   // collect world nodes to a flag array for easier looping
 
@@ -344,10 +355,12 @@ RK_SCENE_UPDATE(s5_update)
       }
 
       UI_Parent(container)
+        UI_FontSize(25.0)
       {
         UI_Column
           UI_Flags(UI_BoxFlag_DrawBorder)
           {
+            ui_labelf("hp: %.2f", submarine->hp);
             ui_labelf("level: %.2f", submarine_node->node2d->transform.position.y);
             ui_labelf("vel: %.2f %.2f", submarine->v.x, submarine->v.y);
             ui_labelf("density: %.2f", submarine->density);
@@ -420,6 +433,25 @@ RK_SCENE_UPDATE(s5_update)
       s5_system_detectable(node, scene, ctx);
     }
   }
+
+  if(s->warning && !s->critical)
+  {
+    sy_sequencer_play(s->sequencers[S5_SequencerKind_Warning], 0);
+  }
+  else
+  {
+    sy_sequencer_pause(s->sequencers[S5_SequencerKind_Warning]);
+  }
+
+  if(s->critical)
+  {
+    sy_sequencer_play(s->sequencers[S5_SequencerKind_Critical], 0);
+  }
+  else
+  {
+    sy_sequencer_pause(s->sequencers[S5_SequencerKind_Critical]);
+  }
+
   ProfEnd();
 }
 
@@ -657,6 +689,7 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
   if(ui_key_press(0, OS_Key_Space))
   {
     sy_sequencer_play(s->sequencers[S5_SequencerKind_SonarScan], 1);
+    // sy_sequencer_play(s->sequencers[S5_SequencerKind_Radiation], 1);
     submarine->is_scanning = 1;
   }
 
@@ -782,6 +815,10 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
           // TODO: to be implemented
           os_sound_play(s->sounds[S5_SoundKind_GainResource_Battery]);
         }break;
+        case S5_ResourceKind_Stone:
+        {
+          // TODO: to be implemented, do some damage to the submarine
+        }break;
         default:{InvalidPath;}break;
       }
 
@@ -800,6 +837,26 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
   battery = ClampBot(0.0, battery - watts*rk_state->frame_dt);
   submarine->oxygen = oxygen;
   submarine->battery = battery;
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // take hit
+
+  if(submarine->hp_mins != 0.0)
+  {
+    submarine->hp -= submarine->hp_mins;
+    submarine->hp_mins = 0.0;
+    submarine->last_take_hit_us = os_now_microseconds();
+    submarine->hp = Clamp(0.0, submarine->hp, SUBMARINE_HP_CAP);
+  }
+
+  if((os_now_microseconds()-submarine->last_take_hit_us)/1000000.0 < 1.0)
+  {
+    s->critical += 1;
+  }
+  else if((os_now_microseconds()-submarine->last_take_hit_us)/1000000.0 < 3.0)
+  {
+    s->warning += 1;
+  }
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // warning if no power or oxygen
@@ -824,23 +881,8 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
     critical = 1;
   }
 
-  if(warning && !critical)
-  {
-    sy_sequencer_play(s->sequencers[S5_SequencerKind_Warning], 0);
-  }
-  else
-  {
-    sy_sequencer_pause(s->sequencers[S5_SequencerKind_Warning]);
-  }
-
-  if(critical)
-  {
-    sy_sequencer_play(s->sequencers[S5_SequencerKind_Critical], 0);
-  }
-  else
-  {
-    sy_sequencer_pause(s->sequencers[S5_SequencerKind_Critical]);
-  }
+  s->warning += warning;
+  s->critical += critical;
   scratch_end(scratch);
 }
 
@@ -1107,6 +1149,11 @@ internal void s5_system_predator(RK_Node *node, RK_Scene *scene, RK_FrameContext
   if(chasing)
   {
     speed = mix_1f32(0.0, predator->burst_speed, predator->current_energy/predator->max_energy);
+
+    if(dist_to_submarine < 60.0)
+    {
+      submarine->hp_mins += 10.0 * rk_state->frame_dt;
+    }
   }
   else
   {
@@ -1157,7 +1204,7 @@ s5_system_detectable(RK_Node *node, RK_Scene *scene, RK_FrameContext *ctx)
   {
     // draw text
     String8 string = str8_cstring((char*)detectable->name);
-    rk_debug_gfx(30, screen_pos, v4f32(1,1,1,1),string);
+    rk_debug_gfx(30, add_2f32(screen_pos, v2f32(-10, 30)), v4f32(1,1,1,1),string);
   }
   else
   {
@@ -1176,7 +1223,7 @@ s5_system_detectable(RK_Node *node, RK_Scene *scene, RK_FrameContext *ctx)
   if(is_analyzing)
   {
     String8 string = push_str8f(rk_frame_arena(), "%.2f%%", detectable->analyze_t);
-    rk_debug_gfx(30, screen_pos, v4f32(1,1,1,1),string);
+    rk_debug_gfx(30, add_2f32(screen_pos, v2f32(-10, 30)), v4f32(1,1,1,1),string);
   }
 }
 
@@ -1193,8 +1240,9 @@ RK_SCENE_SETUP(s5_setup)
   s->sounds[S5_SoundKind_GainResource_AirBag]  = os_sound_from_file("./src/rubik/scenes/duskers/gain_resource_airbag.wav");
   s->sounds[S5_SoundKind_GainResource_Part]    = os_sound_from_file("./src/rubik/scenes/duskers/gain_resource_part.wav");
   s->sounds[S5_SoundKind_GainResource_Battery] = os_sound_from_file("./src/rubik/scenes/duskers/gain_resource_part.wav");
-  s->sounds[S5_SoundKind_Ambient]              = os_sound_from_file("./src/rubik/scenes/duskers/submarine-2.wav");
-  os_sound_set_volume(s->sounds[S5_SoundKind_Ambient], 0.5);
+  s->sounds[S5_SoundKind_Ambient]              = os_sound_from_file("./src/rubik/scenes/duskers/ambience.wav");
+
+  os_sound_set_volume(s->sounds[S5_SoundKind_Ambient], 0.6);
   os_sound_set_looping(s->sounds[S5_SoundKind_Ambient], 1);
   os_sound_play(s->sounds[S5_SoundKind_Ambient]);
 
@@ -1212,6 +1260,20 @@ RK_SCENE_SETUP(s5_setup)
     SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_boop);
     osc->hz = 440.0;
     osc->kind = SY_OSC_Kind_Square;
+  }
+  SY_Instrument *instrument_radiation = sy_instrument_alloc(str8_lit("radiation"));
+  {
+    // Main burst - high-pitched noise
+    SY_InstrumentOSCNode *noise = sy_instrument_push_osc(instrument_radiation);
+    noise->hz   = 0.0; // Assume 0.0 or special flag means white noise
+    noise->kind = SY_OSC_Kind_Random; // white noise
+
+    // Short envelope (fast attack, quick decay)
+    // noise->attack_time  = 0.001;  // ~1ms
+    // noise->decay_time   = 0.05;   // ~50ms
+    // noise->sustain_time = 0.0;
+    // noise->release_time = 0.0;
+    // noise->volume = 0.8f; // Adjust to taste
   }
   // ping: sonar-like clean sine tone with subtle fade out
   SY_Instrument *instrument_ping = sy_instrument_alloc(str8_lit("ping"));
@@ -1266,6 +1328,25 @@ RK_SCENE_SETUP(s5_setup)
           SY_Channel *channel = sy_sequencer_push_channel(seq);
           channel->beats = str8_lit(".....X.........."); // slight echo or second ping
           channel->instrument = instrument_echo; // softer/different instrument
+        }
+        s->sequencers[kind] = seq;
+      }break;
+      case S5_SequencerKind_Radiation:
+      {
+        F32 tempo = 60.0f; // slower tempo for sonar feel
+        SY_Sequencer *seq = sy_sequencer_alloc();
+        seq->tempo = tempo;
+        seq->beat_count = 1;
+        seq->subbeat_count = 1;
+        seq->total_subbeat_count = 1;
+        seq->loop = 0;
+        seq->volume = 1.0f;
+        seq->subbeat_time = (60.0f / tempo) / (F32)1; // seconds per subbeat
+        seq->duration = (60.0f / tempo) * 1; // total duration of this sequence
+        {
+          SY_Channel *channel = sy_sequencer_push_channel(seq);
+          channel->beats = str8_lit("X");
+          channel->instrument = instrument_radiation;
         }
         s->sequencers[kind] = seq;
       }break;
@@ -1436,8 +1517,9 @@ RK_SCENE_DEFAULT(s5_default)
       entity->submarine.viewport_radius = 500;
       entity->submarine.scan_radius = 500;
       entity->submarine.density = 1; // TODO: don't have any usage for now
-      entity->submarine.oxygen = 300.0;
+      entity->submarine.oxygen = 600.0;
       entity->submarine.battery = 1000.0;
+      entity->submarine.hp = 100.0;
     }
     scene->submarine = rk_handle_from_node(submarine_node);
 
@@ -1524,6 +1606,11 @@ RK_SCENE_DEFAULT(s5_default)
           {
             // TODO: to be implemented
             resource_name = str8_lit("Part");
+          }break;
+          case S5_ResourceKind_Stone:
+          {
+            // TODO: to be implemented
+            resource_name = str8_lit("Stone");
           }break;
           default:{InvalidPath;}break;
         }
