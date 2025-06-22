@@ -10,7 +10,7 @@ struct SY_EnvelopeADSR
   F64 attack_time;
   F64 decay_time;
   F64 release_time;
-  F32 substain_amp;
+  F32 sustain_amp;
   F32 start_amp;
 };
 
@@ -158,6 +158,7 @@ internal SY_Instrument*        sy_instrument_alloc(String8 name);
 internal void                  sy_instrument_release(SY_Instrument *instrument);
 internal SY_InstrumentOSCNode* sy_instrument_push_osc(SY_Instrument *instrument);
 internal F32                   sy_sound_from_instrument(SY_Instrument *instrument, F64 time);
+// TODO: instrument_play to be implemented
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Note

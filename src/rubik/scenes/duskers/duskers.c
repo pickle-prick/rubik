@@ -1242,7 +1242,7 @@ RK_SCENE_SETUP(s5_setup)
   s->sounds[S5_SoundKind_GainResource_Battery] = os_sound_from_file("./src/rubik/scenes/duskers/gain_resource_part.wav");
   s->sounds[S5_SoundKind_Ambient]              = os_sound_from_file("./src/rubik/scenes/duskers/ambience.wav");
 
-  os_sound_set_volume(s->sounds[S5_SoundKind_Ambient], 0.6);
+  os_sound_set_volume(s->sounds[S5_SoundKind_Ambient], 0.3);
   os_sound_set_looping(s->sounds[S5_SoundKind_Ambient], 1);
   os_sound_play(s->sounds[S5_SoundKind_Ambient]);
 
@@ -1251,6 +1251,13 @@ RK_SCENE_SETUP(s5_setup)
 
   SY_Instrument *instrument_beep = sy_instrument_alloc(str8_lit("beep"));
   {
+    // TODO: we should move env into osc node
+    instrument_beep->env.attack_time  = 0.005f;
+    instrument_beep->env.decay_time   = 0.05f;
+    instrument_beep->env.release_time = 0.0f;
+    instrument_beep->env.start_amp    = 1.0f;
+    instrument_beep->env.sustain_amp  = 0.8f;
+
     SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_beep);
     osc->hz = 880.0;
     osc->kind = SY_OSC_Kind_Square;
@@ -1263,6 +1270,13 @@ RK_SCENE_SETUP(s5_setup)
   }
   SY_Instrument *instrument_radiation = sy_instrument_alloc(str8_lit("radiation"));
   {
+    // TODO: we should move env into osc node
+    instrument_radiation->env.attack_time  = 0.001f;
+    instrument_radiation->env.decay_time   = 0.05f;
+    instrument_radiation->env.release_time = 0.0f;
+    instrument_radiation->env.start_amp    = 3.0f;
+    instrument_radiation->env.sustain_amp  = 0.1f;
+
     // Main burst - high-pitched noise
     SY_InstrumentOSCNode *noise = sy_instrument_push_osc(instrument_radiation);
     noise->hz   = 0.0; // Assume 0.0 or special flag means white noise
@@ -1278,6 +1292,13 @@ RK_SCENE_SETUP(s5_setup)
   // ping: sonar-like clean sine tone with subtle fade out
   SY_Instrument *instrument_ping = sy_instrument_alloc(str8_lit("ping"));
   {
+    // TODO: we should move env into osc node
+    instrument_ping->env.attack_time = 0.01f;
+    instrument_ping->env.decay_time = 0.3f;
+    instrument_ping->env.release_time = 0.2f;
+    instrument_ping->env.start_amp = 2.0;
+    instrument_ping->env.sustain_amp = 1.0;
+
     SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_ping);
     osc->hz = 660.0f;                // Mid-high pitch, sonar-like
     osc->kind = SY_OSC_Kind_Sin;     // Smooth tone, good for ping
@@ -1290,6 +1311,13 @@ RK_SCENE_SETUP(s5_setup)
   // echo: softer, lower sine wave to simulate sonar reflection
   SY_Instrument *instrument_echo = sy_instrument_alloc(str8_lit("echo"));
   {
+    // TODO: we should move env into osc node
+    instrument_echo->env.attack_time = 0.01f;
+    instrument_echo->env.decay_time = 0.4f;
+    instrument_echo->env.release_time = 0.3f;
+    instrument_echo->env.start_amp = 1.0;
+    instrument_echo->env.sustain_amp = 1.0;
+
     SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_echo);
     osc->hz = 440.0f;               // Lower than ping
     osc->kind = SY_OSC_Kind_Sin;    // Still clean and smooth
@@ -1333,19 +1361,19 @@ RK_SCENE_SETUP(s5_setup)
       }break;
       case S5_SequencerKind_Radiation:
       {
-        F32 tempo = 60.0f; // slower tempo for sonar feel
+        F32 tempo = 440.0;
         SY_Sequencer *seq = sy_sequencer_alloc();
         seq->tempo = tempo;
-        seq->beat_count = 1;
-        seq->subbeat_count = 1;
-        seq->total_subbeat_count = 1;
+        seq->beat_count = 4;
+        seq->subbeat_count = 4;
+        seq->total_subbeat_count = 16;
         seq->loop = 0;
         seq->volume = 1.0f;
-        seq->subbeat_time = (60.0f / tempo) / (F32)1; // seconds per subbeat
-        seq->duration = (60.0f / tempo) * 1; // total duration of this sequence
+        seq->subbeat_time = (60.0f / tempo) / (F32)4; // seconds per subbeat
+        seq->duration = (60.0f / tempo) * 4; // total duration of this sequence
         {
           SY_Channel *channel = sy_sequencer_push_channel(seq);
-          channel->beats = str8_lit("X");
+          channel->beats = str8_lit("X.X.X.X.X.X.X.X.");
           channel->instrument = instrument_radiation;
         }
         s->sequencers[kind] = seq;

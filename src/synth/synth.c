@@ -22,11 +22,10 @@ sy_init(void)
 internal F32
 sy_amp_from_envelope(SY_EnvelopeADSR *envelope, F64 time, F64 on_time, F64 off_time, B32 *out_finished)
 {
-#if 1
+#if 0
   F64 ret = time > off_time ? 0 : 1.0;
   *out_finished = time > off_time;
 #else
-  // TODO: this is wrong, fix it later
   F64 ret = 0.0;
   F64 release_amp = 0.0;
 
@@ -35,36 +34,48 @@ sy_amp_from_envelope(SY_EnvelopeADSR *envelope, F64 time, F64 on_time, F64 off_t
   F64 decay_time   = envelope->decay_time;
   F64 release_time = envelope->release_time;
   F32 start_amp    = envelope->start_amp;
-  F32 substain_amp = envelope->substain_amp;
+  F32 sustain_amp = envelope->sustain_amp;
 
-  B32 on = on_time >= time && (time < off_time || off_time < on_time);
+  B32 on = on_time <= time && (time < off_time || off_time < on_time);
 
   if(on)
   {
     F64 life_time = time-on_time;
 
-    if(life_time <= attack_time)
+    // attach stage
+    if(life_time <= attack_time && life_time > 0.0)
       ret = (life_time/attack_time) * start_amp;
 
+    // decay stage
     if(life_time > attack_time && life_time <= (attack_time+decay_time))
-      ret = ((life_time-attack_time) / decay_time) * (substain_amp-start_amp) + start_amp;
+      ret = ((life_time-attack_time) / decay_time) * (sustain_amp-start_amp) + start_amp;
 
+    // subtain stage
     if(life_time > (attack_time+decay_time))
-      ret = substain_amp;
+      ret = sustain_amp;
+
+    Assert(!isnan(ret));
   }
   else
   {
     F64 life_time = off_time - on_time;
+
+    // still in attack stage
     if(life_time <= attack_time)
       release_amp = (life_time / attack_time) * start_amp;
 
+    // still in decay stage
     if (life_time > attack_time && life_time <= (attack_time + decay_time))
-      release_amp = ((life_time - attack_time) / decay_time) * (substain_amp - start_amp) + start_amp;
+      release_amp = ((life_time - attack_time) / decay_time) * (sustain_amp - start_amp) + start_amp;
 
+    // in substain stage
     if (life_time > (attack_time + decay_time))
-      release_amp = substain_amp;
+      release_amp = sustain_amp;
 
-    ret = ((time - off_time) / release_time) * (0.0 - release_amp) + release_amp;
+    if(release_time > 0)
+      ret = ((time - off_time) / release_time) * (0.0 - release_amp) + release_amp;
+    
+    Assert(!isnan(ret));
   }
 
   // amp should not be negative
@@ -73,7 +84,7 @@ sy_amp_from_envelope(SY_EnvelopeADSR *envelope, F64 time, F64 on_time, F64 off_t
     ret = 0.0;
   }
 
-  *out_finished = ret == 0.0;
+  *out_finished = time > (off_time+release_time);
 #endif
   return ret;
 }

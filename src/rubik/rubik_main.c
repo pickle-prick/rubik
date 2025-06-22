@@ -77,7 +77,7 @@ entry_point(CmdLine *cmd_line)
   OS_Handle main_audio_device = os_audio_device_open();
   os_set_main_audio_device(main_audio_device);
   os_audio_device_start(main_audio_device);
-  os_audio_set_master_volume(0.3);
+  os_audio_set_master_volume(0.9);
 
   // render initialization
   r_init((char *)window_title.str, os_wnd, BUILD_DEBUG);
