@@ -84,44 +84,34 @@ sy_amp_from_envelope(SY_EnvelopeADSR *envelope, F64 time, F64 on_time, F64 off_t
     ret = 0.0;
   }
 
-  *out_finished = time > (off_time+release_time);
+  *out_finished = off_time >= on_time && time > (off_time+release_time);
 #endif
   return ret;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-// OSC
+// Oscillator
 
-internal F64
-sy_osc(F64 hz, F64 time, SY_OSC_Kind kind)
+internal SY_Oscillator *
+sy_oscillator_alloc()
 {
-  F64 ret;
-  F64 w = hz*tau32; // angular velocity (radians per second)
-  switch(kind)
+  SY_Oscillator *ret = sy_state->first_free_oscillator;
+  if(ret)
   {
-    case SY_OSC_Kind_Sin:
-    {
-      ret = sin(w*time);
-    }break;
-    case SY_OSC_Kind_Square:
-    {
-      ret = sin(w*time) > 0.0 ? 1.0 : -1.0;
-    }break;
-    case SY_OSC_Kind_Triangle:
-    {
-      ret = asin(sin(w*time) * 2.0 / pi32);
-    }break;
-    case SY_OSC_Kind_Saw:
-    {
-      ret = (2.0/pi32) * (hz * pi32 * fmod(time, 1.0/hz) - (pi32/2.0));
-    }break;
-    case SY_OSC_Kind_Random:
-    {
-      ret = 2.0 * ((F64)rand() / (F64)RAND_MAX) - 1.0;
-    }break;
-    default:{InvalidPath;}break;
+    SLLStackPop(sy_state->first_free_oscillator);
   }
+  else
+  {
+    ret = push_array_no_zero(sy_state->arena, SY_Oscillator, 1);
+  }
+  MemoryZeroStruct(ret);
   return ret;
+}
+
+internal void           
+sy_oscillator_release(SY_Oscillator *oscillator)
+{
+  SLLStackPush(sy_state->first_free_oscillator, oscillator);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -176,17 +166,26 @@ sy_instrument_push_osc(SY_Instrument *instrument)
   return ret;
 }
 
-internal F32
-sy_sound_from_instrument(SY_Instrument *instrument, F64 time)
+internal SY_Note *
+sy_instrument_play(SY_Instrument *instrument, F64 duration, U64 note_id)
 {
-  F32 ret = 0;
+  SY_Note *ret = sy_notelist_push(&sy_state->note_list);
+
+  os_audio_thread_lock();
+  ret->on_time = sy_wall_time;
+  ret->off_time = sy_wall_time+duration;
+  ret->active = 1;
+  ret->id = note_id;
+  ret->env = instrument->env;
   for(SY_InstrumentOSCNode *osc_node = instrument->first_osc;
-      osc_node != 0;
-      osc_node = osc_node->next)
+      osc_node != 0; osc_node = osc_node->next)
   {
-    F32 value = sy_osc(osc_node->hz, time, osc_node->kind);
-    ret += value;
+    SY_Oscillator *oscillator = sy_note_push_oscillator(ret);
+    oscillator->base_hz = osc_node->base_hz;
+    oscillator->amp = osc_node->amp;
+    oscillator->kind = osc_node->kind;
   }
+  os_audio_thread_release();
   return ret;
 }
 
@@ -194,7 +193,7 @@ sy_sound_from_instrument(SY_Instrument *instrument, F64 time)
 // Note
 
 internal SY_Note *
-sy_notelist_push(SY_NoteList *list)
+sy_note_alloc()
 {
   SY_Note *ret = sy_state->first_free_note;
   if(ret)
@@ -206,6 +205,25 @@ sy_notelist_push(SY_NoteList *list)
     ret = push_array_no_zero(sy_state->arena, SY_Note, 1);
   }
   MemoryZeroStruct(ret);
+  return ret;
+}
+
+internal void
+sy_note_release(SY_Note *note)
+{
+  for(SY_Oscillator *osc = note->first_oscillator; osc != 0;)
+  {
+    SY_Oscillator *next = osc->next;
+    sy_oscillator_release(osc);
+    osc = next;
+  }
+  SLLStackPush(sy_state->first_free_note, note);
+}
+
+internal SY_Note *
+sy_notelist_push(SY_NoteList *list)
+{
+  SY_Note *ret = sy_note_alloc();
   DLLPushBack(list->first, list->last, ret);
   list->note_count++;
   return ret;
@@ -216,7 +234,75 @@ sy_notelist_remove(SY_NoteList *list, SY_Note *note)
 {
   DLLRemove(list->first, list->last, note);
   list->note_count--;
-  SLLStackPush(sy_state->first_free_note, note);
+  sy_note_release(note);
+}
+
+internal SY_Oscillator *
+sy_note_push_oscillator(SY_Note *note)
+{
+  SY_Oscillator *ret = sy_oscillator_alloc();
+  DLLPushBack(note->first_oscillator, note->last_oscillator, ret);
+  note->oscillator_count++;
+  return ret;
+}
+
+internal F32
+sy_sample_from_note(SY_Note *note, F64 time)
+{
+  F32 ret = 0;
+  for(SY_Oscillator *oscillator = note->first_oscillator;
+      oscillator != 0;
+      oscillator = oscillator->next)
+  {
+    F32 hz = sy_hz_from_note_id(oscillator->base_hz, note->id);
+    F64 w = hz*tau32; // angular velocity (randians per second)
+    F32 r = 0;
+    switch(oscillator->kind)
+    {
+      case SY_OSC_Kind_Sine:
+      {
+        r = sin(w*time);
+      }break;
+      case SY_OSC_Kind_Square:
+      {
+        r = sin(w*time) > 0.0 ? 1.0 : -1.0;
+      }break;
+      case SY_OSC_Kind_Triangle:
+      {
+        r = asin(sin(w*time) * 2.0 / pi32);
+      }break;
+      case SY_OSC_Kind_Saw:
+      {
+        r = (2.0/pi32) * (hz * pi32 * fmod(time, 1.0/hz) - (pi32/2.0));
+      }break;
+      case SY_OSC_Kind_NoiseWhite:
+      {
+        r = 2.0 * ((F64)rand() / (F64)RAND_MAX) - 1.0;
+      }break;
+      case SY_OSC_Kind_NoiseBrown:
+      {
+        F32 white = 2.0 * ((F64)rand() / (F64)RAND_MAX) - 1.0;
+        F32 last = oscillator->brown.last;
+        last += white*0.2f;
+        last = Clamp(-1.0, last, 1.0);
+        r = last;
+        oscillator->brown.last = last;
+
+        // TODO: move bitcrusing somewhere else
+        // U64 bits = 1;
+        // F32 step = 2.0f / (1<<bits);
+        // r = roundf(r/step)*step;
+      }break;
+      default:{InvalidPath;}break;
+    }
+
+    // TODO: filter here
+
+    // TODO: not sure if we need to store it as post multiplied by amp
+    oscillator->last_sample = r;
+    ret+=r*oscillator->amp;
+  }
+  return ret;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -236,6 +322,18 @@ sy_sequencer_alloc()
   }
   MemoryZeroStruct(ret);
   return ret;
+}
+
+internal void
+sy_sequencer_release(SY_Sequencer *sequencer)
+{
+  for(SY_Channel *channel = sequencer->first_channel; channel != 0;)
+  {
+    SY_Channel *next = channel->next;
+    SLLStackPush(sy_state->first_free_channel, channel);
+    channel = next;
+  }
+  SLLStackPush(sy_state->first_free_sequencer, sequencer);
 }
 
 internal void
@@ -340,7 +438,16 @@ sy_sequencer_advance(SY_Sequencer *seq, F64 advance_time, F64 wall_time)
         n->on_time = start_time;
         n->off_time = start_time+seq->subbeat_time;
         n->active = 1;
-        n->src = c->instrument;
+        n->id = 0;
+        n->env = c->instrument->env;
+        for(SY_InstrumentOSCNode *osc_node = c->instrument->first_osc;
+            osc_node != 0; osc_node = osc_node->next)
+        {
+          SY_Oscillator *oscillator = sy_note_push_oscillator(n);
+          oscillator->base_hz = osc_node->base_hz;
+          oscillator->amp = osc_node->amp;
+          oscillator->kind = osc_node->kind;
+        }
       }
     }
 
@@ -362,27 +469,9 @@ sy_sequencer_advance(SY_Sequencer *seq, F64 advance_time, F64 wall_time)
 internal void
 sy_audio_stream_output_callback(void *buffer, U64 frame_count, U64 channel_count)
 {
-  // local_persist F64 time = 0;
-  // F32 time_per_sample = 1 / 44100.0f;
-  // F32 *dst = buffer;
-
-  // for(U64 i = 0; i < frame_count; i++)
-  // {
-  //   for(U64 c = 0; c < channel_count; c++)
-  //     F32 value = osc(440.0, time, OSC_Kind_Saw) +
-  //                 osc(440.0 * 2.0, time, OSC_Kind_Square) +
-  //                 osc(440.0 * 2.0, time, OSC_Kind_Sin);
-  //     *dst++ = value;
-  //   }
-  //   time += time_per_sample;
-  // }
-
-  local_persist F64 time = 0;
   // TODO: pass sample rate in here
   F32 time_per_frame = 1.0 / 44100.0f;
   F32 *dst = buffer;
-
-  // TODO: add os_audio_thread_lock/unlock
 
   // advancing sequencers
   F32 advance_time = time_per_frame*frame_count;
@@ -390,31 +479,30 @@ sy_audio_stream_output_callback(void *buffer, U64 frame_count, U64 channel_count
       seq != 0;
       seq = seq->next)
   {
-    sy_sequencer_advance(seq, advance_time, time);
+    sy_sequencer_advance(seq, advance_time, sy_wall_time);
   }
 
   for(U64 i = 0; i < frame_count; i++)
   {
     for(SY_Note *note = sy_state->note_list.first; note != 0; note = note->next)
     {
-      SY_Instrument *instrument = note->src;
       if(note->active)
       {
         B32 finished = 0;
-        F32 amp = sy_amp_from_envelope(&instrument->env, time, note->on_time, note->off_time, &finished);
+        F32 amp = sy_amp_from_envelope(&note->env, sy_wall_time, note->on_time, note->off_time, &finished);
         if(finished) note->active = 0;
         if(amp > 0.0)
         {
-          F32 value = sy_sound_from_instrument(instrument, time-note->on_time);
+          F32 sample = sy_sample_from_note(note, sy_wall_time-note->on_time);
           for(U64 c = 0; c < channel_count; c++)
           {
-            *(dst+c) += value*amp;
+            *(dst+c) += sample*amp;
           }
         }
       }
     }
     dst += channel_count;
-    time += time_per_frame;
+    sy_wall_time += time_per_frame;
   }
 
   // remove dead notes

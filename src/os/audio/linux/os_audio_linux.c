@@ -43,6 +43,18 @@ os_audio_set_master_volume(F32 volume)
   }
 }
 
+// audio thread lock
+
+internal void os_audio_thread_lock()
+{
+  ma_mutex_lock(&os_lnx_audio_state->lock);
+}
+
+internal void os_audio_thread_release()
+{
+  ma_mutex_unlock(&os_lnx_audio_state->lock);
+}
+
 // device
 
 internal void

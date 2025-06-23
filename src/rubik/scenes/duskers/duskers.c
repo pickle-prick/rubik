@@ -57,6 +57,18 @@ typedef enum S5_SoundKind
   S5_SoundKind_COUNT,
 } S5_SoundKind;
 
+typedef enum S5_InstrumentKind
+{
+  S5_InstrumentKind_Beep,
+  S5_InstrumentKind_Boop,
+  S5_InstrumentKind_Gear,
+  S5_InstrumentKind_Radiation,
+  S5_InstrumentKind_AirPressor,
+  S5_InstrumentKind_Ping,
+  S5_InstrumentKind_Echo,
+  S5_InstrumentKind_COUNT,
+} S5_InstrumentKind;
+
 typedef enum S5_SequencerKind
 {
   S5_SequencerKind_SonarScan,
@@ -74,6 +86,7 @@ struct S5_Scene
   RK_Handle submarine;
 
   // NOTE: not serializable (loaded from scene setup function)
+  SY_Instrument *instruments[S5_InstrumentKind_COUNT];
   SY_Sequencer *sequencers[S5_SequencerKind_COUNT];
   // TODO: sounds should be loaded as resource  
   OS_Handle sounds[S5_SoundKind_COUNT];
@@ -571,18 +584,22 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
 
   if(rk_key_press(0, OS_Key_Up))
   {
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0);
     thrust.y -= SUBMARINE_THRUST_FORCE_INC_STEP;
   }
   if(rk_key_press(0, OS_Key_Down))
   {
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0);
     thrust.y += SUBMARINE_THRUST_FORCE_INC_STEP;
   }
   if(rk_key_press(0, OS_Key_Left))
   {
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0);
     thrust.x -= SUBMARINE_THRUST_FORCE_INC_STEP;
   }
   if(rk_key_press(0, OS_Key_Right))
   {
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0);
     thrust.x += SUBMARINE_THRUST_FORCE_INC_STEP;
   }
 
@@ -635,6 +652,7 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
     if(pulse_applied)
     {
       submarine->pulse_cd_t = SUBMARINE_PULSE_COOLDOWN;
+      sy_instrument_play(s->instruments[S5_InstrumentKind_AirPressor], 1.5, 0);
     }
   }
 
@@ -688,8 +706,8 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
 
   if(ui_key_press(0, OS_Key_Space))
   {
-    sy_sequencer_play(s->sequencers[S5_SequencerKind_SonarScan], 1);
-    // sy_sequencer_play(s->sequencers[S5_SequencerKind_Radiation], 1);
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Ping], 3, 0);
+    // sy_sequencer_play(s->sequencers[S5_SequencerKind_SonarScan], 1);
     submarine->is_scanning = 1;
   }
 
@@ -1249,83 +1267,173 @@ RK_SCENE_SETUP(s5_setup)
   ///////////////////////////////////////////////////////////////////////////////////////
   // load instruments
 
-  SY_Instrument *instrument_beep = sy_instrument_alloc(str8_lit("beep"));
+  for(U64 i = 0; i < S5_InstrumentKind_COUNT; i++)
   {
-    // TODO: we should move env into osc node
-    instrument_beep->env.attack_time  = 0.005f;
-    instrument_beep->env.decay_time   = 0.05f;
-    instrument_beep->env.release_time = 0.0f;
-    instrument_beep->env.start_amp    = 1.0f;
-    instrument_beep->env.sustain_amp  = 0.8f;
+    SY_Instrument **dst = &s->instruments[i];
+    SY_Instrument *src = 0;
+    switch(i)
+    {
+      case S5_InstrumentKind_Beep:
+      {
 
-    SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_beep);
-    osc->hz = 880.0;
-    osc->kind = SY_OSC_Kind_Square;
-  }
-  SY_Instrument *instrument_boop = sy_instrument_alloc(str8_lit("boop"));
-  {
-    SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_boop);
-    osc->hz = 440.0;
-    osc->kind = SY_OSC_Kind_Square;
-  }
-  SY_Instrument *instrument_radiation = sy_instrument_alloc(str8_lit("radiation"));
-  {
-    // TODO: we should move env into osc node
-    instrument_radiation->env.attack_time  = 0.001f;
-    instrument_radiation->env.decay_time   = 0.05f;
-    instrument_radiation->env.release_time = 0.0f;
-    instrument_radiation->env.start_amp    = 3.0f;
-    instrument_radiation->env.sustain_amp  = 0.1f;
+        src = sy_instrument_alloc(str8_lit("beep"));
+        src->env.attack_time  = 0.005f;
+        src->env.decay_time   = 0.05f;
+        src->env.release_time = 0.0f;
+        src->env.start_amp    = 1.0f;
+        src->env.sustain_amp  = 0.8f;
+        {
 
-    // Main burst - high-pitched noise
-    SY_InstrumentOSCNode *noise = sy_instrument_push_osc(instrument_radiation);
-    noise->hz   = 0.0; // Assume 0.0 or special flag means white noise
-    noise->kind = SY_OSC_Kind_Random; // white noise
+          SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
+          osc->base_hz = 880.0;
+          osc->kind = SY_OSC_Kind_Square;
+          osc->amp = 1.0;
+        }
+      }break;
+      case S5_InstrumentKind_Boop:
+      {
+        src = sy_instrument_alloc(str8_lit("boop"));
+        src->env.attack_time  = 0.005f;
+        src->env.decay_time   = 0.05f;
+        src->env.release_time = 0.0f;
+        src->env.start_amp    = 1.0f;
+        src->env.sustain_amp  = 0.8f;
+        {
+          SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
+          osc->base_hz = 440.0;
+          osc->kind = SY_OSC_Kind_Square;
+          osc->amp = 1.0;
+        }
+      }break;
+      case S5_InstrumentKind_Gear:
+      {
+        src = sy_instrument_alloc(str8_lit("gear"));
+        src->env.attack_time  = 0.001f;
+        src->env.decay_time   = 0.10f;
+        src->env.release_time = 0.0f;
+        src->env.start_amp    = 1.0f;
+        src->env.sustain_amp  = 0.0f;
 
-    // Short envelope (fast attack, quick decay)
-    // noise->attack_time  = 0.001;  // ~1ms
-    // noise->decay_time   = 0.05;   // ~50ms
-    // noise->sustain_time = 0.0;
-    // noise->release_time = 0.0;
-    // noise->volume = 0.8f; // Adjust to taste
-  }
-  // ping: sonar-like clean sine tone with subtle fade out
-  SY_Instrument *instrument_ping = sy_instrument_alloc(str8_lit("ping"));
-  {
-    // TODO: we should move env into osc node
-    instrument_ping->env.attack_time = 0.01f;
-    instrument_ping->env.decay_time = 0.3f;
-    instrument_ping->env.release_time = 0.2f;
-    instrument_ping->env.start_amp = 2.0;
-    instrument_ping->env.sustain_amp = 1.0;
+        // Main gear clunk body (low-frequency thump)
+        {
+          SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
+          osc->base_hz = 80.0;
+          osc->kind = SY_OSC_Kind_Square;
+        }
 
-    SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_ping);
-    osc->hz = 660.0f;                // Mid-high pitch, sonar-like
-    osc->kind = SY_OSC_Kind_Sin;     // Smooth tone, good for ping
-    // osc->volume = 1.0f;
-    // osc->attack_time = 0.01f;
-    // osc->decay_time = 0.3f;       // quick fade-out to simulate echo
-    // osc->sustain_time = 0.0f;
-    // osc->release_time = 0.2f;
-  }
-  // echo: softer, lower sine wave to simulate sonar reflection
-  SY_Instrument *instrument_echo = sy_instrument_alloc(str8_lit("echo"));
-  {
-    // TODO: we should move env into osc node
-    instrument_echo->env.attack_time = 0.01f;
-    instrument_echo->env.decay_time = 0.4f;
-    instrument_echo->env.release_time = 0.3f;
-    instrument_echo->env.start_amp = 1.0;
-    instrument_echo->env.sustain_amp = 1.0;
+        // Add high-frequency metallic overtone
+        {
+          SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
+          osc->base_hz = 1000.0;
+          osc->kind = SY_OSC_Kind_Saw;
+          osc->amp = 1.0f;
+        }
 
-    SY_InstrumentOSCNode *osc = sy_instrument_push_osc(instrument_echo);
-    osc->hz = 440.0f;               // Lower than ping
-    osc->kind = SY_OSC_Kind_Sin;    // Still clean and smooth
-    // osc->volume = 0.5f;          // Softer than ping
-    // osc->attack_time = 0.01f;
-    // osc->decay_time = 0.4f;
-    // osc->sustain_time = 0.0f;
-    // osc->release_time = 0.3f;
+        {
+          SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
+          osc->base_hz = 2000.0;
+          osc->kind = SY_OSC_Kind_Sine;
+          osc->amp = 1.0f;
+        }
+
+        // Add some white noise for texture (if supported)
+        {
+          SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
+          osc->kind = SY_OSC_Kind_NoiseWhite;
+          osc->amp = 0.3f;
+        }
+      } break;
+      case S5_InstrumentKind_Radiation:
+      {
+        src = sy_instrument_alloc(str8_lit("radiation"));
+        src->env.attack_time  = 0.001f;
+        src->env.decay_time   = 0.05f;
+        src->env.release_time = 0.0f;
+        src->env.start_amp    = 3.0f;
+        src->env.sustain_amp  = 0.1f;
+
+        {
+          // Main burst - high-pitched noise
+          SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
+          osc->base_hz = 0.0; // Assume 0.0 or special flag means white noise
+          osc->kind = SY_OSC_Kind_NoiseWhite;
+          osc->amp = 1.0;
+        }
+      }break;
+      case S5_InstrumentKind_AirPressor:
+      {
+#if 0
+        src = sy_instrument_alloc(str8_lit("air_pressor"));
+        src->env.attack_time  = 0.001f;
+        src->env.decay_time   = 0.8f;
+        src->env.release_time = 0.0f;
+        src->env.start_amp    = 1.0f;
+        src->env.sustain_amp  = 0.1f;
+        {
+
+          SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
+          osc->base_hz = 0.0;
+          osc->kind = SY_OSC_Kind_NoiseWhite;
+          osc->amp = 1.0;
+        }
+#else
+        src  = sy_instrument_alloc(str8_lit("air_pressor"));
+        src->env.attack_time  = 0.001f;
+        src->env.decay_time   = 0.0f;
+        src->env.release_time = 0.0f;
+        src->env.start_amp    = 1.0f;
+        src->env.sustain_amp  = 1.0f;
+        {
+
+          SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
+          osc->base_hz = 0.0;
+          // osc->kind = SY_OSC_Kind_NoiseWhite;
+          osc->kind = SY_OSC_Kind_NoiseBrown;
+          osc->amp = 1.0;
+        }
+#endif
+      }break;
+      case S5_InstrumentKind_Ping:
+      {
+        // ping: sonar-like clean sine tone with subtle fade out
+        src = sy_instrument_alloc(str8_lit("ping"));
+        src->env.attack_time = 0.01f;
+        src->env.decay_time = 0.3f;
+        src->env.release_time = 0.2f;
+        src->env.start_amp = 3.0;
+        src->env.sustain_amp = 0.0;
+        {
+          SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
+          osc->base_hz = 1500;
+          osc->kind = SY_OSC_Kind_Sine;
+          osc->amp = 1.0;
+        }
+        {
+          SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
+          osc->base_hz = 440.0;
+          osc->kind = SY_OSC_Kind_Square;
+          osc->amp = 0.2f;
+        }
+      }break;
+      case S5_InstrumentKind_Echo:
+      {
+        // echo: softer, lower sine wave to simulate sonar reflection
+        src = sy_instrument_alloc(str8_lit("echo"));
+        src->env.attack_time = 0.005f;
+        src->env.decay_time = 0.6f;
+        src->env.release_time = 0.3f;
+        src->env.start_amp = 1.6;
+        src->env.sustain_amp = 0.0;
+        {
+          SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
+          osc->base_hz = 880.0f*0.75f;
+          osc->kind = SY_OSC_Kind_Sine;
+          osc->amp = 1.0;
+        }
+      }break;
+      default:{InvalidPath;}break;
+    }
+    *dst = src;
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -1350,12 +1458,12 @@ RK_SCENE_SETUP(s5_setup)
         {
           SY_Channel *channel = sy_sequencer_push_channel(seq);
           channel->beats = str8_lit("X..............."); // single sonar ping at start
-          channel->instrument = instrument_ping; // sonar-style ping
+          channel->instrument = s->instruments[S5_InstrumentKind_Ping];
         }
         {
           SY_Channel *channel = sy_sequencer_push_channel(seq);
-          channel->beats = str8_lit(".....X.........."); // slight echo or second ping
-          channel->instrument = instrument_echo; // softer/different instrument
+          channel->beats = str8_lit(".....X..........");
+          channel->instrument = s->instruments[S5_InstrumentKind_Echo];
         }
         s->sequencers[kind] = seq;
       }break;
@@ -1374,7 +1482,7 @@ RK_SCENE_SETUP(s5_setup)
         {
           SY_Channel *channel = sy_sequencer_push_channel(seq);
           channel->beats = str8_lit("X.X.X.X.X.X.X.X.");
-          channel->instrument = instrument_radiation;
+          channel->instrument = s->instruments[S5_InstrumentKind_Radiation];
         }
         s->sequencers[kind] = seq;
       }break;
@@ -1393,7 +1501,7 @@ RK_SCENE_SETUP(s5_setup)
         {
           SY_Channel *channel = sy_sequencer_push_channel(seq);
           channel->beats = str8_lit("X...............");
-          channel->instrument = instrument_boop;
+          channel->instrument = s->instruments[S5_InstrumentKind_Boop];
         }
         s->sequencers[kind] = seq;
       }break;
@@ -1412,7 +1520,7 @@ RK_SCENE_SETUP(s5_setup)
         {
           SY_Channel *channel = sy_sequencer_push_channel(seq);
           channel->beats = str8_lit("X...X...........");
-          channel->instrument = instrument_beep;
+          channel->instrument = s->instruments[S5_InstrumentKind_Beep];
         }
         s->sequencers[kind] = seq;
       }break;
@@ -1431,7 +1539,7 @@ RK_SCENE_SETUP(s5_setup)
         {
           SY_Channel *channel = sy_sequencer_push_channel(seq);
           channel->beats = str8_lit("X.X.X.X.X.X.X.X.");
-          channel->instrument = instrument_beep;
+          channel->instrument = s->instruments[S5_InstrumentKind_Beep];
         }
         // {
         //   SY_Channel *channel = sy_sequencer_push_channel(seq);
