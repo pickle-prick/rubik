@@ -167,7 +167,7 @@ sy_instrument_push_osc(SY_Instrument *instrument)
 }
 
 internal SY_Note *
-sy_instrument_play(SY_Instrument *instrument, F64 duration, U64 note_id)
+sy_instrument_play(SY_Instrument *instrument, F64 duration, U64 note_id, F32 volume)
 {
   SY_Note *ret = sy_notelist_push(&sy_state->note_list);
 
@@ -182,7 +182,7 @@ sy_instrument_play(SY_Instrument *instrument, F64 duration, U64 note_id)
   {
     SY_Oscillator *oscillator = sy_note_push_oscillator(ret);
     oscillator->base_hz = osc_node->base_hz;
-    oscillator->amp = osc_node->amp;
+    oscillator->amp = osc_node->amp*volume;
     oscillator->kind = osc_node->kind;
   }
   os_audio_thread_release();
@@ -289,9 +289,9 @@ sy_sample_from_note(SY_Note *note, F64 time)
         oscillator->brown.last = last;
 
         // TODO: move bitcrusing somewhere else
-        // U64 bits = 1;
-        // F32 step = 2.0f / (1<<bits);
-        // r = roundf(r/step)*step;
+        U64 bits = 1;
+        F32 step = 2.0f / (1<<bits);
+        r = roundf(r/step)*step;
       }break;
       default:{InvalidPath;}break;
     }
@@ -339,22 +339,27 @@ sy_sequencer_release(SY_Sequencer *sequencer)
 internal void
 sy_sequencer_play(SY_Sequencer *sequencer, B32 reset_if_repeated)
 {
-  if(!sequencer->playing)
+  if(sequencer)
   {
-    // reset sequencer progress
-    sequencer->overdo_time = 0.0;
-    sequencer->curr_subbeat_index = 0;
+    os_audio_thread_lock();
+    if(!sequencer->playing)
+    {
+      // reset sequencer progress
+      sequencer->overdo_time = 0.0;
+      sequencer->curr_subbeat_index = 0;
 
-    sequencer->playing = 1;
-    DLLPushBack(sy_state->first_sequencer_to_process,
-                sy_state->last_sequencer_to_process,
-                sequencer);
-  }
-  else if(reset_if_repeated)
-  {
-    // reset sequencer progress
-    sequencer->overdo_time = 0.0;
-    sequencer->curr_subbeat_index = 0;
+      sequencer->playing = 1;
+      DLLPushBack(sy_state->first_sequencer_to_process,
+                  sy_state->last_sequencer_to_process,
+                  sequencer);
+    }
+    else if(reset_if_repeated)
+    {
+      // reset sequencer progress
+      sequencer->overdo_time = 0.0;
+      sequencer->curr_subbeat_index = 0;
+    }
+    os_audio_thread_release();
   }
 }
 
@@ -363,10 +368,12 @@ sy_sequencer_pause(SY_Sequencer *sequencer)
 {
   if(sequencer->playing)
   {
+    os_audio_thread_lock();
     sequencer->playing = 0;
     DLLRemove(sy_state->first_sequencer_to_process,
               sy_state->last_sequencer_to_process,
               sequencer);
+    os_audio_thread_release();
   }
 }
 
@@ -375,11 +382,29 @@ sy_sequencer_resume(SY_Sequencer *sequencer)
 {
   if(!sequencer->playing)
   {
+    os_audio_thread_lock();
     sequencer->playing = 1;
     DLLPushBack(sy_state->first_sequencer_to_process,
                 sy_state->last_sequencer_to_process,
                 sequencer);
+    os_audio_thread_release();
   }
+}
+
+internal void
+sy_sequencer_set_volume(SY_Sequencer *sequencer, F32 volume)
+{
+  os_audio_thread_lock();
+  sequencer->volume = volume;
+  os_audio_thread_release();
+}
+
+internal void
+sy_sequencer_set_looping(SY_Sequencer *sequencer, B32 looping)
+{
+  os_audio_thread_lock();
+  sequencer->loop = looping;
+  os_audio_thread_release();
 }
 
 internal SY_Channel *
@@ -445,7 +470,7 @@ sy_sequencer_advance(SY_Sequencer *seq, F64 advance_time, F64 wall_time)
         {
           SY_Oscillator *oscillator = sy_note_push_oscillator(n);
           oscillator->base_hz = osc_node->base_hz;
-          oscillator->amp = osc_node->amp;
+          oscillator->amp = osc_node->amp*seq->volume;
           oscillator->kind = osc_node->kind;
         }
       }

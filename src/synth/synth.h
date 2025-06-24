@@ -114,7 +114,7 @@ struct SY_Sequencer
   SY_Sequencer *next;
   SY_Sequencer *prev;
 
-  F32 tempo; // beats per minute (BPM)
+  F32 tempo;      // beats per minute (BPM)
   U64 beat_count; //main beat
   U64 subbeat_count;
   U64 total_subbeat_count;
@@ -187,7 +187,7 @@ internal F64            sy_sample_from_oscillator(SY_Oscillator *oscillator, F64
 internal SY_Instrument*        sy_instrument_alloc(String8 name);
 internal void                  sy_instrument_release(SY_Instrument *instrument);
 internal SY_InstrumentOSCNode* sy_instrument_push_osc(SY_Instrument *instrument);
-internal SY_Note*              sy_instrument_play(SY_Instrument *instrument, F64 duration, U64 note_id);
+internal SY_Note*              sy_instrument_play(SY_Instrument *instrument, F64 duration, U64 note_id, F32 volume);
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Note
@@ -207,6 +207,8 @@ internal void          sy_sequencer_release(SY_Sequencer *sequencer);
 internal void          sy_sequencer_play(SY_Sequencer *sequencer, B32 reset_if_repeated);
 internal void          sy_sequencer_pause(SY_Sequencer *sequencer);
 internal void          sy_sequencer_resume(SY_Sequencer *sequencer);
+internal void          sy_sequencer_set_volume(SY_Sequencer *sequencer, F32 volume);
+internal void          sy_sequencer_set_looping(SY_Sequencer *sequencer, B32 looping);
 internal SY_Channel*   sy_sequencer_push_channel(SY_Sequencer *sequencer);
 internal void          sy_sequencer_advance(SY_Sequencer *sequencer, F64 advance_time, F64 wall_time);
 

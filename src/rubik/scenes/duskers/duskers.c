@@ -38,13 +38,13 @@ typedef U64 S5_EntityFlags;
 #define S5_EntityFlag_ExternalObject (S5_EntityFlags)(1ull<<5)
 #define S5_EntityFlag_Detectable     (S5_EntityFlags)(1ull<<6)
 #define S5_EntityFlag_GameCamera     (S5_EntityFlags)(1ull<<7)
+#define S5_EntityFlag_DockingGate    (S5_EntityFlags)(1ull<<8)
 
 typedef enum S5_ResourceKind
 {
   S5_ResourceKind_AirBag,
   S5_ResourceKind_Battery,
   S5_ResourceKind_Part,
-  S5_ResourceKind_Stone,
   S5_ResourceKind_COUNT,
 } S5_ResourceKind;
 
@@ -124,6 +124,11 @@ struct S5_Resource
       F32 joules;
     } battery;
 
+    struct
+    {
+      U64 quantity;
+    } part;
+
     F32 v[1];
   } value;
 };
@@ -149,6 +154,8 @@ struct S5_Submarine
   F32 scan_radius;
   F32 scan_t;
 
+  F32 magnetic_range;
+
   F32 pulse_cd_t;
 
   // health?
@@ -156,6 +163,7 @@ struct S5_Submarine
   // resource
   F32 hp;
   F32 hp_mins;
+  U64 part_count;
   U64 last_take_hit_us;
   F32 oxygen;
   F32 battery; // in joules
@@ -380,6 +388,7 @@ RK_SCENE_UPDATE(s5_update)
             ui_labelf("scan_t: %.2f", submarine->scan_t);
             ui_labelf("oxygen: %.2f", submarine->oxygen);
             ui_labelf("battery: %.2f", submarine->battery);
+            ui_labelf("parts: %I64u", submarine->part_count);
             ui_labelf("thrust: %.2f %.2f",
                       submarine->thrust.x,
                       submarine->thrust.y);
@@ -574,6 +583,7 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
 
   F32 oxygen = submarine->oxygen;
   F32 battery = submarine->battery;
+  U64 part_count = submarine->part_count;
   F32 watts = 0;
 
   ////////////////////////////////
@@ -584,22 +594,22 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
 
   if(rk_key_press(0, OS_Key_Up))
   {
-    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0);
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0, 1.0);
     thrust.y -= SUBMARINE_THRUST_FORCE_INC_STEP;
   }
   if(rk_key_press(0, OS_Key_Down))
   {
-    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0);
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0, 1.0);
     thrust.y += SUBMARINE_THRUST_FORCE_INC_STEP;
   }
   if(rk_key_press(0, OS_Key_Left))
   {
-    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0);
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0, 1.0);
     thrust.x -= SUBMARINE_THRUST_FORCE_INC_STEP;
   }
   if(rk_key_press(0, OS_Key_Right))
   {
-    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0);
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0, 1.0);
     thrust.x += SUBMARINE_THRUST_FORCE_INC_STEP;
   }
 
@@ -652,7 +662,7 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
     if(pulse_applied)
     {
       submarine->pulse_cd_t = SUBMARINE_PULSE_COOLDOWN;
-      sy_instrument_play(s->instruments[S5_InstrumentKind_AirPressor], 1.5, 0);
+      sy_instrument_play(s->instruments[S5_InstrumentKind_AirPressor], 1.5, 0, 1.0);
     }
   }
 
@@ -699,6 +709,7 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
 
   ////////////////////////////////
   // update position
+
   *position = add_2f32(*position, scale_2f32(v, rk_state->frame_dt));
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -706,7 +717,7 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
 
   if(ui_key_press(0, OS_Key_Space))
   {
-    sy_instrument_play(s->instruments[S5_InstrumentKind_Ping], 3, 0);
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Ping], 3, 0, 1.0);
     // sy_sequencer_play(s->sequencers[S5_SequencerKind_SonarScan], 1);
     submarine->is_scanning = 1;
   }
@@ -791,13 +802,48 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
+  // detect docking gate
+
+  {
+    Vec2F32 position = node->node2d->transform.position;
+    Rng2F32 submarine_rect = rk_rect_from_sprite2d(node->sprite2d, position);
+    Rng2F32 src_rect = pad_2f32(submarine_rect, submarine->magnetic_range);
+
+    RK_Node **nodes_in_range = 0;
+    quadtree_query(scratch.arena, s->root_quad, src_rect, (void***)&nodes_in_range);
+    F32 strength = 0;
+    for(U64 i = 0; i < darray_size(nodes_in_range); i++)
+    {
+      RK_Node *n = nodes_in_range[i];
+      if(n->custom_flags & S5_EntityFlag_DockingGate)
+      {
+        Vec2F32 gate_position = n->node2d->transform.position;
+        Rng2F32 gate_rect = rk_rect_from_sprite2d(n->sprite2d, gate_position);
+        F32 dist = length_2f32(sub_2f32(position, gate_position));
+
+        // TODO: game goal
+        if(overlaps_2f32(gate_rect, submarine_rect))
+        {
+          exit(0);
+        }
+
+        if(dist <= submarine->magnetic_range)
+        {
+          strength = 1.0 - dist/submarine->magnetic_range;
+          strength = Clamp(0.0, strength, 1.0);
+        }
+      }
+    }
+    sy_sequencer_set_volume(s->sequencers[S5_SequencerKind_Radiation], strength);
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////
   // collect resources
 
   {
     // TODO: add some helper function to make this easier
     Vec2F32 position = node->node2d->transform.position;
     Rng2F32 src_rect = rk_rect_from_sprite2d(node->sprite2d, position);
-    // src_rect = pad_2f32(src_rect, 0.1);
 
     RK_Node **nodes_in_range = 0;
     quadtree_query(scratch.arena, s->root_quad, src_rect, (void***)&nodes_in_range);
@@ -830,19 +876,15 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
         }break;
         case S5_ResourceKind_Part:
         {
-          // TODO: to be implemented
+          part_count += resource->value.part.quantity;
           os_sound_play(s->sounds[S5_SoundKind_GainResource_Battery]);
-        }break;
-        case S5_ResourceKind_Stone:
-        {
-          // TODO: to be implemented, do some damage to the submarine
         }break;
         default:{InvalidPath;}break;
       }
 
+      // NOTE: we can't just release node right now, free it at the beginning of next frame 
       RK_NodeBucket *node_bucket = resource_node->owner_bucket;
       SLLStackPush_N(node_bucket->first_to_free_node, resource_node, free_next);
-      // rk_node_release(resource_node);
     }
   }
 
@@ -855,6 +897,7 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
   battery = ClampBot(0.0, battery - watts*rk_state->frame_dt);
   submarine->oxygen = oxygen;
   submarine->battery = battery;
+  submarine->part_count = part_count;
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // take hit
@@ -875,6 +918,8 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
   {
     s->warning += 1;
   }
+
+  // TODO: collision detect
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // warning if no power or oxygen
@@ -1347,7 +1392,7 @@ RK_SCENE_SETUP(s5_setup)
       {
         src = sy_instrument_alloc(str8_lit("radiation"));
         src->env.attack_time  = 0.001f;
-        src->env.decay_time   = 0.05f;
+        src->env.decay_time   = 0.001f;
         src->env.release_time = 0.0f;
         src->env.start_amp    = 3.0f;
         src->env.sustain_amp  = 0.1f;
@@ -1356,13 +1401,13 @@ RK_SCENE_SETUP(s5_setup)
           // Main burst - high-pitched noise
           SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
           osc->base_hz = 0.0; // Assume 0.0 or special flag means white noise
-          osc->kind = SY_OSC_Kind_NoiseWhite;
+          osc->kind = SY_OSC_Kind_NoiseBrown;
           osc->amp = 1.0;
         }
       }break;
       case S5_InstrumentKind_AirPressor:
       {
-#if 0
+#if 1
         src = sy_instrument_alloc(str8_lit("air_pressor"));
         src->env.attack_time  = 0.001f;
         src->env.decay_time   = 0.8f;
@@ -1387,7 +1432,6 @@ RK_SCENE_SETUP(s5_setup)
 
           SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
           osc->base_hz = 0.0;
-          // osc->kind = SY_OSC_Kind_NoiseWhite;
           osc->kind = SY_OSC_Kind_NoiseBrown;
           osc->amp = 1.0;
         }
@@ -1481,7 +1525,8 @@ RK_SCENE_SETUP(s5_setup)
         seq->duration = (60.0f / tempo) * 4; // total duration of this sequence
         {
           SY_Channel *channel = sy_sequencer_push_channel(seq);
-          channel->beats = str8_lit("X.X.X.X.X.X.X.X.");
+          // channel->beats = str8_lit("X.X.X.X.X.X.X.X.");
+          channel->beats = str8_lit("XXXXXXXXXXXXXXXX");
           channel->instrument = s->instruments[S5_InstrumentKind_Radiation];
         }
         s->sequencers[kind] = seq;
@@ -1551,6 +1596,10 @@ RK_SCENE_SETUP(s5_setup)
       default:{InvalidPath;}break;
     }
   }
+
+  sy_sequencer_play(s->sequencers[S5_SequencerKind_Radiation], 0);
+  sy_sequencer_set_looping(s->sequencers[S5_SequencerKind_Radiation], 1);
+  sy_sequencer_set_volume(s->sequencers[S5_SequencerKind_Radiation], 0.0);
 }
 
 RK_SCENE_DEFAULT(s5_default)
@@ -1652,6 +1701,7 @@ RK_SCENE_DEFAULT(s5_default)
       S5_Entity *entity = rk_node_push_custom_data(node, S5_Entity);
       entity->submarine.viewport_radius = 500;
       entity->submarine.scan_radius = 500;
+      entity->submarine.magnetic_range = 3500;
       entity->submarine.density = 1; // TODO: don't have any usage for now
       entity->submarine.oxygen = 600.0;
       entity->submarine.battery = 1000.0;
@@ -1730,7 +1780,7 @@ RK_SCENE_DEFAULT(s5_default)
         {
           case S5_ResourceKind_AirBag:
           {
-            resource->value.airbag.oxygen = 100.0;
+            resource->value.airbag.oxygen = 200.0;
             resource_name = str8_lit("AirBag");
           }break;
           case S5_ResourceKind_Battery:
@@ -1740,13 +1790,8 @@ RK_SCENE_DEFAULT(s5_default)
           }break;
           case S5_ResourceKind_Part:
           {
-            // TODO: to be implemented
+            resource->value.part.quantity = 10;
             resource_name = str8_lit("Part");
-          }break;
-          case S5_ResourceKind_Stone:
-          {
-            // TODO: to be implemented
-            resource_name = str8_lit("Stone");
           }break;
           default:{InvalidPath;}break;
         }
@@ -1785,6 +1830,33 @@ RK_SCENE_DEFAULT(s5_default)
         entity->predator.roaming_speed = 0.0;
         entity->predator.burst_speed = 200.0;
         entity->predator.k_drag = 0.002;
+      }
+    }
+
+    // spawn docking gate
+    {
+      Rng1U32 spwan_range_x = {0, 9000};
+      Rng1U32 spwan_range_y = {0, 9000};
+      U32 spwan_dim_x = dim_1u32(spwan_range_x);
+      U32 spwan_dim_y = dim_1u32(spwan_range_y);
+      for(U64 i = 0; i < 3; i++)
+      {
+        F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
+        F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;
+
+        RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Collider2D|RK_NodeTypeFlag_Sprite2D,
+                                                   0, "docking_gate_%I64u", i);
+        node->node2d->transform.position = v2f32(x, y);
+        node->sprite2d->anchor = RK_Sprite2DAnchorKind_TopLeft;
+        node->sprite2d->shape = RK_Sprite2DShapeKind_Rect;
+        node->sprite2d->size.rect = v2f32(30,30);
+        node->sprite2d->color = v4f32(0.3,0.1,0.1,1.);
+        node->sprite2d->omit_texture = 1;
+        node->sprite2d->draw_edge = 1;
+        node->custom_flags = S5_EntityFlag_ExternalObject|S5_EntityFlag_Detectable|S5_EntityFlag_DockingGate;
+
+        S5_Entity *entity = rk_node_push_custom_data(node, S5_Entity);
+        push_str8_copy_static(str8_lit("Gate"), entity->detectable.name);
       }
     }
   }
