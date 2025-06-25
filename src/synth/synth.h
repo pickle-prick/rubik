@@ -26,6 +26,43 @@ typedef enum SY_OSC_Kind
 } SY_OSC_Kind;
 
 ////////////////////////////////
+// Filter
+
+typedef enum SY_FilterKind
+{
+  SY_FilterKind_LowPass,
+  SY_FilterKind_HighPass,
+  SY_FilterKind_BandPass,
+  SY_FilterKind_COUNT,
+} SY_FilterKind;
+
+typedef struct SY_Filter SY_Filter;
+struct SY_Filter
+{
+  SY_FilterKind kind;
+  union
+  {
+    struct
+    {
+      // F32 low;
+    } low_pass;
+
+    struct
+    {
+      // F32 high;
+    } high_pass;
+
+    struct
+    {
+      //F32 low;
+      //F32 band;
+      F32 cutoff_hz;
+      F32 d;
+    } band_pass;
+  };
+};
+
+////////////////////////////////
 // Oscillator
 
 typedef struct SY_Oscillator SY_Oscillator;
@@ -43,6 +80,14 @@ struct SY_Oscillator
   {
     F64 last;
   } brown;
+
+  // filter state
+  struct
+  {
+    F32 low; 
+    F32 band;
+    F32 high; // not needed for band-pass output
+  } filter;
 };
 
 ////////////////////////////////
@@ -56,6 +101,7 @@ struct SY_InstrumentOSCNode
   F64 base_hz;
   SY_OSC_Kind kind;
   F32 amp;
+  // SY_Filter filters[SY_FilterKind_COUNT];
 };
 
 typedef struct SY_Instrument SY_Instrument;
@@ -132,6 +178,7 @@ struct SY_Sequencer
   B32 loop;
   F32 volume;
   B32 playing;
+  F32 dice; // [0.0-1.0]
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -187,7 +234,7 @@ internal F64            sy_sample_from_oscillator(SY_Oscillator *oscillator, F64
 internal SY_Instrument*        sy_instrument_alloc(String8 name);
 internal void                  sy_instrument_release(SY_Instrument *instrument);
 internal SY_InstrumentOSCNode* sy_instrument_push_osc(SY_Instrument *instrument);
-internal SY_Note*              sy_instrument_play(SY_Instrument *instrument, F64 duration, U64 note_id, F32 volume);
+internal SY_Note*              sy_instrument_play(SY_Instrument *instrument, F64 delay, F64 duration, U64 note_id, F32 volume);
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Note
@@ -208,6 +255,7 @@ internal void          sy_sequencer_play(SY_Sequencer *sequencer, B32 reset_if_r
 internal void          sy_sequencer_pause(SY_Sequencer *sequencer);
 internal void          sy_sequencer_resume(SY_Sequencer *sequencer);
 internal void          sy_sequencer_set_volume(SY_Sequencer *sequencer, F32 volume);
+internal void          sy_sequencer_set_dice(SY_Sequencer *sequencer, F32 dice);
 internal void          sy_sequencer_set_looping(SY_Sequencer *sequencer, B32 looping);
 internal SY_Channel*   sy_sequencer_push_channel(SY_Sequencer *sequencer);
 internal void          sy_sequencer_advance(SY_Sequencer *sequencer, F64 advance_time, F64 wall_time);

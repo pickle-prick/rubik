@@ -167,13 +167,13 @@ sy_instrument_push_osc(SY_Instrument *instrument)
 }
 
 internal SY_Note *
-sy_instrument_play(SY_Instrument *instrument, F64 duration, U64 note_id, F32 volume)
+sy_instrument_play(SY_Instrument *instrument, F64 delay, F64 duration, U64 note_id, F32 volume)
 {
   SY_Note *ret = sy_notelist_push(&sy_state->note_list);
 
   os_audio_thread_lock();
-  ret->on_time = sy_wall_time;
-  ret->off_time = sy_wall_time+duration;
+  ret->on_time = sy_wall_time+delay;
+  ret->off_time = sy_wall_time+delay+duration;
   ret->active = 1;
   ret->id = note_id;
   ret->env = instrument->env;
@@ -289,14 +289,35 @@ sy_sample_from_note(SY_Note *note, F64 time)
         oscillator->brown.last = last;
 
         // TODO: move bitcrusing somewhere else
-        U64 bits = 1;
+        U64 bits = 2;
         F32 step = 2.0f / (1<<bits);
         r = roundf(r/step)*step;
+
+        F32 low = oscillator->filter.low;
+        F32 band = oscillator->filter.band;
+
+        F32 cutoff_hz = 3500.0; // or 3000
+        F32 sample_rate = 44100.0;
+
+        F32 f = 2.0 * sinf(pi32 * (cutoff_hz/sample_rate));
+        F32 d = 0.05;
+
+        F32 high = r - low - d*band;
+        band += f*high;
+        low += f*band;
+
+        oscillator->filter.low = low;
+        oscillator->filter.band = band;
+
+        r = band;
+
+        AssertAlways(!isnan(r));
+        AssertAlways(isfinite(r));
       }break;
       default:{InvalidPath;}break;
     }
 
-    // TODO: filter here
+    // TODO: filters here
 
     // TODO: not sure if we need to store it as post multiplied by amp
     oscillator->last_sample = r;
@@ -400,6 +421,14 @@ sy_sequencer_set_volume(SY_Sequencer *sequencer, F32 volume)
 }
 
 internal void
+sy_sequencer_set_dice(SY_Sequencer *sequencer, F32 dice)
+{
+  os_audio_thread_lock();
+  sequencer->dice = dice;
+  os_audio_thread_release();
+}
+
+internal void
 sy_sequencer_set_looping(SY_Sequencer *sequencer, B32 looping)
 {
   os_audio_thread_lock();
@@ -457,7 +486,13 @@ sy_sequencer_advance(SY_Sequencer *seq, F64 advance_time, F64 wall_time)
     // process channels 
     for(SY_Channel *c = seq->first_channel; c != 0; c = c->next)
     {
-      if(c->beats.str[curr_subbeat_index] == 'X')
+      B32 hit = c->beats.str[curr_subbeat_index] == 'X';
+      if(!hit && c->beats.str[curr_subbeat_index] == '?')
+      {
+        // TODO: use faster random
+        hit = ((F32)rand()/RAND_MAX)<seq->dice;
+      }
+      if(hit)
       {
         SY_Note *n = sy_notelist_push(&sy_state->note_list);
         n->on_time = start_time;

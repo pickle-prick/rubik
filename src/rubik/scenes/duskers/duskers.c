@@ -382,7 +382,7 @@ RK_SCENE_UPDATE(s5_update)
           UI_Flags(UI_BoxFlag_DrawBorder)
           {
             ui_labelf("hp: %.2f", submarine->hp);
-            ui_labelf("level: %.2f", submarine_node->node2d->transform.position.y);
+            ui_labelf("level: %.2f %.2f", submarine_node->node2d->transform.position.x, submarine_node->node2d->transform.position.y);
             ui_labelf("vel: %.2f %.2f", submarine->v.x, submarine->v.y);
             ui_labelf("density: %.2f", submarine->density);
             ui_labelf("scan_t: %.2f", submarine->scan_t);
@@ -594,22 +594,22 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
 
   if(rk_key_press(0, OS_Key_Up))
   {
-    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0, 1.0);
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 0, 1.5, 0, 1.0);
     thrust.y -= SUBMARINE_THRUST_FORCE_INC_STEP;
   }
   if(rk_key_press(0, OS_Key_Down))
   {
-    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0, 1.0);
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 0, 1.5, 0, 1.0);
     thrust.y += SUBMARINE_THRUST_FORCE_INC_STEP;
   }
   if(rk_key_press(0, OS_Key_Left))
   {
-    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0, 1.0);
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 0, 1.5, 0, 1.0);
     thrust.x -= SUBMARINE_THRUST_FORCE_INC_STEP;
   }
   if(rk_key_press(0, OS_Key_Right))
   {
-    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 1.5, 0, 1.0);
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Gear], 0, 1.5, 0, 1.0);
     thrust.x += SUBMARINE_THRUST_FORCE_INC_STEP;
   }
 
@@ -662,7 +662,7 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
     if(pulse_applied)
     {
       submarine->pulse_cd_t = SUBMARINE_PULSE_COOLDOWN;
-      sy_instrument_play(s->instruments[S5_InstrumentKind_AirPressor], 1.5, 0, 1.0);
+      sy_instrument_play(s->instruments[S5_InstrumentKind_AirPressor], 0, 1.5, 0, 1.0);
     }
   }
 
@@ -717,8 +717,7 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
 
   if(ui_key_press(0, OS_Key_Space))
   {
-    sy_instrument_play(s->instruments[S5_InstrumentKind_Ping], 3, 0, 1.0);
-    // sy_sequencer_play(s->sequencers[S5_SequencerKind_SonarScan], 1);
+    sy_instrument_play(s->instruments[S5_InstrumentKind_Ping], 0, 3, 0, 1.0);
     submarine->is_scanning = 1;
   }
 
@@ -834,7 +833,25 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
         }
       }
     }
-    sy_sequencer_set_volume(s->sequencers[S5_SequencerKind_Radiation], strength);
+
+    // F32 delay = 0;
+    // for(U64 i = 0; i < 30; i++)
+    // {
+    //   F32 volumes[] = {3, 2, 2.5, 3.5};
+    //   F32 volume = volumes[rand()%ArrayCount(volumes)];
+    //   sy_instrument_play(s->instruments[S5_InstrumentKind_Radiation], delay, 0.1, 0, volume);
+    //   F32 t[] = {0.05, 0.03, 0.02, 0.01, 0.04};
+    //   F32 tt = t[rand() % ArrayCount(t)];
+    //   printf("tt: %f\n", tt);
+    //   delay += tt;
+    // }
+    // sy_sequencer_play(s->sequencers[S5_SequencerKind_SonarScan], 1);
+
+    // NOTE: use raidation sound to navigate gate
+    F32 volume = mix_1f32(0.0, 2.0, strength);
+    F32 dice = mix_1f32(0.0, 1.0, strength);
+    sy_sequencer_set_volume(s->sequencers[S5_SequencerKind_Radiation], volume);
+    sy_sequencer_set_dice(s->sequencers[S5_SequencerKind_Radiation], dice);
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -1513,7 +1530,7 @@ RK_SCENE_SETUP(s5_setup)
       }break;
       case S5_SequencerKind_Radiation:
       {
-        F32 tempo = 440.0;
+        F32 tempo = 1500.0/2;
         SY_Sequencer *seq = sy_sequencer_alloc();
         seq->tempo = tempo;
         seq->beat_count = 4;
@@ -1526,7 +1543,7 @@ RK_SCENE_SETUP(s5_setup)
         {
           SY_Channel *channel = sy_sequencer_push_channel(seq);
           // channel->beats = str8_lit("X.X.X.X.X.X.X.X.");
-          channel->beats = str8_lit("XXXXXXXXXXXXXXXX");
+          channel->beats = str8_lit("X?X?X?X?X?X?X?X?");
           channel->instrument = s->instruments[S5_InstrumentKind_Radiation];
         }
         s->sequencers[kind] = seq;
