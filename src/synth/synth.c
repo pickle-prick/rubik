@@ -277,11 +277,11 @@ sy_sample_from_note(SY_Note *note, F64 time)
       }break;
       case SY_OSC_Kind_NoiseWhite:
       {
-        r = 2.0 * ((F64)rand() / (F64)RAND_MAX) - 1.0;
+        r = 2.0 * rand_f32() - 1.0;
       }break;
       case SY_OSC_Kind_NoiseBrown:
       {
-        F32 white = 2.0 * ((F64)rand() / (F64)RAND_MAX) - 1.0;
+        F32 white = 2.0 * rand_f32() - 1.0;
         F32 last = oscillator->brown.last;
         last += white*0.2f;
         last = Clamp(-1.0, last, 1.0);
@@ -489,8 +489,7 @@ sy_sequencer_advance(SY_Sequencer *seq, F64 advance_time, F64 wall_time)
       B32 hit = c->beats.str[curr_subbeat_index] == 'X';
       if(!hit && c->beats.str[curr_subbeat_index] == '?')
       {
-        // TODO: use faster random
-        hit = ((F32)rand()/RAND_MAX)<seq->dice;
+        hit = rand_f32()<seq->dice;
       }
       if(hit)
       {

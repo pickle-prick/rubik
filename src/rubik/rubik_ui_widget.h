@@ -6,6 +6,7 @@
 
 internal UI_Signal rk_icon_button(RK_IconKind kind, String8 string);
 internal UI_Signal rk_icon_buttonf(RK_IconKind kind, char *fmt, ...);
+internal UI_Box*   rk_capped_labelf(F32 pct, char *fmt, ...);
 
 ////////////////////////////////
 //~ k: Floating/Fixed Panes

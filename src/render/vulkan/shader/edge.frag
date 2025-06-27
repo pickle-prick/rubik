@@ -103,7 +103,8 @@ void main()
 
   float edge = edge_from_texel(texel);
 
-  vec4 edge_clr = vec4(0.18039, 0.313725, 0.46666, edge);
+  // vec4 edge_clr = vec4(0.18039, 0.313725, 0.46666, edge);
+  vec4 edge_clr = vec4(0.0, 0.313725, 0.0, edge);
   // vec4 edge_clr = vec4(0, 1, 0, edge);
   // float ne = noise(in_tex);
   // edge_clr *= ne*0.6;

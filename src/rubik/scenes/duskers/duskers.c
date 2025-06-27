@@ -26,6 +26,8 @@
 #define SUBMARINE_BATTERY_CRITICAL_LEVEL SUBMARINE_BATTERY_CAP*0.1
 #define SUBMARINE_ANALYZE_SPEED          1.1
 
+#define AssertVec2F32(v) Assert(!isnan(v.x) && !isnan(v.y))
+
 /////////////////////////////////////////////////////////////////////////////////////////
 // Basic Type/Enum
 
@@ -44,13 +46,11 @@ typedef enum S5_ResourceKind
 {
   S5_ResourceKind_AirBag,
   S5_ResourceKind_Battery,
-  S5_ResourceKind_Part,
   S5_ResourceKind_COUNT,
 } S5_ResourceKind;
 
 typedef enum S5_SoundKind
 {
-  S5_SoundKind_GainResource_Part,
   S5_SoundKind_GainResource_AirBag,
   S5_SoundKind_GainResource_Battery,
   S5_SoundKind_Ambient,
@@ -97,8 +97,11 @@ struct S5_Scene
   RK_Node **nodes;
   // TODO: to be implemented
   Rng2F32 world_bounds;
-  B32 warning;
-  B32 critical;
+
+  F32 target_warning_t;
+  F32 target_critical_t;
+  F32 warning_t;
+  F32 critical_t;
 };
 
 typedef struct S5_GameCamera S5_GameCamera;
@@ -158,8 +161,6 @@ struct S5_Submarine
 
   F32 pulse_cd_t;
 
-  // health?
-
   // resource
   F32 hp;
   F32 hp_mins;
@@ -176,6 +177,9 @@ struct S5_Flock
   F32 w_separation;
   F32 w_alignment;
   F32 w_cohesion;
+  Vec2F32 target_pos;
+  Vec2F32 path_start;
+  Vec2F32 path_end;
 };
 
 typedef struct S5_Boid S5_Boid;
@@ -241,8 +245,10 @@ struct S5_Entity
 // Helper Functions
 
 internal Vec2F32
-s5_world_position_from_mouse(Vec2F32 mouse, Vec2F32 resolution_dim, Mat4x4F32 proj_view_inv_m)
+s5_world_position_from_mouse(Mat4x4F32 proj_view_inv_m)
 {
+  Vec2F32 mouse = rk_state->cursor;
+  Vec2F32 resolution_dim = rk_state->window_dim;
   // mouse ndc pos
   F32 mox_ndc = (mouse.x / resolution_dim.x) * 2.f - 1.f;
   F32 moy_ndc = (mouse.y / resolution_dim.y) * 2.f - 1.f;
@@ -250,7 +256,6 @@ s5_world_position_from_mouse(Vec2F32 mouse, Vec2F32 resolution_dim, Mat4x4F32 pr
   Vec2F32 ret = v2f32(mouse_in_world_4.x, mouse_in_world_4.y);
   return ret;
 }
-
 internal Vec2F32
 s5_screen_pos_from_world(Vec2F32 world_pos, Mat4x4F32 proj_view_m)
 {
@@ -283,13 +288,13 @@ RK_SCENE_UPDATE(s5_update)
 {
   S5_Scene *s = scene->custom_data;
   RK_NodeBucket *node_bucket = scene->node_bucket;
-  s->world_mouse = s5_world_position_from_mouse(rk_state->cursor, rk_state->window_dim, ctx->proj_view_inv_m);
+  s->world_mouse = s5_world_position_from_mouse(ctx->proj_view_inv_m);
   RK_Node *submarine_node = rk_node_from_handle(&s->submarine);
   S5_Submarine *submarine = s5_submarine_from_node(submarine_node);
   Vec2F32 submarine_center = rk_center_from_sprite2d(submarine_node->sprite2d, submarine_node->node2d->transform.position);
 
-  s->warning = 0;
-  s->critical = 0;
+  s->target_warning_t = 0;
+  s->target_critical_t = 0;
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // collect world nodes to a flag array for easier looping
@@ -331,7 +336,7 @@ RK_SCENE_UPDATE(s5_update)
 
   if(BUILD_DEBUG) RK_Parent_Scope(rk_node_from_handle(&scene->root))
   {
-    Vec2F32 mouse_world = s5_world_position_from_mouse(rk_state->cursor, rk_state->window_dim, ctx->proj_view_inv_m);
+    Vec2F32 mouse_world = s5_world_position_from_mouse(ctx->proj_view_inv_m);
     RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
                                             RK_NodeFlag_Transient, "debug_rect");
     Vec2F32 position = mouse_world;
@@ -362,40 +367,6 @@ RK_SCENE_UPDATE(s5_update)
       rk_debug_gfx(30, add_2f32(rk_state->cursor, v2f32(30, 0)), v4f32(1,1,1,1),string);
     }
     scratch_end(scratch);
-  }
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // game ui
-
-  {
-    D_BucketScope(rk_state->bucket_rect)
-    {
-      UI_Box *container = 0;
-      UI_Rect(rk_state->window_rect)
-      {
-        container = ui_build_box_from_stringf(0, "###game_overlay");
-      }
-
-      UI_Parent(container)
-        UI_FontSize(25.0)
-      {
-        UI_Column
-          UI_Flags(UI_BoxFlag_DrawBorder)
-          {
-            ui_labelf("hp: %.2f", submarine->hp);
-            ui_labelf("level: %.2f %.2f", submarine_node->node2d->transform.position.x, submarine_node->node2d->transform.position.y);
-            ui_labelf("vel: %.2f %.2f", submarine->v.x, submarine->v.y);
-            ui_labelf("density: %.2f", submarine->density);
-            ui_labelf("scan_t: %.2f", submarine->scan_t);
-            ui_labelf("oxygen: %.2f", submarine->oxygen);
-            ui_labelf("battery: %.2f", submarine->battery);
-            ui_labelf("parts: %I64u", submarine->part_count);
-            ui_labelf("thrust: %.2f %.2f",
-                      submarine->thrust.x,
-                      submarine->thrust.y);
-            ui_labelf("pulse_cd_t: %f", submarine->pulse_cd_t);
-          }
-      }
-    }
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -456,7 +427,7 @@ RK_SCENE_UPDATE(s5_update)
     }
   }
 
-  if(s->warning && !s->critical)
+  if(s->warning_t > 0 && s->critical_t == 0)
   {
     sy_sequencer_play(s->sequencers[S5_SequencerKind_Warning], 0);
   }
@@ -465,7 +436,7 @@ RK_SCENE_UPDATE(s5_update)
     sy_sequencer_pause(s->sequencers[S5_SequencerKind_Warning]);
   }
 
-  if(s->critical)
+  if(s->critical_t > 0)
   {
     sy_sequencer_play(s->sequencers[S5_SequencerKind_Critical], 0);
   }
@@ -473,8 +444,95 @@ RK_SCENE_UPDATE(s5_update)
   {
     sy_sequencer_pause(s->sequencers[S5_SequencerKind_Critical]);
   }
-
   ProfEnd();
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // game ui
+
+  D_BucketScope(rk_state->bucket_rect)
+  {
+    UI_Box *container = 0;
+    UI_Rect(rk_state->window_rect)
+    {
+      container = ui_build_box_from_stringf(0, "###game_overlay");
+    }
+
+    UI_Parent(container)
+      UI_FontSize(25.0)
+    {
+      UI_Column
+        UI_Flags(UI_BoxFlag_DrawBorder)
+        {
+          ui_labelf("hp: %.2f", submarine->hp);
+          ui_labelf("level: %.2f %.2f", submarine_node->node2d->transform.position.x, submarine_node->node2d->transform.position.y);
+          ui_labelf("vel: %.2f %.2f", submarine->v.x, submarine->v.y);
+          ui_labelf("density: %.2f", submarine->density);
+          ui_labelf("scan_t: %.2f", submarine->scan_t);
+
+          rk_capped_labelf(submarine->oxygen/SUBMARINE_OXYGEN_CAP, "oxygen: %.2f", submarine->oxygen);
+          rk_capped_labelf(submarine->battery/SUBMARINE_BATTERY_CAP, "battery: %.2f", submarine->battery);
+          ui_labelf("parts: %I64u", submarine->part_count);
+          ui_labelf("thrust: %.2f %.2f",
+                    submarine->thrust.x,
+                    submarine->thrust.y);
+          rk_capped_labelf(submarine->pulse_cd_t, "pulse_cd_t: %.2f", submarine->pulse_cd_t);
+        }
+    }
+
+    // depth level
+    UI_Parent(container)
+    {
+      UI_Box *body = 0;
+      F32 width_px = 100.0;
+      F32 height_px = rk_state->window_dim.y*0.5;
+      UI_Flags(UI_BoxFlag_Floating|UI_BoxFlag_DrawBorder)
+        UI_Rect(r2f32p(30, rk_state->window_dim.y/2.0 - height_px/2.0,
+                       30+width_px, rk_state->window_dim.y/2.0 + height_px/2.0))
+        UI_ChildLayoutAxis(Axis2_Y)
+        {
+          body = ui_build_box_from_stringf(0, "vertical_level");
+        }
+
+      UI_Parent(body)
+        UI_PrefHeight(ui_pct(1.0, 0.0))
+        UI_PrefWidth(ui_pct(1.0,0.0))
+      {
+        for(U64 i = 0; i < 31; i++)
+        {
+          if(i == 15)
+          {
+            ui_buttonf("%.2f##%I64u", submarine_node->node2d->transform.position.y, i);
+          }
+          else
+          {
+            ui_buttonf("##%I64u", i);
+          }
+        }
+      }
+    }
+
+    // horizontal level
+
+    if(s->warning_t > 0)
+      rk_debug_gfx(90, v2f32(300,300), v4f32(1,1,0,s->warning_t), str8_lit("WARNING"));
+    if(s->critical_t > 0)
+      rk_debug_gfx(90, v2f32(300,400), v4f32(1,0,0,s->critical_t), str8_lit("CRITICAL"));
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // animating
+
+  s->warning_t += rk_state->animation.slug_rate * (s->target_warning_t - s->warning_t);
+  s->critical_t += rk_state->animation.slug_rate * (s->target_critical_t - s->critical_t);
+
+  if(abs_f32(s->warning_t) < 0.01)
+  {
+    s->warning_t = 0.0;
+  }
+  if(abs_f32(s->critical_t) < 0.01)
+  {
+    s->critical_t = 0.0;
+  }
 }
 
 
@@ -584,7 +642,14 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
   F32 oxygen = submarine->oxygen;
   F32 battery = submarine->battery;
   U64 part_count = submarine->part_count;
+  F32 hp = submarine->hp;
   F32 watts = 0;
+  F32 warning_t = 0;
+  F32 critical_t = 0;
+
+  if(oxygen == 0)  exit(0);
+  if(battery == 0) exit(0);
+  if(hp == 0)      exit(0);
 
   ////////////////////////////////
   // thrust
@@ -735,22 +800,54 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
   }
 
   ////////////////////////////////
+  // draw grid line distance viewer
+
+  // RK_Parent_Scope(node)
+  // {
+  //   Vec2F32 grid_dim = v2f32(700,700);
+  //   Vec2U32 grid_size = {30,30};
+  //   F32 x = -grid_dim.x/2.0;
+  //   F32 y = -grid_dim.y/2.0;
+  //   F32 w = grid_dim.x/grid_size.x;
+  //   F32 h = grid_dim.y/grid_size.y;
+  //   for(U64 j = 0; j < grid_size.y; j++)
+  //   {
+  //     for(U64 i = 0; i < grid_size.x; i++)
+  //     {
+  //       B32 odd = (j%2==0 && i%2!=0) || (j%2!=0 && i%2==0);
+  //       RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
+  //                                               RK_NodeFlag_Transient, "cube_%I64u-I64u", i, j);
+  //       F32 radius = submarine->viewport_radius;
+
+  //       n->sprite2d->anchor = RK_Sprite2DAnchorKind_TopLeft;
+  //       n->sprite2d->shape = RK_Sprite2DShapeKind_Rect;
+  //       n->sprite2d->size.rect.x = w;
+  //       n->sprite2d->size.rect.y = h;
+  //       n->sprite2d->color = v4f32(0.3*odd,0.3,0.1*odd,0.1);
+  //       n->sprite2d->omit_texture = 1;
+  //       n->sprite2d->draw_edge = 1;
+  //       n->node2d->transform.position.x = x + i*w;
+  //       n->node2d->transform.position.y = y + j*h;
+  //       n->node2d->z_index = 1;
+  //     }
+  //   }
+  // }
+
+  ////////////////////////////////
   // draw viewport
 
   RK_Parent_Scope(node)
   {
     RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
                                             RK_NodeFlag_Transient, "viewport");
-    Vec2F32 position = scale_2f32(node->sprite2d->size.rect, 0.5);
     F32 radius = submarine->viewport_radius;
 
     n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
     n->sprite2d->shape = RK_Sprite2DShapeKind_Circle;
     n->sprite2d->size.circle.radius = radius;
-    n->sprite2d->color = v4f32(0,0,0.1,0.5);
+    n->sprite2d->color = v4f32(0.01,0.01,0.1,0.5);
     n->sprite2d->omit_texture = 1;
     n->sprite2d->draw_edge = 1;
-    n->node2d->transform.position = position;
     n->node2d->z_index = 1;
   }
 
@@ -766,16 +863,15 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
     }
 
     RK_Node *n = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Sprite2D,
-                                            RK_NodeFlag_Transient, "viewport");
-    Vec2F32 position = scale_2f32(node->sprite2d->size.rect, 0.5);
-    position = add_2f32(position, scale_2f32(submarine_direction, submarine->viewport_radius));
+                                            RK_NodeFlag_Transient, "direction_indicator");
+    Vec2F32 pos = scale_2f32(submarine_direction, submarine->viewport_radius);
     n->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
     n->sprite2d->shape = RK_Sprite2DShapeKind_Circle;
     n->sprite2d->size.circle.radius = 20.0;
-    n->sprite2d->color = v4f32(0.2,0.2,0.1,0.5);
+    n->sprite2d->color = v4f32(0.2,0.2,0.1,1.0);
     n->sprite2d->omit_texture = 1;
     n->sprite2d->draw_edge = 1;
-    n->node2d->transform.position = position;
+    n->node2d->transform.position = pos;
     n->node2d->z_index = 1-0.1;
   }
 
@@ -828,8 +924,8 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
 
         if(dist <= submarine->magnetic_range)
         {
-          strength = 1.0 - dist/submarine->magnetic_range;
-          strength = Clamp(0.0, strength, 1.0);
+          F32 s = 1.0 - dist/submarine->magnetic_range;
+          strength += s;
         }
       }
     }
@@ -848,8 +944,9 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
     // sy_sequencer_play(s->sequencers[S5_SequencerKind_SonarScan], 1);
 
     // NOTE: use raidation sound to navigate gate
-    F32 volume = mix_1f32(0.0, 2.0, strength);
-    F32 dice = mix_1f32(0.0, 1.0, strength);
+    strength = Clamp(0.0, strength, 1.0);
+    F32 volume = mix_1f32(-1.0, 3.0, strength);
+    F32 dice = mix_1f32(-1.0, 1.0, strength);
     sy_sequencer_set_volume(s->sequencers[S5_SequencerKind_Radiation], volume);
     sy_sequencer_set_dice(s->sequencers[S5_SequencerKind_Radiation], dice);
   }
@@ -891,11 +988,6 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
           battery += resource->value.battery.joules;
           os_sound_play(s->sounds[S5_SoundKind_GainResource_Battery]);
         }break;
-        case S5_ResourceKind_Part:
-        {
-          part_count += resource->value.part.quantity;
-          os_sound_play(s->sounds[S5_SoundKind_GainResource_Battery]);
-        }break;
         default:{InvalidPath;}break;
       }
 
@@ -929,11 +1021,11 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
 
   if((os_now_microseconds()-submarine->last_take_hit_us)/1000000.0 < 1.0)
   {
-    s->critical += 1;
+    critical_t += 1;
   }
   else if((os_now_microseconds()-submarine->last_take_hit_us)/1000000.0 < 3.0)
   {
-    s->warning += 1;
+    warning_t += 1;
   }
 
   // TODO: collision detect
@@ -941,28 +1033,26 @@ internal void s5_system_submarine(RK_Node *node, RK_Scene *scene, RK_FrameContex
   ///////////////////////////////////////////////////////////////////////////////////////
   // warning if no power or oxygen
 
-  B32 warning = 0;
   if(submarine->oxygen < SUBMARINE_OXYGEN_WARNING_LEVEL)
   {
-    warning = 1;
+    warning_t += 1;
   }
   if(submarine->battery < SUBMARINE_BATTERY_WARNING_LEVEL)
   {
-    warning = 1;
+    warning_t += 1;
   }
 
-  B32 critical = 0;
   if(submarine->oxygen < SUBMARINE_OXYGEN_CRITICAL_LEVEL)
   {
-    critical = 1;
+    critical_t += 1;
   }
   if(submarine->battery < SUBMARINE_BATTERY_CRITICAL_LEVEL)
   {
-    critical = 1;
+    critical_t += 1;
   }
 
-  s->warning += warning;
-  s->critical += critical;
+  s->target_warning_t += warning_t;
+  s->target_critical_t += critical_t;
   scratch_end(scratch);
 }
 
@@ -983,6 +1073,10 @@ internal void s5_system_flock(RK_Node *node, RK_Scene *scene, RK_FrameContext *c
   S5_Submarine *submarine = s5_submarine_from_node(submarine_node);
   Vec2F32 submarine_center = rk_center_from_sprite2d(submarine_node->sprite2d, submarine_node->node2d->transform.position);
 
+  // compute boids average position
+  Vec2F32 flock_position = {0};
+
+  Vec2F32 flock_target_position = flock->target_pos;
   for(U64 j = 0; j < darray_size(boids); j++)
   {
     RK_Node *boid_node = boids[j];
@@ -990,6 +1084,8 @@ internal void s5_system_flock(RK_Node *node, RK_Scene *scene, RK_FrameContext *c
     RK_Transform2D *transform = &boid_node->node2d->transform;
     Vec2F32 size = boid_node->sprite2d->size.rect;
     Vec2F32 position = boid_node->node2d->transform.position;
+
+    flock_position = add_2f32(flock_position, position);
 
     Vec2F32 acc = {0};
 
@@ -1014,17 +1110,19 @@ internal void s5_system_flock(RK_Node *node, RK_Scene *scene, RK_FrameContext *c
     }
 
     /////////////////////////////////////////////////////////////////////////////////////
-    // move to cursor
+    // move to target
 
     {
       // TODO(XXX): we should make the direction turning slower
 
-      F32 dist_self_to_target = length_2f32(sub_2f32(position, submarine_center));
-      Vec2F32 dir_self_to_target = normalize_2f32(sub_2f32(submarine_center, position));
+      F32 dist_self_to_target = length_2f32(sub_2f32(position, flock_target_position));
+      Vec2F32 dir_self_to_target = normalize_2f32(sub_2f32(flock_target_position, position));
+      // F32 dist_self_to_target = length_2f32(sub_2f32(position, submarine_center));
+      // Vec2F32 dir_self_to_target = normalize_2f32(sub_2f32(submarine_center, position));
       // Vec2F32 dir_self_to_target = normalize_2f32(sub_2f32(s->world_mouse, position));
       // F32 dist_self_to_target = length_2f32(sub_2f32(s->world_mouse, position)); /* to mouse */
 
-      F32 angle_rad = ((rand()/(F32)RAND_MAX) * (1.0/2) - (1.0/4));
+      F32 angle_rad = ((rand_f32()) * (1.0/2) - (1.0/4));
       F32 cos_a = cos_f32(angle_rad);
       F32 sin_a = cos_f32(angle_rad);
 
@@ -1039,12 +1137,14 @@ internal void s5_system_flock(RK_Node *node, RK_Scene *scene, RK_FrameContext *c
         F32 w = flock->w_target;
         Vec2F32 uf = scale_2f32(dir_self_to_target, -w);
         acc = add_2f32(acc, uf);
+        AssertVec2F32(acc);
       }
       else
       {
         F32 w = flock->w_target;
         Vec2F32 uf = scale_2f32(dir, w);
         acc = add_2f32(acc, uf);
+        AssertVec2F32(acc);
       }
     }
 
@@ -1063,12 +1163,13 @@ internal void s5_system_flock(RK_Node *node, RK_Scene *scene, RK_FrameContext *c
           F32 dist = length_2f32(rhs_to_self);
 
           F32 min_dist = size.x*0.6;
-          if(dist < min_dist)
+          if(dist < min_dist && dist != 0)
           {
             F32 w = flock->w_separation * (dist/min_dist);
             // unit force (assuming mass is 1, so it's acceleration)
             Vec2F32 uf = scale_2f32(normalize_2f32(rhs_to_self), w);
             acc = add_2f32(acc, uf);
+            AssertVec2F32(acc);
           }
         }
       }
@@ -1105,6 +1206,7 @@ internal void s5_system_flock(RK_Node *node, RK_Scene *scene, RK_FrameContext *c
           F32 w = flock->w_alignment;
           Vec2F32 uf = scale_2f32(steer_alignment, w);
           acc = add_2f32(acc, uf);
+          AssertVec2F32(acc);
         }
       }
     }
@@ -1138,6 +1240,7 @@ internal void s5_system_flock(RK_Node *node, RK_Scene *scene, RK_FrameContext *c
         F32 w = flock->w_cohesion;
         Vec2F32 uf = scale_2f32(steer_cohesion, w);
         acc = add_2f32(acc, uf);
+        AssertVec2F32(acc);
       }
     }
 
@@ -1155,6 +1258,16 @@ internal void s5_system_flock(RK_Node *node, RK_Scene *scene, RK_FrameContext *c
     boid->acc = acc;
     boid->target_vel = vel;
   }
+
+  // pick new target position if we hit the path end
+  flock_position = scale_2f32(flock_position, 1.0/darray_size(boids));
+  F32 target_diff = length_2f32(sub_2f32(flock_position, flock->path_end));
+  if(target_diff < 60.0)
+  {
+    Swap(Vec2F32, flock->path_end, flock->path_start);
+  }
+  // TODO: interpolation between current target_pos and next target pos
+  flock->target_pos = flock->path_end;
   scratch_end(scratch);
 }
 
@@ -1190,7 +1303,7 @@ internal void s5_system_boid(RK_Node *node, RK_Scene *scene, RK_FrameContext *ct
   F32 update_dt = os_now_microseconds()/1000000.0 - boid->last_motivation_update_time;
   if(update_dt > 6.0)
   {
-    boid->motivation = 1 + (rand()/(F32)RAND_MAX) * 1;
+    boid->motivation = 1 + (rand_f32()) * 1;
   }
 }
 
@@ -1318,7 +1431,6 @@ RK_SCENE_SETUP(s5_setup)
   // load sounds
 
   s->sounds[S5_SoundKind_GainResource_AirBag]  = os_sound_from_file("./src/rubik/scenes/duskers/gain_resource_airbag.wav");
-  s->sounds[S5_SoundKind_GainResource_Part]    = os_sound_from_file("./src/rubik/scenes/duskers/gain_resource_part.wav");
   s->sounds[S5_SoundKind_GainResource_Battery] = os_sound_from_file("./src/rubik/scenes/duskers/gain_resource_part.wav");
   s->sounds[S5_SoundKind_Ambient]              = os_sound_from_file("./src/rubik/scenes/duskers/ambience.wav");
 
@@ -1543,7 +1655,7 @@ RK_SCENE_SETUP(s5_setup)
         {
           SY_Channel *channel = sy_sequencer_push_channel(seq);
           // channel->beats = str8_lit("X.X.X.X.X.X.X.X.");
-          channel->beats = str8_lit("X?X?X?X?X?X?X?X?");
+          channel->beats = str8_lit("???.?.??.??.??.?");
           channel->instrument = s->instruments[S5_InstrumentKind_Radiation];
         }
         s->sequencers[kind] = seq;
@@ -1605,8 +1717,8 @@ RK_SCENE_SETUP(s5_setup)
         }
         // {
         //   SY_Channel *channel = sy_sequencer_push_channel(seq);
-        //   channel->beats = str8_lit(".X.X.X.X.X.X.X.X");
-        //   channel->instrument = instrument_ping;
+        //   channel->beats = str8_lit("...X...X...X...X");
+        //   channel->instrument = s->instruments[S5_InstrumentKind_Boop];
         // }
         s->sequencers[kind] = seq;
       }break;
@@ -1706,8 +1818,8 @@ RK_SCENE_DEFAULT(s5_default)
     RK_Node *submarine_node = 0;
     {
       RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Collider2D|RK_NodeTypeFlag_Sprite2D, 0, "submarine");
-      node->node2d->transform.position = v2f32(900., -150.);
-      node->sprite2d->anchor = RK_Sprite2DAnchorKind_TopLeft;
+      node->node2d->transform.position = v2f32(900.0, 150.0);
+      node->sprite2d->anchor = RK_Sprite2DAnchorKind_Center;
       node->sprite2d->size.rect = v2f32(60,60);
       node->sprite2d->color = v4f32(0,0,1,1);
       node->sprite2d->omit_texture = 1;
@@ -1736,19 +1848,22 @@ RK_SCENE_DEFAULT(s5_default)
       entity->flock.w_alignment = 2000;
       entity->flock.w_separation = 60000;
       entity->flock.w_cohesion = 15000;
+      entity->flock.path_start = v2f32(30,1000);
+      entity->flock.path_end = v2f32(9000,1000);
+      entity->flock.target_pos = entity->flock.path_end;
 
       RK_Parent_Scope(flock_node)
       {
-        Rng1U32 spwan_range_x = {0, 3000};
-        Rng1U32 spwan_range_y = {0, 3000};
+        Rng1U32 spwan_range_x = {0, 30};
+        Rng1U32 spwan_range_y = {0, 30};
         U32 spwan_dim_x = dim_1u32(spwan_range_x);
         U32 spwan_dim_y = dim_1u32(spwan_range_y);
 
         // spawn boids
         for(U64 i = 0; i < 300; i++)
         {
-          F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
-          F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;
+          F32 x = (rand_u32()%spwan_dim_x) + spwan_range_x.min;
+          F32 y = (rand_u32()%spwan_dim_y) + spwan_range_y.min;
           RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Collider2D|RK_NodeTypeFlag_Sprite2D, 0, "flock_%I64u", i);
           node->node2d->transform.position = v2f32(x, y);
           node->sprite2d->anchor = RK_Sprite2DAnchorKind_TopLeft;
@@ -1775,8 +1890,8 @@ RK_SCENE_DEFAULT(s5_default)
       U32 spwan_dim_y = dim_1u32(spwan_range_y);
       for(U64 i = 0; i < 100; i++)
       {
-        F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
-        F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;
+        F32 x = (rand_u32()%spwan_dim_x) + spwan_range_x.min;
+        F32 y = (rand_u32()%spwan_dim_y) + spwan_range_y.min;
 
         RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Collider2D|RK_NodeTypeFlag_Sprite2D, 0, "resource_%I64u", i);
         node->node2d->transform.position = v2f32(x, y);
@@ -1791,7 +1906,7 @@ RK_SCENE_DEFAULT(s5_default)
         S5_Entity *entity = rk_node_push_custom_data(node, S5_Entity);
         S5_Resource *resource = &entity->resource;
 
-        S5_ResourceKind resource_kind = (U64)(rand()%S5_ResourceKind_COUNT);
+        S5_ResourceKind resource_kind = (U64)(rand_u32()%S5_ResourceKind_COUNT);
         String8 resource_name = {0};
         switch(resource_kind)
         {
@@ -1804,11 +1919,6 @@ RK_SCENE_DEFAULT(s5_default)
           {
             resource->value.battery.joules = 100.0;
             resource_name = str8_lit("Battery");
-          }break;
-          case S5_ResourceKind_Part:
-          {
-            resource->value.part.quantity = 10;
-            resource_name = str8_lit("Part");
           }break;
           default:{InvalidPath;}break;
         }
@@ -1825,8 +1935,8 @@ RK_SCENE_DEFAULT(s5_default)
       U32 spwan_dim_y = dim_1u32(spwan_range_y);
       for(U64 i = 0; i < 80; i++)
       {
-        F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
-        F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;
+        F32 x = (rand_u32()%spwan_dim_x) + spwan_range_x.min;
+        F32 y = (rand_u32()%spwan_dim_y) + spwan_range_y.min;
 
         RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Collider2D|RK_NodeTypeFlag_Sprite2D,
                                                    0, "predator_%I64u", i);
@@ -1858,8 +1968,8 @@ RK_SCENE_DEFAULT(s5_default)
       U32 spwan_dim_y = dim_1u32(spwan_range_y);
       for(U64 i = 0; i < 3; i++)
       {
-        F32 x = (rand()%spwan_dim_x) + spwan_range_x.min;
-        F32 y = (rand()%spwan_dim_y) + spwan_range_y.min;
+        F32 x = (rand_u32()%spwan_dim_x) + spwan_range_x.min;
+        F32 y = (rand_u32()%spwan_dim_y) + spwan_range_y.min;
 
         RK_Node *node = rk_build_node_from_stringf(RK_NodeTypeFlag_Node2D|RK_NodeTypeFlag_Collider2D|RK_NodeTypeFlag_Sprite2D,
                                                    0, "docking_gate_%I64u", i);

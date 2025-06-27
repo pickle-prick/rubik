@@ -64,7 +64,9 @@ entry_point(CmdLine *cmd_line)
   ///////////////////////////////////////////////////////////////////////////////////////
   // init
 
-  srand((unsigned int)time(NULL));
+  U32 seed = time(NULL);
+  srand(seed);
+  gsrand(seed);
 
   Vec2F32 window_rect = {900*3, 900*2};
   String8 window_title = str8_lit("Rubik");

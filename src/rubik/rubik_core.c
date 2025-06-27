@@ -1604,6 +1604,12 @@ internal void rk_ui_stats(void)
       }
       UI_Row
       {
+        ui_labelf("pre cpu time");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%.3fms", (F32)rk_state->pre_cpu_time_us/1000.0);
+      }
+      UI_Row
+      {
         ui_labelf("cpu time");
         ui_spacer(ui_pct(1.0, 0.0));
         ui_labelf("%.3fms", (F32)rk_state->cpu_time_us/1000.0);
@@ -2846,6 +2852,7 @@ rk_frame(void)
 
   // pick among a number of sensible targets to snap to, given how well we've been performing
   F32 target_hz = os_get_gfx_info()->default_refresh_rate;
+  // F32 target_hz = 30.0;
   if(rk_state->frame_index > 32)
   {
     F32 possible_alternate_hz_targets[] = {target_hz, 60.f, 120.f, 144.f, 240.f};
@@ -4289,6 +4296,8 @@ rk_frame(void)
   {
     rk_drawlist_build(rk_frame_drawlist());
   }
+
+  rk_state->pre_cpu_time_us = os_now_microseconds()-begin_time_us;
 
   // submit
   ProfScope("submit")

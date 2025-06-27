@@ -36,12 +36,11 @@
 	</Type>
 
   <Type Name="Vec2F32">
+    <DisplayString>{{ x={v[0]} y={v[1]} }}</DisplayString>
     <Expand>
-      <!-- <Item Name="x">x</Item>
-      <Item Name="y">y</Item> -->
       <Item Name="x">v[0]</Item>
       <Item Name="y">v[1]</Item>
-      <Item Name="[length squared]">x*x + y*y</Item>
+      <Item Name="[length squared]">v[0]*v[0] + v[1]*v[1]</Item>
     </Expand>
   </Type>
 
@@ -62,11 +61,12 @@
   </Type>
 
   <Type Name="Vec3F32">
+    <DisplayString>{{ x={v[0]} y={v[1]} z={v[2]} }}</DisplayString>
     <Expand>
-      <Item Name="x">x</Item>
-      <Item Name="y">y</Item>
-      <Item Name="z">z</Item>
-      <Item Name="[length squared]">x*x + y*y + z*z</Item>
+      <Item Name="x">v[0]</Item>
+      <Item Name="y">v[1]</Item>
+      <Item Name="z">v[2]</Item>
+      <Item Name="[length squared]">v[0]*v[0] + v[1]*v[1] + v[2]*v[2]</Item>
     </Expand>
   </Type>
 
@@ -80,12 +80,13 @@
   </Type>
 
   <Type Name="Vec4F32">
+    <DisplayString>{{ x={v[0]} y={v[1]} z={v[2]} w={v[3]} }}</DisplayString>
     <Expand>
-      <Item Name="x">x</Item>
-      <Item Name="y">y</Item>
-      <Item Name="z">z</Item>
-      <Item Name="w">w</Item>
-      <Item Name="[length squared]">x*x + y*y + z*z + w*w</Item>
+      <Item Name="x">v[0]</Item>
+      <Item Name="y">v[1]</Item>
+      <Item Name="z">v[2]</Item>
+      <Item Name="w">v[3]</Item>
+      <Item Name="[length squared]">v[0]*v[0] + v[1]*v[1] + v[2]*v[2] + v[3]*v[3]</Item>
     </Expand>
   </Type>
 

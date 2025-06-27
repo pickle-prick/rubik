@@ -63,6 +63,30 @@ internal UI_Signal rk_icon_buttonf(RK_IconKind kind, char *fmt, ...)
   return sig;
 }
 
+internal UI_Box *
+rk_capped_labelf(F32 pct, char *fmt, ...)
+{
+  Temp scratch = scratch_begin(0,0);
+  va_list args;
+  va_start(args, fmt);
+  String8 string = push_str8fv(scratch.arena, fmt, args);
+  va_end(args);
+
+  UI_Box *b = ui_build_box_from_string(0, string);
+  UI_Parent(b)
+  {
+    ui_label(string);
+    UI_PrefWidth(ui_pct(pct, 0.0))
+      UI_Flags(UI_BoxFlag_Floating|UI_BoxFlag_DrawBackground)
+      {
+        ui_build_box_from_key(0, ui_key_zero());
+      }
+  }
+
+  scratch_end(scratch);
+  return b;
+}
+
 ////////////////////////////////
 //~ k: Floating/Fixed Panes
 

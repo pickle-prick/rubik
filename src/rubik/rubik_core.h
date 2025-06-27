@@ -1221,6 +1221,7 @@ struct RK_State
   // frame parameters
   F32                   frame_dt;
   F32                   cpu_time_us;
+  F32                   pre_cpu_time_us;
 
   // window
   Rng2F32               window_rect;
