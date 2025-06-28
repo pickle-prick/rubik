@@ -301,6 +301,8 @@ d_sprite(R_Handle vertices, R_Handle indices,
     params->batches.slots = push_array(arena, R_BatchGroup2DMapNode*, params->batches.slots_count);
   }
 
+  // TODO(k): since we're using dynamic drawing list, we won't have any grouping, the cost of draw issuing will be huge
+
   // Hash batch group based on some params
   U64 hash = 0;
   U64 slot_idx = 0;

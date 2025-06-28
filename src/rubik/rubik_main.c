@@ -107,7 +107,7 @@ entry_point(CmdLine *cmd_line)
   B32 open = 1;
   while(open)
   {
-    ProfTick();
+    ProfTick(0);
     U64 global_tick = update_tick_idx();
     open = rk_frame();
   }

@@ -4780,7 +4780,6 @@ r_end_frame(void)
 internal void
 r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
 {
-  ProfBeginFunction();
   R_Vulkan_Window *wnd = r_vulkan_window_from_handle(window_equip);
   R_Vulkan_Frame *frame = &wnd->frames[wnd->curr_frame_idx];
   R_Vulkan_LogicalDevice *device = &r_vulkan_state->logical_device;
@@ -4885,7 +4884,6 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
   }
 
   r_vulkan_push_cmd(frame->cmd_buf);
-  ProfEnd();
 }
 
 internal U64
@@ -5109,6 +5107,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
     {
       case R_PassKind_UI:
       {
+        ProfBegin("ui_pass");
         VkRenderingAttachmentInfo color_attachment_info = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
         color_attachment_info.imageView = render_targets->stage_color_image.view;
         color_attachment_info.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
@@ -5256,10 +5255,12 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           ui_group_idx++;
         }
         vkCmdEndRendering(cmd_buf);
+        ProfEnd();
       }break;
       case R_PassKind_Blur: {NotImplemented;}break;
       case R_PassKind_Noise:
       {
+        ProfBegin("noise pass");
         // unpack params
         R_PassParams_Noise *params = pass->params_noise;
 
@@ -5371,9 +5372,11 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
                                     VK_IMAGE_ASPECT_COLOR_BIT);
         }
+        ProfEnd();
       }break;
       case R_PassKind_Edge:
       {
+        ProfBegin("edge pass");
         // unpack params
         R_PassParams_Edge *params = pass->params_edge;
 
@@ -5476,9 +5479,11 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
                                     VK_IMAGE_ASPECT_COLOR_BIT);
         }
+        ProfEnd();
       }break;
       case R_PassKind_Crt:
       {
+        ProfBegin("crt pass");
         // unpack params
         R_PassParams_Crt *params = pass->params_crt;
 
@@ -5581,9 +5586,11 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
                                     VK_IMAGE_ASPECT_COLOR_BIT);
         }
+        ProfEnd();
       }break;
       case R_PassKind_Geo2D:
       {
+        ProfBegin("geo2d pass");
         Assert(geo2d_pass_idx < MAX_GEO2D_PASS);
 
         // unpack params
@@ -5689,7 +5696,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 
         // issue drawing
         U64 inst_idx = 0;
-        for(R_BatchGroup2DMapNode *n = group_map->first; n != 0; n = n->insert_next)
+        ProfScope("geo2d draw issuing") for(R_BatchGroup2DMapNode *n = group_map->first; n != 0; n = n->insert_next)
         {
           // unpack group params
           R_BatchList *batches = &n->batches;
@@ -5794,9 +5801,11 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           vkCmdEndRendering(cmd_buf);
         }
         geo2d_pass_idx++;
+        ProfEnd();
       }break;
       case R_PassKind_Geo3D: 
       {
+        ProfBegin("geo3d pass");
         Assert(geo3d_pass_idx < MAX_GEO3D_PASS);
 
         // Unpack params
@@ -6410,6 +6419,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           vkCmdEndRendering(cmd_buf);
         }
         geo3d_pass_idx++;
+        ProfEnd();
       }break;
       default: {InvalidPath;}break;
     }

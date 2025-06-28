@@ -14,9 +14,9 @@
 #define MAX_LIGHTS_PER_PASS 3000
 #define MAX_MATERIALS_PER_PASS 30000
 // inst count limits
-#define MAX_RECT_INSTANCES 10000
-#define MAX_MESH2D_INSTANCES 10000
-#define MAX_MESH3D_INSTANCES 10000
+#define MAX_RECT_INSTANCES 30000
+#define MAX_MESH2D_INSTANCES 60000
+#define MAX_MESH3D_INSTANCES 60000
 
 ////////////////////////////////
 //~ rjf: Enums

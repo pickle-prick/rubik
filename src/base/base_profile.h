@@ -1,127 +1,125 @@
+// Copyright (c) Epic Games Tools
+// Licensed under the MIT license (https://opensource.org/license/mit/)
+
 #ifndef BASE_PROFILE_H
 #define BASE_PROFILE_H
 
 ////////////////////////////////
-//~ k: Debug Profile Type
+//~ rjf: Zero Settings
 
-typedef struct ProfNode ProfNode;
-struct ProfNode
-{
-    ProfNode *parent;
-    ProfNode *first;
-    ProfNode *last;
-    ProfNode *next;
-    ProfNode *prev;
-
-    U64      child_count;
-
-    ProfNode *hash_next;
-    ProfNode *hash_prev;
-
-    U64      hash;
-    String8  tag;
-    String8  file;
-    U64      line;
-    // TODO: min/max/avg
-    U64      total_cycles;
-    U64      call_count;
-    U64      cycles_per_call;
-    U64      total_us;
-    U64      us_per_call;
-
-    U64      tsc_start;
-    U64      us_start;
-};
-
-typedef struct ProfNodeSlot ProfNodeSlot;
-struct ProfNodeSlot
-{
-    ProfNode *first;
-    ProfNode *last;
-    U64      count;
-};
-
-typedef struct ProfTickInfo ProfTickInfo;
-struct ProfTickInfo
-{
-    Arena        *arena;
-    U64          arena_tick_pos;
-    U64          node_hash_table_size;
-    ProfNodeSlot *node_hash_table;
-
-    U64          cycles;
-    U64          us;
-    U64          tsc_start;
-    U64          us_start;
-};
+#if !defined(PROFILE_TELEMETRY)
+# define PROFILE_TELEMETRY 0
+#endif
+#if !defined(PROFILE_SPALL)
+# define PROFILE_SPALL 0
+#endif
 
 ////////////////////////////////
-//~ k: RDTSC
+//~ rjf: Third Party Includes
 
-#if COMPILER_GCC
-# include <x86intrin.h>
-# define rdtsc __rdtsc
-#elif COMPILER_MSVC
-# define rdtsc __rdtsc
-#elif COMPILER_CLANG
-# include <x86intrin.h>
-static inline unsigned long long rdtsc() {
- unsigned int aux;
- return __rdtscp(&aux);
+#if PROFILE_TELEMETRY
+# include "rad_tm.h"
+# if OS_WINDOWS
+#  pragma comment(lib, "rad_tm_win64.lib")
+# endif
+#elif PROFILE_SPALL
+# include "external/spall.h"
+#endif
+
+////////////////////////////////
+//~ rjf: Telemetry Profile Defines
+
+#if PROFILE_TELEMETRY
+# define ProfBegin(...)            tmEnter(0, 0, __VA_ARGS__)
+# define ProfBeginDynamic(...)     (TM_API_PTR ? TM_API_PTR->_tmEnterZoneV_Core(0, 0, __FILE__, &g_telemetry_filename_id, __LINE__, __VA_ARGS__) : (void)0)
+# define ProfEnd(...)              (TM_API_PTR ? TM_API_PTR->_tmLeaveZone(0) : (void)0)
+# define ProfTick(...)             tmTick(0)
+# define ProfIsCapturing(...)      tmRunning()
+# define ProfBeginCapture(...)     tmOpen(0, __VA_ARGS__, __DATE__, "localhost", TMCT_TCP, TELEMETRY_DEFAULT_PORT, TMOF_INIT_NETWORKING|TMOF_CAPTURE_CONTEXT_SWITCHES, 100)
+# define ProfEndCapture(...)       tmClose(0)
+# define ProfThreadName(...)       (TM_API_PTR ? TM_API_PTR->_tmThreadName(0, 0, __VA_ARGS__) : (void)0)
+# define ProfMsg(...)              (TM_API_PTR ? TM_API_PTR->_tmMessageV_Core(0, TMMF_ICON_NOTE, __FILE__, &g_telemetry_filename_id, __LINE__, __VA_ARGS__) : (void)0)
+# define ProfBeginLockWait(...)    tmStartWaitForLock(0, 0, __VA_ARGS__)
+# define ProfEndLockWait(...)      tmEndWaitForLock(0)
+# define ProfLockTake(...)         tmAcquiredLock(0, 0, __VA_ARGS__)
+# define ProfLockDrop(...)         tmReleasedLock(0, __VA_ARGS__)
+# define ProfColor(color)          tmZoneColorSticky(color)
+# define ProfBeginV(...)                                                           \
+if (TM_API_PTR) {                                                                \
+static tm_uint64 file_id = 0; TM_API_PTR->_tmStaticString(&file_id, __FILE__); \
+Temp scratch = scratch_begin(0,0);                                             \
+String8 string = push_str8f(scratch.arena, __VA_ARGS__);                       \
+tm_uint64 hash = TM_API_PTR->_tmHash((char*)string.str, string.size);          \
+hash = TM_API_PTR->_tmSendDynamicString(hash, (char*)string.str);              \
+TM_API_PTR->_tmEnterZoneFast_Core(0, 0, file_id, __LINE__, hash);              \
+scratch_end(scratch);                                                          \
 }
-#else
-# define rdtsc (void)0
+# define ProfNoteV(...) 														   \
+if (TM_API_PTR) {     														   \
+static tm_uint64 file_id = 0; TM_API_PTR->_tmStaticString(&file_id, __FILE__); \
+Temp scratch = scratch_begin(0,0);                                             \
+String8 string = push_str8f(scratch.arena, __VA_ARGS__);                       \
+tm_uint64 hash = TM_API_PTR->_tmHash((char*)string.str, string.size);          \
+hash = TM_API_PTR->_tmSendDynamicString(hash, (char*)string.str);              \
+TM_API_PTR->_tmMessageFast_Core(0, TMMF_ICON_NOTE, file_id, __LINE__, hash);   \
+scratch_end(scratch);                                                          \
+}
 #endif
 
 ////////////////////////////////
-//- k: Globals
-#define pf_buffer_count 2
-#define pf_table_size 1000
-global ProfTickInfo *pf_ticks[pf_buffer_count] = {0};
-global ProfNode *pf_top_node = 0;
-global U64 pf_tick_count = 0;
-global U64 pf_idx_pst = 0;
-global U64 pf_idx_pre = 0;
+//~ rjf: Spall Profile Defines
 
-////////////////////////////////
-//~ k: Debug Profile Defines
-
-#if PROFILE
-
-////////////////////////////////
-//- k: Build Helper
-
-internal ProfTickInfo *pf_tick_alloc();
-internal void pf_tick();
-internal void pf_begin(const char *fmt, ...);
-internal void pf_end();
-internal ProfNode *pf_node_alloc();
-
-# define ProfTick()     pf_tick()
-# define ProfBegin(...) pf_begin(__VA_ARGS__)
-# define ProfEnd()      pf_end()
-# define ProfTickPst()  pf_ticks[pf_idx_pst]
-# define ProfTickPre()  pf_ticks[pf_idx_pre]
-
+#if PROFILE_SPALL
+global U64 spall_capturing = 0;
+global SpallProfile spall_profile = {0};
+thread_static SpallBuffer spall_buffer = {0};
+thread_static U32 spall_tid = 0;
+thread_static U32 spall_pid = 0;
+internal inline void spall_begin(char *fmt, ...);
+# define ProfBegin(...)           (spall_capturing ? (spall_begin(__VA_ARGS__), 0) : 0)
+# define ProfBeginDynamic(...)    (spall_capturing ? (spall_begin(__VA_ARGS__), 0) : 0)
+# define ProfEnd(...)             (spall_capturing ? (spall_buffer_end_ex(&spall_profile, &spall_buffer, os_now_microseconds(), spall_tid, spall_pid)), 0 : 0)
+# define ProfTick(...)
+# define ProfIsCapturing(...)     (!!spall_capturing)
+# define ProfBeginCapture(...)    (spall_capturing = 1)
+# define ProfEndCapture(...)      (spall_capturing = 0, spall_flush(&spall_profile))
+# define ProfThreadName(...)
+# define ProfMsg(...)
+# define ProfBeginLockWait(...)
+# define ProfEndLockWait(...)
+# define ProfLockTake(...)
+# define ProfLockDrop(...)
+# define ProfColor(color)
+# define ProfBeginV(...)
+# define ProfNoteV(...)
 #endif
 
 ////////////////////////////////
-//~ k: Zeroify Undefined Defines
+//~ rjf: Zeroify Undefined Defines
 
 #if !defined(ProfBegin)
-# define ProfTick(...)          (0)
 # define ProfBegin(...)         (0)
-# define ProfEnd()              (0)
-# define ProfTickPst()          (0)
-# define ProfTickPre()          (0)
+# define ProfBeginDynamic(...)  (0)
+# define ProfEnd(...)           (0)
+# define ProfTick(...)          (0)
+# define ProfIsCapturing(...)   (0)
+# define ProfBeginCapture(...)  (0)
+# define ProfEndCapture(...)    (0)
+# define ProfThreadName(...)    (0)
+# define ProfMsg(...)           (0)
+# define ProfBeginLockWait(...) (0)
+# define ProfEndLockWait(...)   (0)
+# define ProfLockTake(...)      (0)
+# define ProfLockDrop(...)      (0)
+# define ProfColor(...)         (0)
+# define ProfBeginV(...)        (0)
+# define ProfNoteV(...)         (0)
 #endif
 
 ////////////////////////////////
-//~ k: Helper Wrappers
+//~ rjf: Helper Wrappers
 
-// TODO(XXX): revisit this, don't seem to merge same function calls, also huge performance hit
-//            may be related to table lookup
 #define ProfBeginFunction(...) ProfBegin(this_function_name)
-#define ProfScope(...) DeferLoop(ProfBegin(__VA_ARGS__), ProfEnd())
+#define ProfScope(...) DeferLoop(ProfBeginDynamic(__VA_ARGS__), ProfEnd())
 
 #endif // BASE_PROFILE_H

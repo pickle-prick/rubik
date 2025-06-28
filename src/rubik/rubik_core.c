@@ -721,7 +721,7 @@ rk_init(OS_Handle os_wnd, R_Handle r_wnd)
     for(U64 i = 0; i < ArrayCount(rk_state->drawlists); i++)
     {
       // TODO(k): some device offers 256MB memory which is both cpu visiable and device local
-      rk_state->drawlists[i] = rk_drawlist_alloc(arena, MB(8), MB(8));
+      rk_state->drawlists[i] = rk_drawlist_alloc(arena, MB(64), MB(64));
     }
   }
 
@@ -2402,143 +2402,143 @@ internal void rk_ui_inspector(void)
 
 internal void rk_ui_profiler(void)
 {
-  typedef struct RK_Profiler_State RK_Profiler_State;
-  struct RK_Profiler_State
-  {
-    B32 collapsed;
-    Rng2F32 rect;
-    UI_ScrollPt table_scroller;
-  };
+  // typedef struct RK_Profiler_State RK_Profiler_State;
+  // struct RK_Profiler_State
+  // {
+  //   B32 collapsed;
+  //   Rng2F32 rect;
+  //   UI_ScrollPt table_scroller;
+  // };
 
-  RK_View *view = rk_view_from_kind(RK_ViewKind_Profiler);
-  RK_Profiler_State *profiler = view->custom_data;
-  if(profiler == 0)
-  {
-    profiler = push_array(view->arena, RK_Profiler_State, 1);
-    view->custom_data = profiler;
+  // RK_View *view = rk_view_from_kind(RK_ViewKind_Profiler);
+  // RK_Profiler_State *profiler = view->custom_data;
+  // if(profiler == 0)
+  // {
+  //   profiler = push_array(view->arena, RK_Profiler_State, 1);
+  //   view->custom_data = profiler;
 
-    profiler->rect = rk_state->window_rect;
-    {
-      F32 default_width = rk_state->window_dim.x * 0.6f;
-      F32 default_height = rk_state->window_dim.x * 0.15f;
-      F32 default_margin = ui_top_font_size()*1.3;
-      profiler->rect.x0 = profiler->rect.x1 - default_width;
-      profiler->rect.y0 = profiler->rect.y1 - default_height;
-      profiler->rect = pad_2f32(profiler->rect, -default_margin);
-    }
-  }
+  //   profiler->rect = rk_state->window_rect;
+  //   {
+  //     F32 default_width = rk_state->window_dim.x * 0.6f;
+  //     F32 default_height = rk_state->window_dim.x * 0.15f;
+  //     F32 default_margin = ui_top_font_size()*1.3;
+  //     profiler->rect.x0 = profiler->rect.x1 - default_width;
+  //     profiler->rect.y0 = profiler->rect.y1 - default_height;
+  //     profiler->rect = pad_2f32(profiler->rect, -default_margin);
+  //   }
+  // }
 
-  B32 *open = &rk_state->views_enabled[RK_ViewKind_Profiler];
-  if(!(*open)) return;
+  // B32 *open = &rk_state->views_enabled[RK_ViewKind_Profiler];
+  // if(!(*open)) return;
 
-  // TODO: handle window resizing
+  // // TODO: handle window resizing
 
-  // Top-level pane 
-  UI_Box *container_box;
-  UI_Transparency(0.1)
-  {
-    container_box = rk_ui_pane_begin(&profiler->rect, open, &profiler->collapsed, str8_lit("PROFILER"));
-  }
+  // // Top-level pane 
+  // UI_Box *container_box;
+  // UI_Transparency(0.1)
+  // {
+  //   container_box = rk_ui_pane_begin(&profiler->rect, open, &profiler->collapsed, str8_lit("PROFILER"));
+  // }
 
-  ui_spacer(ui_px(ui_top_font_size()*0.215, 0.f));
+  // ui_spacer(ui_px(ui_top_font_size()*0.215, 0.f));
 
-  F32 row_height = ui_top_font_size()*1.3f;
-  ui_push_pref_height(ui_px(row_height, 0));
+  // F32 row_height = ui_top_font_size()*1.3f;
+  // ui_push_pref_height(ui_px(row_height, 0));
 
-  // tag + total_cycles + call_count + cycles_per_call + total_us + us_per_call
-  U64 col_count = 6;
+  // // tag + total_cycles + call_count + cycles_per_call + total_us + us_per_call
+  // U64 col_count = 6;
 
-  // Table header
-  ui_set_next_child_layout_axis(Axis2_X);
-  // NOTE(k): width - scrollbar width
-  ui_set_next_pref_width(ui_px(container_box->fixed_size.x-ui_top_font_size()*0.9f, 0.f));
-  UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
-  UI_Parent(header_box) UI_PrefWidth(ui_pct(1.f,0.f)) UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow) UI_TextAlignment(UI_TextAlign_Center)
-  {
-    ui_labelf("Tag");
-    ui_labelf("Cycles n/p");
-    ui_labelf("Calls");
-    ui_labelf("Cycles per call");
-    ui_labelf("MS n/p");
-    ui_labelf("MS per call");
-  }
+  // // Table header
+  // ui_set_next_child_layout_axis(Axis2_X);
+  // // NOTE(k): width - scrollbar width
+  // ui_set_next_pref_width(ui_px(container_box->fixed_size.x-ui_top_font_size()*0.9f, 0.f));
+  // UI_Box *header_box = ui_build_box_from_stringf(0, "###header");
+  // UI_Parent(header_box) UI_PrefWidth(ui_pct(1.f,0.f)) UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow) UI_TextAlignment(UI_TextAlign_Center)
+  // {
+  //   ui_labelf("Tag");
+  //   ui_labelf("Cycles n/p");
+  //   ui_labelf("Calls");
+  //   ui_labelf("Cycles per call");
+  //   ui_labelf("MS n/p");
+  //   ui_labelf("MS per call");
+  // }
 
-  Rng2F32 content_rect = container_box->rect;
-  content_rect.y0 = header_box->rect.y1;
+  // Rng2F32 content_rect = container_box->rect;
+  // content_rect.y0 = header_box->rect.y1;
 
-  // content
-  ProfTickInfo *pf_tick = ProfTickPst();
-  U64 prof_node_count = 0;
-  if(pf_tick != 0 && pf_tick->node_hash_table != 0)
-  {
-    for(U64 slot_idx = 0; slot_idx < pf_table_size; slot_idx++)
-    {
-      prof_node_count += pf_tick->node_hash_table[slot_idx].count;
-    }
-  }
+  // // content
+  // ProfTickInfo *pf_tick = ProfTickPst();
+  // U64 prof_node_count = 0;
+  // if(pf_tick != 0 && pf_tick->node_hash_table != 0)
+  // {
+  //   for(U64 slot_idx = 0; slot_idx < pf_table_size; slot_idx++)
+  //   {
+  //     prof_node_count += pf_tick->node_hash_table[slot_idx].count;
+  //   }
+  // }
 
-  UI_ScrollListParams scroll_list_params = {0};
-  {
-    Vec2F32 rect_dim = dim_2f32(content_rect);
-    scroll_list_params.flags = UI_ScrollListFlag_All;
-    scroll_list_params.row_height_px = row_height;
-    scroll_list_params.dim_px = rect_dim;
-    scroll_list_params.item_range = r1s64(0, prof_node_count);
-    scroll_list_params.cursor_min_is_empty_selection[Axis2_Y] = 0;
-  }
+  // UI_ScrollListParams scroll_list_params = {0};
+  // {
+  //   Vec2F32 rect_dim = dim_2f32(content_rect);
+  //   scroll_list_params.flags = UI_ScrollListFlag_All;
+  //   scroll_list_params.row_height_px = row_height;
+  //   scroll_list_params.dim_px = rect_dim;
+  //   scroll_list_params.item_range = r1s64(0, prof_node_count);
+  //   scroll_list_params.cursor_min_is_empty_selection[Axis2_Y] = 0;
+  // }
 
-  // animating scroller pt
-  profiler->table_scroller.off -= profiler->table_scroller.off * rk_state->animation.fast_rate;
-  if(abs_f32(profiler->table_scroller.off) < 0.01) profiler->table_scroller.off = 0;
+  // // animating scroller pt
+  // profiler->table_scroller.off -= profiler->table_scroller.off * rk_state->animation.fast_rate;
+  // if(abs_f32(profiler->table_scroller.off) < 0.01) profiler->table_scroller.off = 0;
 
-  UI_ScrollListSignal scroll_list_sig = {0};
-  Rng1S64 visible_row_rng = {0};
+  // UI_ScrollListSignal scroll_list_sig = {0};
+  // Rng1S64 visible_row_rng = {0};
 
-  UI_ScrollList(&scroll_list_params, &profiler->table_scroller, 0, 0, &visible_row_rng, &scroll_list_sig)
-  {
-    if(pf_tick != 0 && pf_tick->node_hash_table != 0)
-    {
-      U64 row_idx = 0;
-      for(U64 slot_idx = 0; slot_idx < pf_table_size; slot_idx++)
-      {
-        for(ProfNode *n = pf_tick->node_hash_table[slot_idx].first; n != 0; n = n->hash_next)
-        {
-          if(row_idx >= visible_row_rng.min && row_idx <= visible_row_rng.max)
-          {
-            UI_Box *row = 0;
-            UI_ChildLayoutAxis(Axis2_X) UI_Flags(UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawBackground) UI_PrefWidth(ui_pct(1.f,0.f))
-            {
-              row = ui_build_box_from_stringf(0,"###row_%d", row_idx);
-              ui_signal_from_box(row);
-            }
-            UI_Parent(row) UI_PrefWidth(ui_pct(1.0,0.f)) UI_Flags(UI_BoxFlag_DrawSideRight)
-            {
-              ui_label(n->tag);
-              UI_Row
-              {
-                ui_labelf("%lu", n->total_cycles);
-                ui_spacer(ui_pct(1.f,0.f));
-                ui_labelf("%.2f", (F32)n->total_cycles/pf_tick->cycles);
-              }
-              ui_labelf("%lu", n->call_count);
-              ui_labelf("%lu", n->cycles_per_call);
-              UI_Row
-              {
-                ui_labelf("%.2f", n->total_us/1000.0);
-                ui_spacer(ui_pct(1.f,0.f));
-                ui_labelf("%.2f", (F32)n->total_us/pf_tick->us);
-              }
-              ui_labelf("%.2f", n->us_per_call/1000.0);
-            }
-          }
-          row_idx++;
-        }
-      }
-    }
-  }
+  // UI_ScrollList(&scroll_list_params, &profiler->table_scroller, 0, 0, &visible_row_rng, &scroll_list_sig)
+  // {
+  //   if(pf_tick != 0 && pf_tick->node_hash_table != 0)
+  //   {
+  //     U64 row_idx = 0;
+  //     for(U64 slot_idx = 0; slot_idx < pf_table_size; slot_idx++)
+  //     {
+  //       for(ProfNode *n = pf_tick->node_hash_table[slot_idx].first; n != 0; n = n->hash_next)
+  //       {
+  //         if(row_idx >= visible_row_rng.min && row_idx <= visible_row_rng.max)
+  //         {
+  //           UI_Box *row = 0;
+  //           UI_ChildLayoutAxis(Axis2_X) UI_Flags(UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawBackground) UI_PrefWidth(ui_pct(1.f,0.f))
+  //           {
+  //             row = ui_build_box_from_stringf(0,"###row_%d", row_idx);
+  //             ui_signal_from_box(row);
+  //           }
+  //           UI_Parent(row) UI_PrefWidth(ui_pct(1.0,0.f)) UI_Flags(UI_BoxFlag_DrawSideRight)
+  //           {
+  //             ui_label(n->tag);
+  //             UI_Row
+  //             {
+  //               ui_labelf("%lu", n->total_cycles);
+  //               ui_spacer(ui_pct(1.f,0.f));
+  //               ui_labelf("%.2f", (F32)n->total_cycles/pf_tick->cycles);
+  //             }
+  //             ui_labelf("%lu", n->call_count);
+  //             ui_labelf("%lu", n->cycles_per_call);
+  //             UI_Row
+  //             {
+  //               ui_labelf("%.2f", n->total_us/1000.0);
+  //               ui_spacer(ui_pct(1.f,0.f));
+  //               ui_labelf("%.2f", (F32)n->total_us/pf_tick->us);
+  //             }
+  //             ui_labelf("%.2f", n->us_per_call/1000.0);
+  //           }
+  //         }
+  //         row_idx++;
+  //       }
+  //     }
+  //   }
+  // }
 
-  ui_pop_pref_height();
-  rk_ui_pane_end();
+  // ui_pop_pref_height();
+  // rk_ui_pane_end();
 }
 
 internal void
