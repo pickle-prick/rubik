@@ -683,10 +683,13 @@ internal Vec2F32 clamp_2f32(Rng2F32 r, Vec2F32 v);
 //~ rjf: Miscellaneous Ops
 
 // #define RAND_U32_MAX (2^31-1)
-#define RAND_U32_MAX 2147483647
-internal U32     rand_u32(void);
-internal F32     rand_f32(void);
-internal void    gsrand(U32);
+// #define RAND_U32_MAX 2147483647
+// internal U32     rand_u32(void);
+// internal F32     rand_f32(void);
+// internal void    gsrand(U32);
+#define rand_u32() rand()
+#define rand_f32() ((F32)rand() / RAND_MAX)
+
 internal Vec3F32 hsv_from_rgb(Vec3F32 rgb);
 internal Vec3F32 rgb_from_hsv(Vec3F32 hsv);
 internal Vec4F32 hsva_from_rgba(Vec4F32 rgba);

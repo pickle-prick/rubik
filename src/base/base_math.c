@@ -1597,31 +1597,32 @@ internal Vec2F32 clamp_2f32(Rng2F32 r, Vec2F32 v) {
 ////////////////////////////////
 //~ rjf: Miscellaneous Ops
 
-thread_static U32 gseed = 0;
+// thread_static U32 gseed = 0;
 
-internal U32
-rand_u32(void)
-{
-  U32 seed = gseed++;
-  seed = (seed << 13) ^ seed;
-  return ((seed * (seed * seed * 15731 + 789221) + 1376312589) & 0x7fffffff);
-}
+// internal U32
+// rand_u32(void)
+// {
+//   // TODO(k): this way of accumlating gseed is not quite right, the mod operation will not be uniformly distrubuted
+//   U32 seed = gseed++;
+//   seed = (seed << 13) ^ seed;
+//   return ((seed * (seed * seed * 15731 + 789221) + 1376312589) & 0x7fffffff);
+// }
 
-internal F32
-rand_f32(void)
-{
-  // rand_u32() returns values in range [0, 2147483647], which is 2^31 - 1. Dividing by 2^31 (2147483648.0f) ensures the result stays below 1.0.
-  // This gives you a uniform float in [0.0, ~0.9999999]`, never reaching exactly 1.0—which is ideal for most randomness use cases (like in noise generation or sampling).
-  U32 r = rand_u32();
-  F32 ret =  (F32)r/2147483648.0f;
-  return ret;
-}
+// internal F32
+// rand_f32(void)
+// {
+//   // rand_u32() returns values in range [0, 2147483647], which is 2^31 - 1. Dividing by 2^31 (2147483648.0f) ensures the result stays below 1.0.
+//   // This gives you a uniform float in [0.0, ~0.9999999]`, never reaching exactly 1.0—which is ideal for most randomness use cases (like in noise generation or sampling).
+//   U32 r = rand_u32();
+//   F32 ret =  (F32)r/2147483648.0f;
+//   return ret;
+// }
 
-internal void
-gsrand(U32 s)
-{
-  gseed = s;
-}
+// internal void
+// gsrand(U32 s)
+// {
+//   gseed = s;
+// }
 
 internal Vec3F32 hsv_from_rgb(Vec3F32 rgb) {
   F32 c_max = Max(rgb.x, Max(rgb.y, rgb.z));
