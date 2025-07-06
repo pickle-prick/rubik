@@ -3,6 +3,7 @@
 RK_ScenesTable:
 {
   {duskers}
+  {dice}
 }
 
 @gen
@@ -22,6 +23,9 @@ RK_FunctionTable:
   {s5_setup}
   {s5_update}
   {s5_default}
+  {de_setup}
+  {de_update}
+  {de_default}
 }
 
 @data(RK_FunctionEntry) @c_file rk_scene_function_table:

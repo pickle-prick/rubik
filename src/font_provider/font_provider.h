@@ -7,36 +7,41 @@
 //~ rjf: Types
 
 typedef U32 FP_RasterFlags;
-enum {
-        FP_RasterFlag_Smooth = (1 << 0),
-        FP_RasterFlag_Hinted = (1 << 1),
+enum
+{
+  FP_RasterFlag_Smooth = (1 << 0),
+  FP_RasterFlag_Hinted = (1 << 1),
 };
 
 typedef struct FP_Handle FP_Handle;
-struct FP_Handle {
-        U64 u64[2];
+struct FP_Handle
+{
+  U64 u64[2];
 };
 
 typedef struct FP_Metrics FP_Metrics;
-struct FP_Metrics {
-        F32 design_units_per_em;
-        F32 ascent;
-        F32 descent;
-        F32 line_gap;
-        // F32 capital_height;
+struct FP_Metrics
+{
+  F32 design_units_per_em;
+  F32 ascent;
+  F32 descent;
+  F32 line_gap;
+  // F32 capital_height;
 };
 
 typedef struct FP_RasterResult FP_RasterResult;
-struct FP_RasterResult {
-        FP_Handle atlas_handle;
-        Vec2S16   atlas_dim;
-        void      *atlas;
+struct FP_RasterResult
+{
+  FP_Handle atlas_handle;
+  Vec2S16   atlas_dim;
+  void      *atlas;
 };
 
 typedef struct FP_PackedQuad FP_PackedQuad;
-struct FP_PackedQuad {
-        float x0,y0,s0,t0; // top-left
-        float x1,y1,s1,t1; // bottom-right
+struct FP_PackedQuad
+{
+  float x0,y0,s0,t0; // top-left
+  float x1,y1,s1,t1; // bottom-right
 };
 
 ////////////////////////////////

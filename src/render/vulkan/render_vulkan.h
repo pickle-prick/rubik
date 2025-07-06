@@ -540,6 +540,12 @@ struct R_Vulkan_Window
 
   R_Vulkan_Frame frames[MAX_FRAMES_IN_FLIGHT];
   U64 curr_frame_idx;
+
+  // buffer index/offset per frame (for dynamic buffer)
+  U64 ui_group_index;   // ubo is per ui group
+  U64 ui_pass_index;    // inst buffer is per ui pass
+  U64 geo2d_pass_index; // ubo and inst buffer is per geo2d pass
+  U64 geo3d_pass_index; // ubo and inst buffer is per geo3d pass
 };
 
 typedef struct R_Vulkan_State R_Vulkan_State;

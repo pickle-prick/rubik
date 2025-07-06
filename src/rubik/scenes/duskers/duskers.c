@@ -1736,7 +1736,6 @@ RK_SCENE_DEFAULT(s5_default)
   RK_Scene *ret = rk_scene_alloc();
   ret->name = str8_lit("submarine");
   ret->save_path = str8_lit("./src/rubik/scenes/5/default.tscn");
-  // TODO(k): create a macro to avoid using string literal here
   ret->setup_fn_name = str8_lit("s5_setup");
   ret->default_fn_name = str8_lit("s5_default");
   ret->update_fn_name = str8_lit("s5_update");
@@ -1762,7 +1761,7 @@ RK_SCENE_DEFAULT(s5_default)
   Rng2F32 viewport_world = rk_state->window_rect;
 
   // root node
-  RK_Node *root = rk_build_node3d_from_stringf(0,0, "root");
+  RK_Node *root = rk_build_node2d_from_stringf(0,0, "root");
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // load resources

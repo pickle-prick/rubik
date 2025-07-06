@@ -390,7 +390,6 @@ d_sub_bucket(D_Bucket *bucket, B32 merge_pass)
     R_Pass *dst_pass = r_pass_from_kind(arena, &dst->passes, src_pass->kind, merge_pass);
     switch(dst_pass->kind)
     {
-      // TODO(XXX): suss here, didn't handle geo3d batches concate
       default:{dst_pass->params = src_pass->params;}break;
       case R_PassKind_UI:
       {
@@ -403,13 +402,14 @@ d_sub_bucket(D_Bucket *bucket, B32 merge_pass)
           dst_ui->rects.count += 1;
           MemoryCopyStruct(&dst_group_n->params, &src_group_n->params);
           dst_group_n->batches = src_group_n->batches;
-          dst_group_n->params.xform = d_top_xform2d();
+          // dst_group_n->params.xform = d_top_xform2d();
+          dst_group_n->params.xform = mul_3x3f32(d_top_xform2d(), dst_group_n->params.xform);
           if(dst_clip_is_set)
           {
             B32 clip_is_set = !(dst_group_n->params.clip.x0 == 0 &&
-                              dst_group_n->params.clip.y0 == 0 &&
-                              dst_group_n->params.clip.x1 == 0 &&
-                              dst_group_n->params.clip.y1 == 0);
+                                dst_group_n->params.clip.y0 == 0 &&
+                                dst_group_n->params.clip.x1 == 0 &&
+                                dst_group_n->params.clip.y1 == 0);
             dst_group_n->params.clip = clip_is_set ? intersect_2f32(dst_clip, dst_group_n->params.clip) : dst_clip;
           }
         }

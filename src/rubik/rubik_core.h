@@ -172,13 +172,23 @@ typedef enum RK_ResourceSrcKind
   RK_ResourceSrcKind_Bundled,
 } RK_ResourceSrcKind;
 
+////////////////////////////////
+// Drag/Drop Types
+
+typedef enum RK_DragDropState
+{
+  RK_DragDropState_Null,
+  RK_DragDropState_Dragging,
+  RK_DragDropState_Dropping,
+  RK_DragDropState_COUNT
+}
+RK_DragDropState;
+
 // NOTE(k): we have 63 flags to use, don't exceed that 
 typedef U64 RK_NodeFlags;
 #define RK_NodeFlag_NavigationRoot       (RK_NodeFlags)(1ull<<0)
 #define RK_NodeFlag_Float                (RK_NodeFlags)(1ull<<1)
-#define RK_NodeFlag_DrawHotEffects       (RK_NodeFlags)(1ull<<2)
-#define RK_NodeFlag_DrawBorder           (RK_NodeFlags)(1ull<<2)
-#define RK_NodeFlag_Transient            (RK_NodeFlags)(1ull<<3) /* NOTE(k): don't use it recursily */
+#define RK_NodeFlag_Transient            (RK_NodeFlags)(1ull<<2) /* NOTE(k): don't use it recursily */
 
 typedef U64                              RK_NodeTypeFlags;
 #define RK_NodeTypeFlag_Node2D           (RK_NodeTypeFlags)(1ull<<0)
@@ -1247,6 +1257,11 @@ struct RK_State
   RK_FunctionSlot       *function_registry;
   U64                   function_registry_size;
 
+  // drag/drop state
+  RK_DragDropState      drag_drop_state;
+  U64                   drag_drop_slot;
+  void                  *drag_drop_src;
+
   // theme
   RK_Theme              cfg_theme_target;
   RK_Theme              cfg_theme;
@@ -1349,6 +1364,9 @@ internal RK_Resource* rk_res_from_handle(RK_Handle *h);
 //~ State accessor/mutator
 
 internal void             rk_init(OS_Handle os_wnd, R_Handle r_wnd);
+internal B32              rk_drag_is_active(void);
+internal void             rk_drag_begin(U64 slot, void *src);
+internal B32              rk_drag_drop(void);
 internal Arena*           rk_frame_arena();
 internal RK_DrawList*     rk_frame_drawlist();
 internal void             rk_register_function(String8 name, RK_NodeCustomUpdateFunctionType *ptr);

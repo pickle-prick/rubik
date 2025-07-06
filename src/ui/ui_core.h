@@ -6,36 +6,36 @@
 
 typedef enum UI_IconKind
 {
-    UI_IconKind_Null,
-    UI_IconKind_RightArrow,
-    UI_IconKind_DownArrow,
-    UI_IconKind_LeftArrow,
-    UI_IconKind_UpArrow,
-    UI_IconKind_RightCaret,
-    UI_IconKind_DownCaret,
-    UI_IconKind_LeftCaret,
-    UI_IconKind_UpCaret,
-    UI_IconKind_CheckHollow,
-    UI_IconKind_CheckFilled,
-    UI_IconKind_COUNT
+  UI_IconKind_Null,
+  UI_IconKind_RightArrow,
+  UI_IconKind_DownArrow,
+  UI_IconKind_LeftArrow,
+  UI_IconKind_UpArrow,
+  UI_IconKind_RightCaret,
+  UI_IconKind_DownCaret,
+  UI_IconKind_LeftCaret,
+  UI_IconKind_UpCaret,
+  UI_IconKind_CheckHollow,
+  UI_IconKind_CheckFilled,
+  UI_IconKind_COUNT
 }
 UI_IconKind;
 
 typedef struct UI_IconInfo UI_IconInfo;
 struct UI_IconInfo
 {
-    F_Tag   icon_font;
-    String8 icon_kind_text_map[UI_IconKind_COUNT];
+  F_Tag   icon_font;
+  String8 icon_kind_text_map[UI_IconKind_COUNT];
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ rjf: Mouse Button Kinds
 
 typedef enum UI_MouseButtonKind {
-    UI_MouseButtonKind_Left,
-    UI_MouseButtonKind_Middle,
-    UI_MouseButtonKind_Right,
-    UI_MouseButtonKind_COUNT
+  UI_MouseButtonKind_Left,
+  UI_MouseButtonKind_Middle,
+  UI_MouseButtonKind_Right,
+  UI_MouseButtonKind_COUNT
 } UI_MouseButtonKind;
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -252,22 +252,15 @@ struct UI_WidgetPaletteInfo
 ////////////////////////////////
 //~ rjf: Animation Info
 
-typedef U32 UI_AnimationInfoFlags;
-enum
-{
-  UI_AnimationInfoFlag_HotAnimations         = (1<<0),
-  UI_AnimationInfoFlag_ActiveAnimations      = (1<<1),
-  UI_AnimationInfoFlag_FocusAnimations       = (1<<2),
-  UI_AnimationInfoFlag_TooltipAnimations     = (1<<3),
-  UI_AnimationInfoFlag_ContextMenuAnimations = (1<<4),
-  UI_AnimationInfoFlag_ScrollingAnimations   = (1<<5),
-  UI_AnimationInfoFlag_All                   = 0xffffffff,
-};
-
 typedef struct UI_AnimationInfo UI_AnimationInfo;
 struct UI_AnimationInfo
 {
-  UI_AnimationInfoFlags flags;
+  F32 hot_animation_rate;
+  F32 active_animation_rate;
+  F32 focus_animation_rate;
+  F32 tooltip_animation_rate;
+  F32 menu_animation_rate;
+  F32 scroll_animation_rate;
 };
 
 ////////////////////////////////
@@ -366,6 +359,7 @@ typedef U64 UI_BoxFlags;
 # define UI_BoxFlag_HasDisplayString          (UI_BoxFlags)(1ull<<50)
 # define UI_BoxFlag_HasFuzzyMatchRanges       (UI_BoxFlags)(1ull<<51)
 # define UI_BoxFlag_RoundChildrenByParent     (UI_BoxFlags)(1ull<<52)
+# define UI_BoxFlag_SquishAnchored            (UI_BoxFlags)(1ull<<53)
 
 //- rjf: bundles
 # define UI_BoxFlag_Clickable           (UI_BoxFlag_MouseClickable|UI_BoxFlag_KeyboardClickable)
@@ -413,6 +407,7 @@ struct UI_Box
   F_RasterFlags                text_raster_flags;
   F32                          corner_radii[Corner_COUNT];
   F32                          transparency;
+  F32                          squish;
   F32                          text_padding;
   UI_Palette                   *palette;
   D_Bucket                     *draw_bucket;
@@ -554,7 +549,42 @@ struct UI_Signal
 #define ui_committed(s)      !!((s).f&UI_SignalFlag_Commit)
 
 /////////////////////////////////////////////////////////////////////////////////////////
+//~ rjf: Animation State Types
+
+typedef struct UI_AnimParams UI_AnimParams;
+struct UI_AnimParams
+{
+  F32 initial;
+  F32 target;
+  F32 rate;
+  F32 epsilon;
+  B32 reset;
+};
+
+typedef struct UI_AnimNode UI_AnimNode;
+struct UI_AnimNode
+{
+  UI_AnimNode *slot_next;
+  UI_AnimNode *slot_prev;
+  UI_AnimNode *lru_next;
+  UI_AnimNode *lru_prev;
+  U64 first_touched_build_index;
+  U64 last_touched_build_index;
+  UI_Key key;
+  UI_AnimParams params;
+  F32 current;
+};
+
+typedef struct UI_AnimSlot UI_AnimSlot;
+struct UI_AnimSlot
+{
+  UI_AnimNode *first;
+  UI_AnimNode *last;
+};
+
+/////////////////////////////////////////////////////////////////////////////////////////
 // Generated Code
+
 // UI state stacks
 
 #include "generated/ui.meta.h"
@@ -606,6 +636,8 @@ internal void     ui_pop_corner_radius(void);
 #define UI_TextAlignment(v) DeferLoop(ui_push_text_alignment(v), ui_pop_text_alignment())
 
 //- rjf: stacks (compositions)
+#define UI_FixedPos(v)       DeferLoop((ui_push_fixed_x((v).x), ui_push_fixed_y((v).y)), (ui_pop_fixed_x(), ui_pop_fixed_y()))
+#define UI_FixedSize(v)      DeferLoop((ui_push_fixed_width((v).x), ui_push_fixed_height((v).y)), (ui_pop_fixed_width(), ui_pop_fixed_height()))
 #define UI_WidthFill         UI_PrefWidth(ui_pct(1.f, 0.f))
 #define UI_HeightFill        UI_PrefHeight(ui_pct(1.f, 0.f))
 #define UI_Rect(r)           DeferLoop(ui_push_rect(r), ui_pop_rect())
@@ -633,24 +665,33 @@ struct UI_BoxHashSlot
 typedef struct UI_State UI_State;
 struct UI_State
 {
-  // Main arena
+  // main arena
   Arena                *arena;
 
-  // Build arena
+  // build arena
   Arena                *build_arenas[2];
   U64                  build_index;
 
-  // Box Cache
+  // box Cache
   UI_Box               *first_free_box;
   U64                  box_table_size;
   UI_BoxHashSlot       *box_table;
 
-  // Build phase output
+  // anim cache
+  UI_AnimNode          *free_anim_node;
+  UI_AnimNode          *lru_anim_node;
+  UI_AnimNode          *mru_anim_node;
+  U64                  anim_slots_count;
+  UI_AnimSlot          *anim_slots;
+
+  // build phase output
   UI_Box               *root;
+  UI_Box               *tooltip_root;
+  UI_Box               *ctx_menu_root;
   U64                  build_box_count;
   U64                  last_build_box_count;
 
-  // Build parameters
+  // build parameters
   UI_IconInfo          icon_info;
   UI_WidgetPaletteInfo widget_palette_info;
   UI_AnimationInfo     animation_info;
@@ -660,11 +701,10 @@ struct UI_State
   F32                  default_animation_rate;
   UI_EventList         *events;
 
-  // User interaction state
+  // user interaction state
   UI_Key               hot_box_key;
   UI_Key               active_box_key[UI_MouseButtonKind_COUNT];
   UI_Key               drop_hot_box_key;
-  // Drag
   Vec2F32              drag_start_mouse;
   Arena                *drag_state_arena;
   String8              drag_state_data;
@@ -672,7 +712,11 @@ struct UI_State
   UI_Key               press_key_history[UI_MouseButtonKind_COUNT][3];
   U64                  last_time_mousemoved_us;
 
-  // Build phase stacks
+  // tooltip state
+  F32                  tooltip_open_t;
+  B32                  tooltip_open;
+
+  // build phase stacks
   UI_DeclStackNils;
   UI_DeclStacks;
 };
@@ -842,6 +886,18 @@ internal UI_Palette *      ui_build_palette_(UI_Palette *base, UI_Palette *overr
 //~ rjf: User Interaction
 
 internal UI_Signal ui_signal_from_box(UI_Box *box);
+
+/////////////////////////////////////////////////////////////////////////////////////////
+//~ rjf: Animation Cache Interaction API
+
+read_only global UI_AnimNode ui_nil_anim_node =
+{
+  &ui_nil_anim_node,
+  &ui_nil_anim_node,
+};
+
+internal F32 ui_anim_(UI_Key key, UI_AnimParams *params);
+#define ui_anim(key, target_val, ...) ui_anim_((key), &(UI_AnimParams){.target = (target_val), .rate = (ui_state->default_animation_rate), __VA_ARGS__})
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Globals

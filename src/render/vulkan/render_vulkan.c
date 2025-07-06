@@ -4883,6 +4883,12 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
                               VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
   }
 
+  // reset per-frame index
+  wnd->ui_group_index = 0;
+  wnd->ui_pass_index = 0;
+  wnd->geo2d_pass_index = 0;
+  wnd->geo3d_pass_index = 0;
+
   r_vulkan_push_cmd(frame->cmd_buf);
 }
 
@@ -5074,13 +5080,6 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
   //          to multiple command lists
   //          Recording commands is a CPU intensive operation and no driver threads come to reuse
 
-  // idx/offset for dynamic buffer
-  U64 ui_group_idx = 0; // rect ubo is per group
-  U64 ui_pass_idx = 0;
-  // NOTE(k): geo2d ubo is per geo3d pass, rect ubo is per group
-  U64 geo2d_pass_idx = 0;
-  // NOTE(k): geo3d ubo is per geo3d pass, rect ubo is per group
-  U64 geo3d_pass_idx = 0;
 
   // TODO(XXX): remove this local_persist
   local_persist B32 first_submit = 1;
@@ -5099,6 +5098,11 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
     first_submit = 0;
   }
 
+  U64 ui_group_index = wnd->ui_group_index;
+  U64 ui_pass_index = wnd->ui_pass_index;
+  U64 geo2d_pass_index = wnd->geo2d_pass_index;
+  U64 geo3d_pass_index = wnd->geo3d_pass_index;
+
   // Do passing
   for(R_PassNode *pass_n = passes->first; pass_n != 0; pass_n = pass_n->next)
   {
@@ -5108,6 +5112,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
       case R_PassKind_UI:
       {
         ProfBegin("ui_pass");
+        Assert(ui_pass_index < MAX_RECT_PASS);
         VkRenderingAttachmentInfo color_attachment_info = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
         color_attachment_info.imageView = render_targets->stage_color_image.view;
         color_attachment_info.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
@@ -5141,7 +5146,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
         vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, wnd->pipelines.rect.h);
 
         // unpack inst buffer
-        R_Vulkan_Buffer *inst_buffer = &frame->inst_buffer_rect[ui_pass_idx];
+        R_Vulkan_Buffer *inst_buffer = &frame->inst_buffer_rect[ui_pass_index];
 
         // Draw each group
         // Rects in the same group share some features
@@ -5159,6 +5164,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
             MemoryCopy(dst_ptr, batch->v.v, batch->v.byte_count);
             inst_idx += batch->v.byte_count / sizeof(R_Rect2DInst);
           }
+
           // Bind instance buffer
           vkCmdBindVertexBuffers(cmd_buf, 0, 1, &inst_buffer->h, &(VkDeviceSize){inst_buffer_off});
 
@@ -5195,8 +5201,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
             }break;
           }
 
-          //~ Bind uniform buffer
           ///////////////////////////////////////////////////////////////////////////////
+          //~ Bind uniform buffer
 
           // Upload uniforms
           R_Vulkan_UBO_Rect uniforms = {0};
@@ -5214,7 +5220,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           uniforms.xform_scale.x = length_2f32(xform_2x2_row0);
           uniforms.xform_scale.y = length_2f32(xform_2x2_row1);
 
-          U32 uniform_buffer_offset = ui_group_idx * uniform_buffer->stride;
+          U32 uniform_buffer_offset = ui_group_index * uniform_buffer->stride;
           MemoryCopy((U8 *)uniform_buffer->buffer.mapped + uniform_buffer_offset, &uniforms, sizeof(R_Vulkan_UBO_Rect));
           vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, wnd->pipelines.rect.layout, 0, 1, &uniform_buffer->set.h, 1, &uniform_buffer_offset);
 
@@ -5252,9 +5258,10 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           U64 inst_count = batches->byte_count / batches->bytes_per_inst;
           vkCmdDraw(cmd_buf, 4, inst_count, 0, 0);
 
-          ui_group_idx++;
+          ui_group_index++;
         }
         vkCmdEndRendering(cmd_buf);
+        ui_pass_index++;
         ProfEnd();
       }break;
       case R_PassKind_Blur: {NotImplemented;}break;
@@ -5591,7 +5598,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
       case R_PassKind_Geo2D:
       {
         ProfBegin("geo2d pass");
-        Assert(geo2d_pass_idx < MAX_GEO2D_PASS);
+        Assert(geo2d_pass_index < MAX_GEO2D_PASS);
 
         // unpack params
         R_PassParams_Geo2D *params = pass->params_geo2d;
@@ -5605,10 +5612,10 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
         // unpack & upload buffer and its offset
 
         // inst buffer
-        R_Vulkan_Buffer *inst_buffer = &frame->inst_buffer_mesh2d[geo2d_pass_idx];
+        R_Vulkan_Buffer *inst_buffer = &frame->inst_buffer_mesh2d[geo2d_pass_index];
         // ubo
         R_Vulkan_UBOBuffer *ubo_buffer = &frame->ubo_buffers[R_Vulkan_UBOTypeKind_Geo2D];
-        U32 ubo_buffer_offset = geo2d_pass_idx * ubo_buffer->stride;
+        U32 ubo_buffer_offset = geo2d_pass_index * ubo_buffer->stride;
         U8 *ubo_dst = (U8*)ubo_buffer->buffer.mapped + ubo_buffer_offset;
 
         // upload ubo buffer to gpu
@@ -5800,13 +5807,13 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           // end drawing
           vkCmdEndRendering(cmd_buf);
         }
-        geo2d_pass_idx++;
+        geo2d_pass_index++;
         ProfEnd();
       }break;
       case R_PassKind_Geo3D: 
       {
         ProfBegin("geo3d pass");
-        Assert(geo3d_pass_idx < MAX_GEO3D_PASS);
+        Assert(geo3d_pass_index < MAX_GEO3D_PASS);
 
         // Unpack params
         R_PassParams_Geo3D *params = pass->params_geo3d;
@@ -5825,49 +5832,49 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
         // unpack all kinds of buffer offsets
 
         // inst buffer
-        R_Vulkan_Buffer *inst_buffer = &frame->inst_buffer_mesh3d[geo3d_pass_idx];
+        R_Vulkan_Buffer *inst_buffer = &frame->inst_buffer_mesh3d[geo3d_pass_index];
 
         // geo3d ubo
         // NOTE(k): Geo3d uniform is per Geo3D pass unlike rect pass which is per group
         R_Vulkan_UBOBuffer *geo3d_ubo_buffer = &frame->ubo_buffers[R_Vulkan_UBOTypeKind_Geo3D];
-        U32 geo3d_ubo_buffer_off = geo3d_pass_idx * geo3d_ubo_buffer->stride;
+        U32 geo3d_ubo_buffer_off = geo3d_pass_index * geo3d_ubo_buffer->stride;
         U8 *geo3d_ubo_dst = (U8*)geo3d_ubo_buffer->buffer.mapped + geo3d_ubo_buffer_off;
 
         // tile frustum ubo
         R_Vulkan_UBOBuffer *tile_frustum_ubo_buffer = &frame->ubo_buffers[R_Vulkan_UBOTypeKind_Geo3D_TileFrustum];
-        U32 tile_frustum_ubo_buffer_off = geo3d_pass_idx * tile_frustum_ubo_buffer->stride;
+        U32 tile_frustum_ubo_buffer_off = geo3d_pass_index * tile_frustum_ubo_buffer->stride;
         U8 *tile_frustum_ubo_dst = (U8*)tile_frustum_ubo_buffer->buffer.mapped + tile_frustum_ubo_buffer_off;
 
         // light culling ubo
         R_Vulkan_UBOBuffer *light_culling_ubo_buffer = &frame->ubo_buffers[R_Vulkan_UBOTypeKind_Geo3D_LightCulling];
-        U32 light_culling_ubo_buffer_off = geo3d_pass_idx * light_culling_ubo_buffer->stride;
+        U32 light_culling_ubo_buffer_off = geo3d_pass_index * light_culling_ubo_buffer->stride;
         U8 *light_culling_ubo_dst = (U8*)light_culling_ubo_buffer->buffer.mapped + light_culling_ubo_buffer_off;
 
         // lights sbo
         R_Vulkan_SBOBuffer *lights_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_Lights];
-        U32 lights_sbo_buffer_off = geo3d_pass_idx*lights_sbo_buffer->stride;
+        U32 lights_sbo_buffer_off = geo3d_pass_index*lights_sbo_buffer->stride;
         U8 *lights_sbo_dst = (U8*)lights_sbo_buffer->buffer.mapped + lights_sbo_buffer_off;
 
         // tiles sbo (device local)
         R_Vulkan_SBOBuffer *tiles_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_Tiles];
-        U32 tiles_sbo_buffer_off = geo3d_pass_idx * tiles_sbo_buffer->stride;
+        U32 tiles_sbo_buffer_off = geo3d_pass_index * tiles_sbo_buffer->stride;
 
         // light indices sbo (device local)
         R_Vulkan_SBOBuffer *light_indices_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_LightIndices];
-        U32 light_indices_sbo_buffer_off = geo3d_pass_idx * light_indices_sbo_buffer->stride;
+        U32 light_indices_sbo_buffer_off = geo3d_pass_index * light_indices_sbo_buffer->stride;
 
         // tile lights sbo (deviec local)
         R_Vulkan_SBOBuffer *tile_lights_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_TileLights];
-        U32 tile_lights_sbo_buffer_off = geo3d_pass_idx * tile_lights_sbo_buffer->stride;
+        U32 tile_lights_sbo_buffer_off = geo3d_pass_index * tile_lights_sbo_buffer->stride;
 
         // joints sbo
         R_Vulkan_SBOBuffer *joints_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_Joints];
-        U32 joints_sbo_buffer_off = geo3d_pass_idx*MAX_JOINTS_PER_PASS * sizeof(R_Vulkan_SBO_Geo3D_Joint);
+        U32 joints_sbo_buffer_off = geo3d_pass_index*MAX_JOINTS_PER_PASS * sizeof(R_Vulkan_SBO_Geo3D_Joint);
         U8 *joints_sbo_dst = (U8*)(joints_sbo_buffer->buffer.mapped) + joints_sbo_buffer_off;
 
         // materials sbo
         R_Vulkan_SBOBuffer *materials_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_Materials];
-        U32 materials_sbo_buffer_off = geo3d_pass_idx*MAX_MATERIALS_PER_PASS * sizeof(R_Vulkan_SBO_Geo3D_Material); 
+        U32 materials_sbo_buffer_off = geo3d_pass_index*MAX_MATERIALS_PER_PASS * sizeof(R_Vulkan_SBO_Geo3D_Material); 
         U8 *materials_sbo_dst = (U8*)(materials_sbo_buffer->buffer.mapped) + materials_sbo_buffer_off;
 
         /////////////////////////////////////////////////////////////////////////////////
@@ -6418,12 +6425,17 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           // end rendering
           vkCmdEndRendering(cmd_buf);
         }
-        geo3d_pass_idx++;
+        geo3d_pass_index++;
         ProfEnd();
       }break;
       default: {InvalidPath;}break;
     }
   }
+
+  wnd->ui_group_index = ui_group_index;
+  wnd->ui_pass_index = ui_pass_index;
+  wnd->geo2d_pass_index = geo2d_pass_index;
+  wnd->geo3d_pass_index = geo3d_pass_index;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

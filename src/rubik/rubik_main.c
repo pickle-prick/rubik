@@ -8,6 +8,7 @@
 
 #define BUILD_TITLE          "Rubik"
 #define OS_FEATURE_GRAPHICAL 1
+// TODO: required for linkage for now
 #define OS_FEATURE_AUDIO     1
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -96,7 +97,7 @@ entry_point(CmdLine *cmd_line)
   {
     rk_register_function(rk_scene_function_table[i].name, rk_scene_function_table[i].fn);
   }
-  RK_Scene *default_scene = s5_default();
+  RK_Scene *default_scene = de_default();
   // RK_Scene *default_scene = rk_scene_from_tscn(str8_lit("./src/rubik/scenes/4/default.tscn"));
   rk_state->active_scene = default_scene;
 

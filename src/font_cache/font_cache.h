@@ -178,7 +178,7 @@ internal F_Tag f_tag_from_path(String8 path);
 
 internal F_Hash2StyleRasterCacheNode *f_hash2style_from_tag_size_flags(F_Tag tag, F32 size, F_RasterFlags flags);
 internal F_Run f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32 tab_size_px, F_RasterFlags flags, String8 string);
-// internal String8List f_wrapped_string_lines_from_font_size_string_max(Arena *arena, F_Tag font, F32 size, F32 base_align_px, F32 tab_size_px, String8 string, F32 max);
+internal String8List f_wrapped_string_lines_from_font_size_string_max(Arena *arena, F_Tag font, F32 size, F32 base_align_px, F32 tab_size_px, String8 string, F32 max);
 internal Vec2F32 f_dim_from_tag_size_string(F_Tag tag, F32 size, F32 base_align_px, F32 tab_size_px, String8 string);
 // internal Vec2F32 f_dim_from_tag_size_string_list(F_Tag tag, F32 size, F32 base_align_px, F32 tab_size_px, String8List list);
 // internal F32 f_column_size_from_tag_size(F_Tag tag, F32 size);

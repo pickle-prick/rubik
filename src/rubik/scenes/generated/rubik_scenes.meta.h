@@ -7,4 +7,5 @@
 #define RUBIK_SCENES_META_H
 
 #include "../duskers/duskers.h"
+#include "../dice/dice.h"
 #endif // RUBIK_SCENES_META_H

@@ -146,6 +146,8 @@ ui_state_alloc(void)
   ui->drag_state_arena = arena_alloc();
   ui->box_table_size   = 4096;
   ui->box_table        = push_array(arena, UI_BoxHashSlot, ui->box_table_size);
+  ui->anim_slots_count = 4096;
+  ui->anim_slots       = push_array(arena, UI_AnimSlot, ui->anim_slots_count);
 
   UI_InitStackNils(ui);
   return ui;
@@ -440,6 +442,28 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
     ui_state->default_animation_rate = 1 - pow_f32(2, (-50.f * ui_state->animation_dt));
     ui_state->last_build_box_count = ui_state->build_box_count;
     ui_state->build_box_count = 0;
+    ui_state->tooltip_open = 0;
+  }
+
+  // prune unused animation nodes
+  ProfScope("ui prune unused animation nodes")
+  {
+    for(UI_AnimNode *n = ui_state->lru_anim_node, *next = &ui_nil_anim_node; n != &ui_nil_anim_node && n != 0; n = next)
+    {
+      next = n->lru_next;
+      if(n->last_touched_build_index+2 < ui_state->build_index)
+      {
+        U64 slot_idx = n->key.u64[0]%ui_state->anim_slots_count;
+        UI_AnimSlot *slot = &ui_state->anim_slots[slot_idx];
+        DLLRemove_NPZ(&ui_nil_anim_node, slot->first, slot->last, n, slot_next, slot_prev);;
+        DLLRemove_NPZ(&ui_nil_anim_node, ui_state->lru_anim_node, ui_state->mru_anim_node, n, lru_next, lru_prev);
+        SLLStackPush_N(ui_state->free_anim_node, n, slot_next);
+      }
+      else
+      {
+        break;
+      }
+    }
   }
 
   //- k: detect mouse-moves
@@ -476,13 +500,15 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
     MemoryCopyStruct(&ui_state->animation_info, animation_info);
   }
 
-  // TODO: focus navigation
+  // next-default-nav-focus keys => current-default-nav-focus-keys
   {
     for(U64 slot = 0; slot < ui_state->box_table_size; slot++)
     {
-      for(UI_Box *box = ui_state->box_table[slot].hash_first; !ui_box_is_nil(box); box = box->hash_next)
+      for(UI_Box *box = ui_state->box_table[slot].hash_first;
+          !ui_box_is_nil(box);
+          box = box->hash_next)
       {
-        box->default_nav_focus_hot_key    = box->default_nav_focus_next_hot_key;
+        box->default_nav_focus_hot_key = box->default_nav_focus_next_hot_key;
         box->default_nav_focus_active_key = box->default_nav_focus_next_active_key;
       }
     }
@@ -500,9 +526,17 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
     ui_set_next_focus_hot(UI_FocusKind_On);
     ui_set_next_focus_active(UI_FocusKind_On);
     ui_set_next_flags(UI_BoxFlag_DefaultFocusNav);
+
     UI_Box *root = ui_build_box_from_stringf(0, "###%I64x", os_wnd.u64[0]);
     ui_push_parent(root);
     ui_state->root = root;
+  }
+
+  // setup parent box for tooltip
+  UI_FixedX(ui_state->mouse.x+15.f) UI_FixedY(ui_state->mouse.y+15.f) UI_PrefWidth(ui_children_sum(1.f)) UI_PrefHeight(ui_children_sum(1.f))
+  {
+    ui_set_next_child_layout_axis(Axis2_Y);
+    ui_state->tooltip_root = ui_build_box_from_stringf(0, "###tooltip_%I64x", os_wnd.u64[0]);
   }
 
   //- rjf: reset hot if we don't have an active widget
@@ -521,7 +555,25 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
     }
   }
 
-  // Reset active keys if they have been pruned
+  // reset drop-hot key
+  {
+    ui_state->drop_hot_box_key = ui_key_zero();
+  }
+
+  // reset active if active box is disabled
+  for EachEnumVal(UI_MouseButtonKind, k)
+  {
+    if(!ui_key_match(ui_state->active_box_key[k], ui_key_zero()))
+    {
+      UI_Box *box = ui_box_from_key(ui_state->active_box_key[k]);
+      if(!ui_box_is_nil(box) && box->flags & UI_BoxFlag_Disabled)
+      {
+        ui_state->active_box_key[k] = ui_key_zero();
+      }
+    }
+  }
+
+  // reset active keys if they have been pruned
   for EachEnumVal(UI_MouseButtonKind, k)
   {
     UI_Box *box = ui_box_from_key(ui_state->active_box_key[k]);
@@ -599,6 +651,19 @@ ui_end_build(void)
     F32 slug_rate = 1 - pow_f32(2, (-15.f * ui_state->animation_dt));
     F32 slaf_rate = 1 - pow_f32(2, (-8.f * ui_state->animation_dt));
 
+    for(U64 slot_idx = 0; slot_idx < ui_state->anim_slots_count; slot_idx += 1)
+    {
+      for(UI_AnimNode *n = ui_state->anim_slots[slot_idx].first;
+          n != &ui_nil_anim_node && n != 0;
+          n = n->slot_next)
+      {
+        n->current += (n->params.target - n->current) * n->params.rate;
+        // ui_state->is_animating = (ui_state->is_animating || abs_f32(n->params.target - n->current) > n->params.epsilon);
+      }
+    }
+
+    ui_state->tooltip_open_t += ((F32)!!ui_state->tooltip_open - ui_state->tooltip_open_t) * ui_state->animation_info.tooltip_animation_rate;
+
     for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
     {
       for(UI_Box *b = ui_state->box_table[slot_idx].hash_first; !ui_box_is_nil(b); b = b->hash_next)
@@ -611,10 +676,10 @@ ui_end_build(void)
         B32 is_focus_active = !!(b->flags & UI_BoxFlag_FocusActive) && !(b->flags & UI_BoxFlag_FocusActiveDisabled);
 
         // determine rates
-        F32 hot_rate      = ui_state->animation_info.flags & UI_AnimationInfoFlag_HotAnimations      ? fast_rate : 1;
-        F32 active_rate   = ui_state->animation_info.flags & UI_AnimationInfoFlag_ActiveAnimations   ? fast_rate : 1;
-        F32 disabled_rate = ui_state->animation_info.flags & UI_AnimationInfoFlag_HotAnimations      ? slow_rate : 1;
-        F32 focus_rate    = ui_state->animation_info.flags & UI_AnimationInfoFlag_FocusAnimations    ? fast_rate : 1;
+        F32 hot_rate      = ui_state->animation_info.hot_animation_rate;
+        F32 active_rate   = ui_state->animation_info.active_animation_rate;
+        F32 disabled_rate = slow_rate;
+        F32 focus_rate    = ui_state->animation_info.focus_animation_rate;
 
         // Animate interaction transition states
         b->hot_t          += hot_rate * ((F32)is_hot - b->hot_t);
@@ -1111,6 +1176,7 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
     box->corner_radii[Corner_10] = ui_state->corner_radius_10_stack.top->v;
     box->corner_radii[Corner_11] = ui_state->corner_radius_11_stack.top->v;
     box->transparency            = ui_state->transparency_stack.top->v;
+    box->squish                  = ui_state->squish_stack.top->v;
     box->text_padding            = ui_state->text_padding_stack.top->v;
     box->hover_cursor            = ui_state->hover_cursor_stack.top->v;
     box->custom_draw             = 0;
@@ -1146,7 +1212,7 @@ ui_build_box_from_string(UI_BoxFlags flags, String8 string)
   UI_Box *box = ui_build_box_from_key(flags, key);
   // TODO: maybe we don't need this field
   box->indentifier = push_str8_copy(ui_build_arena(), string);
-  if(flags & UI_BoxFlag_DrawText)
+  if(box->flags & UI_BoxFlag_DrawText)
   {
     ui_box_equip_display_string(box, string);
   }
@@ -1570,6 +1636,30 @@ ui_signal_from_box(UI_Box *box)
   }
 
   //////////////////////////////
+  //- rjf: mouse is over this box's rect, drop site, no other drop hot key? -> set drop hot key
+  //
+  {
+    if(box->flags & UI_BoxFlag_DropSite &&
+       contains_2f32(rect, ui_state->mouse) &&
+       (ui_key_match(ui_state->drop_hot_box_key, ui_key_zero()) || ui_key_match(ui_state->drop_hot_box_key, box->key)))
+    {
+      ui_state->drop_hot_box_key = box->key;
+    }
+  }
+
+  //////////////////////////////
+  //- rjf: mouse is not over this box's rect, but this is the drop hot key? -> zero drop hot key
+  //
+  {
+    if(box->flags & UI_BoxFlag_DropSite &&
+       !contains_2f32(rect, ui_state->mouse) &&
+       ui_key_match(ui_state->drop_hot_box_key, box->key))
+    {
+      ui_state->drop_hot_box_key = ui_key_zero();
+    }
+  }
+
+  //////////////////////////////
   //- rjf: active -> dragging
 
   if(box->flags & UI_BoxFlag_MouseClickable)
@@ -1617,6 +1707,71 @@ ui_signal_from_box(UI_Box *box)
   }
 
   return sig;
+}
+
+////////////////////////////////
+//~ rjf: Animation Cache Interaction API
+
+internal F32
+ui_anim_(UI_Key key, UI_AnimParams *params)
+{
+  // rjf: get animation cache node
+  UI_AnimNode *node = &ui_nil_anim_node;
+  if(ui_state != 0)
+  {
+    U64 slot_idx = key.u64[0]%ui_state->anim_slots_count;
+    UI_AnimSlot *slot = &ui_state->anim_slots[slot_idx];
+    for(UI_AnimNode *n = slot->first; n != &ui_nil_anim_node && n != 0; n = n->slot_next)
+    {
+      if(ui_key_match(n->key, key))
+      {
+        node = n;
+        break;
+      }
+    }
+    if(node == &ui_nil_anim_node)
+    {
+      node = ui_state->free_anim_node;
+      if(node != 0)
+      {
+        SLLStackPop_N(ui_state->free_anim_node, slot_next);
+      }
+      else
+      {
+        node = push_array(ui_state->arena, UI_AnimNode, 1);
+      }
+      node->first_touched_build_index = ui_state->build_index;
+      node->key = key;
+      MemoryCopyStruct(&node->params, params);
+      node->current = params->initial;
+      DLLPushBack_NPZ(&ui_nil_anim_node, slot->first, slot->last, node, slot_next, slot_prev);
+    }
+    else
+    {
+      DLLRemove_NPZ(&ui_nil_anim_node, ui_state->lru_anim_node, ui_state->mru_anim_node, node, lru_next, lru_prev);
+    }
+  }
+  
+  // rjf: touch node & update parameters - grab current
+  if(node != &ui_nil_anim_node)
+  {
+    node->last_touched_build_index = ui_state->build_index;
+    DLLPushBack_NPZ(&ui_nil_anim_node, ui_state->lru_anim_node, ui_state->mru_anim_node, node, lru_next, lru_prev);
+    if(params->reset)
+    {
+      node->current = params->initial;
+    }
+    MemoryCopyStruct(&node->params, params);
+    if(node->params.epsilon == 0)
+    {
+      node->params.epsilon = 0.005f;
+    }
+    if(node->params.rate == 1 || abs_f32(node->current - node->params.target) < abs_f32(node->params.epsilon))
+    {
+      node->current = node->params.target;
+    }
+  }
+  return node->current;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

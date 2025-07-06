@@ -37,7 +37,7 @@ UI_StackTable:
   { Palette                            palette                      `UI_Palette*    `     `&ui_g_nil_palette`                 }
   
   //- rjf: squish
-  // { Squish                             squish                        F32                   0                                  }
+  { Squish                             squish                        F32                   0                                  }
   
   //- rjf: hover cursor
   { HoverCursor                        hover_cursor                  OS_Cursor             OS_Cursor_Pointer                  }

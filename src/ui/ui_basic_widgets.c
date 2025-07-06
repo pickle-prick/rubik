@@ -87,6 +87,33 @@ ui_labelf(char *fmt, ...)
   return result;
 }
 
+internal void
+ui_label_multiline(F32 max, String8 string)
+{
+  Temp scratch = scratch_begin(0, 0);
+  ui_set_next_child_layout_axis(Axis2_Y);
+  ui_set_next_pref_height(ui_children_sum(1));
+  UI_Box *box = ui_build_box_from_key(0, ui_key_zero());
+  String8List lines = f_wrapped_string_lines_from_font_size_string_max(scratch.arena, ui_top_font(), ui_top_font_size(), 0, ui_top_tab_size(), string, max);
+  for(String8Node *n = lines.first; n != 0; n = n->next)
+  {
+    ui_label(n->string);
+  }
+  scratch_end(scratch);
+}
+
+internal void
+ui_label_multilinef(F32 max, char *fmt, ...)
+{
+  Temp scratch = scratch_begin(0, 0);
+  va_list args;
+  va_start(args, fmt);
+  String8 string = push_str8fv(scratch.arena, fmt, args);
+  va_end(args);
+  ui_label_multiline(max, string);
+  scratch_end(scratch);
+}
+
 internal UI_Signal
 ui_spacer(UI_Size size)
 {
@@ -971,4 +998,64 @@ ui_f32_edit(F32 *n, F32 min, F32 max, TxtPt *cursor, TxtPt *mark, U8 *edit_buffe
   ui_pop_focus_hot();
   ui_pop_focus_active();
   return sig;
+}
+
+// tooltips
+internal void
+ui_tooltip_begin_base(void)
+{
+  ui_state->tooltip_open = 1;
+  ui_push_parent(ui_state->root);
+  ui_push_parent(ui_state->tooltip_root);
+  ui_push_flags(0);
+  ui_push_text_raster_flags(ui_bottom_text_raster_flags());
+  ui_push_font_size(ui_bottom_font_size());
+}
+
+internal void
+ui_tooltip_end_base(void)
+{
+  ui_pop_font_size();
+  ui_pop_text_raster_flags();
+  ui_pop_flags();
+  ui_pop_parent();
+  ui_pop_parent();
+}
+
+internal void
+ui_tooltip_begin(void)
+{
+  ui_tooltip_begin_base();
+  ui_set_next_squish(0.1f-ui_state->tooltip_open_t*0.1f);
+  ui_set_next_transparency(1-ui_state->tooltip_open_t);
+  UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBackgroundBlur|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_SquishAnchored)
+    UI_PrefWidth(ui_children_sum(1))
+    UI_PrefHeight(ui_children_sum(1))
+    UI_CornerRadius(ui_top_font_size()*0.25f)
+    ui_column_begin();
+  UI_PrefWidth(ui_px(0, 1)) ui_spacer(ui_em(1.f, 1.f));
+  UI_PrefWidth(ui_children_sum(1))
+    UI_PrefHeight(ui_children_sum(1))
+    ui_row_begin();
+  UI_PrefHeight(ui_px(0, 1)) ui_spacer(ui_em(1.f, 1.f));
+  UI_PrefWidth(ui_children_sum(1))
+    UI_PrefHeight(ui_children_sum(1))
+    ui_column_begin();
+  ui_push_pref_width(ui_text_dim(10.f, 1.f));
+  ui_push_pref_height(ui_em(2.f, 1.f));
+  ui_push_text_alignment(UI_TextAlign_Center);
+}
+
+internal void
+ui_tooltip_end(void)
+{
+  ui_pop_text_alignment();
+  ui_pop_pref_width();
+  ui_pop_pref_height();
+  ui_column_end();
+  UI_PrefHeight(ui_px(0, 1)) ui_spacer(ui_em(1.f, 1.f));
+  ui_row_end();
+  UI_PrefWidth(ui_px(0, 1)) ui_spacer(ui_em(1.f, 1.f));
+  ui_column_end();
+  ui_tooltip_end_base();
 }

@@ -45,6 +45,8 @@ rk_ui_draw()
 {
   Temp scratch = scratch_begin(0,0);
 
+  F32 box_squish_epsilon = 0.001f;
+
   // DEBUG mouse
   if(0)
   {
@@ -57,9 +59,32 @@ rk_ui_draw()
   {
     UI_BoxRec rec = ui_box_rec_df_post(box, &ui_nil_box);
 
+    // push transparency
     if(box->transparency != 0)
     {
       d_push_transparency(box->transparency);
+    }
+
+    // push squish
+    if(box->squish > box_squish_epsilon)
+    {
+      Vec2F32 box_dim = dim_2f32(box->rect);
+      Vec2F32 anchor_off = {0};
+      if(box->flags & UI_BoxFlag_SquishAnchored)
+      {
+        anchor_off.x = box_dim.x/2.0;
+      }
+      else
+      {
+        anchor_off.y = -box_dim.y/8.0;
+      }
+
+      Mat3x3F32 box2origin_xform = make_translate_3x3f32(v2f32(-box->rect.x0 - box_dim.x/2 + anchor_off.x, -box->rect.y0 + anchor_off.y));
+      Mat3x3F32 scale_xform = make_scale_3x3f32(v2f32(1-box->squish, 1-box->squish));
+      Mat3x3F32 origin2box_xform = make_translate_3x3f32(v2f32(box->rect.x0 + box_dim.x/2 - anchor_off.x, box->rect.y0 - anchor_off.y));
+      Mat3x3F32 xform = mul_3x3f32(origin2box_xform, mul_3x3f32(scale_xform, box2origin_xform));
+      d_push_xform2d(xform);
+      d_push_tex2d_sample_kind(R_Tex2DSampleKind_Linear);
     }
 
     // draw drop_shadw
@@ -228,6 +253,7 @@ rk_ui_draw()
       }
     }
 
+    // push clip
     if(box->flags & UI_BoxFlag_Clip)
     {
       Rng2F32 top_clip = d_top_clip();
@@ -347,6 +373,13 @@ rk_ui_draw()
           color.w *= b->disabled_t;
           R_Rect2DInst *inst = d_rect(b->rect, color, 0, 0, 1);
           MemoryCopyArray(inst->corner_radii, b->corner_radii);
+        }
+
+        // rjf: pop squish
+        if(b->squish > box_squish_epsilon)
+        {
+          d_pop_xform2d();
+          d_pop_tex2d_sample_kind();
         }
 
         // k: pop transparency
@@ -822,6 +855,33 @@ rk_init(OS_Handle os_wnd, R_Handle r_wnd)
 
   RK_InitStacks(rk_state)
   RK_InitStackNils(rk_state)
+}
+
+internal B32
+rk_drag_is_active(void)
+{
+  return ((rk_state->drag_drop_state == RK_DragDropState_Dragging) ||
+          (rk_state->drag_drop_state == RK_DragDropState_Dropping));
+}
+
+internal void
+rk_drag_begin(U64 slot, void *src)
+{
+  rk_state->drag_drop_state = RK_DragDropState_Dragging;
+  rk_state->drag_drop_slot = slot;
+  rk_state->drag_drop_src = src;
+}
+
+internal B32
+rk_drag_drop(void)
+{
+  B32 ret = 0;
+  if(rk_state->drag_drop_state == RK_DragDropState_Dropping)
+  {
+    ret = 1;
+    rk_state->drag_drop_state = RK_DragDropState_Null;
+  }
+  return ret;
 }
 
 internal Arena *
@@ -2994,7 +3054,7 @@ rk_frame(void)
   UI_EventList ui_events = {0};
   OS_Event *os_evt_first = rk_state->os_events.first;
   OS_Event *os_evt_opl = rk_state->os_events.last + 1;
-  for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
+  ProfScope("build ui events") for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
   {
     // if(os_window_is_focused(window))
     if(os_evt == 0) continue;
@@ -3108,12 +3168,12 @@ rk_frame(void)
     // Build animation info
     UI_AnimationInfo animation_info = {0};
     {
-      animation_info.flags |= UI_AnimationInfoFlag_HotAnimations;
-      animation_info.flags |= UI_AnimationInfoFlag_ActiveAnimations;
-      animation_info.flags |= UI_AnimationInfoFlag_FocusAnimations;
-      animation_info.flags |= UI_AnimationInfoFlag_TooltipAnimations;
-      animation_info.flags |= UI_AnimationInfoFlag_ContextMenuAnimations;
-      animation_info.flags |= UI_AnimationInfoFlag_ScrollingAnimations;
+      animation_info.hot_animation_rate      = rk_state->animation.fast_rate;
+      animation_info.active_animation_rate   = rk_state->animation.fast_rate;
+      animation_info.focus_animation_rate    = 1.f;
+      animation_info.tooltip_animation_rate  = rk_state->animation.fast_rate;
+      animation_info.menu_animation_rate     = rk_state->animation.fast_rate;
+      animation_info.scroll_animation_rate   = rk_state->animation.fast_rate;
     }
 
     // Begin & push initial stack values
@@ -3143,21 +3203,29 @@ rk_frame(void)
   ///////////////////////////////////////////////////////////////////////////////////////
   // process events for game logic
 
+  ProfScope("handle os events")
   {
-    OS_Event *os_evt_first = rk_state->os_events.first;
-    OS_Event *os_evt_opl = rk_state->os_events.last + 1;
-    for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
+    for(OS_Event *event = rk_state->os_events.first, *next = 0;
+        event != 0;
+        event = next)
     {
-      if(os_evt == 0) continue;
+      next = event->next;
       B32 taken = 0;
+
+      // try drag/drop drop-kickoff
+      if(rk_drag_is_active() && event->kind == OS_EventKind_Release && event->key == OS_Key_LeftMouseButton)
+      {
+        rk_state->drag_drop_state = RK_DragDropState_Dropping;
+      }
+
       // if(os_evt->kind == OS_EventKind_Text && os_evt->key == OS_Key_Space) {}
-      if(os_evt->key == OS_Key_S && os_evt->kind == OS_EventKind_Press && (os_evt->modifiers & OS_Modifier_Ctrl))
+      if(event->key == OS_Key_S && event->kind == OS_EventKind_Press && (event->modifiers & OS_Modifier_Ctrl))
       {
         rk_scene_to_tscn(scene);
         taken = 1;
       }
 
-      if(taken) os_eat_event(&rk_state->os_events, os_evt);
+      if(taken) os_eat_event(&rk_state->os_events, event);
     }
   }
 
@@ -3201,7 +3269,7 @@ rk_frame(void)
     RK_Node *root = rk_node_from_handle(&scene->root);
 
     // Pass 1
-    if(scene->update_fn)
+    ProfScope("scene update") if(scene->update_fn)
     {
       scene->update_fn(scene, &ctx);
     }
@@ -3232,8 +3300,7 @@ rk_frame(void)
     RK_Node **nodes_to_draw = push_array(scratch.arena, RK_Node*, drawable_cap);
     // TODO(XXX): debug only
     U64 node_count = 0;
-    ProfBegin("generic update");
-    while(node != 0)
+    ProfScope("generic update") while(node != 0)
     {
       node_count++;
       AssertAlways(*light_count < MAX_LIGHTS_PER_PASS);
@@ -3504,15 +3571,13 @@ rk_frame(void)
       }
       node = rec.next;
     }
-    ProfEnd();
     AssertAlways(rk_top_node_bucket()->node_count == node_count);
 
     // sorting if needed
     qsort(nodes_to_draw, drawable_count, sizeof(RK_Node*), rk_node2d_cmp_z_rev);
 
     // drawing
-    ProfBegin("main drawing");
-    for(U64 i = 0; i < drawable_count; i++)
+    ProfScope("main drawing") for(U64 i = 0; i < drawable_count; i++)
     {
       RK_Node *node = nodes_to_draw[i];
 
@@ -3529,7 +3594,7 @@ rk_frame(void)
         /////////////////////////////////////////////////////////////////////////////////
         // draw mesh 2d
 
-        RK_DrawNode *n = 0;
+        RK_DrawNode *dn = 0;
         Mat4x4F32 xform = {0};
         Mat4x4F32 xform_inv = {0};
 
@@ -3541,14 +3606,14 @@ rk_frame(void)
             // NOTE(k): don't add pos here, we are using xform to do translation
             Rng2F32 dst = rk_rect_from_sprite2d(sprite, v2f32(0,0));
             Rng2F32 src = r2f32p(0,0, 1,1);
-            n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), dst, src);
+            dn = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), dst, src);
             xform = node->fixed_xform;
             xform_inv = inverse_4x4f32(xform);
           }break;
           case RK_Sprite2DShapeKind_Circle:
           {
             F32 radius = sprite->size.circle.radius;
-            n = rk_drawlist_push_circle(rk_frame_arena(), rk_frame_drawlist(), radius, 69);
+            dn = rk_drawlist_push_circle(rk_frame_arena(), rk_frame_drawlist(), radius, 69);
             xform = make_rotate_4x4f32(v3f32(1,0,0), -0.25);
             xform = mul_4x4f32(node->fixed_xform, xform);
             xform_inv = inverse_4x4f32(xform);
@@ -3556,7 +3621,7 @@ rk_frame(void)
           default:{InvalidPath;}break;
         }
 
-        R_Mesh2DInst *inst = d_sprite(n->vertices, n->indices, n->vertices_buffer_offset, n->indices_buffer_offset, n->indice_count, n->topology, n->polygon, 0, tex, 1.);
+        R_Mesh2DInst *inst = d_sprite(dn->vertices, dn->indices, dn->vertices_buffer_offset, dn->indices_buffer_offset, dn->indice_count, dn->topology, dn->polygon, 0, tex, 1.);
         inst->key = node->key.u64[0];
         inst->xform = xform;
         inst->xform_inv = xform_inv;
@@ -3565,18 +3630,48 @@ rk_frame(void)
         inst->color = sprite->color;
         inst->draw_edge = sprite->draw_edge;
 
-        // if(rk_key_match(scene->hot_key, node->key) && (node->flags & RK_NodeFlag_DrawHotEffects))
-        // {
-        //   RK_DrawNode *n = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), dst, src, v4f32(1,0,0,1.));
+        // draw string
+        if(sprite->string.size > 0)
+        {
+          // NOTE(k): don't add pos here, we are using xform to do translation
+          Vec2F32 sprite_center = rk_center_from_sprite2d(sprite, v2f32(0,0));
+          F32 off_x = sprite_center.x;
+          F32 off_y = sprite_center.y;
+          F32 advance = 0;
+          for(D_FancyRunNode *rn = sprite->fancy_run_list.first; rn != 0; rn = rn->next)
+          {
+            F_Piece *piece_first = rn->v.run.pieces.v;
+            F_Piece *piece_opl = rn->v.run.pieces.v + rn->v.run.pieces.count;
 
-        //   R_Mesh2DInst *inst = d_sprite(n->vertices, n->indices, n->vertices_buffer_offset, n->indices_buffer_offset, n->indice_count, R_GeoTopologyKind_Triangles, R_GeoPolygonKind_Line, 0, r_handle_zero(), 3.);
-        //   inst->key = node->key.u64[0];
-        //   inst->xform = xform;
-        //   inst->xform_inv = xform_inv;
-        //   inst->has_texture = 0;
+            for(F_Piece *piece = piece_first; piece < piece_opl; piece++)
+            {
+              Rng2F32 dst = r2f32p(piece->rect.x0+off_x, piece->rect.y0+off_y, piece->rect.x1+off_x, piece->rect.y1+off_y);
+              Rng2F32 src = r2f32p(piece->subrect.x0, piece->subrect.y0, piece->subrect.x1, piece->subrect.y1);
+              src.x0 /= piece->texture_dim.x;
+              src.x1 /= piece->texture_dim.x;
+              src.y0 /= piece->texture_dim.y;
+              src.y1 /= piece->texture_dim.y;
+              Vec2F32 size = dim_2f32(dst);
+              if(size.x > 0 && size.y > 0)
+              {
+                RK_DrawNode *dn = rk_drawlist_push_rect(rk_frame_arena(), rk_frame_drawlist(), dst, src);
+                R_Mesh2DInst *inst = d_sprite(dn->vertices, dn->indices,
+                                              dn->vertices_buffer_offset, dn->indices_buffer_offset,
+                                              dn->indice_count, dn->topology, dn->polygon, 0, piece->texture, 1.);
+                inst->key = node->key.u64[0];
+                inst->xform = xform;
+                inst->xform_inv = xform_inv;
+                inst->has_texture = 1;
+                inst->has_color = 0;
+                // inst->color = sprite->color;
+                // inst->draw_edge = 0;
+              }
+              advance += piece->advance;
+            }
+          }
 
-        //   // n->color.w = mix_1f32(0., 0.1, node->hot_t);
-        // }
+          // d_truncated_fancy_run_list(transform2d->postion, &sprite->fancy_run_list, 100000.0, (F_Run){0});
+        }
       }
 
       // animated sprite2d
@@ -3757,7 +3852,6 @@ rk_frame(void)
       }
 
     }
-    ProfEnd();
   }
 
   // NOTE(k): there could be ui elements within node update
@@ -3780,27 +3874,30 @@ rk_frame(void)
   ///////////////////////////////////////////////////////////////////////////////////////
   // handle cursor (hide/show/wrap)
 
-  if(camera->hide_cursor && (!rk_state->cursor_hidden))
+  ProfScope("handle cursor")
   {
-    os_hide_cursor(rk_state->os_wnd);
-    rk_state->cursor_hidden = 1;
-  }
-  if(!camera->hide_cursor && rk_state->cursor_hidden)
-  {
-    os_show_cursor(rk_state->os_wnd);
-    rk_state->cursor_hidden = 0;
-  }
-  if(camera->lock_cursor)
-  {
-    Vec2F32 cursor = center_2f32(rk_state->window_rect);
-    os_wrap_cursor(rk_state->os_wnd, cursor.x, cursor.y);
-    rk_state->cursor = cursor;
+    if(camera->hide_cursor && (!rk_state->cursor_hidden))
+    {
+      os_hide_cursor(rk_state->os_wnd);
+      rk_state->cursor_hidden = 1;
+    }
+    if(!camera->hide_cursor && rk_state->cursor_hidden)
+    {
+      os_show_cursor(rk_state->os_wnd);
+      rk_state->cursor_hidden = 0;
+    }
+    if(camera->lock_cursor)
+    {
+      Vec2F32 cursor = center_2f32(rk_state->window_rect);
+      os_wrap_cursor(rk_state->os_wnd, cursor.x, cursor.y);
+      rk_state->cursor = cursor;
+    }
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // draw gizmo3d
 
-  if(!scene->omit_gizmo3d)
+  ProfScope("gizmo3d drawing") if(!scene->omit_gizmo3d)
   {
     if(active_node)
     {
@@ -4269,24 +4366,11 @@ rk_frame(void)
   rk_pop_scene();
   rk_pop_handle_seed();
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // concate draw buckets
-
-  D_Bucket *bucket = d_bucket_make();
-  ProfBegin("bucket making");
-  D_BucketScope(bucket)
+  // end drag/drop if needed (no code handled drop)
+  if(rk_state->drag_drop_state == RK_DragDropState_Dropping)
   {
-    // NOTE(k): check if there is anything in passes, we don't a empty geo pass (pass is not cheap)
-    if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo2D]))       {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo2D], 0);}
-    // TODO(XXX): only for test, make it composiable
-    d_edge(rk_state->time_in_seconds);
-    if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back]))  {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back], 0);}
-    if(!d_bucket_is_empty(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front])) {d_sub_bucket(rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front], 0);}
-    if(!d_bucket_is_empty(rk_state->bucket_rect))                              {d_sub_bucket(rk_state->bucket_rect, 0);}
-    d_crt(0.25, 1.15, rk_state->time_in_seconds);
-    d_noise(r2f32p(0,0,0,0), rk_state->time_in_seconds);
+    rk_state->drag_drop_state = RK_DragDropState_Null;
   }
-  ProfEnd();
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // submit work
@@ -4304,10 +4388,28 @@ rk_frame(void)
   {
     r_begin_frame();
     r_window_begin_frame(rk_state->os_wnd, rk_state->r_wnd);
-    d_submit_bucket(rk_state->os_wnd, rk_state->r_wnd, bucket);
+    for(U32 i = 0; i < RK_GeoBucketKind_COUNT; i++)
+    {
+      D_Bucket *bucket = rk_state->bucket_geo[i];
+      if(!d_bucket_is_empty(bucket))
+      {
+        d_submit_bucket(rk_state->os_wnd, rk_state->r_wnd, bucket);
+      }
+    }
+    if(!d_bucket_is_empty(rk_state->bucket_rect))
+    {
+      d_submit_bucket(rk_state->os_wnd, rk_state->r_wnd, rk_state->bucket_rect);
+    }
     rk_state->hot_pixel_key = r_window_end_frame(rk_state->r_wnd, rk_state->cursor);
     r_end_frame();
   }
+
+  {
+    // d_edge(rk_state->time_in_seconds);
+    // d_crt(0.25, 1.15, rk_state->time_in_seconds);
+    // d_noise(r2f32p(0,0,0,0), rk_state->time_in_seconds);
+  }
+
   ///////////////////////////////////////////////////////////////////////////////////////
   // wait if we still have some cpu time left
 
@@ -4315,9 +4417,23 @@ rk_frame(void)
   U64 frame_time_target_cap_us = (U64)(1000000/target_hz);
   U64 work_us = os_now_microseconds()-begin_time_us;
   rk_state->cpu_time_us = work_us;
-  while(work_us < frame_time_target_cap_us)
+  if(work_us < frame_time_target_cap_us)
   {
-    work_us = os_now_microseconds()-begin_time_us;
+    while(work_us < frame_time_target_cap_us)
+    {
+      // TODO: check if os supports ms granular sleep
+      if(1)
+      {
+        os_sleep_milliseconds((frame_time_target_cap_us-work_us)/1000);
+      }
+      work_us = os_now_microseconds()-begin_time_us;
+    }
+  }
+  else
+  {
+    // TODO(k): missed frame rate!
+    // TODO(k): proper logging
+    fprintf(stderr, "missed frame\n");
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -4607,10 +4723,12 @@ rk_sprite2d_equip_string(Arena *arena,
                          U64 tab_size,
                          F_RasterFlags text_raster_flags)
 {
+  String8 string_copied = push_str8_copy(arena, string);
+
   D_FancyStringNode fancy_string_n = {0};
   fancy_string_n.next = 0;
   fancy_string_n.v.font                    = font;
-  fancy_string_n.v.string                  = string;
+  fancy_string_n.v.string                  = string_copied;
   fancy_string_n.v.color                   = font_color;
   fancy_string_n.v.size                    = font_size;
   fancy_string_n.v.underline_thickness     = 0;
@@ -4621,7 +4739,7 @@ rk_sprite2d_equip_string(Arena *arena,
   fancy_strings.last = &fancy_string_n;
   fancy_strings.node_count = 1;
 
-  sprite2d->string            = string;
+  sprite2d->string            = string_copied;
   sprite2d->font              = font;
   sprite2d->font_size         = font_size;
   sprite2d->font_color        = font_color;
