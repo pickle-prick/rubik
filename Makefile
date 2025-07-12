@@ -1,4 +1,4 @@
-.PHONY: build_debug build_full run_full clean debug run
+.PHONY: build_debug build_full run_full clean debug run r
 
 build_debug:
 	./build.sh rubik no_shader no_meta profile
@@ -16,4 +16,6 @@ debug:
 	gdb -q --tui ./build/rubik
 run:
 	make build_debug
+	./build/rubik
+r:
 	./build/rubik

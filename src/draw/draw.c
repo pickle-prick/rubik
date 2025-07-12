@@ -525,8 +525,7 @@ internal void d_truncated_fancy_run_list(Vec2F32 p, D_FancyRunList *list, F32 ma
       advance += piece->advance;
     }
   }
-
- ProfEnd();
+  ProfEnd();
 }
 
 ////////////////////////////////

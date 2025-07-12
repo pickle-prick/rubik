@@ -142,13 +142,14 @@ os_window_open(Rng2F32 rect, OS_WindowFlags flags, String8 title)
       0,
       0);
   XSelectInput(os_lnx_gfx_state->display, w->window,
-      ExposureMask|
-      PointerMotionMask|
-      ButtonPressMask|
-      ButtonReleaseMask|
-      KeyPressMask|
-      KeyReleaseMask|
-      FocusChangeMask);
+               ExposureMask|
+               PointerMotionMask|
+               ButtonPressMask|
+               ButtonReleaseMask|
+               KeyPressMask|
+               KeyReleaseMask|
+               StructureNotifyMask| // for detecting ConfigureNotify (window resizing)
+               FocusChangeMask);
   Atom protocols[] =
   {
     os_lnx_gfx_state->wm_delete_window_atom,
@@ -222,9 +223,26 @@ os_window_focus(OS_Handle handle)
 internal B32
 os_window_is_focused(OS_Handle handle)
 {
+#if 1
+  B32 ret = 0;
   Assert(!os_handle_match(handle, os_handle_zero()));
   OS_LNX_Window *window = os_lnx_window_from_handle(handle);
-  return !window->focus_out;
+  if(window)
+  {
+    ret = !window->focus_out;
+  }
+  return ret;
+#else
+  ProfBeginFunction();
+  if(os_handle_match(handle, os_handle_zero())) {return 0;}
+  OS_LNX_Window *w = (OS_LNX_Window *)handle.u64[0];
+  Window focused_window = 0;
+  int revert_to = 0;
+  XGetInputFocus(os_lnx_gfx_state->display, &focused_window, &revert_to);
+  B32 result = (w->window == focused_window);
+  ProfEnd();
+  return result;
+#endif
 }
 
 internal B32
@@ -309,16 +327,36 @@ os_rect_from_window(OS_Handle handle)
 internal Rng2F32
 os_client_rect_from_window(OS_Handle handle, B32 forced)
 {
+  ProfBeginFunction();
+#if 0
+  // TODO: this will causing a performace spike sometimes like 16ms what fuck?
   OS_LNX_Window *w = (OS_LNX_Window *)handle.u64[0];
   XWindowAttributes atts = {0};
   Status s = XGetWindowAttributes(os_lnx_gfx_state->display, w->window, &atts);
   Rng2F32 result = r2f32p(0, 0, (F32)atts.width, (F32)atts.height);
+#else
+  OS_LNX_Window *w = (OS_LNX_Window *)handle.u64[0];
+  Rng2F32 result = {0,0, w->client_dim.x, w->client_dim.y};
+  if(forced)
+  {
+    // TODO: this will also causing a performace spike sometimes like 16ms what fuck?
+    Window root;
+    int x_return,y_return;
+    unsigned int width_return,height_return,border_width_return,depth_return;
+    XGetGeometry(os_lnx_gfx_state->display, w->window,
+                 &root, &x_return,&y_return, &width_return,&height_return,
+                 &border_width_return, &depth_return);
+    result = r2f32p(0, 0, (F32)width_return, (F32)height_return);
+  }
+#endif
+  ProfEnd();
   return result;
 }
 
 internal F32
 os_dpi_from_window(OS_Handle handle)
 {
+  ProfBeginFunction();
   F32 dpi = 0.0;
 
   // Trey "Xft.dpi" from the XResourceDatabase...
@@ -381,6 +419,7 @@ os_dpi_from_window(OS_Handle handle)
     dpi = 96.f;
   }
 
+  ProfEnd();
   return dpi;
 }
 
@@ -432,12 +471,13 @@ os_send_wakeup_event(void)
 internal OS_EventList
 os_get_events(Arena *arena, B32 wait)
 {
+  ProfBeginFunction();
+  B32 set_mouse_cursor = 0;
   OS_EventList evts = {0};
   for(;XPending(os_lnx_gfx_state->display) > 0 || (wait && evts.count == 0);)
   {
     XEvent evt = {0};
     XNextEvent(os_lnx_gfx_state->display, &evt);
-    B32 set_mouse_cursor = 0;
     switch(evt.type)
     {
       default:{}break;
@@ -608,6 +648,11 @@ os_get_events(Arena *arena, B32 wait)
         e->pos.x = (F32)evt.xmotion.x;
         e->pos.y = (F32)evt.xmotion.y;
         set_mouse_cursor = 1;
+        if(window)
+        {
+          window->last_mouse.x = (F32)evt.xmotion.x;
+          window->last_mouse.y = (F32)evt.xmotion.y;
+        }
       }break;
 
       //- rjf: window focus/unfocus
@@ -615,13 +660,15 @@ os_get_events(Arena *arena, B32 wait)
       case FocusOut:
       {
         OS_LNX_Window *window = os_lnx_window_from_x11window(evt.xclient.window);
+        // TODO(k): window shoule be 0 sometimes, but apparently not, don't know why
+        AssertAlways(window != 0);
         window->focus_out = evt.type == FocusOut;
       }break;
       //- k: window reszing
       case ConfigureNotify:
       {
         // printf("width: %d\n", evt.xconfigure.width);
-        // printf("width: %d\n", evt.xconfigure.height);
+        // printf("height: %d\n", evt.xconfigure.height);
         OS_LNX_Window *window = os_lnx_window_from_x11window(evt.xclient.window);
         window->client_dim.x = evt.xconfigure.width;
         window->client_dim.y = evt.xconfigure.height;
@@ -650,22 +697,25 @@ os_get_events(Arena *arena, B32 wait)
         }
       }break;
     }
-    if(set_mouse_cursor)
+  }
+  if(set_mouse_cursor) ProfScope("set mouse cursor")
+  {
+    Window root_window = 0;
+    Window child_window = 0;
+    int root_rel_x = 0;
+    int root_rel_y = 0;
+    int child_rel_x = 0;
+    int child_rel_y = 0;
+    unsigned int mask = 0;
+    if(XQueryPointer(os_lnx_gfx_state->display, XDefaultRootWindow(os_lnx_gfx_state->display),
+                     &root_window, &child_window,
+                     &root_rel_x, &root_rel_y, &child_rel_x, &child_rel_y, &mask))
     {
-      Window root_window = 0;
-      Window child_window = 0;
-      int root_rel_x = 0;
-      int root_rel_y = 0;
-      int child_rel_x = 0;
-      int child_rel_y = 0;
-      unsigned int mask = 0;
-      if(XQueryPointer(os_lnx_gfx_state->display, XDefaultRootWindow(os_lnx_gfx_state->display), &root_window, &child_window, &root_rel_x, &root_rel_y, &child_rel_x, &child_rel_y, &mask))
-      {
-        XDefineCursor(os_lnx_gfx_state->display, child_window, os_lnx_gfx_state->cursors[os_lnx_gfx_state->last_set_cursor]);
-        XFlush(os_lnx_gfx_state->display);
-      }
+      XDefineCursor(os_lnx_gfx_state->display, child_window, os_lnx_gfx_state->cursors[os_lnx_gfx_state->last_set_cursor]);
+      XFlush(os_lnx_gfx_state->display);
     }
   }
+  ProfEnd();
   return evts;
 }
 
@@ -729,24 +779,32 @@ os_key_is_down(OS_Key key)
 internal Vec2F32
 os_mouse_from_window(OS_Handle handle)
 {
-  Vec2F32 mouse = {0};
+  ProfBeginFunction();
+  Vec2F32 result = {0};
+  if(os_handle_match(handle, os_handle_zero())) {return v2f32(0, 0);}
   OS_LNX_Window *w = (OS_LNX_Window *)handle.u64[0];
-
-  if (!os_handle_match(handle, os_handle_zero())) {
-    Window root_return, child_return;
-    int root_x_return,root_y_return;
-    int win_x_return,win_y_return;
-    unsigned int mask_return;
-
-    XQueryPointer(os_lnx_gfx_state->display, w->window,
-                  &root_return, &child_return,
-                  &root_x_return, &root_y_return,
-                  &win_x_return, &win_y_return, &mask_return);
-    mouse.x = win_x_return;
-    mouse.y = win_y_return;
+#if 0
+  {
+    // TODO(k): XQueryPointer is a Round-Trip call to the X server, can be really slow
+    Window root_window = 0;
+    Window child_window = 0;
+    int root_rel_x = 0;
+    int root_rel_y = 0;
+    int child_rel_x = 0;
+    int child_rel_y = 0;
+    unsigned int mask = 0;
+    if(XQueryPointer(os_lnx_gfx_state->display, w->window, &root_window, &child_window, &root_rel_x, &root_rel_y, &child_rel_x, &child_rel_y, &mask))
+    {
+      result.x = child_rel_x;
+      result.y = child_rel_y;
+    }
   }
-
-  return mouse;
+#else
+  result.x = w->last_mouse.x;
+  result.y = w->last_mouse.y;
+#endif
+  ProfEnd();
+  return result;
 }
 
 ////////////////////////////////

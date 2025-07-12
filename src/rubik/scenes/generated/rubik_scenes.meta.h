@@ -8,4 +8,5 @@
 
 #include "../duskers/duskers.h"
 #include "../dice/dice.h"
+#include "../blind/blind.h"
 #endif // RUBIK_SCENES_META_H

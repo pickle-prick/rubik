@@ -435,6 +435,7 @@ internal void ui_kill_action(void)
 internal void
 ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, UI_WidgetPaletteInfo *widget_palette_info, UI_AnimationInfo *animation_info, F32 animation_dt)
 {
+  ProfBeginFunction();
   //- k: reset per-build ui state
   {
     UI_InitStacks(ui_state);
@@ -582,6 +583,7 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
       ui_state->active_box_key[k] = ui_key_zero();
     }
   }
+  ProfEnd();
 }
 
 internal void
@@ -1028,11 +1030,13 @@ ui_layout_position__in_place_rec(UI_Box *root, Axis2 axis)
 internal void
 ui_layout_root(UI_Box *root, Axis2 axis)
 {
+  ProfBeginFunction();
   ui_calc_sizes_standalone__in_place_rec(root, axis);
   ui_calc_sizes_upwards_dependent__in_place_rec(root, axis);
   ui_calc_sizes_downwards_dependent__in_place_rec(root, axis);
   ui_layout_enforce_constraints__in_place_rec(root, axis);
   ui_layout_position__in_place_rec(root, axis);
+  ProfEnd();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -1042,6 +1046,7 @@ ui_layout_root(UI_Box *root, Axis2 axis)
 internal UI_Box *
 ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
 {
+  ProfBeginFunction();
   ui_state->build_box_count += 1;
 
   // Grab active parent
@@ -1183,7 +1188,8 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
   }
 
   UI_AutoPopStacks(ui_state)
-    return box;
+  ProfEnd();
+  return box;
 }
 
 internal UI_Key
@@ -1204,6 +1210,7 @@ ui_active_seed_key(void)
 internal UI_Box *
 ui_build_box_from_string(UI_BoxFlags flags, String8 string)
 {
+  ProfBeginFunction();
   // Grab active parent
   UI_Box *parent = ui_top_parent();
 
@@ -1216,6 +1223,7 @@ ui_build_box_from_string(UI_BoxFlags flags, String8 string)
   {
     ui_box_equip_display_string(box, string);
   }
+  ProfEnd();
   return box;
 }
 
@@ -1517,9 +1525,9 @@ ui_signal_from_box(UI_Box *box)
 
     //- k: mouse pressed in box -> set hot/active, mark signal accordingly
     if(box->flags & UI_BoxFlag_MouseClickable &&
-        evt->kind == UI_EventKind_Press &&
-        evt_mouse_in_bounds &&
-        evt_key_is_mouse)
+       evt->kind == UI_EventKind_Press &&
+       evt_mouse_in_bounds &&
+       evt_key_is_mouse)
     {
       ui_state->hot_box_key = box->key;
       ui_state->active_box_key[evt_mouse_button_kind] = box->key;

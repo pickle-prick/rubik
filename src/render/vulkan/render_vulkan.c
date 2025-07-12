@@ -922,6 +922,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
 internal R_Handle
 r_window_equip(OS_Handle os_wnd)
 {
+  ProfBeginFunction();
   R_Vulkan_Window *ret = r_vulkan_state->first_free_window;
 
   if(ret == 0)
@@ -1142,6 +1143,7 @@ r_window_equip(OS_Handle os_wnd)
   ret->os_wnd = os_wnd;
   ret->render_targets = render_targets;
   ret->surface = surface;
+  ProfEnd();
   return r_vulkan_handle_from_window(ret);
 }
 
@@ -1169,6 +1171,7 @@ r_vulkan_window_from_handle(R_Handle handle)
 internal
 void r_vulkan_window_resize(R_Vulkan_Window *window)
 {
+  ProfBeginFunction();
   // Unpack some variables
   R_Vulkan_PhysicalDevice *pdevice = r_vulkan_pdevice();
   R_Vulkan_Surface *surface = &window->surface;
@@ -1226,6 +1229,7 @@ void r_vulkan_window_resize(R_Vulkan_Window *window)
   // }
   // // create framebuffers for this bag
   // r_vulkan_rendpass_grp_submit(window->bag, window->rendpass_grp);
+  ProfEnd();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -1234,6 +1238,7 @@ void r_vulkan_window_resize(R_Vulkan_Window *window)
 internal R_Handle
 r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, R_Tex2DFormat format, void *data)
 {
+  ProfBeginFunction();
   R_Vulkan_Tex2D *texture = r_vulkan_state->first_free_tex2d;
   if(texture == 0)
   {
@@ -1267,6 +1272,8 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
   // Staging buffer
   VkBuffer       staging_buffer;
   VkDeviceMemory staging_memory;
+  // TODO: this is very expensive, we may reuse this staging buffer for later tex2d allocation
+  ProfScope("create staging buffer")
   {
     VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     create_info.size        = vk_image_size;
@@ -1291,6 +1298,7 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
   }
 
   // Create the gpu device local buffer
+  ProfScope("create gpu local buffer")
   {
 
     // Although we could set up the shader to access the pixel values in the buffer, it's better to use image objects in Vulkan for this purpose
@@ -1375,6 +1383,7 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
     VK_Assert(vkCreateImageView(r_vulkan_state->logical_device.h, &create_info, NULL, &texture->image.view));
   }
 
+  // TODO: we should not use this oneshot command if we are within a frame
   VkCommandBuffer cmd_buf = r_vulkan_state->oneshot_cmd_buf;
 
   CmdScope(cmd_buf)
@@ -1416,10 +1425,14 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
   }
 
   // Free staging buffer and memory
-  VK_Assert(vkQueueWaitIdle(r_vulkan_state->logical_device.gfx_queue));
-  vkDestroyBuffer(r_vulkan_state->logical_device.h, staging_buffer, 0);
-  vkUnmapMemory(r_vulkan_state->logical_device.h, staging_memory);
-  vkFreeMemory(r_vulkan_state->logical_device.h, staging_memory, 0);
+  // TODO: this is very expensive
+  ProfScope("free staging buffer and it's memory")
+  {
+    VK_Assert(vkQueueWaitIdle(r_vulkan_state->logical_device.gfx_queue));
+    vkDestroyBuffer(r_vulkan_state->logical_device.h, staging_buffer, 0);
+    vkUnmapMemory(r_vulkan_state->logical_device.h, staging_memory);
+    vkFreeMemory(r_vulkan_state->logical_device.h, staging_memory, 0);
+  }
 
   // TODO(k): All of the helper functions that submit commands so far have been set up to execute synchronously by waiting for the queue to become idle
   // For practical applications it is recommended to combine these operations in a single command buffer and execute them asynchronously for higher throughput
@@ -1432,6 +1445,7 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
   r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind_Tex2D, 1, 64, NULL, &texture->image.view, sampler, &texture->desc_set);
 
   R_Handle ret = r_vulkan_handle_from_tex2d(texture);
+  ProfEnd();
   return ret;
 }
 
@@ -3057,6 +3071,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                               VkImageView *image_views, VkSampler *samplers,
                               R_Vulkan_DescriptorSet *sets)
 {
+  ProfBeginFunction();
   R_Vulkan_DescriptorSetLayout set_layout = r_vulkan_state->set_layouts[kind];
 
   U64 remaining = set_count;
@@ -3363,6 +3378,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
   // The latter can be used to copy descriptors to each other, as its name implies
   vkUpdateDescriptorSets(r_vulkan_state->logical_device.h, writes_count, writes, 0, NULL);
   scratch_end(temp);
+  ProfEnd();
 }
 
 void r_vulkan_descriptor_set_destroy(R_Vulkan_DescriptorSet *set)
@@ -3412,6 +3428,7 @@ r_vulkan_semaphore(VkDevice device)
 internal void
 r_vulkan_image_transition(VkCommandBuffer cmd_buf, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout, VkPipelineStageFlags src_stage, VkAccessFlags src_access_flag, VkPipelineStageFlags dst_stage, VkAccessFlags dst_access_flag, VkImageAspectFlags aspect_mask)
 {
+  ProfBeginFunction();
   VkImageMemoryBarrier barrier =
   {
     .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -3463,6 +3480,7 @@ r_vulkan_image_transition(VkCommandBuffer cmd_buf, VkImage image, VkImageLayout 
   // The latter turns the barrier into a per-region condition
   // That means that the implementation is allowed to already begin reading from the parts of a resource that were written so far, for example
   vkCmdPipelineBarrier(cmd_buf, src_stage, dst_stage, 0, 0, NULL, 0, NULL, 1, &barrier);
+  ProfEnd();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -4780,6 +4798,7 @@ r_end_frame(void)
 internal void
 r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
 {
+  ProfBeginFunction();
   R_Vulkan_Window *wnd = r_vulkan_window_from_handle(window_equip);
   R_Vulkan_Frame *frame = &wnd->frames[wnd->curr_frame_idx];
   R_Vulkan_LogicalDevice *device = &r_vulkan_state->logical_device;
@@ -4890,11 +4909,13 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
   wnd->geo3d_pass_index = 0;
 
   r_vulkan_push_cmd(frame->cmd_buf);
+  ProfEnd();
 }
 
 internal U64
 r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
 {
+  ProfBeginFunction();
   // TODO(k): Should every window have its own thread?
   //          since different window need to wait on its fence, we don't want to block it for other windows
 
@@ -4916,6 +4937,7 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
   frame->render_targets_ref->rc++;
 
   // copy stage id image to stage id buffer (cpu)
+  ProfScope("copy stage id image to cpu")
   {
     VkImageMemoryBarrier barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     // NOTE(k): weird here, it's alreay in src optimal, but we need to wait for the writing
@@ -4960,6 +4982,7 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
   }
 
   // Copy stage buffer to swapchain image
+  ProfScope("copy stage buffer to swapchain image")
   {
     VkClearValue clear_color = {0};
     clear_color.color = (VkClearColorValue){{ 0.0f, 0.0f, 0.0f, 0.0f }}; /* black with 100% opacity */
@@ -5034,7 +5057,8 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
   submit_info.pCommandBuffers      = &cmd_buf;
   submit_info.signalSemaphoreCount = 1;
   submit_info.pSignalSemaphores    = signal_sems;
-  VK_Assert(vkQueueSubmit(r_vulkan_state->logical_device.gfx_queue, 1, &submit_info, frame->inflt_fence));
+  ProfScope("queue submit")
+    VK_Assert(vkQueueSubmit(r_vulkan_state->logical_device.gfx_queue, 1, &submit_info, frame->inflt_fence));
 
   // Present
   // TODO(k): should we move this to r_end_frame? we could submit to all swapchains at once
@@ -5050,26 +5074,29 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
   // It's not necessary if you're only using a single swapchain, because you can simply use the return value of the present function
   prest_info.pResults           = NULL;
 
-  VkResult prest_ret = vkQueuePresentKHR(r_vulkan_state->logical_device.prest_queue, &prest_info);
+  VkResult prest_ret = 0;
+  ProfScope("queue present")
+    prest_ret = vkQueuePresentKHR(r_vulkan_state->logical_device.prest_queue, &prest_info);
 
   // NOTE(k): It is important to only check window_resized here to ensure that the job-done semaphores are in a consistent state
   //          otherwise a signaled semaphore may never be properly waited upon
   if(prest_ret == VK_ERROR_OUT_OF_DATE_KHR || prest_ret == VK_SUBOPTIMAL_KHR)
   {
     r_vulkan_window_resize(wnd);
-    printf("window resized\n");
   } 
   else { AssertAlways(prest_ret == VK_SUCCESS); }
 
   // Update curr_frame_idx
   wnd->curr_frame_idx = (wnd->curr_frame_idx + 1) % MAX_FRAMES_IN_FLIGHT;
   r_vulkan_pop_cmd();
+  ProfEnd();
   return id;
 }
 
 internal void
 r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 {
+  ProfBeginFunction();
   R_Vulkan_Window *wnd = r_vulkan_window_from_handle(window_equip);
 
   R_Vulkan_Frame *frame = &wnd->frames[wnd->curr_frame_idx];
@@ -6436,6 +6463,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
   wnd->ui_pass_index = ui_pass_index;
   wnd->geo2d_pass_index = geo2d_pass_index;
   wnd->geo3d_pass_index = geo3d_pass_index;
+  ProfEnd();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -6476,7 +6504,6 @@ debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
   // This is normally only used to test the validation layers themselved, so you should always return VK_FALSE
   return VK_FALSE;
 }
-
 
 // internal void
 // r_vulkan_rendpass_grp_destroy(R_Vulkan_RenderPassGroup *grp)

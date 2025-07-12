@@ -1,6 +1,7 @@
 internal F_Hash2StyleRasterCacheNode *
 f_hash2style_from_tag_size_flags(F_Tag tag, F32 size, F_RasterFlags flags)
 {
+  ProfBeginFunction();
   U64 style_hash = {0};
   {
     F64 size_f64 = size;
@@ -34,13 +35,14 @@ f_hash2style_from_tag_size_flags(F_Tag tag, F32 size, F_RasterFlags flags)
     DLLPushBack_NP(slot->first, slot->last, hash2style_node, hash_next, hash_prev);
 
     // Rasterization
-    Temp temp = scratch_begin(0,0);
-    FP_RasterResult raster_ret = fp_raster(temp.arena, f_handle_from_tag(tag), size, flags, rng_1u64(32, 126));
+    Temp scratch = scratch_begin(0,0);
+    FP_RasterResult raster_ret = fp_raster(scratch.arena, f_handle_from_tag(tag), size, flags, rng_1u64(32, 126));
     R_Handle texture_handle = r_tex2d_alloc(R_ResourceKind_Static,
-        R_Tex2DSampleKind_Linear,
-        vec_2s32(raster_ret.atlas_dim.x, raster_ret.atlas_dim.y),
-        R_Tex2DFormat_R8, raster_ret.atlas);
+                                            R_Tex2DSampleKind_Linear,
+                                            vec_2s32(raster_ret.atlas_dim.x, raster_ret.atlas_dim.y),
+                                            R_Tex2DFormat_R8, raster_ret.atlas);
 
+    scratch_end(scratch);
     hash2style_node->style_hash         = style_hash;
     hash2style_node->ascent             = metrics.ascent;
     hash2style_node->descent            = metrics.descent;
@@ -49,6 +51,7 @@ f_hash2style_from_tag_size_flags(F_Tag tag, F32 size, F_RasterFlags flags)
     hash2style_node->atlas.dim          = raster_ret.atlas_dim;
   }
 
+  ProfEnd();
   return hash2style_node;
 }
 
@@ -116,12 +119,14 @@ f_fp_metrics_from_tag(F_Tag tag)
 internal F_Metrics
 f_metrics_from_tag_size(F_Tag tag, F32 size) 
 {
+  ProfBeginFunction();
   FP_Metrics font_metrics = f_fp_metrics_from_tag(tag);
 
   F_Metrics ret = {0};
   ret.ascent   = floor_f32(size) * font_metrics.ascent / font_metrics.design_units_per_em;
   ret.descent  = floor_f32(size) * font_metrics.descent / font_metrics.design_units_per_em;
   ret.line_gap = floor_f32(size) * font_metrics.line_gap / font_metrics.design_units_per_em;
+  ProfEnd();
   return ret;
 }
 
@@ -193,6 +198,7 @@ f_little_hash_from_bytes(U8 *bytes, U64 count)
 internal F_Run
 f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32 tab_size_px, F_RasterFlags flags, String8 string)
 {
+  ProfBeginFunction();
   // TODO: handle tab_size_px
   F_Hash2StyleRasterCacheNode *hash2style_node = f_hash2style_from_tag_size_flags(tag, size, flags);
 
@@ -229,6 +235,7 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
   }
   ret.dim.x = xpos;
   ret.dim.y = ret.ascent + ret.descent;
+  ProfEnd();
   return ret;
 }
 

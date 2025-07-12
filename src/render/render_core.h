@@ -485,13 +485,13 @@ struct R_PassList
 //~ rjf: Handle Type Functions
 
 internal R_Handle r_handle_zero(void);
-internal B32 r_handle_match(R_Handle a, R_Handle b);
+internal B32      r_handle_match(R_Handle a, R_Handle b);
 
 ////////////////////////////////
 //~ rjf: Batch Type Functions
 
 internal R_BatchList r_batch_list_make(U64 instance_size);
-internal void *r_batch_list_push_inst(Arena *arena, R_BatchList *list, U64 batch_inst_cap);
+internal void        *r_batch_list_push_inst(Arena *arena, R_BatchList *list, U64 batch_inst_cap);
 
 ////////////////////////////////
 //~ rjf: Pass Type Functions
@@ -506,11 +506,12 @@ internal void r_init(const char* app_name, OS_Handle window, bool debug);
 
 //- rjf: window setup/teardown
 internal R_Handle r_window_equip(OS_Handle os_wnd);
-// internal void r_window_unequip(OS_Handle window, R_Handle window_equip);
+internal void r_window_unequip(OS_Handle os_wnd, R_Handle window_equip);
 
 //- rjf: textures
+// TODO(k): support calling within a r_frame boundary
 internal R_Handle r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, R_Tex2DFormat format, void *data);
-internal void r_tex2d_release(R_Handle texture);
+internal void     r_tex2d_release(R_Handle texture);
 // internal R_ResourceKind r_kind_from_tex2d(R_Handle texture);
 // internal Vec2S32 r_size_from_tex2d(R_Handle texture);
 // internal R_Tex2DFormat r_format_from_tex2d(R_Handle texture);

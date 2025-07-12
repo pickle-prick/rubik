@@ -259,3 +259,10 @@ os_event_list_push_new(Arena *arena, OS_EventList *evts, OS_EventKind kind)
   evt->kind = kind;
   return evt;
 }
+
+internal void
+os_event_list_push(OS_EventList *evts, OS_Event *evt)
+{
+  DLLPushBack(evts->first, evts->last, evt);
+  evts->count += 1;
+}

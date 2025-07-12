@@ -1,5 +1,5 @@
-#define BITMAP_W  4096
-#define BITMAP_H  4096
+#define BITMAP_W  2048
+#define BITMAP_H  2048
 
 fp_hook void
 fp_init(void)
@@ -86,7 +86,9 @@ fp_metrics_from_font(FP_Handle handle)
 
 // TODO(@k): fix this later
 fp_hook FP_RasterResult
-fp_raster(Arena *arena, FP_Handle font_handle, F32 size, FP_RasterFlags flags, Rng1U64 range) {
+fp_raster(Arena *arena, FP_Handle font_handle, F32 size, FP_RasterFlags flags, Rng1U64 range)
+{
+  ProfBeginFunction();
   FP_RasterResult ret = {0};
   if (fp_handle_match(fp_handle_zero(), font_handle)) {return ret;}
 
@@ -134,11 +136,13 @@ fp_raster(Arena *arena, FP_Handle font_handle, F32 size, FP_RasterFlags flags, R
   ret.atlas_handle.u64[1] = atlas->generation;
   ret.atlas_dim = vec_2s16(BITMAP_W,BITMAP_H);
   ret.atlas = pixels;
+  ProfEnd();
   return ret;
 }
 
 fp_hook FP_PackedQuad fp_get_packed_quad(FP_Handle atlas_handle, int char_index, float *xpos, float *ypos)
 {
+  ProfBeginFunction();
   U64 gen = atlas_handle.u64[1];
   FP_STBTT_Atlas *atlas = (FP_STBTT_Atlas *)atlas_handle.u64[0];
   Assert(atlas->generation == gen);
@@ -152,5 +156,6 @@ fp_hook FP_PackedQuad fp_get_packed_quad(FP_Handle atlas_handle, int char_index,
   ret.s1 *= atlas->dim.x;
   ret.t0 *= atlas->dim.y;
   ret.t1 *= atlas->dim.y;
+  ProfEnd();
   return ret;
 }

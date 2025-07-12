@@ -44,7 +44,6 @@ internal void
 rk_ui_draw()
 {
   Temp scratch = scratch_begin(0,0);
-
   F32 box_squish_epsilon = 0.001f;
 
   // DEBUG mouse
@@ -220,7 +219,7 @@ rk_ui_draw()
     if(0)
     {
       B32 focused = (box->flags & (UI_BoxFlag_FocusHot|UI_BoxFlag_FocusActive) &&
-          box->flags & UI_BoxFlag_Clickable);
+                     box->flags & UI_BoxFlag_Clickable);
       B32 disabled = 0;
       for(UI_Box *p = box; !ui_box_is_nil(p); p = p->parent)
       {
@@ -739,7 +738,7 @@ rk_init(OS_Handle os_wnd, R_Handle r_wnd)
     rk_state->arena = arena;
     for(U64 i = 0; i < ArrayCount(rk_state->frame_arenas); i++)
     {
-      rk_state->frame_arenas[i] = arena_alloc();
+      rk_state->frame_arenas[i] = arena_alloc(.reserve_size = MB(128), .commit_size = MB(64));
     }
     rk_state->node_bucket     = rk_node_bucket_make(arena, 4096-1);
     rk_state->res_node_bucket = rk_node_bucket_make(arena, 4096-1);
@@ -754,7 +753,7 @@ rk_init(OS_Handle os_wnd, R_Handle r_wnd)
     for(U64 i = 0; i < ArrayCount(rk_state->drawlists); i++)
     {
       // TODO(k): some device offers 256MB memory which is both cpu visiable and device local
-      rk_state->drawlists[i] = rk_drawlist_alloc(arena, MB(64), MB(64));
+      rk_state->drawlists[i] = rk_drawlist_alloc(arena, MB(16), MB(16));
     }
   }
 
@@ -788,26 +787,26 @@ rk_init(OS_Handle os_wnd, R_Handle r_wnd)
       rk_state->cfg_ui_debug_palettes[code].cursor     = current->colors[RK_ThemeColor_Cursor];
       rk_state->cfg_ui_debug_palettes[code].selection  = current->colors[RK_ThemeColor_SelectionOverlay];
     }
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Base].background = current->colors[RK_ThemeColor_BaseBackground];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Base].text       = current->colors[RK_ThemeColor_Text];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Base].text_weak  = current->colors[RK_ThemeColor_TextWeak];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Base].border     = current->colors[RK_ThemeColor_BaseBorder];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_MenuBar].background = current->colors[RK_ThemeColor_MenuBarBackground];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_MenuBar].text       = current->colors[RK_ThemeColor_Text];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_MenuBar].text_weak  = current->colors[RK_ThemeColor_TextWeak];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_MenuBar].border     = current->colors[RK_ThemeColor_MenuBarBorder];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Floating].background = current->colors[RK_ThemeColor_FloatingBackground];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Floating].text       = current->colors[RK_ThemeColor_Text];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Floating].text_weak  = current->colors[RK_ThemeColor_TextWeak];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Floating].border     = current->colors[RK_ThemeColor_FloatingBorder];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ImplicitButton].background = current->colors[RK_ThemeColor_ImplicitButtonBackground];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ImplicitButton].text       = current->colors[RK_ThemeColor_Text];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ImplicitButton].text_weak  = current->colors[RK_ThemeColor_TextWeak];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ImplicitButton].border     = current->colors[RK_ThemeColor_ImplicitButtonBorder];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_PlainButton].background = current->colors[RK_ThemeColor_PlainButtonBackground];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_PlainButton].text       = current->colors[RK_ThemeColor_Text];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_PlainButton].text_weak  = current->colors[RK_ThemeColor_TextWeak];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_PlainButton].border     = current->colors[RK_ThemeColor_PlainButtonBorder];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Base].background              = current->colors[RK_ThemeColor_BaseBackground];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Base].text                    = current->colors[RK_ThemeColor_Text];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Base].text_weak               = current->colors[RK_ThemeColor_TextWeak];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Base].border                  = current->colors[RK_ThemeColor_BaseBorder];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_MenuBar].background           = current->colors[RK_ThemeColor_MenuBarBackground];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_MenuBar].text                 = current->colors[RK_ThemeColor_Text];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_MenuBar].text_weak            = current->colors[RK_ThemeColor_TextWeak];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_MenuBar].border               = current->colors[RK_ThemeColor_MenuBarBorder];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Floating].background          = current->colors[RK_ThemeColor_FloatingBackground];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Floating].text                = current->colors[RK_ThemeColor_Text];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Floating].text_weak           = current->colors[RK_ThemeColor_TextWeak];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Floating].border              = current->colors[RK_ThemeColor_FloatingBorder];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ImplicitButton].background    = current->colors[RK_ThemeColor_ImplicitButtonBackground];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ImplicitButton].text          = current->colors[RK_ThemeColor_Text];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ImplicitButton].text_weak     = current->colors[RK_ThemeColor_TextWeak];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ImplicitButton].border        = current->colors[RK_ThemeColor_ImplicitButtonBorder];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_PlainButton].background       = current->colors[RK_ThemeColor_PlainButtonBackground];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_PlainButton].text             = current->colors[RK_ThemeColor_Text];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_PlainButton].text_weak        = current->colors[RK_ThemeColor_TextWeak];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_PlainButton].border           = current->colors[RK_ThemeColor_PlainButtonBorder];
     rk_state->cfg_ui_debug_palettes[RK_PaletteCode_PositivePopButton].background = current->colors[RK_ThemeColor_PositivePopButtonBackground];
     rk_state->cfg_ui_debug_palettes[RK_PaletteCode_PositivePopButton].text       = current->colors[RK_ThemeColor_Text];
     rk_state->cfg_ui_debug_palettes[RK_PaletteCode_PositivePopButton].text_weak  = current->colors[RK_ThemeColor_TextWeak];
@@ -816,26 +815,26 @@ rk_init(OS_Handle os_wnd, R_Handle r_wnd)
     rk_state->cfg_ui_debug_palettes[RK_PaletteCode_NegativePopButton].text       = current->colors[RK_ThemeColor_Text];
     rk_state->cfg_ui_debug_palettes[RK_PaletteCode_NegativePopButton].text_weak  = current->colors[RK_ThemeColor_TextWeak];
     rk_state->cfg_ui_debug_palettes[RK_PaletteCode_NegativePopButton].border     = current->colors[RK_ThemeColor_NegativePopButtonBorder];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_NeutralPopButton].background = current->colors[RK_ThemeColor_NeutralPopButtonBackground];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_NeutralPopButton].text       = current->colors[RK_ThemeColor_Text];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_NeutralPopButton].text_weak  = current->colors[RK_ThemeColor_TextWeak];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_NeutralPopButton].border     = current->colors[RK_ThemeColor_NeutralPopButtonBorder];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ScrollBarButton].background = current->colors[RK_ThemeColor_ScrollBarButtonBackground];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ScrollBarButton].text       = current->colors[RK_ThemeColor_Text];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ScrollBarButton].text_weak  = current->colors[RK_ThemeColor_TextWeak];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ScrollBarButton].border     = current->colors[RK_ThemeColor_ScrollBarButtonBorder];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Tab].background = current->colors[RK_ThemeColor_TabBackground];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Tab].text       = current->colors[RK_ThemeColor_Text];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Tab].text_weak  = current->colors[RK_ThemeColor_TextWeak];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Tab].border     = current->colors[RK_ThemeColor_TabBorder];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_TabInactive].background = current->colors[RK_ThemeColor_TabBackgroundInactive];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_TabInactive].text       = current->colors[RK_ThemeColor_Text];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_TabInactive].text_weak  = current->colors[RK_ThemeColor_TextWeak];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_TabInactive].border     = current->colors[RK_ThemeColor_TabBorderInactive];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_DropSiteOverlay].background = current->colors[RK_ThemeColor_DropSiteOverlay];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_DropSiteOverlay].text       = current->colors[RK_ThemeColor_DropSiteOverlay];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_DropSiteOverlay].text_weak  = current->colors[RK_ThemeColor_DropSiteOverlay];
-    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_DropSiteOverlay].border     = current->colors[RK_ThemeColor_DropSiteOverlay];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_NeutralPopButton].background  = current->colors[RK_ThemeColor_NeutralPopButtonBackground];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_NeutralPopButton].text        = current->colors[RK_ThemeColor_Text];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_NeutralPopButton].text_weak   = current->colors[RK_ThemeColor_TextWeak];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_NeutralPopButton].border      = current->colors[RK_ThemeColor_NeutralPopButtonBorder];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ScrollBarButton].background   = current->colors[RK_ThemeColor_ScrollBarButtonBackground];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ScrollBarButton].text         = current->colors[RK_ThemeColor_Text];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ScrollBarButton].text_weak    = current->colors[RK_ThemeColor_TextWeak];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_ScrollBarButton].border       = current->colors[RK_ThemeColor_ScrollBarButtonBorder];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Tab].background               = current->colors[RK_ThemeColor_TabBackground];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Tab].text                     = current->colors[RK_ThemeColor_Text];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Tab].text_weak                = current->colors[RK_ThemeColor_TextWeak];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_Tab].border                   = current->colors[RK_ThemeColor_TabBorder];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_TabInactive].background       = current->colors[RK_ThemeColor_TabBackgroundInactive];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_TabInactive].text             = current->colors[RK_ThemeColor_Text];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_TabInactive].text_weak        = current->colors[RK_ThemeColor_TextWeak];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_TabInactive].border           = current->colors[RK_ThemeColor_TabBorderInactive];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_DropSiteOverlay].background   = current->colors[RK_ThemeColor_DropSiteOverlay];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_DropSiteOverlay].text         = current->colors[RK_ThemeColor_DropSiteOverlay];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_DropSiteOverlay].text_weak    = current->colors[RK_ThemeColor_DropSiteOverlay];
+    rk_state->cfg_ui_debug_palettes[RK_PaletteCode_DropSiteOverlay].border       = current->colors[RK_ThemeColor_DropSiteOverlay];
   }
 
   // UI Views
@@ -997,6 +996,7 @@ rk_rs_push_constraint3d(PH_Constraint3D *c)
 internal RK_Node *
 rk_node_alloc(RK_NodeTypeFlags type_flags)
 {
+  ProfBeginFunction();
   RK_Node *ret = 0;
   RK_NodeBucket *node_bucket = rk_top_node_bucket();
 
@@ -1023,12 +1023,14 @@ rk_node_alloc(RK_NodeTypeFlags type_flags)
   ret->fixed_rotation = make_indentity_quat_f32();
 
   rk_node_equip_type_flags(ret, type_flags);
+  ProfEnd();
   return ret;
 }
 
 internal void
 rk_node_release(RK_Node *node)
 {
+  ProfBeginFunction();
   // recursive first
   for(RK_Node *child = node->first; child != 0; child = child->next)
   {
@@ -1066,6 +1068,7 @@ rk_node_release(RK_Node *node)
 
   // add it to free list
   SLLStackPush_N(bucket->first_free_node, node, free_next);
+  ProfEnd();
 }
 
 internal void
@@ -1955,7 +1958,8 @@ internal void rk_ui_inspector(void)
     if(abs_f32(scroller.off) < 0.01) scroller.off = 0;
     Rng1S64 visible_row_rng = {0};
 
-    UI_Parent(container_box) UI_ScrollList(&scroll_list_params, &scroller, 0, 0, &visible_row_rng, &scroll_list_sig)
+    UI_Parent(container_box)
+      UI_ScrollList(&scroll_list_params, &scroller, 0, 0, &visible_row_rng, &scroll_list_sig)
     {
       RK_Node *root = rk_node_from_handle(&scene->root);
       U64 row_idx = 0;
@@ -2775,13 +2779,14 @@ rk_ui_terminal(void)
 internal B32
 rk_frame(void)
 {
+  ProfBeginFunction();
   Temp scratch = scratch_begin(0,0); 
   RK_Scene *scene = rk_state->active_scene;
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // free scenes & nodes
 
-  ProfScope("free")
+  ProfScope("free nodes")
   {
     RK_Node *n = scene->node_bucket->first_to_free_node;
     while(n != 0)
@@ -2802,6 +2807,7 @@ rk_frame(void)
     }
   }
 
+  ProfScope("free scene")
   {
     RK_Scene *s = rk_state->first_to_free_scene;
     if(s != 0 && (rk_state->frame_index-s->frame_index) > MAX_FRAMES_IN_FLIGHT)
@@ -2863,37 +2869,41 @@ rk_frame(void)
   ///////////////////////////////////////////////////////////////////////////////////////
   // get events from os
   
-  rk_state->os_events          = os_get_events(scratch.arena, 0);
-  rk_state->last_window_rect   = rk_state->window_rect;
-  rk_state->last_window_dim    = dim_2f32(rk_state->last_window_rect);
-  rk_state->window_res_changed = rk_state->window_rect.x0 == rk_state->last_window_rect.x0 && rk_state->window_rect.x1 == rk_state->last_window_rect.x1 && rk_state->window_rect.y0 == rk_state->last_window_rect.y0 && rk_state->window_rect.y1 == rk_state->last_window_rect.y1;
-  rk_state->window_rect        = os_client_rect_from_window(rk_state->os_wnd, 0);
-  rk_state->window_dim         = dim_2f32(rk_state->window_rect);
-  rk_state->last_cursor        = rk_state->cursor;
+  ProfScope("update interaction info")
   {
-    Vec2F32 cursor = os_mouse_from_window(rk_state->os_wnd);
-    if(cursor.x >= 0 && cursor.x <= rk_state->window_dim.x &&
-       cursor.y >= 0 && cursor.y <= rk_state->window_dim.y)
+    rk_state->os_events          = os_get_events(rk_frame_arena(), 0);
+    rk_state->last_window_rect   = rk_state->window_rect;
+    rk_state->last_window_dim    = dim_2f32(rk_state->last_window_rect);
+    rk_state->window_res_changed = rk_state->window_rect.x0 == rk_state->last_window_rect.x0 && rk_state->window_rect.x1 == rk_state->last_window_rect.x1 && rk_state->window_rect.y0 == rk_state->last_window_rect.y0 && rk_state->window_rect.y1 == rk_state->last_window_rect.y1;
+    rk_state->window_rect        = os_client_rect_from_window(rk_state->os_wnd, 0);
+    rk_state->window_dim         = dim_2f32(rk_state->window_rect);
+    rk_state->last_cursor        = rk_state->cursor;
     {
-      rk_state->cursor = cursor;
+      Vec2F32 cursor = os_window_is_focused(rk_state->os_wnd) ? os_mouse_from_window(rk_state->os_wnd) : v2f32(-100,-100);
+      if(cursor.x >= 0 && cursor.x <= rk_state->window_dim.x &&
+         cursor.y >= 0 && cursor.y <= rk_state->window_dim.y)
+      {
+        rk_state->cursor = cursor;
+      }
     }
-  }
-  rk_state->cursor_delta       = sub_2f32(rk_state->cursor, rk_state->last_cursor);
-  rk_state->last_dpi           = rk_state->dpi;
-  rk_state->dpi                = os_dpi_from_window(rk_state->os_wnd);
+    rk_state->cursor_delta       = sub_2f32(rk_state->cursor, rk_state->last_cursor);
+    rk_state->last_dpi           = rk_state->dpi;
+    rk_state->dpi                = os_dpi_from_window(rk_state->os_wnd);
 
-  // animation
-  rk_state->animation.vast_rate = 1 - pow_f32(2, (-60.f * ui_state->animation_dt));
-  rk_state->animation.fast_rate = 1 - pow_f32(2, (-50.f * ui_state->animation_dt));
-  rk_state->animation.fish_rate = 1 - pow_f32(2, (-40.f * ui_state->animation_dt));
-  rk_state->animation.slow_rate = 1 - pow_f32(2, (-30.f * ui_state->animation_dt));
-  rk_state->animation.slug_rate = 1 - pow_f32(2, (-15.f * ui_state->animation_dt));
-  rk_state->animation.slaf_rate = 1 - pow_f32(2, (-8.f * ui_state->animation_dt));
+    // animation
+    rk_state->animation.vast_rate = 1 - pow_f32(2, (-60.f * ui_state->animation_dt));
+    rk_state->animation.fast_rate = 1 - pow_f32(2, (-50.f * ui_state->animation_dt));
+    rk_state->animation.fish_rate = 1 - pow_f32(2, (-40.f * ui_state->animation_dt));
+    rk_state->animation.slow_rate = 1 - pow_f32(2, (-30.f * ui_state->animation_dt));
+    rk_state->animation.slug_rate = 1 - pow_f32(2, (-15.f * ui_state->animation_dt));
+    rk_state->animation.slaf_rate = 1 - pow_f32(2, (-8.f * ui_state->animation_dt));
+  }
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // calculate avg length in us of last many frames
 
   U64 frame_time_history_avg_us = 0;
+  ProfScope("calculate avg length in us of last many frames")
   {
     U64 num_frames_in_history = Min(ArrayCount(rk_state->frame_time_us_history), rk_state->frame_index);
     U64 frame_time_history_sum_us = 0;
@@ -2913,7 +2923,7 @@ rk_frame(void)
   // pick among a number of sensible targets to snap to, given how well we've been performing
   F32 target_hz = os_get_gfx_info()->default_refresh_rate;
   // F32 target_hz = 30.0;
-  if(rk_state->frame_index > 32)
+  ProfScope("pick target hz") if(rk_state->frame_index > 32)
   {
     F32 possible_alternate_hz_targets[] = {target_hz, 60.f, 120.f, 144.f, 240.f};
     F32 best_target_hz = target_hz;
@@ -2992,58 +3002,70 @@ rk_frame(void)
   ///////////////////////////////////////////////////////////////////////////////////////
   // remake drawing buckets every frame
 
-  d_begin_frame();
-
-  // rect
-  rk_state->bucket_rect = d_bucket_make();
-
-  // geo2d
+  // TODO: this scope currently using 1.7ms, most used for mem allocation, don't know that one is slow
+  ProfScope("make drawing buckets")
   {
-    D_Bucket **bucket = &rk_state->bucket_geo[RK_GeoBucketKind_Geo2D];
-    *bucket = d_bucket_make();
-    D_BucketScope(*bucket)
+    d_begin_frame();
+
+    // rect
+    ProfScope("making rect bucket")
+      rk_state->bucket_rect = d_bucket_make();
+
+    // geo2d
+    ProfScope("making geo2d bucket")
     {
-      d_geo2d_begin(viewport, view_m, proj_m);
+      D_Bucket **bucket = &rk_state->bucket_geo[RK_GeoBucketKind_Geo2D];
+      *bucket = d_bucket_make();
+      D_BucketScope(*bucket)
+      {
+        d_geo2d_begin(viewport, view_m, proj_m);
+      }
     }
-  }
 
-  // geo3d back
-  {
-    D_Bucket **bucket = &rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back];
-    *bucket = d_bucket_make();
-    D_BucketScope(*bucket)
+    // geo3d back
+    ProfScope("making geo3d bucket")
     {
-      R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, proj_m);
-      pass_params->omit_light = scene->omit_light;
-      pass_params->omit_grid = scene->omit_grid;
-      pass_params->lights = push_array(rk_frame_arena(), R_Light3D, MAX_LIGHTS_PER_PASS);
-      pass_params->materials = push_array(rk_frame_arena(), R_Material3D, MAX_MATERIALS_PER_PASS);
-      pass_params->textures = push_array(rk_frame_arena(), R_PackedTextures, MAX_MATERIALS_PER_PASS);
+      D_Bucket **bucket = &rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Back];
+      *bucket = d_bucket_make();
+      D_BucketScope(*bucket)
+      {
+        R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, proj_m);
+        pass_params->omit_light = scene->omit_light;
+        pass_params->omit_grid  = scene->omit_grid;
+        ProfBegin("mem allocation");
+        pass_params->lights     = push_array(rk_frame_arena(), R_Light3D, MAX_LIGHTS_PER_PASS);
+        pass_params->materials  = push_array(rk_frame_arena(), R_Material3D, MAX_MATERIALS_PER_PASS);
+        pass_params->textures   = push_array(rk_frame_arena(), R_PackedTextures, MAX_MATERIALS_PER_PASS);
+        ProfEnd();
 
-      // load default material
-      pass_params->materials[0].diffuse_color = v4f32(1,1,1,1);
-      pass_params->materials[0].opacity = 1.0f;
-      pass_params->material_count = 1;
+        // load default material
+        pass_params->materials[0].diffuse_color = v4f32(1,1,1,1);
+        pass_params->materials[0].opacity = 1.0f;
+        pass_params->material_count = 1;
+      }
     }
-  }
 
-  // geo front, for example we want gizmo drawn on top of scene
-  {
-    D_Bucket **bucket = &rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front];
-    *bucket = d_bucket_make();
-    D_BucketScope(*bucket)
+    // geo front, for example we want gizmo drawn on top of scene
+    ProfScope("making geo front bucket")
     {
-      R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, proj_m);
-      pass_params->omit_light = 1;
-      pass_params->omit_grid = 1;
-      pass_params->lights = push_array(rk_frame_arena(), R_Light3D, MAX_LIGHTS_PER_PASS);
-      pass_params->materials = push_array(rk_frame_arena(), R_Material3D, MAX_MATERIALS_PER_PASS);
-      pass_params->textures = push_array(rk_frame_arena(), R_PackedTextures, MAX_MATERIALS_PER_PASS);
+      D_Bucket **bucket = &rk_state->bucket_geo[RK_GeoBucketKind_Geo3D_Front];
+      *bucket = d_bucket_make();
+      D_BucketScope(*bucket)
+      {
+        R_PassParams_Geo3D *pass_params = d_geo3d_begin(viewport, view_m, proj_m);
+        pass_params->omit_light = 1;
+        pass_params->omit_grid  = 1;
+        ProfBegin("mem allocation");
+        pass_params->lights     = push_array(rk_frame_arena(), R_Light3D, MAX_LIGHTS_PER_PASS);
+        pass_params->materials  = push_array(rk_frame_arena(), R_Material3D, MAX_MATERIALS_PER_PASS);
+        pass_params->textures   = push_array(rk_frame_arena(), R_PackedTextures, MAX_MATERIALS_PER_PASS);
+        ProfEnd();
 
-      // load default material
-      pass_params->materials[0].diffuse_color = v4f32(1,1,1,1);
-      pass_params->materials[0].opacity = 1.0f;
-      pass_params->material_count = 1;
+        // load default material
+        pass_params->materials[0].diffuse_color = v4f32(1,1,1,1);
+        pass_params->materials[0].opacity = 1.0f;
+        pass_params->material_count = 1;
+      }
     }
   }
 
@@ -3052,14 +3074,9 @@ rk_frame(void)
 
   // build event list for ui
   UI_EventList ui_events = {0};
-  OS_Event *os_evt_first = rk_state->os_events.first;
-  OS_Event *os_evt_opl = rk_state->os_events.last + 1;
-  ProfScope("build ui events") for(OS_Event *os_evt = os_evt_first; os_evt < os_evt_opl; os_evt++)
+  ProfScope("build ui events") for(OS_Event *os_evt = rk_state->os_events.first; os_evt != 0; os_evt = os_evt->next)
   {
-    // if(os_window_is_focused(window))
-    if(os_evt == 0) continue;
-
-    UI_Event ui_evt = zero_struct;
+    UI_Event ui_evt = {0};
 
     UI_EventKind kind = UI_EventKind_Null;
     switch(os_evt->kind)
@@ -3192,7 +3209,7 @@ rk_frame(void)
   // draw game view
 
   // TODO: change drawing order if cursor is clicked on one of the views
-  ProfScope("rk ui drawing")
+  ProfScope("debug ui")
   {
     rk_ui_inspector();
     rk_ui_stats();
@@ -3269,7 +3286,7 @@ rk_frame(void)
     RK_Node *root = rk_node_from_handle(&scene->root);
 
     // Pass 1
-    ProfScope("scene update") if(scene->update_fn)
+    if(scene->update_fn)
     {
       scene->update_fn(scene, &ctx);
     }
@@ -4345,7 +4362,7 @@ rk_frame(void)
   // draw ui
 
   ui_end_build();
-  ProfScope("draw ui") D_BucketScope(rk_state->bucket_rect)
+  D_BucketScope(rk_state->bucket_rect)
   {
     rk_ui_draw();
   }
@@ -4413,27 +4430,52 @@ rk_frame(void)
   ///////////////////////////////////////////////////////////////////////////////////////
   // wait if we still have some cpu time left
 
+  local_persist B32 frame_missed = 0;
+  local_persist U64 exiting_frame_index = 0;
+
   // TODO: use cpu sleep instead of spinning cpu here
   U64 frame_time_target_cap_us = (U64)(1000000/target_hz);
   U64 work_us = os_now_microseconds()-begin_time_us;
   rk_state->cpu_time_us = work_us;
   if(work_us < frame_time_target_cap_us)
   {
-    while(work_us < frame_time_target_cap_us)
+    ProfScope("wait frame target cap")
     {
-      // TODO: check if os supports ms granular sleep
-      if(1)
+      while(work_us < frame_time_target_cap_us)
       {
-        os_sleep_milliseconds((frame_time_target_cap_us-work_us)/1000);
+        // TODO: check if os supports ms granular sleep
+        if(1)
+        {
+          os_sleep_milliseconds((frame_time_target_cap_us-work_us)/1000);
+        }
+        work_us = os_now_microseconds()-begin_time_us;
       }
-      work_us = os_now_microseconds()-begin_time_us;
     }
   }
   else
   {
     // TODO(k): missed frame rate!
     // TODO(k): proper logging
-    fprintf(stderr, "missed frame\n");
+
+    fprintf(stderr, "missed frame, over %06.2f ms from %06.2f ms\n", (work_us-frame_time_target_cap_us)/1000.0, frame_time_target_cap_us/1000.0);
+
+    // TODO(k): not sure why spall why not flushing if we stopped to early, maybe there is a limit for flushing
+
+    // tag it
+    ProfBegin("MISSED FRAME");
+    ProfEnd();
+#if 0
+    if(rk_state->frame_index > 30 && !frame_missed)
+    {
+      frame_missed = 1;
+      exiting_frame_index = rk_state->frame_index+30;
+    }
+#endif
+  }
+
+  if(frame_missed && rk_state->frame_index > exiting_frame_index)
+  {
+    rk_state->window_should_close = 1;
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -4454,6 +4496,7 @@ rk_frame(void)
   // end
 
   scratch_end(scratch);
+  ProfEnd();
   return !rk_state->window_should_close;
 }
 
@@ -4463,11 +4506,13 @@ rk_frame(void)
 internal RK_DrawList *
 rk_drawlist_alloc(Arena *arena, U64 vertex_buffer_cap, U64 indice_buffer_cap)
 {
+  ProfBeginFunction();
   RK_DrawList *ret = push_array(arena, RK_DrawList, 1);
   ret->vertex_buffer_cap = vertex_buffer_cap;
   ret->indice_buffer_cap = indice_buffer_cap;
   ret->vertices = r_buffer_alloc(R_ResourceKind_Stream, vertex_buffer_cap, 0, 0);
   ret->indices = r_buffer_alloc(R_ResourceKind_Stream, indice_buffer_cap, 0, 0);
+  ProfEnd();
   return ret;
 }
 
@@ -4506,6 +4551,7 @@ rk_drawlist_push(Arena *arena, RK_DrawList *drawlist, R_Vertex *vertices_src, U6
 internal void
 rk_drawlist_build(RK_DrawList *drawlist)
 {
+  ProfBeginFunction();
   Temp scratch = scratch_begin(0,0);
   R_Vertex *vertices = (R_Vertex*)push_array(scratch.arena, U8, drawlist->vertex_buffer_cmt);
   U32 *indices = (U32*)push_array(scratch.arena, U8, drawlist->indice_buffer_cmt);
@@ -4525,6 +4571,7 @@ rk_drawlist_build(RK_DrawList *drawlist)
   r_buffer_copy(drawlist->vertices, vertices, drawlist->vertex_buffer_cmt);
   r_buffer_copy(drawlist->indices, indices, drawlist->indice_buffer_cmt);
   scratch_end(scratch);
+  ProfEnd();
 }
 
 internal void
@@ -5272,6 +5319,7 @@ rk_eat_event(OS_EventList *list, OS_Event *evt)
 internal B32
 rk_key_press(OS_Modifiers mods, OS_Key key)
 {
+  ProfBeginFunction();
   B32 result = 0;
   for(OS_Event *evt = rk_state->os_events.first; evt != 0; evt = evt->next)
   {
@@ -5282,12 +5330,13 @@ rk_key_press(OS_Modifiers mods, OS_Key key)
       break;
     }
   }
+  ProfEnd();
   return result;
 }
 internal B32
 rk_key_release(OS_Modifiers mods, OS_Key key)
 {
-
+  ProfBeginFunction();
   B32 result = 0;
   for(OS_Event *evt = rk_state->os_events.first; evt != 0; evt = evt->next)
   {
@@ -5298,5 +5347,6 @@ rk_key_release(OS_Modifiers mods, OS_Key key)
       break;
     }
   }
+  ProfEnd();
   return result;
 }

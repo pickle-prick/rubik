@@ -23,14 +23,15 @@
 typedef struct OS_LNX_Window OS_LNX_Window;
 struct OS_LNX_Window
 {
-    OS_LNX_Window *next;
-    OS_LNX_Window *prev;
-    Window window;
-    XIC xic;
-    XID counter_xid;
-    U64 counter_value;
-    B32 focus_out;
-    Vec2F32 client_dim;
+  OS_LNX_Window *next;
+  OS_LNX_Window *prev;
+  Window window;
+  XIC xic;
+  XID counter_xid;
+  U64 counter_value;
+  B32 focus_out;
+  Vec2F32 client_dim;
+  Vec2F32 last_mouse;
 };
 
 ////////////////////////////////

@@ -337,6 +337,36 @@ internal void de_deck_reset(void)
   }
 }
 
+internal void de_stock_reset(void)
+{
+  RK_Scene *scene = rk_top_scene();
+  DE_State *de_state = scene->custom_data;
+
+  // zero-out old stock dices
+  for(U64 i = 0; i < ArrayCount(de_state->stock_slots); i++)
+  {
+    DE_StockSlot *slot = &de_state->stock_slots[i];
+    if(slot->dice)
+    {
+      de_dice_release(slot->dice);
+      slot->dice = 0;
+    }
+  }
+
+  // create random dices for store
+  for(U64 i = 0; i < ArrayCount(de_state->stock_slots); i++)
+  {
+    DE_StockSlot *slot = &de_state->stock_slots[i];
+    DE_Dice *dice = de_dice_alloc();
+    DE_DiceKind kind = rand()%DE_DiceKind_COUNT;
+    dice->kind = kind;
+    dice->base_range = (Vec2U64){1,6};
+    // dice->scalar = (U64[6]){1,2,3,4,5,6}[rand()%6];
+    dice->scalar = 1;
+    slot->dice = dice;
+  }
+}
+
 internal void de_state_reset(void)
 {
   RK_Scene *scene = rk_top_scene();
@@ -427,30 +457,8 @@ RK_SCENE_UPDATE(de_update)
 
       // compute token
       token += 6;
-      
-      // zero-out old stock dices
-      for(U64 i = 0; i < ArrayCount(de_state->stock_slots); i++)
-      {
-        DE_StockSlot *slot = &de_state->stock_slots[i];
-        if(slot->dice)
-        {
-          de_dice_release(slot->dice);
-          slot->dice = 0;
-        }
-      }
 
-      // create random dices for store
-      for(U64 i = 0; i < ArrayCount(de_state->stock_slots); i++)
-      {
-        DE_StockSlot *slot = &de_state->stock_slots[i];
-        DE_Dice *dice = de_dice_alloc();
-        DE_DiceKind kind = rand()%DE_DiceKind_COUNT;
-        dice->kind = kind;
-        dice->base_range = (Vec2U64){1,6};
-        // dice->scalar = (U64[6]){1,2,3,4,5,6}[rand()%6];
-        dice->scalar = 1;
-        slot->dice = dice;
-      }
+      de_stock_reset();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////
@@ -544,7 +552,7 @@ RK_SCENE_UPDATE(de_update)
                 if(!has_enough_token)
                 {
                   sy_instrument_play(de_state->instruments[S5_InstrumentKind_Boop], 0, 0.1, 3, 1.0);
-                  sy_instrument_play(de_state->instruments[S5_InstrumentKind_Boop], 0.12, 0.1, 3, 1.0);
+                  sy_instrument_play(de_state->instruments[S5_InstrumentKind_Boop], 0.11, 0.1, 3, 1.0);
                 }
                 else if(empty_slot_index < ArrayCount(de_state->storage_slots))
                 {
@@ -569,8 +577,20 @@ RK_SCENE_UPDATE(de_update)
           UI_Parent(container)
           {
             ui_spacer(ui_pct(1.0, 0.0));
+
+            // reset
             UI_PrefHeight(ui_pct(1.0, 0.0))
             UI_TextAlignment(UI_TextAlign_Center)
+            UI_FontSize(ui_top_font_size()*2.5)
+            if(ui_clicked(ui_buttonf("Reroll")))
+            {
+              sy_instrument_play(de_state->instruments[S5_InstrumentKind_Beep], 0, 0.1, 8, 1.0);
+              de_stock_reset();
+            }
+
+            UI_PrefHeight(ui_pct(1.0, 0.0))
+            UI_TextAlignment(UI_TextAlign_Center)
+            UI_FontSize(ui_top_font_size()*2.5)
             if(ui_clicked(ui_buttonf("DONE")))
             {
               round++;
@@ -645,10 +665,10 @@ RK_SCENE_UPDATE(de_update)
         for(U64 i = 0; i < ArrayCount(de_state->deck_slots); i++)
         {
           DE_DeckSlot *slot = &de_state->deck_slots[i];
-          DE_DeckSlot *left_slot = 0;
-          DE_DeckSlot *right_slot = 0;
-          if(i >= 1) left_slot = &de_state->deck_slots[i-1];
-          if(i < ArrayCount(de_state->deck_slots)-1) right_slot = &de_state->deck_slots[i+1];
+          U64 left_index = i == 0 ? ArrayCount(de_state->deck_slots)-1 : i-1;
+          U64 right_index = (i+1)%ArrayCount(de_state->deck_slots);
+          DE_DeckSlot *left_slot = &de_state->deck_slots[left_index];
+          DE_DeckSlot *right_slot = &de_state->deck_slots[right_index];
           UI_Box *card_container;
           UI_PrefWidth(ui_pct(1.0, 0.0))
             UI_PrefHeight(ui_pct(1.0, 0.0))

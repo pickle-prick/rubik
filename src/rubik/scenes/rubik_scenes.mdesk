@@ -4,6 +4,7 @@ RK_ScenesTable:
 {
   {duskers}
   {dice}
+  {blind}
 }
 
 @gen
@@ -26,6 +27,9 @@ RK_FunctionTable:
   {de_setup}
   {de_update}
   {de_default}
+  {bd_setup}
+  {bd_update}
+  {bd_default}
 }
 
 @data(RK_FunctionEntry) @c_file rk_scene_function_table:
