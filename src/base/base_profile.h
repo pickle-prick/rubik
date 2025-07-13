@@ -119,7 +119,7 @@ internal inline void spall_begin(char *fmt, ...);
 ////////////////////////////////
 //~ rjf: Helper Wrappers
 
-#define ProfBeginFunction(...) ProfBegin(this_function_name)
+#define ProfBeginFunction(...) ProfBegin((char*)this_function_name)
 #define ProfScope(...) DeferLoop(ProfBeginDynamic(__VA_ARGS__), ProfEnd())
 
 #endif // BASE_PROFILE_H

@@ -77,6 +77,12 @@ struct BD_State
   // grid & cell
   Vec2U64 grid_size;
   BD_Cell *cells;
+  U64 cell_count;
+
+  // qi comp state
+  B32 *whitelist;
+  B32 *blacklist;
+  B32 *deadlist;
 
   // flip list
   BD_Cell *first_cell_to_flip;
@@ -142,9 +148,101 @@ bd_flip_list_push(BD_Cell *cell, BD_CellKind kind)
 }
 
 internal void
+bd_whitelist_push(BD_Cell *cell)
+{
+  AssertAlways(cell->flipped);
+
+  RK_Scene *scene = rk_top_scene();
+  BD_State *bd_state = scene->custom_data;
+  bd_state->whitelist[cell->index] = 1;
+
+  // collect neighbors
+  BD_Cell *neighbors[8] = {0};
+  bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
+
+  for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
+  {
+    BD_Cell *n = neighbors[i];
+    if(n && n->flipped)
+    {
+      B32 is_direct = (i == BD_CellNeighborKind_Top)   ||
+                      (i == BD_CellNeighborKind_Right) ||
+                      (i == BD_CellNeighborKind_Down)  ||
+                      (i == BD_CellNeighborKind_Left);
+      B32 same_kind = n->kind == cell->kind;
+      B32 visited = bd_state->whitelist[n->index] == 1;
+      if(is_direct && same_kind && !visited)
+      {
+        bd_whitelist_push(n);
+      }
+    }
+  }
+}
+
+internal B32
+bd_cell_has_qi(BD_Cell *cell)
+{
+  B32 ret = 0;
+  RK_Scene *scene = rk_top_scene();
+  BD_State *bd_state = scene->custom_data;
+
+  B32 in_whitelist = bd_state->whitelist[cell->index];
+  B32 in_blacklist = bd_state->blacklist[cell->index];
+
+  if(in_whitelist)
+  {
+    ret = 1;
+  }
+  else if(in_blacklist)
+  {
+  }
+  else
+  {
+    bd_state->blacklist[cell->index] = 1;
+
+    // collect neighbors
+    BD_Cell *neighbors[8] = {0};
+    bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
+    for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
+    {
+      BD_Cell *n = neighbors[i];
+      if(n)
+      {
+        B32 is_direct = (i == BD_CellNeighborKind_Top)   ||
+                        (i == BD_CellNeighborKind_Right) ||
+                        (i == BD_CellNeighborKind_Down)  ||
+                        (i == BD_CellNeighborKind_Left);
+        B32 same_kind = n->kind == cell->kind;
+        if(!is_direct) continue;
+        if(!n->flipped)
+        {
+          ret = 1;
+        }
+        else if(is_direct && same_kind)
+        {
+          ret = bd_cell_has_qi(n);
+        }
+
+        if(ret)
+        {
+          break;
+        }
+      }
+    }
+  }
+
+  return ret;
+}
+
+internal void
 bd_cell_flip(BD_Cell *cell, BD_CellKind kind)
 {
   ProfBeginFunction();
+  AssertAlways(!cell->flipped);
+
+  RK_Scene *scene = rk_top_scene();
+  BD_State *bd_state = scene->custom_data;
+
   cell->kind = kind;
   cell->flipped = 1;
 
@@ -153,11 +251,88 @@ bd_cell_flip(BD_Cell *cell, BD_CellKind kind)
   bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
 
   ///////////////////////////////////////////////////////////////////////////////////////
+  // generic rules
+
+  ////////////////////////////////
+  // go rule based on qi
+
+  B32 pruned = 0;
+
+  // first pass (respect whitelist)
+  {
+    MemoryZero(bd_state->whitelist, bd_state->cell_count*sizeof(B32));
+    MemoryZero(bd_state->deadlist, bd_state->cell_count*sizeof(B32));
+    bd_whitelist_push(cell);
+    for(U64 i = 0; i < bd_state->cell_count; i++)
+    {
+      BD_Cell *c = &bd_state->cells[i];
+      if(c->flipped)
+      {
+        MemoryZero(bd_state->blacklist, bd_state->cell_count*sizeof(B32));
+        B32 has_qi = bd_cell_has_qi(c);
+        if(!has_qi)
+        {
+          pruned = 1;
+          bd_state->deadlist[i] = 1;
+        }
+      }
+    }
+
+    // prune dead cell
+    for(U64 i = 0; i < bd_state->cell_count; i++)
+    {
+      if(bd_state->deadlist[i])
+      {
+        BD_Cell *c = &bd_state->cells[i];
+        AssertAlways(c);
+        c->kind = (c->kind+1)%BD_CellKind_COUNT;
+      }
+    }
+  }
+
+  // second pass without whitelist
+  {
+    MemoryZero(bd_state->whitelist, bd_state->cell_count*sizeof(B32));
+    MemoryZero(bd_state->deadlist, bd_state->cell_count*sizeof(B32));
+    for(U64 i = 0; i < bd_state->cell_count; i++)
+    {
+      BD_Cell *c = &bd_state->cells[i];
+      if(c->flipped)
+      {
+        MemoryZero(bd_state->blacklist, bd_state->cell_count*sizeof(B32));
+        B32 has_qi = bd_cell_has_qi(c);
+        if(!has_qi)
+        {
+          bd_state->deadlist[i] = 1;
+          pruned = 1;
+        }
+      }
+    }
+
+    // prune dead cell
+    for(U64 i = 0; i < bd_state->cell_count; i++)
+    {
+      if(bd_state->deadlist[i])
+      {
+        BD_Cell *c = &bd_state->cells[i];
+        AssertAlways(c);
+        c->kind = (c->kind+1)%BD_CellKind_COUNT;
+      }
+    }
+  }
+  if(pruned)
+  {
+    sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Beep], 0, 0.1, 1, 1.0);
+    sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Beep], 0.11, 0.1, 12, 1.0);
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////
   // dice combo triggering
 
   ////////////////////////////////
   // jump one
 
+#if 1
   for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
   {
     BD_Cell *n = neighbors[i];
@@ -172,10 +347,12 @@ bd_cell_flip(BD_Cell *cell, BD_CellKind kind)
       }
     }
   }
+#endif
 
   ////////////////////////////////
   // lucky flip
 
+#if 0
   if(kind == BD_CellKind_Black)
   {
     U64 max_luck_flip = 1;
@@ -202,35 +379,7 @@ bd_cell_flip(BD_Cell *cell, BD_CellKind kind)
       }
     }
   }
-
-  // U64 positive = 0;
-  // U64 negative = 0;
-  // U64 flipped_direct_neighbor_count = 0;
-
-  // for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
-  // {
-  //   BD_Cell *n = neighbors[i];
-  //   if(n)
-  //   {
-  //     B32 is_direct = (i == BD_CellNeighborKind_Top)   ||
-  //                     (i == BD_CellNeighborKind_Right) ||
-  //                     (i == BD_CellNeighborKind_Down)  ||
-  //                     (i == BD_CellNeighborKind_Left);
-  //     if(n->flipped && is_direct)
-  //     {
-  //       flipped_direct_neighbor_count++;
-  //     }
-  //     if(n->kind == cell->kind)
-  //     {
-  //       positive++;
-  //     }
-  //     else
-  //     {
-  //       negative--;
-  //     }
-  //   }
-  // }
-
+#endif
   ProfEnd();
 }
 
@@ -240,7 +389,7 @@ bd_round_begin(void)
   RK_Scene *scene = rk_top_scene();
   BD_State *bd_state = scene->custom_data;
 
-  bd_state->goal = 10*bd_state->round;
+  bd_state->goal = 5*bd_state->round;
   bd_state->roll_count = 6;
   bd_state->dice_rolled = 0;
   bd_state->draw_count = 0;
@@ -269,7 +418,8 @@ bd_round_end(B32 next)
     // update acc
     bd_state->round++;
   }
-  // TODO: handle game failure
+  // no next, end game?
+  // TODO: proper failure handling
   else
   {
     bd_state->round = 1;
@@ -302,7 +452,7 @@ RK_SCENE_UPDATE(bd_update)
   ///////////////////////////////////////////////////////////////////////////////////////
   // process flip list
 
-  B32 flipping = 0;
+  B32 flipping = bd_state->first_cell_to_flip != 0;
 #if 1
   F32 budget = rk_state->frame_dt;
   for(BD_Cell *cell = bd_state->first_cell_to_flip, *next = 0;
@@ -311,7 +461,6 @@ RK_SCENE_UPDATE(bd_update)
   {
     BD_Cell *next = cell->flip_next;
     F32 remain = (1.0-cell->flip_t)*BD_FLIP_DURATION_SEC;
-    flipping = 1;
 
     F32 t = 0;
     if(remain >= budget)
@@ -330,6 +479,7 @@ RK_SCENE_UPDATE(bd_update)
     if(abs_f32(cell->flip_t-1.0f) < 0.001f) cell->flip_t = 1.0;
 
     B32 flipped = cell->flip_t == 1.0;
+    AssertAlways(!cell->flipped);
     if(flipped)
     {
       bd_cell_flip(cell, cell->kind);
@@ -430,7 +580,7 @@ RK_SCENE_UPDATE(bd_update)
               UI_Signal sig = ui_signal_from_box(b);
 
               B32 can_flip = bd_state->dice_rolled && bd_state->draw_count>0;
-              if(ui_clicked(sig) && !flipping)
+              if(((sig.f&UI_SignalFlag_LeftClicked) || (sig.f&UI_SignalFlag_RightClicked)) && !flipping)
               {
                 if(can_flip)
                 {
@@ -650,6 +800,7 @@ RK_SCENE_UPDATE(bd_update)
   ///////////////////////////////////////////////////////////////////////////////////////
   // next round or end game
 
+#if 1
   U64 score_u64 = 0;
   if(score > 0) score_u64 = (U64)score;
   if(!flipping)
@@ -662,12 +813,12 @@ RK_SCENE_UPDATE(bd_update)
     }
     else if(bd_state->roll_count == 0 && bd_state->draw_count == 0)
     {
-      // TODO: proper failure handling
       bd_round_end(0);
       bd_round_begin();
       sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Boop], 0, 0.2, 12, 1.0);
     }
   }
+#endif
 }
 
 RK_SCENE_SETUP(bd_setup)
@@ -842,8 +993,15 @@ RK_SCENE_SETUP(bd_setup)
   }
 
   bd_state->grid_size = (Vec2U64){10,10};
-  bd_state->cells = push_array(scene->arena, BD_Cell, bd_state->grid_size.x*bd_state->grid_size.y);
-  for(U64 cell_index = 0; cell_index < bd_state->grid_size.x*bd_state->grid_size.y; cell_index++)
+  U64 cell_count = bd_state->grid_size.x*bd_state->grid_size.y;
+  bd_state->cells = push_array(scene->arena, BD_Cell, cell_count);
+  bd_state->cell_count = cell_count;
+  bd_state->whitelist = push_array(scene->arena, B32, cell_count);
+  bd_state->blacklist = push_array(scene->arena, B32, cell_count);
+  bd_state->deadlist = push_array(scene->arena, B32, cell_count);
+  for(U64 cell_index = 0;
+      cell_index < bd_state->grid_size.x*bd_state->grid_size.y;
+      cell_index++)
   {
     U64 i = cell_index % bd_state->grid_size.x;
     U64 j = cell_index / bd_state->grid_size.x;
