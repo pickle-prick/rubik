@@ -4421,6 +4421,7 @@ rk_frame(void)
     r_end_frame();
   }
 
+  // TODO: make post pass composite
   {
     // d_edge(rk_state->time_in_seconds);
     // d_crt(0.25, 1.15, rk_state->time_in_seconds);

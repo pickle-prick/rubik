@@ -1,5 +1,18 @@
 /////////////////////////////////////////////////////////////////////////////////////////
 // Constants
+//
+
+#define BD_INITIAL_GOAL 500
+
+// cheating
+#define BD_DETERMINED_DICE 0
+#define BD_UNLIMITED_ROLL  0
+#define BD_NO_NEXT_ROUND   0
+
+// rules
+#define BD_RULE_CAPTURE    1
+#define BD_RULE_JUMP_ONE   1
+#define BD_RULE_LUCK_FLIP  0
 
 #define BD_FLIP_DURATION_SEC 0.2f
 
@@ -57,7 +70,27 @@ struct BD_Cell
   U64 index;
   B32 flipped;
   F32 flip_t;
+  B32 has_liberties;
   BD_CellKind kind;
+};
+
+typedef struct BD_CellNode BD_CellNode;
+struct BD_CellNode
+{
+  BD_CellNode *next;
+  BD_CellNode *prev;
+  BD_Cell *cell;
+};
+
+typedef struct BD_CellList BD_CellList;
+struct BD_CellList
+{
+  BD_CellList *next;
+  BD_CellList *prev;
+
+  BD_CellNode *first;
+  BD_CellNode *last;
+  U64 count;
 };
 
 typedef struct BD_State BD_State;
@@ -79,11 +112,6 @@ struct BD_State
   BD_Cell *cells;
   U64 cell_count;
 
-  // qi comp state
-  B32 *whitelist;
-  B32 *blacklist;
-  B32 *deadlist;
-
   // flip list
   BD_Cell *first_cell_to_flip;
   BD_Cell *last_cell_to_flip;
@@ -91,6 +119,17 @@ struct BD_State
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // helpers
+
+#define bd_is_same_kind(left, right) (!left->flipped ? !right->flipped : right->flipped && left->kind == right->kind)
+
+internal BD_CellNode *
+bd_cell_list_push(Arena *arena, BD_CellList *list)
+{
+  BD_CellNode *ret = push_array(arena, BD_CellNode, 1);
+  DLLPushBack(list->first, list->last, ret);
+  list->count++;
+  return ret;
+}
 
 internal void
 bd_neighbors_for_cell(BD_Cell *cell, BD_Cell **out)
@@ -148,89 +187,141 @@ bd_flip_list_push(BD_Cell *cell, BD_CellKind kind)
 }
 
 internal void
-bd_whitelist_push(BD_Cell *cell)
+bd_cell_flood_fill(Arena *arena, B32 *grid, BD_CellList *list, BD_Cell *cell)
 {
-  AssertAlways(cell->flipped);
-
-  RK_Scene *scene = rk_top_scene();
-  BD_State *bd_state = scene->custom_data;
-  bd_state->whitelist[cell->index] = 1;
-
-  // collect neighbors
-  BD_Cell *neighbors[8] = {0};
-  bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
-
-  for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
+  // push if not pushed
+  if(!grid[cell->index]) 
   {
-    BD_Cell *n = neighbors[i];
-    if(n && n->flipped)
+    grid[cell->index] = 1;
+
+    // collect neighbors
+    BD_Cell *neighbors[8] = {0};
+    bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
+    BD_Cell *direct_neighbors[4] = {0};
+    direct_neighbors[0] = neighbors[BD_CellNeighborKind_Left];
+    direct_neighbors[1] = neighbors[BD_CellNeighborKind_Top];
+    direct_neighbors[2] = neighbors[BD_CellNeighborKind_Right];
+    direct_neighbors[3] = neighbors[BD_CellNeighborKind_Down];
+
+    // push to list if provided
+    if(list)
     {
-      B32 is_direct = (i == BD_CellNeighborKind_Top)   ||
-                      (i == BD_CellNeighborKind_Right) ||
-                      (i == BD_CellNeighborKind_Down)  ||
-                      (i == BD_CellNeighborKind_Left);
-      B32 same_kind = n->kind == cell->kind;
-      B32 visited = bd_state->whitelist[n->index] == 1;
-      if(is_direct && same_kind && !visited)
+      BD_CellNode *node = bd_cell_list_push(arena, list);
+      node->cell = cell;
+    }
+
+    for(U64 i = 0; i < 4; i++)
+    {
+      if(direct_neighbors[i])
       {
-        bd_whitelist_push(n);
+        BD_Cell *n = direct_neighbors[i];
+        B32 same_kind = !cell->flipped ? !n->flipped : n->flipped && cell->kind == n->kind;
+        if(same_kind)
+        {
+          bd_cell_flood_fill(arena, grid, list, n);
+        }
       }
     }
   }
 }
 
-internal B32
-bd_cell_has_qi(BD_Cell *cell)
+internal BD_CellList
+bd_group_boundary(Arena *arena, BD_CellList *group)
 {
-  B32 ret = 0;
-  RK_Scene *scene = rk_top_scene();
-  BD_State *bd_state = scene->custom_data;
+  BD_CellList ret = {0};
 
-  B32 in_whitelist = bd_state->whitelist[cell->index];
-  B32 in_blacklist = bd_state->blacklist[cell->index];
-
-  if(in_whitelist)
+  for(BD_CellNode *node = group->first; node != 0; node = node->next)
   {
-    ret = 1;
-  }
-  else if(in_blacklist)
-  {
-  }
-  else
-  {
-    bd_state->blacklist[cell->index] = 1;
-
-    // collect neighbors
-    BD_Cell *neighbors[8] = {0};
-    bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
-    for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
+    if(node->cell)
     {
-      BD_Cell *n = neighbors[i];
-      if(n)
-      {
-        B32 is_direct = (i == BD_CellNeighborKind_Top)   ||
-                        (i == BD_CellNeighborKind_Right) ||
-                        (i == BD_CellNeighborKind_Down)  ||
-                        (i == BD_CellNeighborKind_Left);
-        B32 same_kind = n->kind == cell->kind;
-        if(!is_direct) continue;
-        if(!n->flipped)
-        {
-          ret = 1;
-        }
-        else if(is_direct && same_kind)
-        {
-          ret = bd_cell_has_qi(n);
-        }
+      BD_Cell *cell = node->cell;
+      // collect neighbors
+      BD_Cell *neighbors[8] = {0};
+      bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
+      BD_Cell *direct_neighbors[4] = {0};
+      direct_neighbors[0] = neighbors[BD_CellNeighborKind_Left];
+      direct_neighbors[1] = neighbors[BD_CellNeighborKind_Top];
+      direct_neighbors[2] = neighbors[BD_CellNeighborKind_Right];
+      direct_neighbors[3] = neighbors[BD_CellNeighborKind_Down];
 
-        if(ret)
+      for(U64 i = 0; i < 4; i++)
+      {
+        BD_Cell *n = direct_neighbors[i];
+        B32 push = n == 0 || !bd_is_same_kind(cell, n);
+        if(push)
         {
-          break;
+          BD_CellNode *node = bd_cell_list_push(arena, &ret);
+          node->cell = n;
         }
       }
     }
   }
+  return ret;
+}
 
+internal B32
+bd_cell_has_liberties(BD_Cell *cell, B32 *block_grid, B32 *whitelist_grid, B32 is_root)
+{
+  B32 ret = whitelist_grid[cell->index];
+  RK_Scene *scene = rk_top_scene();
+  BD_State *bd_state = scene->custom_data;
+
+  // collect neighbors
+  BD_Cell *neighbors[8] = {0};
+  bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
+  BD_Cell *direct_neighbors[4] = {0};
+  direct_neighbors[0] = neighbors[BD_CellNeighborKind_Left];
+  direct_neighbors[1] = neighbors[BD_CellNeighborKind_Top];
+  direct_neighbors[2] = neighbors[BD_CellNeighborKind_Right];
+  direct_neighbors[3] = neighbors[BD_CellNeighborKind_Down];
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // fast path (top and left are expected visited)
+
+  if(is_root && ret == 0)
+  {
+    for(U64 i = 0; i < 2 && ret == 0; i++)
+    {
+      if(!direct_neighbors[i]) continue;
+      BD_Cell *n = direct_neighbors[i];
+      B32 same_kind = n->flipped && n->kind == cell->kind;
+
+      // top or left has liberties
+      if(same_kind)
+      {
+        ret = n->has_liberties;
+      }
+    }
+  }
+  // check if any unflipped neighbor
+  if(ret == 0) for(U64 i = 0; i < 4 && ret == 0; i++)
+  {
+    if(!direct_neighbors[i]) continue;
+    BD_Cell *n = direct_neighbors[i];
+    if(!n->flipped)
+    {
+      ret = 1;
+    }
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // fast path didn't worked? recursivly check neighbors with the same kind
+
+  if(ret == 0) for(U64 i = 0; i < 4 && ret == 0; i++)
+  {
+    if(!direct_neighbors[i]) continue;
+    BD_Cell *n = direct_neighbors[i];
+    B32 blocked = block_grid[n->index];
+    B32 same_kind = n->flipped && n->kind == cell->kind;
+    if(!blocked && same_kind)
+    {
+      block_grid[cell->index] = 1;
+      ret = bd_cell_has_liberties(n, block_grid, whitelist_grid, 0);
+      block_grid[cell->index] = 0;
+    }
+  }
+
+  cell->has_liberties = ret;
   return ret;
 }
 
@@ -240,6 +331,7 @@ bd_cell_flip(BD_Cell *cell, BD_CellKind kind)
   ProfBeginFunction();
   AssertAlways(!cell->flipped);
 
+  Temp scratch = scratch_begin(0,0);
   RK_Scene *scene = rk_top_scene();
   BD_State *bd_state = scene->custom_data;
 
@@ -251,92 +343,82 @@ bd_cell_flip(BD_Cell *cell, BD_CellKind kind)
   bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
 
   ///////////////////////////////////////////////////////////////////////////////////////
-  // generic rules
+  // generic rules (capture, ...)
 
   ////////////////////////////////
-  // go rule based on qi
+  // capture (mimic go)
 
+#if BD_RULE_CAPTURE
   B32 pruned = 0;
-
-  // first pass (respect whitelist)
   {
-    MemoryZero(bd_state->whitelist, bd_state->cell_count*sizeof(B32));
-    MemoryZero(bd_state->deadlist, bd_state->cell_count*sizeof(B32));
-    bd_whitelist_push(cell);
-    for(U64 i = 0; i < bd_state->cell_count; i++)
-    {
-      BD_Cell *c = &bd_state->cells[i];
-      if(c->flipped)
-      {
-        MemoryZero(bd_state->blacklist, bd_state->cell_count*sizeof(B32));
-        B32 has_qi = bd_cell_has_qi(c);
-        if(!has_qi)
-        {
-          pruned = 1;
-          bd_state->deadlist[i] = 1;
-        }
-      }
-    }
+    B32 *prune_list = push_array(scratch.arena, B32, bd_state->cell_count);
+    B32 *block_grid = push_array(scratch.arena, B32, bd_state->cell_count);
+    B32 *whitelist_grid = push_array(scratch.arena, B32, bd_state->cell_count);
 
-    // prune dead cell
-    for(U64 i = 0; i < bd_state->cell_count; i++)
+    for(U64 pass_index = 0; pass_index < 2; pass_index++)
     {
-      if(bd_state->deadlist[i])
+      // first pass with whitelist
+      if(pass_index == 0)
+      {
+        bd_cell_flood_fill(scratch.arena, whitelist_grid, 0, cell);
+      }
+
+      // second pass without whitelist
+      if(pass_index == 1)
+      {
+        MemoryZero(block_grid, sizeof(B32)*bd_state->cell_count);
+        MemoryZero(prune_list, sizeof(B32)*bd_state->cell_count);
+        MemoryZero(whitelist_grid, sizeof(B32)*bd_state->cell_count);
+      }
+
+      for(U64 i = 0; i < bd_state->cell_count; i++)
       {
         BD_Cell *c = &bd_state->cells[i];
-        AssertAlways(c);
-        c->kind = (c->kind+1)%BD_CellKind_COUNT;
+        if(c->flipped)
+        {
+          B32 has_liberties = bd_cell_has_liberties(c, block_grid, whitelist_grid, 1);
+          if(!has_liberties)
+          {
+            prune_list[c->index] = 1;
+            pruned = 1;
+          }
+        }
+      }
+
+      // prune dead cell
+      for(U64 i = 0; i < bd_state->cell_count; i++)
+      {
+        if(prune_list[i])
+        {
+          // TODO(k): decide what would happed to dead cell (unflip or turn)
+          bd_state->cells[i].kind = (bd_state->cells[i].kind+1)%BD_CellKind_COUNT;
+          // bd_state->cells[i].flipped = 0;
+        }
       }
     }
   }
 
-  // second pass without whitelist
-  {
-    MemoryZero(bd_state->whitelist, bd_state->cell_count*sizeof(B32));
-    MemoryZero(bd_state->deadlist, bd_state->cell_count*sizeof(B32));
-    for(U64 i = 0; i < bd_state->cell_count; i++)
-    {
-      BD_Cell *c = &bd_state->cells[i];
-      if(c->flipped)
-      {
-        MemoryZero(bd_state->blacklist, bd_state->cell_count*sizeof(B32));
-        B32 has_qi = bd_cell_has_qi(c);
-        if(!has_qi)
-        {
-          bd_state->deadlist[i] = 1;
-          pruned = 1;
-        }
-      }
-    }
-
-    // prune dead cell
-    for(U64 i = 0; i < bd_state->cell_count; i++)
-    {
-      if(bd_state->deadlist[i])
-      {
-        BD_Cell *c = &bd_state->cells[i];
-        AssertAlways(c);
-        c->kind = (c->kind+1)%BD_CellKind_COUNT;
-      }
-    }
-  }
   if(pruned)
   {
     sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Beep], 0, 0.1, 1, 1.0);
     sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Beep], 0.11, 0.1, 12, 1.0);
   }
+#endif
 
   ///////////////////////////////////////////////////////////////////////////////////////
-  // dice combo triggering
+  // composite rules
 
   ////////////////////////////////
   // jump one
 
-#if 1
+#if BD_RULE_JUMP_ONE
   for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
   {
     BD_Cell *n = neighbors[i];
-    B32 is_direct = (i == BD_CellNeighborKind_Top) || (i == BD_CellNeighborKind_Right) || (i == BD_CellNeighborKind_Down) || (i == BD_CellNeighborKind_Left);
+    B32 is_direct = (i == BD_CellNeighborKind_Top)   ||
+                    (i == BD_CellNeighborKind_Right) ||
+                    (i == BD_CellNeighborKind_Down)  ||
+                    (i == BD_CellNeighborKind_Left);
 
     if(n && is_direct && !n->flipped)
     {
@@ -352,17 +434,14 @@ bd_cell_flip(BD_Cell *cell, BD_CellKind kind)
   ////////////////////////////////
   // lucky flip
 
-#if 0
-  if(kind == BD_CellKind_Black)
+#if BD_RULE_LUCK_FLIP
   {
-    U64 max_luck_flip = 1;
+    U64 max_luck_flip = 8;
     U64 luck_flip = 0;
-    for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
+    for(U64 i = 0; i < BD_CellNeighborKind_COUNT && luck_flip < max_luck_flip; i++)
     {
       BD_Cell *n = neighbors[i];
-      B32 is_direct = (i == BD_CellNeighborKind_Top) || (i == BD_CellNeighborKind_Right) || (i == BD_CellNeighborKind_Down) || (i == BD_CellNeighborKind_Left);
-
-      if(n && is_direct && !n->flipped)
+      if(n && !n->flipped)
       {
         // 10%
         F32 pct = ((F32)rand()/RAND_MAX);
@@ -371,15 +450,12 @@ bd_cell_flip(BD_Cell *cell, BD_CellKind kind)
         {
           bd_flip_list_push(n, cell->kind);
           luck_flip++;
-          if(luck_flip >= max_luck_flip)
-          {
-            break;
-          }
         }
       }
     }
   }
 #endif
+  scratch_end(scratch);
   ProfEnd();
 }
 
@@ -389,7 +465,8 @@ bd_round_begin(void)
   RK_Scene *scene = rk_top_scene();
   BD_State *bd_state = scene->custom_data;
 
-  bd_state->goal = 5*bd_state->round;
+  // TODO(k): we could use some curve here, initial slow
+  bd_state->goal = BD_INITIAL_GOAL*bd_state->round;
   bd_state->roll_count = 6;
   bd_state->dice_rolled = 0;
   bd_state->draw_count = 0;
@@ -415,11 +492,10 @@ bd_round_end(B32 next)
 
   if(next)
   {
-    // update acc
     bd_state->round++;
   }
-  // no next, end game?
-  // TODO: proper failure handling
+  // no next, end game
+  // TODO: proper ending handling
   else
   {
     bd_state->round = 1;
@@ -431,6 +507,7 @@ bd_round_end(B32 next)
 
 RK_SCENE_UPDATE(bd_update)
 {
+  Temp scratch = scratch_begin(0,0);
   BD_State *bd_state = scene->custom_data;
   RK_NodeBucket *nobd_bucket = scene->node_bucket;
   RK_Node **nodes = 0;
@@ -447,7 +524,7 @@ RK_SCENE_UPDATE(bd_update)
   ///////////////////////////////////////////////////////////////////////////////////////
   // accumulators
 
-  S64 score = 0;
+  U64 score = 0;
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // process flip list
@@ -524,13 +601,15 @@ RK_SCENE_UPDATE(bd_update)
     /////////////////////////////////////////////////////////////////////////////////////
     // grid (deck)
 
+    Vec2F32 grid_dim = {1300,1300};
+    Vec2F32 grid_dim_h = scale_2f32(grid_dim, 0.5);
+    Vec2F32 cell_dim = {grid_dim.x/(F32)bd_state->grid_size.x, grid_dim.y/(F32)bd_state->grid_size.y};
+
     UI_Box *grid_container = 0;
     {
       // center the grid
-      Vec2F32 dim = {900,900};
-      Vec2F32 dim_h = scale_2f32(dim, 0.5);
-      Rng2F32 rect = {0,0,dim.x,dim.y};
-      rect = shift_2f32(rect, v2f32(window_dim_h.x-dim_h.x, window_dim_h.y-dim_h.y));
+      Rng2F32 rect = {0,0,grid_dim.x,grid_dim.y};
+      rect = shift_2f32(rect, v2f32(window_dim_h.x-grid_dim_h.x, window_dim_h.y-grid_dim_h.y));
 
       UI_Rect(rect)
         UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground)
@@ -584,8 +663,7 @@ RK_SCENE_UPDATE(bd_update)
               {
                 if(can_flip)
                 {
-#if 0
-                  // TODO: only for debugging
+#if BD_DETERMINED_DICE
                   if(sig.f & UI_SignalFlag_LeftClicked)
                   {
                     bd_flip_list_push(cell, BD_CellKind_Black);
@@ -624,7 +702,8 @@ RK_SCENE_UPDATE(bd_update)
                 UI_Padding(ui_em(0.5,1.0))
                 UI_Flags(UI_BoxFlag_DrawText)
                 UI_Font(ui_icon_font())
-                UI_FontSize(ui_top_font_size()*1.5)
+                // UI_FontSize(ui_top_font_size()*1.1)
+                UI_FontSize(cell_dim.y*0.5)
                 UI_TextAlignment(UI_TextAlign_Center)
                 b = ui_build_box_from_string(0, display);
             }
@@ -673,7 +752,9 @@ RK_SCENE_UPDATE(bd_update)
             bd_state->draw_count = rand()%6 + 1; // 1-6
             bd_state->draw_is_odd = (bd_state->draw_count%2) != 0;
             sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Beep], 0, 0.1, 12, 1.0);
+#if !BD_UNLIMITED_ROLL
             bd_state->roll_count--;
+#endif
           }
           else
           {
@@ -687,49 +768,92 @@ RK_SCENE_UPDATE(bd_update)
     /////////////////////////////////////////////////////////////////////////////////////
     // compute scores
 
-    U64 black_count = 0;
-    U64 white_count = 0;
-    U64 cell_count = bd_state->grid_size.x*bd_state->grid_size.y;
-    ProfScope("compute scores") for(U64 cell_index = 0; cell_index < cell_count; cell_index++)
+    U64 cell_count = bd_state->cell_count;
+
+    U64 territory = 0;
+    // collect territory
     {
-      BD_Cell *cell = &bd_state->cells[cell_index];
-
-      // collect neighbors
-      BD_Cell *neighbors[BD_CellNeighborKind_COUNT] = {0};
-      bd_neighbors_for_cell(cell, neighbors);
-
-      // TODO: turn this cell if all neighbors are reversed cell
-
-      if(cell->flipped)
+      B32 *visit_grid = push_array(scratch.arena, B32, cell_count);
+      BD_CellList *first_group = 0;
+      BD_CellList *last_group = 0;
+      U64 group_count = 0;
+      for(U64 index = 0; index < cell_count; index++)
       {
-        if(cell->kind == BD_CellKind_Black)
-        {
-          black_count++;
-        }
-        else
-        {
-          white_count++;
-        }
+        BD_Cell *c = &bd_state->cells[index];
+        if(visit_grid[index] || c->flipped) continue;
 
-        S64 qi = 1;
-        for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
-        {
-          BD_Cell *n = neighbors[i];
-          B32 is_direct = (i == BD_CellNeighborKind_Top)   ||
-                          (i == BD_CellNeighborKind_Right) ||
-                          (i == BD_CellNeighborKind_Down)  ||
-                          (i == BD_CellNeighborKind_Left);
+        BD_CellList *group = push_array(scratch.arena, BD_CellList, 1);
+        bd_cell_flood_fill(scratch.arena, visit_grid, group, c);
+        SLLQueuePush(first_group, last_group, group);
+        group_count++;
+      }
 
-          if(n && n->flipped && is_direct && n->kind == cell->kind)
+      for(BD_CellList *group = first_group;
+          group != 0;
+          group = group->next)
+      {
+        BD_CellList boundaries = bd_group_boundary(scratch.arena, group);
+        B32 is_black_territory = 0;
+        for(BD_CellNode *node = boundaries.first;
+            node != 0;
+            node = node->next)
+        {
+          BD_Cell *c = node->cell;
+          if(c)
           {
-            qi++;
+            if(c->kind == BD_CellKind_Black) is_black_territory = 1;
+            if(c->kind == BD_CellKind_White)
+            {
+              is_black_territory = 0;
+              break;
+            }
           }
         }
 
-        if(cell->kind == BD_CellKind_White) qi *= -1;
-        score += qi;
+        if(is_black_territory)
+        {
+          territory += group->count;
+        }
+      }
+      // printf("territory: %lu\n", territory);
+    }
+
+    U64 black_count = 0;
+    U64 white_count = 0;
+    U64 qi = 0;
+    for(U64 cell_index = 0; cell_index < cell_count; cell_index++)
+    {
+      BD_Cell *cell = &bd_state->cells[cell_index];
+      if(!cell->flipped) continue;
+      if(cell->kind == BD_CellKind_Black)
+      {
+        black_count++;
+        // collect neighbors
+        BD_Cell *neighbors[8] = {0};
+        bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
+        BD_Cell *direct_neighbors[4] = {0};
+        direct_neighbors[0] = neighbors[BD_CellNeighborKind_Left];
+        direct_neighbors[1] = neighbors[BD_CellNeighborKind_Top];
+        direct_neighbors[2] = neighbors[BD_CellNeighborKind_Right];
+        direct_neighbors[3] = neighbors[BD_CellNeighborKind_Down];
+
+        for(U64 i = 0; i < 4; i++)
+        {
+          if(direct_neighbors[i])
+          {
+            BD_Cell *n = direct_neighbors[i];
+            B32 same_kind = bd_is_same_kind(cell, n);
+            if(same_kind) qi++;
+          }
+        }
+      }
+      else if(cell->kind == BD_CellKind_White)
+      {
+        white_count++;
       }
     }
+
+    score = territory * qi;
 
     /////////////////////////////////////////////////////////////////////////////////////
     // score panel
@@ -737,7 +861,7 @@ RK_SCENE_UPDATE(bd_update)
     UI_Parent(overlay_container)
     {
       UI_Box *score_panel;
-      UI_FixedX(50) UI_FixedY(50)
+      UI_FixedX(10) UI_FixedY(10)
         UI_PrefHeight(ui_children_sum(0.0))
         UI_ChildLayoutAxis(Axis2_Y)
         score_panel = ui_build_box_from_stringf(0, "score_panel");
@@ -767,7 +891,21 @@ RK_SCENE_UPDATE(bd_update)
         {
           ui_labelf("Score");
           ui_spacer(ui_pct(1.0,0.0));
-          ui_labelf("%I64d", score);
+          ui_labelf("%I64u", score);
+        }
+
+        UI_Row
+        {
+          ui_labelf("Territory");
+          ui_spacer(ui_pct(1.0,0.0));
+          ui_labelf("%I64u", territory);
+        }
+
+        UI_Row
+        {
+          ui_labelf("Qi");
+          ui_spacer(ui_pct(1.0,0.0));
+          ui_labelf("%I64u", qi);
         }
 
         UI_Row
@@ -805,6 +943,7 @@ RK_SCENE_UPDATE(bd_update)
   if(score > 0) score_u64 = (U64)score;
   if(!flipping)
   {
+#if !BD_NO_NEXT_ROUND
     if(bd_state->goal <= score_u64)
     {
       bd_round_end(1);
@@ -817,8 +956,10 @@ RK_SCENE_UPDATE(bd_update)
       bd_round_begin();
       sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Boop], 0, 0.2, 12, 1.0);
     }
+#endif
   }
 #endif
+  scratch_end(scratch);
 }
 
 RK_SCENE_SETUP(bd_setup)
@@ -992,13 +1133,11 @@ RK_SCENE_SETUP(bd_setup)
     *dst = src;
   }
 
-  bd_state->grid_size = (Vec2U64){10,10};
+  bd_state->grid_size = (Vec2U64){9,9};
   U64 cell_count = bd_state->grid_size.x*bd_state->grid_size.y;
   bd_state->cells = push_array(scene->arena, BD_Cell, cell_count);
   bd_state->cell_count = cell_count;
-  bd_state->whitelist = push_array(scene->arena, B32, cell_count);
-  bd_state->blacklist = push_array(scene->arena, B32, cell_count);
-  bd_state->deadlist = push_array(scene->arena, B32, cell_count);
+
   for(U64 cell_index = 0;
       cell_index < bd_state->grid_size.x*bd_state->grid_size.y;
       cell_index++)
@@ -1092,7 +1231,6 @@ RK_SCENE_DEFAULT(bd_default)
   ret->default_fn = bd_default;
   ret->root = rk_handle_from_node(root);
 
-  // pop ctx
   rk_push_scene(ret);
   rk_push_node_bucket(ret->node_bucket);
   rk_push_res_bucket(ret->res_bucket);
@@ -1101,5 +1239,9 @@ RK_SCENE_DEFAULT(bd_default)
   // TODO(k): call it somewhere else
   bd_setup(ret);
 
+  rk_pop_scene();
+  rk_pop_node_bucket();
+  rk_pop_res_bucket();
+  rk_pop_handle_seed();
   return ret;
 }
