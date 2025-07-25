@@ -24,7 +24,7 @@ layout(location = 2) out uvec2 out_id;
 // basic types
 
 // Constants
-#define BLOCK_SIZE 16
+// #define BLOCK_SIZE 16
 #define DIRECTIONAL_LIGHT 0
 #define POINT_LIGHT 1
 #define SPOT_LIGHT 2
@@ -115,26 +115,26 @@ layout(set=2, binding=0) uniform sampler2D texSampler;
 // global lights
 layout(std140, set=3, binding=0) readonly buffer Lights
 {
-    Light array[];
+  Light array[];
 } lights;
 
 // global light indices
 layout(std140, set=4, binding=0) readonly buffer LightIndices
 {
-    uint array[]; // first one will be used as indice_count
+  uint array[]; // first one will be used as indice_count
 } light_indices;
 
 // TODO(XXX): we need two lists, one for opaque geometry, one for transparent geometry
 // tile lights (2D grid)
 layout(std140, set=5, binding=0) readonly buffer TileLightsArray
 {
-    TileLights array[];
+  TileLights array[];
 } tile_lights;
 
 // materials
 layout(std140, set=6, binding=0) readonly buffer MaterialArray
 {
-    Material array[];
+  Material array[];
 } materials;
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -142,67 +142,67 @@ layout(std140, set=6, binding=0) readonly buffer MaterialArray
 
 vec4 do_diffuse(Light light, vec4 L, vec4 N)
 {
-    float NdotL = max(dot(N,L), 0);
-    return light.color * NdotL;
+  float NdotL = max(dot(N,L), 0);
+  return light.color * NdotL;
 }
 
 vec4 do_specular(Light light, Material mat, vec4 V, vec4 L, vec4 N)
 {
-    vec4 R = normalize(reflect(-L, N));
-    float RdotV = max(dot(R,V), 0);
-    return light.color * pow(RdotV, mat.specular_power);
+  vec4 R = normalize(reflect(-L, N));
+  float RdotV = max(dot(R,V), 0);
+  return light.color * pow(RdotV, mat.specular_power);
 }
 
 float do_attenuation(Light light, float d)
 {
-    return 1.0f - smoothstep(light.range * 0.75f, light.range, d);
+  return 1.0f - smoothstep(light.range * 0.75f, light.range, d);
 }
 
 float do_spot_cone(Light light, vec4 L)
 {
-    float min_cos = cos(light.spot_angle);
-    float max_cos = mix(min_cos, 1, 0.5);
-    float cos_angle = dot(light.direction_vs, -L);
-    return smoothstep(min_cos, max_cos, cos_angle);
+  float min_cos = cos(light.spot_angle);
+  float max_cos = mix(min_cos, 1, 0.5);
+  float cos_angle = dot(light.direction_vs, -L);
+  return smoothstep(min_cos, max_cos, cos_angle);
 }
 
 LightResult do_directional_light(Light light, Material mat, vec4 V, vec4 P, vec4 N)
 {
-    LightResult ret;
-    
-    vec4 L = normalize(-light.direction_vs);
-    ret.diffuse = do_diffuse(light, L, N) * light.intensity;
-    ret.specular = do_specular(light, mat, V, L, N) * light.intensity;
-    return ret;
+  LightResult ret;
+
+  vec4 L = normalize(-light.direction_vs);
+  ret.diffuse = do_diffuse(light, L, N) * light.intensity;
+  ret.specular = do_specular(light, mat, V, L, N) * light.intensity;
+  return ret;
 }
 
 LightResult do_point_light(Light light, Material mat, vec4 V, vec4 P, vec4 N)
 {
-    LightResult ret;
-    // direction from current pixel view position to light source
-    vec4 L = light.position_vs - P;
-    float distance = length(L);
-    L = L / distance;
-    float attenuation = do_attenuation(light, distance);
+  LightResult ret;
+  // direction from current pixel view position to light source
+  vec4 L = light.position_vs - P;
+  float distance = length(L);
+  L = L / distance;
+  float attenuation = do_attenuation(light, distance);
 
-    ret.diffuse = do_diffuse(light, L, N) * attenuation * light.intensity;
-    ret.specular = do_specular(light, mat, V, L, N) * attenuation * light.intensity;
-    return ret;
+  ret.diffuse = do_diffuse(light, L, N) * attenuation * light.intensity;
+  ret.specular = do_specular(light, mat, V, L, N) * attenuation * light.intensity;
+  return ret;
 }
 
 LightResult do_spot_light(Light light, Material mat, vec4 V, vec4 P, vec4 N)
 {
-    LightResult ret;
-    vec4 L = light.position_vs - P;
-    float distance = length(L);
+  LightResult ret;
+  vec4 L = light.position_vs - P;
+  float distance = length(L);
 
-    L = L / distance;
-    float attenuation = do_attenuation(light, distance);
-    float spot_intensity = do_spot_cone(light, L);
-    
-    ret.diffuse = do_diffuse(light, L, N) * attenuation * spot_intensity * light.intensity;
-    ret.specular = do_specular(light, mat, V, L, N) * attenuation * spot_intensity * light.intensity;
-    return ret;
+  L = L / distance;
+  float attenuation = do_attenuation(light, distance);
+  float spot_intensity = do_spot_cone(light, L);
+
+  ret.diffuse = do_diffuse(light, L, N) * attenuation * spot_intensity * light.intensity;
+  ret.specular = do_specular(light, mat, V, L, N) * attenuation * spot_intensity * light.intensity;
+  return ret;
 }
 
 void main()

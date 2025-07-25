@@ -41,18 +41,18 @@ layout(location = 14) flat out  uint  frag_mat_idx;
 
 layout(std140, set=0, binding=0) uniform UniformBufferObject
 {
-    mat4 view;
-    mat4 view_inv;
-    mat4 proj;
-    mat4 proj_inv;
-    uint show_grid;
-    vec3 _padding_0;
+  mat4 view;
+  mat4 view_inv;
+  mat4 proj;
+  mat4 proj_inv;
+  uint show_grid;
+  vec3 _padding_0;
 } ubo;
 
 // joints
 layout(std140, set = 1, binding = 0) readonly buffer Joints
 {
-    mat4 xforms[];
+  mat4 xforms[];
 } global_joints;
 
 // For debug only
@@ -64,57 +64,57 @@ layout(std140, set = 1, binding = 0) readonly buffer Joints
 
 void main()
 {
-    // instance_t instance = instances[gl_InstanceIndex];
-    vec4 pos_local = vec4(pos, 1.0);
-    vec4 nor_local = vec4(nor, 0.0);
+  // instance_t instance = instances[gl_InstanceIndex];
+  vec4 pos_local = vec4(pos, 1.0);
+  vec4 nor_local = vec4(nor, 0.0);
 
-    // Method 1
-    if(joint_count > 0)
-    {
-        mat4 skin_mat = 
-            weights[0] * global_joints.xforms[first_joint+joints[0]] + 
-            weights[1] * global_joints.xforms[first_joint+joints[1]] + 
-            weights[2] * global_joints.xforms[first_joint+joints[2]] + 
-            weights[3] * global_joints.xforms[first_joint+joints[3]];
+  // Method 1
+  if(joint_count > 0)
+  {
+    mat4 skin_mat = 
+      weights[0] * global_joints.xforms[first_joint+joints[0]] + 
+      weights[1] * global_joints.xforms[first_joint+joints[1]] + 
+      weights[2] * global_joints.xforms[first_joint+joints[2]] + 
+      weights[3] * global_joints.xforms[first_joint+joints[3]];
 
-        pos_local = skin_mat * pos_local;
-        nor_local = normalize(skin_mat * nor_local);
-    }
+    pos_local = skin_mat * pos_local;
+    nor_local = normalize(skin_mat * nor_local);
+  }
 
-    // Method 2
-    // vec4 ori_pos = vec4(pos, 1.0);
-    // vec4 position = vec4(0.0);
-    // if(joint_count > 0)
-    // {
-    //     for(int i = 0; i < 4; i++)
-    //     {
-    //         position += weights[i] * (global_joints.xforms[first_joint+joints[i]] * ori_pos);
-    //     }
-    // }
+  // Method 2
+  // vec4 ori_pos = vec4(pos, 1.0);
+  // vec4 position = vec4(0.0);
+  // if(joint_count > 0)
+  // {
+  //     for(int i = 0; i < 4; i++)
+  //     {
+  //         position += weights[i] * (global_joints.xforms[first_joint+joints[i]] * ori_pos);
+  //     }
+  // }
 
-    vec4 pos_view = ubo.view * model * pos_local;
-    vec4 pos_world = ubo.proj * pos_view;
-    gl_Position = pos_world;
+  vec4 pos_view = ubo.view * model * pos_local;
+  vec4 pos_world = ubo.proj * pos_view;
+  gl_Position = pos_world;
 
-    // NOTE(k): if we are using any non-uniform scale transformation, we need transform normal differently 
-    // NOTE(k): directly multiply model matrix with normal is only correct if scale is uniform (sx == sy == sz), prove it later
-    // REF: Resource by Jason L. McKesson:
-    // Learning Modern 3D Graphics Programming -Normal Transformation
-    mat4 normal_mat = transpose(model_inv); // transpoe(inv) will inverse the scale transformation, and leave rotation transform same
-    vec4 nor_world = normalize(normal_mat * nor_local);
-    vec4 nor_view = ubo.view * nor_world;
+  // NOTE(k): if we are using any non-uniform scale transformation, we need transform normal differently 
+  // NOTE(k): directly multiply model matrix with normal is only correct if scale is uniform (sx == sy == sz), prove it later
+  // REF: Resource by Jason L. McKesson:
+  // Learning Modern 3D Graphics Programming -Normal Transformation
+  mat4 normal_mat = transpose(model_inv); // transpoe(inv) will inverse the scale transformation, and leave rotation transform same
+  vec4 nor_world = normalize(normal_mat * nor_local);
+  vec4 nor_view = ubo.view * nor_world;
 
-    // Output
-    frag_texcoord   = tex;
-    frag_color      = col;
-    frag_id         = id;
-    frag_omit_light = omit_light;
-    frag_nor_world  = nor_world.xyz;
-    frag_nor_view   = nor_view.xyz;
-    frag_pos_world  = pos_world.xyz/pos_world.w;
-    frag_pos_view   = pos_view.xyz;
-    frag_draw_edge  = draw_edge;
-    frag_depth_test = depth_test;
-    frag_nor_mat    = normal_mat;
-    frag_mat_idx    = material_idx;
+  // Output
+  frag_texcoord   = tex;
+  frag_color      = col;
+  frag_id         = id;
+  frag_omit_light = omit_light;
+  frag_nor_world  = nor_world.xyz;
+  frag_nor_view   = nor_view.xyz;
+  frag_pos_world  = pos_world.xyz/pos_world.w;
+  frag_pos_view   = pos_view.xyz;
+  frag_draw_edge  = draw_edge;
+  frag_depth_test = depth_test;
+  frag_nor_mat    = normal_mat;
+  frag_mat_idx    = material_idx;
 }

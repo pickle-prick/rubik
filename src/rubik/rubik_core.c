@@ -3285,24 +3285,31 @@ rk_frame(void)
 
     RK_Node *root = rk_node_from_handle(&scene->root);
 
+    ////////////////////////////////
     // Pass 1
+
     if(scene->update_fn)
     {
       scene->update_fn(scene, &ctx);
     }
-    // TODO(k): maybe we don't need use update_fn for individual node, instead we use one single udpate entry for the whole scene
-    // RK_Node *node = root;
-    // while(node != 0)
-    // {
-    //   RK_NodeRec rec = rk_node_df_pre(node, 0, 0);
-    //   for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
-    //   {
-    //     fn->f(node, scene, &ctx);
-    //   }
-    //   node = rec.next;
-    // }
+    
+    {
+      // TODO(k): maybe we don't need use update_fn for individual node, instead we use one single udpate entry for the whole scene
+      RK_Node *node = root;
+      while(node != 0)
+      {
+        RK_NodeRec rec = rk_node_df_pre(node, 0, 0);
+        for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
+        {
+          fn->f(node, scene, &ctx);
+        }
+        node = rec.next;
+      }
+    }
 
+    ////////////////////////////////
     // Pass 2
+
     RK_Node *node = root;
     R_Light3D *lights = geo_back_params->lights;
     U64 *light_count = &geo_back_params->light_count;
@@ -3325,11 +3332,6 @@ rk_frame(void)
 
       RK_NodeRec rec = rk_node_df_pre(node, 0, 0);
       RK_Node *parent = node->parent;
-
-      // for(RK_UpdateFnNode *fn = node->first_update_fn; fn != 0; fn = fn->next)
-      // {
-      //   fn->f(node, scene, &ctx);
-      // }
 
       ///////////////////////////////////////////////////////////////////////////////////
       // update node hot_t/active_t

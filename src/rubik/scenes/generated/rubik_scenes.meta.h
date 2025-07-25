@@ -6,6 +6,7 @@
 #ifndef RUBIK_SCENES_META_H
 #define RUBIK_SCENES_META_H
 
+#include "../zero/zero.h"
 #include "../duskers/duskers.h"
 #include "../dice/dice.h"
 #include "../blind/blind.h"

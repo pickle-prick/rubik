@@ -2,6 +2,7 @@
 @table(name)
 RK_ScenesTable:
 {
+  {zero}
   {duskers}
   {dice}
   {blind}
@@ -21,9 +22,15 @@ RK_ScenesTable:
 @table(name)
 RK_FunctionTable:
 {
-  {s5_setup}
-  {s5_update}
-  {s5_default}
+  {zo_default}
+  {zo_setup}
+  {zo_update}
+
+  {s0_fn_editor_camera}
+  {s0_fn_rotating_spot_light}
+  {spring_knot}
+  {body}
+
   {de_setup}
   {de_update}
   {de_default}

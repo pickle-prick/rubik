@@ -71,7 +71,7 @@ RK_NODE_CUSTOM_UPDATE(s0_fn_editor_camera)
   // Scroll
   if(rk_state->sig.scroll.x != 0 || rk_state->sig.scroll.y != 0)
   {
-    Vec3F32 dist = scale_3f32(f, rk_state->sig.scroll.y/3.f);
+    Vec3F32 dist = scale_3f32(f, -rk_state->sig.scroll.y/3.f);
     transform->position = add_3f32(dist, transform->position);
   }
 }
@@ -253,20 +253,34 @@ RK_NODE_CUSTOM_UPDATE(body)
   // }
 }
 
+RK_SCENE_UPDATE(zo_update)
+{
+
+}
+
+RK_SCENE_SETUP(zo_setup)
+{
+
+}
+
 // default editor scene
-internal RK_Scene *
-rk_scene_entry__0()
+RK_SCENE_DEFAULT(zo_default)
 {
   RK_Scene *ret = rk_scene_alloc();
-  ret->name = str8_lit("3d_demo");
-  ret->save_path = str8_lit("./src/rubik/scenes/0/default.tscn");
-  ret->reset_fn = str8_lit("rk_scene_entry__0");
+  ret->name = str8_lit("zero");
+  ret->save_path = str8_lit("./src/rubik/scenes/zero/default.tscn");
 
-  // some initilization for scene
+  // push ctx
+  rk_push_scene(ret);
+  rk_push_node_bucket(ret->node_bucket);
+  rk_push_res_bucket(ret->res_bucket);
+  rk_push_handle_seed(ret->handle_seed);
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // scene settings
+
+  // physic settings
   {
-    /////////////////////////////////////////////////////////////////////////////////
-    // physics
-
     // particle3d
     ret->particle3d_system.gravity = (PH_Force3D_Gravity){
       .g = 9.81f,
@@ -286,13 +300,27 @@ rk_scene_entry__0()
     };
   }
 
-  rk_push_node_bucket(ret->node_bucket);
-  rk_push_res_bucket(ret->res_bucket);
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // load resource
+
+  rk_push_node_bucket(ret->res_node_bucket);
+  rk_push_parent(0);
+  RK_Handle dancing_stormtrooper = rk_packed_scene_from_gltf(str8_lit("./models/dancing_stormtrooper/scene.gltf"));
+  RK_Handle blackguard = rk_packed_scene_from_gltf(str8_lit("./models/blackguard/scene.gltf"));
+  // RK_PackedScene *droide = rk_packed_scene_from_gltf(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
+  rk_pop_parent();
+  rk_pop_node_bucket();
+
+  RK_Handle white_mat = rk_material_from_color(str8_lit("white"), v4f32(1,1,1,1));
+  RK_Handle grid_prototype_material = rk_material_from_image(str8_lit("grid_prototype"), str8_lit("./textures/gridbox-prototype-materials/prototype_512x512_grey2.png"));
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // build node tree
 
   RK_Node *root = rk_build_node3d_from_stringf(0, 0, "root");
   RK_Parent_Scope(root)
   {
-    // create the editor camera
+    // editor camera
     RK_Node *main_camera = rk_build_camera3d_from_stringf(0, 0, "main_camera");
     {
       main_camera->camera3d->projection = RK_ProjectionKind_Perspective;
@@ -308,23 +336,6 @@ rk_scene_entry__0()
       main_camera->node3d->transform.position = v3f32(0,-3,0);
     }
     ret->active_camera = rk_handle_from_node(main_camera);
-
-    /////////////////////////////////////////////////////////////////////////////////
-    // load resource
-
-    rk_push_node_bucket(ret->res_node_bucket);
-    rk_push_parent(0);
-    RK_Handle dancing_stormtrooper = rk_packed_scene_from_gltf(str8_lit("./models/dancing_stormtrooper/scene.gltf"));
-    RK_Handle blackguard = rk_packed_scene_from_gltf(str8_lit("./models/blackguard/scene.gltf"));
-    // RK_PackedScene *droide = rk_packed_scene_from_gltf(str8_lit("./models/free_droide_de_seguridad_k-2so_by_oscar_creativo/scene.gltf"));
-    rk_pop_parent();
-    rk_pop_node_bucket();
-
-    RK_Handle white_mat = rk_material_from_color(str8_lit("white"), v4f32(1,1,1,1));
-    RK_Handle grid_prototype_material = rk_material_from_image(str8_lit("grid_prototype"), str8_lit("./textures/gridbox-prototype-materials/prototype_512x512_grey2.png"));
-
-    /////////////////////////////////////////////////////////////////////////////////
-    // spwan node
 
     // reference plane
     RK_Node *floor = rk_build_node3d_from_stringf(0,0,"floor");
@@ -468,8 +479,19 @@ rk_scene_entry__0()
       // rk_node_push_fn(a, str8_lit("body"));
     }
   }
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // end
+
+  ret->setup_fn = 0;
+  ret->update_fn = 0;
+  ret->default_fn = zo_default;
   ret->root = rk_handle_from_node(root);
+
+  // pop ctx
+  rk_pop_scene();
   rk_pop_node_bucket();
   rk_pop_res_bucket();
+  rk_pop_handle_seed();
   return ret;
 }

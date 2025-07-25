@@ -14,49 +14,49 @@ layout(local_size_x_id=0, local_size_y_id=1, local_size_z=1) in;
 
 struct Plane
 {
-    vec3 N; // Plane normal
-    float d; // Distance to origin
+  vec3 N; // Plane normal
+  float d; // Distance to origin
 };
 
 // the back and/or front planes can be computed from min/max depth values from fragments within this group 
 struct Frustum
 {
-    Plane planes[6]; // left,right,top,bottom frustum planes
+  Plane planes[6]; // left,right,top,bottom frustum planes
 };
 
 struct Sphere
 {
-    vec3 c; // center point
-    float r; // raidus
+  vec3 c; // center point
+  float r; // raidus
 };
 
 struct Cone
 {
-    vec3 T; // cone tip point pos
-    float h; // height of the cone
-    vec3 d; // direction of the cone
-    float r; // bottom radius of the cone
+  vec3 T; // cone tip point pos
+  float h; // height of the cone
+  vec3 d; // direction of the cone
+  float r; // bottom radius of the cone
 };
 
 struct Light
 {
-    vec4 position_ws;
-    vec4 direction_ws;
-    vec4 position_vs;
-    vec4 direction_vs;
-    vec4 color;
-    vec4 attenuation; // x: constant, y: linear, z: quadratic
-    float spot_angle;
-    float range;
-    float intensity;
-    uint kind;
+  vec4 position_ws;
+  vec4 direction_ws;
+  vec4 position_vs;
+  vec4 direction_vs;
+  vec4 color;
+  vec4 attenuation; // x: constant, y: linear, z: quadratic
+  float spot_angle;
+  float range;
+  float intensity;
+  uint kind;
 };
 
 struct TileLights
 {
-    uint offset;
-    uint light_count;
-    vec2 _padding_0;
+  uint offset;
+  uint light_count;
+  vec2 _padding_0;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -66,14 +66,14 @@ struct TileLights
 //- input
 layout(std140, set=0, binding=0) uniform UBO
 {
-    mat4 proj_inv;
-    uint light_count;
+  mat4 proj_inv;
+  uint light_count;
 } ubo;
 
 // global lights
 layout(std140, set=1, binding=0) buffer Lights
 {
-    Light array[];
+  Light array[];
 } lights;
 
 layout(set=2, binding=0) uniform sampler2D depth_texture;
@@ -81,7 +81,7 @@ layout(set=2, binding=0) uniform sampler2D depth_texture;
 // tiles
 layout(std140, set=3, binding=0) buffer Tiles
 {
-    Frustum frustums[];
+  Frustum frustums[];
 } tiles;
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -91,14 +91,14 @@ layout(std140, set=3, binding=0) buffer Tiles
 // global light indices
 layout(std140, set=4, binding=0) buffer LightIndices
 {
-    uint array[]; // first one will be used as indice_count
+  uint array[]; // first one will be used as indice_count
 } light_indices;
 
 // TODO(XXX): we need two lists, one for opaque geometry, one for transparent geometry
 // tile lights (2D grid)
 layout(std140, set=5, binding=0) buffer TileLightsArray
 {
-    TileLights array[];
+  TileLights array[];
 } tile_lights;
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -111,8 +111,8 @@ shared Frustum wg_frustum;
 
 // we also need to declear group-shared variables to create the temporary light lists
 shared uint wg_light_count; // keep track of the number of lights that are intersecting the current tile frustum
-// the offset into the global light index list
-// this index wil be written to the light grid and is used as the starting offset when copying the local light index list to global light index list 
+                            // the offset into the global light index list
+                            // this index wil be written to the light grid and is used as the starting offset when copying the local light index list to global light index list 
 shared uint wg_light_index_start_offset;
 // this list will allow us to store as many as 1024 lights in a single tile
 // this maximum value will almost never be reached (at least it shouldn't be)
@@ -127,7 +127,7 @@ shared uint wg_light_list[1024];
 // Source: Real-time collision detection, Christer Ericson (2005)
 bool sphere_outside_plane(Sphere sphere, Plane plane)
 {
-    return (dot(plane.N, sphere.c)-sphere.r) > plane.d;
+  return (dot(plane.N, sphere.c)-sphere.r) > plane.d;
 }
 
 // bool sphere_inside_plane(Sphere sphere, Plane plane)
@@ -138,218 +138,218 @@ bool sphere_outside_plane(Sphere sphere, Plane plane)
 // in view space
 bool sphere_intersect_frustum(Sphere sphere, Frustum frustum, float z_near, float z_far)
 {
-    // sphere frsutum is not intersecting only if sphere is outside of any plane of the frustum
-    bool result = true;
+  // sphere frsutum is not intersecting only if sphere is outside of any plane of the frustum
+  bool result = true;
 
-    // check near/fear plane
-    if((sphere.c.z-sphere.r) > z_far || (sphere.c.z+sphere.r) < z_near)
+  // check near/fear plane
+  if((sphere.c.z-sphere.r) > z_far || (sphere.c.z+sphere.r) < z_near)
+  {
+    result = false; // sphere is outside of near/far planes 
+  }
+
+  // check the remaining 4 planes(left,right,top,bottom)
+  for(uint i = 0; i < 4 && result; i++)
+  {
+    if(sphere_outside_plane(sphere, frustum.planes[i]))
     {
-        result = false; // sphere is outside of near/far planes 
+      result = false; // sphere is outside of this plane
     }
+  }
 
-    // check the remaining 4 planes(left,right,top,bottom)
-    for(uint i = 0; i < 4 && result; i++)
-    {
-        if(sphere_outside_plane(sphere, frustum.planes[i]))
-        {
-            result = false; // sphere is outside of this plane
-        }
-    }
-
-    return result;
+  return result;
 }
 
 // point inside the positive halfspace of the plane (outside of plane)
 bool point_outside_plane(vec3 p, Plane plane)
 {
-    return dot(plane.N, p) > plane.d;
+  return dot(plane.N, p) > plane.d;
 }
 
 bool cone_outside_plane(Cone cone, Plane plane)
 {
-    // vec3 m = cross(cross(plane.N, cone.d), cone.d);
-    // vec3 Q = cone.T + cone.d * cone.h - m*cone.r;
+  // vec3 m = cross(cross(plane.N, cone.d), cone.d);
+  // vec3 Q = cone.T + cone.d * cone.h - m*cone.r;
 
-    vec3 m = cross(cross(plane.N, cone.d), cone.d);
-    vec3 Q = cone.T + cone.d * cone.h + m*cone.r;
+  vec3 m = cross(cross(plane.N, cone.d), cone.d);
+  vec3 Q = cone.T + cone.d * cone.h + m*cone.r;
 
-    // the cone is in the negative halfspace of the plane if both the tip
-    // of the cone and the farthest point on the end of the cone to the positive halfspace of 
-    // the plane are both inside the negative halfspace of the plane
-    return point_outside_plane(cone.T, plane) && point_outside_plane(Q, plane);
+  // the cone is in the negative halfspace of the plane if both the tip
+  // of the cone and the farthest point on the end of the cone to the positive halfspace of 
+  // the plane are both inside the negative halfspace of the plane
+  return point_outside_plane(cone.T, plane) && point_outside_plane(Q, plane);
 }
 
 bool cone_intersect_frustum(Cone cone, Frustum frustum, float z_near, float z_far)
 {
-    bool ret = true;
-    
-    Plane near_plane = {vec3(0,0,-1), z_near};
-    Plane far_plane = {vec3(0,0,1), z_far};
+  bool ret = true;
 
-    // first check the near and far clipping planes
-    if(cone_outside_plane(cone, near_plane) || cone_outside_plane(cone, far_plane))
+  Plane near_plane = {vec3(0,0,-1), z_near};
+  Plane far_plane = {vec3(0,0,1), z_far};
+
+  // first check the near and far clipping planes
+  if(cone_outside_plane(cone, near_plane) || cone_outside_plane(cone, far_plane))
+  {
+    ret = false;
+  }
+
+  // then check the remaining 4 planes (left,right,top,bottom)
+  for(uint i = 0; i < 4 && ret; i++)
+  {
+    if(cone_outside_plane(cone, frustum.planes[i]))
     {
-        ret = false;
+      ret = false;
     }
+  }
 
-    // then check the remaining 4 planes (left,right,top,bottom)
-    for(uint i = 0; i < 4 && ret; i++)
-    {
-        if(cone_outside_plane(cone, frustum.planes[i]))
-        {
-            ret = false;
-        }
-    }
-
-    return ret;
+  return ret;
 }
 
 vec3 view_from_ndc(vec3 p, mat4 proj_inv)
 {
-    vec4 ret = proj_inv * vec4(p.xyz, 1.0);
-    return ret.xyz / ret.w;
+  vec4 ret = proj_inv * vec4(p.xyz, 1.0);
+  return ret.xyz / ret.w;
 }
 
 void push_light(uint light_idx)
 {
-    // index into the visible lights array, relative index
-    uint index = atomicAdd(wg_light_count, 1);
+  // index into the visible lights array, relative index
+  uint index = atomicAdd(wg_light_count, 1);
 
-    // TODO(XXX): we should calculate avg budge (num of lights) per tile
-    if(index < 1024)
-    {
-        wg_light_list[index] = light_idx;
-    }
+  // TODO(XXX): we should calculate avg budge (num of lights) per tile
+  if(index < 1024)
+  {
+    wg_light_list[index] = light_idx;
+  }
 }
 
 void main()
 {
-    uint wg_thread_count = gl_WorkGroupSize.x*gl_WorkGroupSize.y;
-    uint tile_idx = gl_WorkGroupID.y*gl_NumWorkGroups.x + gl_WorkGroupID.x;
+  uint wg_thread_count = gl_WorkGroupSize.x*gl_WorkGroupSize.y;
+  uint tile_idx = gl_WorkGroupID.y*gl_NumWorkGroups.x + gl_WorkGroupID.x;
 
-    // depth sampling
-    ivec2 depth_tex_coord = ivec2(gl_GlobalInvocationID.xy);
-    float depth_f = texelFetch(depth_texture, depth_tex_coord, 0).r;
-    uint depth_u = floatBitsToUint(depth_f);
+  // depth sampling
+  ivec2 depth_tex_coord = ivec2(gl_GlobalInvocationID.xy);
+  float depth_f = texelFetch(depth_texture, depth_tex_coord, 0).r;
+  uint depth_u = floatBitsToUint(depth_f);
 
-    // NOTE(k): won't work well, since no memory barrier, (for test only), use vkCmdFillBuffer instead
-    // if(gl_LocalInvocationIndex == 0 && gl_WorkGroupID.x == 0 && gl_WorkGroupID.y == 0)
-    // {
-    //     light_indices.array[0] = 0;
-    // }
-    // barrier();
-    // memoryBarrierBuffer();
+  // NOTE(k): won't work well, since no memory barrier, (for test only), use vkCmdFillBuffer instead
+  // if(gl_LocalInvocationIndex == 0 && gl_WorkGroupID.x == 0 && gl_WorkGroupID.y == 0)
+  // {
+  //     light_indices.array[0] = 0;
+  // }
+  // barrier();
+  // memoryBarrierBuffer();
 
-    // first thread in group initializes shared memory
-    if(gl_LocalInvocationIndex == 0)
+  // first thread in group initializes shared memory
+  if(gl_LocalInvocationIndex == 0)
+  {
+    // tile's local variables
+    wg_min_depth_u = 0xffffffffu;
+    wg_max_depth_u = 0u;
+    wg_light_count = 0u;
+
+    // calculate frustum index
+    wg_frustum = tiles.frustums[tile_idx];
+  }
+
+  // Memory synchronization for group-shared variables
+  // make sure group-shared variable is initialized for all threads
+  barrier();
+  memoryBarrierShared();
+
+  // atomic min/max operations using integer representation, since float atomic operations are not supported
+  atomicMin(wg_min_depth_u, depth_u);
+  atomicMax(wg_max_depth_u, depth_u);
+
+  // second synchronization barrier to make sure we have the min/max depth at this point
+  barrier();
+  memoryBarrierShared();
+
+  // uint to float
+  float min_depth_f = uintBitsToFloat(wg_min_depth_u);
+  float max_depth_f = uintBitsToFloat(wg_max_depth_u);
+
+  // depth to view space conversion
+  float min_depth_vs = view_from_ndc(vec3(0,0,min_depth_f), ubo.proj_inv).z;
+  float max_depth_vs = view_from_ndc(vec3(0,0,max_depth_f), ubo.proj_inv).z;
+  float near_clip_vs = view_from_ndc(vec3(0,0,0), ubo.proj_inv).z;
+
+  // used for testing lights within the bounds of opaque geometry
+  Plane min_plane = {vec3(0,0,-1), min_depth_vs};
+
+  // lights culling
+  // each thread in a group will cull 1 light until all lights are culled
+  for(uint i = gl_LocalInvocationIndex; i < ubo.light_count ; i+=wg_thread_count)
+  {
+    // count every direction light
+    // for point/spot light, we use frustum sphere/cone intersection
+    Light l = lights.array[i];
+
+    switch(l.kind)
     {
-        // tile's local variables
-        wg_min_depth_u = 0xffffffffu;
-        wg_max_depth_u = 0u;
-        wg_light_count = 0u;
-
-        // calculate frustum index
-        wg_frustum = tiles.frustums[tile_idx];
-    }
-
-    // Memory synchronization for group-shared variables
-    // make sure group-shared variable is initialized for all threads
-    barrier();
-    memoryBarrierShared();
-
-    // atomic min/max operations using integer representation, since float atomic operations are not supported
-    atomicMin(wg_min_depth_u, depth_u);
-    atomicMax(wg_max_depth_u, depth_u);
-
-    // second synchronization barrier to make sure we have the min/max depth at this point
-    barrier();
-    memoryBarrierShared();
-
-    // uint to float
-    float min_depth_f = uintBitsToFloat(wg_min_depth_u);
-    float max_depth_f = uintBitsToFloat(wg_max_depth_u);
-
-    // depth to view space conversion
-    float min_depth_vs = view_from_ndc(vec3(0,0,min_depth_f), ubo.proj_inv).z;
-    float max_depth_vs = view_from_ndc(vec3(0,0,max_depth_f), ubo.proj_inv).z;
-    float near_clip_vs = view_from_ndc(vec3(0,0,0), ubo.proj_inv).z;
-
-    // used for testing lights within the bounds of opaque geometry
-    Plane min_plane = {vec3(0,0,-1), min_depth_vs};
-
-    // lights culling
-    // each thread in a group will cull 1 light until all lights are culled
-    for(uint i = gl_LocalInvocationIndex; i < ubo.light_count ; i+=wg_thread_count)
-    {
-        // count every direction light
-        // for point/spot light, we use frustum sphere/cone intersection
-        Light l = lights.array[i];
-
-        switch(l.kind)
+      // there is no way to reliably cull directional lights
+      // so if we encounter a directional light, we have no choice but to add it's index to the light index list
+      case DIRECTIONAL_LIGHT:
+      {
+        push_light(i);
+      }break;
+      case POINT_LIGHT:
+      {
+        Sphere sphere = {l.position_vs.xyz, l.range};
+        if(sphere_intersect_frustum(sphere, wg_frustum, near_clip_vs, max_depth_vs)) 
         {
-            // there is no way to reliably cull directional lights
-            // so if we encounter a directional light, we have no choice but to add it's index to the light index list
-            case DIRECTIONAL_LIGHT:
-            {
-                push_light(i);
-            }break;
-            case POINT_LIGHT:
-            {
-                Sphere sphere = {l.position_vs.xyz, l.range};
-                if(sphere_intersect_frustum(sphere, wg_frustum, near_clip_vs, max_depth_vs)) 
-                {
-                    // TODO(XXX): add light to light list for transparent geometry
-                    // push_light(i);
+          // TODO(XXX): add light to light list for transparent geometry
+          // push_light(i);
 
-                    // fully inside or half-inside of min_plane
-                    if(!sphere_outside_plane(sphere, min_plane))
-                    {
-                        push_light(i);
-                    }
-                }
-            }break;
-            case SPOT_LIGHT:
-            {
-                Cone cone = {l.position_vs.xyz, l.range, l.direction_vs.xyz, tan(l.spot_angle)*l.range};
-                // TODO(XXX): spot light is not a perfect cone, there should be some hemi_sphere part in the bottom, may cause problem
-                if(cone_intersect_frustum(cone, wg_frustum, near_clip_vs, max_depth_vs))
-                {
-                    // TODO(XXX): add light to the light list for transparent geometry
-                    // push_light(i);
-
-                    // fully inside or half-inside of the min_plane
-                    if(!cone_outside_plane(cone, min_plane))
-                    {
-                        push_light(i);
-                    }
-                }
-            }break;
+          // fully inside or half-inside of min_plane
+          if(!sphere_outside_plane(sphere, min_plane))
+          {
+            push_light(i);
+          }
         }
+      }break;
+      case SPOT_LIGHT:
+      {
+        Cone cone = {l.position_vs.xyz, l.range, l.direction_vs.xyz, tan(l.spot_angle)*l.range};
+        // TODO(XXX): spot light is not a perfect cone, there should be some hemi_sphere part in the bottom, may cause problem
+        if(cone_intersect_frustum(cone, wg_frustum, near_clip_vs, max_depth_vs))
+        {
+          // TODO(XXX): add light to the light list for transparent geometry
+          // push_light(i);
+
+          // fully inside or half-inside of the min_plane
+          if(!cone_outside_plane(cone, min_plane))
+          {
+            push_light(i);
+          }
+        }
+      }break;
     }
+  }
 
-    // to ensure all threads in the thread group have recorded their lights to the group-shared light index list
-    barrier();
-    // memoryBarrierBuffer();
-    memoryBarrierShared();
+  // to ensure all threads in the thread group have recorded their lights to the group-shared light index list
+  barrier();
+  // memoryBarrierBuffer();
+  memoryBarrierShared();
 
-    // update global memory with visible light buffer (first thread do this)
-    if(gl_LocalInvocationIndex == 0)
-    {
-        // NOTE(k): first element of light_indices is the indice_count
-        wg_light_index_start_offset = atomicAdd(light_indices.array[0], wg_light_count) + 1;
+  // update global memory with visible light buffer (first thread do this)
+  if(gl_LocalInvocationIndex == 0)
+  {
+    // NOTE(k): first element of light_indices is the indice_count
+    wg_light_index_start_offset = atomicAdd(light_indices.array[0], wg_light_count) + 1;
 
-        tile_lights.array[tile_idx].offset = wg_light_index_start_offset;
-        tile_lights.array[tile_idx].light_count = wg_light_count;
-    }
+    tile_lights.array[tile_idx].offset = wg_light_index_start_offset;
+    tile_lights.array[tile_idx].light_count = wg_light_count;
+  }
 
-    barrier(); // synchronize all threads in workgroup
-    memoryBarrierBuffer(); // ensure memory operations are visiable (light_indices, tile_lights)
-    memoryBarrierShared(); // ensure memory operations within group are visiable  (wg_light_index_start_offset)
+  barrier(); // synchronize all threads in workgroup
+  memoryBarrierBuffer(); // ensure memory operations are visiable (light_indices, tile_lights)
+  memoryBarrierShared(); // ensure memory operations within group are visiable  (wg_light_index_start_offset)
 
-    // NOTE(k): allow all threads to write a single index into the light index list
-    // copy local light indices into global light indices (all threads)
-    for(uint i = gl_LocalInvocationIndex; i < wg_light_count; i+=wg_thread_count)
-    {
-        light_indices.array[wg_light_index_start_offset+i] = wg_light_list[i];
-    }
+  // NOTE(k): allow all threads to write a single index into the light index list
+  // copy local light indices into global light indices (all threads)
+  for(uint i = gl_LocalInvocationIndex; i < wg_light_count; i+=wg_thread_count)
+  {
+    light_indices.array[wg_light_index_start_offset+i] = wg_light_list[i];
+  }
 }
