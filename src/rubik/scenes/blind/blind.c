@@ -27,6 +27,10 @@ typedef U64 BD_EntityFlags;
 typedef U64 BD_DiceFlags;
 #define BD_DiceFlag_BlackOnOdd (BD_DiceFlags)(1ull<<0)
 
+typedef U64 BD_CellFlags;
+#define BD_CellFlags_00 (BD_CellFlags)(1ull<<0)
+#define BD_CellFlags_11 (BD_CellFlags)(1ull<<1)
+
 typedef enum BD_InstrumentKind
 {
   BD_InstrumentKind_Beep,
@@ -64,17 +68,19 @@ typedef struct BD_Cell BD_Cell;
 struct BD_Cell
 {
   BD_Cell *flip_next;
+  BD_CellKind kind;
 
+  // position info
   U64 i;
   U64 j;
   U64 index;
+
   B32 flipped;
   F32 flip_t;
   F32 animation_t;
   B32 animating;
   B32 has_liberties;
   B32 captured;
-  BD_CellKind kind;
 };
 
 typedef struct BD_CellNode BD_CellNode;
