@@ -19,6 +19,7 @@ layout(location = 5) flat out float frag_corner_radius_px;
 layout(location = 6) flat out float frag_border_thickness_px;
 layout(location = 7) flat out float frag_softness_px;
 layout(location = 8) flat out float frag_omit_texture;
+layout(location = 9) flat out float frag_white_texture_override;
 
 layout(set = 0, binding = 0) uniform Globals {
     vec2 viewport_size_px;                // Vec2F32 viewport_size;
@@ -47,10 +48,10 @@ vec2 positions[4] = vec2[](
 // );
 
 vec4 src_colors[4] = vec4[4](
-    color00,
-    color10,
-    color01,
-    color11
+  color00,
+  color10,
+  color01,
+  color11
 );
 
 void main() {
@@ -61,9 +62,10 @@ void main() {
     vec2 dst_size_px = dst_p1_px - dst_p0_px;
 
     // Unpack style params
-    float border_thickness_px = style_params.x;
-    float softness_px         = style_params.y;
-    float omit_texture        = style_params.z;
+    float border_thickness_px    = style_params.x;
+    float softness_px            = style_params.y;
+    float white_texture_override = style_params.z;
+    float omit_texture           = style_params.w;
 
     vec2 rect_normal_pos = positions[gl_VertexIndex];
     vec2 pct             = (rect_normal_pos+1.0) * 0.5;
@@ -74,13 +76,14 @@ void main() {
     gl_Position = ndc_pos;
 
     // Output
-    frag_position            = ndc_pos;
-    frag_rect_half_size_px   = dst_size_px / 2.0f * globals.xform_scale;
-    frag_texcoord_pct        = mix(src_p0_px, src_p1_px, pct) / globals.texture_t2d_size;
-    frag_sdf_sample_pos      = mix(-frag_rect_half_size_px, frag_rect_half_size_px, pct);
-    frag_tint                = src_colors[gl_VertexIndex];
-    frag_corner_radius_px    = corner_radii_px[gl_VertexIndex];
-    frag_border_thickness_px = border_thickness_px;
-    frag_softness_px         = softness_px;
-    frag_omit_texture        = omit_texture;
+    frag_position               = ndc_pos;
+    frag_rect_half_size_px      = dst_size_px / 2.0f * globals.xform_scale;
+    frag_texcoord_pct           = mix(src_p0_px, src_p1_px, pct) / globals.texture_t2d_size;
+    frag_sdf_sample_pos         = mix(-frag_rect_half_size_px, frag_rect_half_size_px, pct);
+    frag_tint                   = src_colors[gl_VertexIndex];
+    frag_corner_radius_px       = corner_radii_px[gl_VertexIndex];
+    frag_border_thickness_px    = border_thickness_px;
+    frag_softness_px            = softness_px;
+    frag_omit_texture           = omit_texture;
+    frag_white_texture_override = white_texture_override;
 }

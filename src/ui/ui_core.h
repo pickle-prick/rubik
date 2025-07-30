@@ -421,6 +421,8 @@ struct UI_Box
   Vec2F32                      fixed_position_animated;
   Vec2F32                      position_delta;
   R_Handle                     albedo_tex;
+  B32                          albedo_white_texture_override;
+  Vec4F32                      albedo_clr;
   Rng2F32                      src;
 
   // Persistent data

@@ -9,7 +9,9 @@
 
 ## Development Setup Instructions
 
-**Note: Currently, only x64 linux and Windows development are supported.**
+**Note: Currently, only x64 linux and Windows development are supported.**Currently, only x64 linux and Windows development are supported
+
+**Note: Window build is broken for now.**
 
 ### Linux Setup
 
@@ -37,7 +39,7 @@ In order to work with the codebase, you'll need the [Microsoft C/C++ Build Tools
 v15 (2017) or later](https://aka.ms/vs/17/release/vs_BuildTools.exe), for both
 the Windows SDK and the MSVC/Clang compiler and linker. (**Note: Currently only clang can be used)
 
-Install [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/) for windows, then set the %VULKAN_SDK% environment variable to your sdk installation location and include %VULKAN_SDK%/bin to your system path
+Install [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/) for windows
 
 #### 2. Build Environment Setup
 

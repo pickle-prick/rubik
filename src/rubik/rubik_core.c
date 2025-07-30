@@ -190,6 +190,13 @@ rk_ui_draw()
       }
     }
 
+    // draw image
+    if(box->flags & UI_BoxFlag_DrawImage)
+    {
+      R_Rect2DInst *inst = d_img(box->rect, box->src, box->albedo_tex, box->albedo_clr, 0., 0., 0.);
+      inst->white_texture_override = box->albedo_white_texture_override ? 1.0 : 0.0;
+    }
+
     // draw string
     if(box->flags & UI_BoxFlag_DrawText)
     {
@@ -207,12 +214,6 @@ rk_ui_draw()
       }
 
       d_truncated_fancy_run_list(text_position, &box->display_string_runs, max_x, ellipses_run);
-    }
-
-    // draw image
-    if(box->flags & UI_BoxFlag_DrawImage)
-    {
-      d_img(box->rect, box->src, box->albedo_tex, v4f32(1,1,1,1), 0., 0., 0.);
     }
 
     // NOTE(k): draw focus viz

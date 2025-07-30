@@ -1423,9 +1423,9 @@ ui_build_palette_(UI_Palette *base, UI_Palette *overrides)
   for EachEnumVal(UI_ColorCode, code)
   {
     if(overrides->colors[code].x != 0 ||
-        overrides->colors[code].y != 0 ||
-        overrides->colors[code].z != 0 ||
-        overrides->colors[code].w != 0)
+       overrides->colors[code].y != 0 ||
+       overrides->colors[code].z != 0 ||
+       overrides->colors[code].w != 0)
     {
       palette->colors[code] = overrides->colors[code];
     }
