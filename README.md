@@ -2,6 +2,7 @@
 
 > [!WARNING]
 > This software is unfinished. Keep your expectations low.
+> Note: Window build is broken for now.
 
 ![Screenshot of a 3D scene](./screenshots/003.gif)
 
@@ -10,8 +11,6 @@
 ## Development Setup Instructions
 
 **Note: Currently, only x64 linux and Windows development are supported.**Currently, only x64 linux and Windows development are supported
-
-**Note: Window build is broken for now.**
 
 ### Linux Setup
 
