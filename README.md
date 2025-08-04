@@ -3,7 +3,7 @@
 > [!WARNING]
 > This software is unfinished. Keep your expectations low.
 
-> Note: Window build is broken for now.
+> Note: Window build is not actively tested, and may be broken.
 
 ![Screenshot of a 3D scene](./screenshots/003.gif)
 
