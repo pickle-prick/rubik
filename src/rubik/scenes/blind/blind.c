@@ -5,7 +5,7 @@
 #define BD_INITIAL_GOAL 20
 
 // cheating
-#define BD_DETERMINED_DICE 0
+#define BD_DETERMINED_DICE 1
 #define BD_UNLIMITED_ROLL  1
 #define BD_NO_NEXT_ROUND   1
 #define BD_IGNORE_DICE     0
@@ -88,7 +88,7 @@ struct BD_Cell
   BD_CellKind kind;
   U64 base_value;
   U64 base_value_this_round;
-  U64 value;
+  U64 cached_value;
 
   // position info
   U64 i;
@@ -148,9 +148,13 @@ struct BD_State
   BD_Cell *cells;
   U64 cell_count;
 
+  // list
   Arena *flip_arena;
   U64 flip_arena_pos;
   BD_CellList flip_list;
+  Arena *animation_arena;
+  U64 animation_arena_pos;
+  BD_CellList animation_list;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -162,11 +166,20 @@ internal const String8 bd_string_from_cell_binary[BD_CellBinaryKind_COUNT] =
   str8_lit_comp("White"),
 };
 
-internal const String8 bd_string_from_cell_kind[BD_CellKind_COUNT] =
+internal const String8 bd_name_from_cell_kind[BD_CellKind_COUNT] =
 {
   str8_lit_comp("Default"),
   str8_lit_comp("Unity"),   // double the score of allies
   str8_lit_comp("Tiger"),
+  str8_lit_comp("Wolf"),
+};
+
+internal const String8 bd_desc_from_cell_kind[BD_CellKind_COUNT] = 
+{
+  str8_lit_comp("Default"),
+  str8_lit_comp("Double score of all allies in 3x3"),
+  str8_lit_comp("Turn all enemies (non-tiger) to the same binary"),
+  str8_lit_comp("Every unflipped neighbors will be the same binary upon flipped"),
 };
 
 internal const BD_SpriteKind bd_sprite_kind_from_cell_kind[BD_CellKind_COUNT] =
@@ -199,12 +212,20 @@ bd_dice_roll()
 }
 
 internal BD_CellNode *
-bd_cell_list_push(Arena *arena, BD_CellList *list)
+bd_cell_list_push(Arena *arena, BD_CellList *list, BD_Cell *cell)
 {
   BD_CellNode *ret = push_array(arena, BD_CellNode, 1);
+  ret->cell = cell;
   DLLPushBack(list->first, list->last, ret);
   list->count++;
   return ret;
+}
+
+internal void
+bd_cell_list_remove(BD_CellList *list, BD_CellNode *cn)
+{
+  DLLRemove(list->first, list->last, cn);
+  list->count--;
 }
 
 internal void
@@ -301,8 +322,7 @@ bd_cell_flood_fill(Arena *arena, B32 *grid, BD_CellList *list, BD_Cell *cell)
     // push to list if provided
     if(list)
     {
-      BD_CellNode *node = bd_cell_list_push(arena, list);
-      node->cell = cell;
+      bd_cell_list_push(arena, list, cell);
     }
 
     for(U64 i = 0; i < 4; i++)
@@ -346,8 +366,7 @@ bd_group_boundary(Arena *arena, BD_CellList *group)
         B32 push = n == 0 || !bd_is_same_binary(cell, n);
         if(push)
         {
-          BD_CellNode *node = bd_cell_list_push(arena, &ret);
-          node->cell = n;
+          bd_cell_list_push(arena, &ret, n);
         }
       }
     }
@@ -424,6 +443,40 @@ bd_cell_has_liberties(BD_Cell *cell, B32 *block_grid, B32 *whitelist_grid, B32 i
   return ret;
 }
 
+internal U64
+bd_value_from_cell(BD_Cell *cell)
+{
+  U64 ret = cell->base_value_this_round;
+
+  BD_Cell *neighbors[8] = {0};
+  bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
+  for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
+  {
+    BD_Cell *n = neighbors[i];
+    B32 is_direct = (i == BD_CellNeighborKind_Top)   ||
+                    (i == BD_CellNeighborKind_Right) ||
+                    (i == BD_CellNeighborKind_Down)  ||
+                    (i == BD_CellNeighborKind_Left);
+    if(n && n->flipped)
+    {
+      B32 same_binary = bd_is_same_binary(cell, n);
+      switch(n->kind)
+      {
+        case BD_CellKind_Unity:
+        {
+          if(same_binary) ret*=2;
+        }break;
+        case BD_CellKind_Default:
+        case BD_CellKind_Tiger:
+        case BD_CellKind_Wolf:
+        {}break;
+        default:{InvalidPath;}break;
+      }
+    }
+  }
+  return ret;
+}
+
 // TODO(k): revisit is needed, performance issue in some situation
 internal void
 bd_cell_flip(BD_Cell *cell, BD_CellBinaryKind binary, B32 passive, B32 turned)
@@ -434,8 +487,7 @@ bd_cell_flip(BD_Cell *cell, BD_CellBinaryKind binary, B32 passive, B32 turned)
   RK_Scene *scene = rk_top_scene();
   BD_State *bd_state = scene->custom_data;
 
-  BD_CellNode *cn = bd_cell_list_push(bd_state->flip_arena, &bd_state->flip_list);
-  cn->cell = cell;
+  bd_cell_list_push(bd_state->flip_arena, &bd_state->flip_list, cell);
 
   cell->binary = binary;
   cell->flipped = 1;
@@ -615,6 +667,26 @@ bd_cell_flip(BD_Cell *cell, BD_CellBinaryKind binary, B32 passive, B32 turned)
   // }
 #endif
 
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // trigger animation
+
+  switch(cell->kind)
+  {
+    case BD_CellKind_Unity:
+    {
+      for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
+      {
+        BD_Cell *n = neighbors[i];
+        if(n && bd_is_same_binary(cell, n))
+        {
+          bd_cell_list_push(bd_state->animation_arena, &bd_state->animation_list, n);
+        }
+      }
+    }break;
+    default: {/*noop*/}break;
+  }
+
   scratch_end(scratch);
   ProfEnd();
 }
@@ -648,7 +720,7 @@ bd_round_begin(void)
     BD_Cell *cell = &bd_state->cells[i];
     cell->binary = BD_CellBinaryKind_Invalid;
     cell->base_value_this_round = cell->base_value;
-    cell->value = 0;
+    cell->cached_value = 0;
     cell->flipped = 0;
     cell->flip_t = 0.0;
     cell->animation_t = 0.0;
@@ -712,7 +784,7 @@ RK_SCENE_UPDATE(bd_update)
   ///////////////////////////////////////////////////////////////////////////////////////
   // process flip list
 
-  B32 flipping = bd_state->flip_list.first != 0;
+  B32 is_flipping = bd_state->flip_list.first != 0;
 #if 1
   for(BD_CellNode *cn = bd_state->flip_list.first, *next = 0;
       cn != 0;
@@ -733,8 +805,7 @@ RK_SCENE_UPDATE(bd_update)
 
     if(cell->flip_t == 1.0)
     {
-      DLLRemove(bd_state->flip_list.first, bd_state->flip_list.last, cn);
-      bd_state->flip_list.count--;
+      bd_cell_list_remove(&bd_state->flip_list, cn);
     }
 
     break;
@@ -746,6 +817,89 @@ RK_SCENE_UPDATE(bd_update)
     arena_pop_to(bd_state->flip_arena, bd_state->flip_arena_pos);
   }
 #endif
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // animation
+
+  B32 is_animating = 0;
+
+  ////////////////////////////////
+  // process animation list 
+
+  for(BD_CellNode *cn = bd_state->animation_list.first, *next = 0; cn != 0; cn = next)
+  {
+    next = cn->next;
+    B32 animated = 0;
+    if(cn->cell->animating == 0)
+    {
+      // start cell animation if not already
+      if(cn->cell->animation_t == 0.0)
+      {
+        cn->cell->animating = 1;
+        sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Beep], 0, 0.1, 1, 1.0);
+      }
+      // animation for this cell is done
+      else
+      {
+        animated = 1;
+      }
+    }
+
+    if(!animated)
+    {
+      break;
+    }
+    else
+    {
+      // remove current cell from animation list
+      bd_cell_list_remove(&bd_state->animation_list, cn);
+      if(next)
+      {
+        next->cell->animating = 0;
+        next->cell->animation_t = 0.0;
+      }
+    }
+  }
+
+  // reset animation arena if it's empty
+  if(bd_state->animation_list.count == 0)
+  {
+    arena_pop_to(bd_state->animation_arena, bd_state->animation_arena_pos);
+  }
+
+  ////////////////////////////////
+  // animating cell
+
+  for(U64 i = 0; i < bd_state->cell_count; i++)
+  {
+    BD_Cell *cell = &bd_state->cells[i];
+    if(cell->flipped)
+    {
+      if(cell->animating)
+      {
+        if(!is_animating) is_animating = 1;
+        cell->animation_t += rk_state->animation.vast_rate * (cell->animating-cell->animation_t);
+        F32 diff = abs_f32(cell->animation_t-cell->animating);
+        if(diff < 0.01)
+        {
+          cell->animating = 0;
+        }
+      }
+      else
+      {
+        cell->animation_t += rk_state->animation.slow_rate * (cell->animating-cell->animation_t);
+        F32 diff = abs_f32(cell->animation_t-cell->animating);
+        if(diff < 0.08)
+        {
+          cell->animation_t = 0.0;
+        }
+      }
+    }
+  }
+
+  ////////////////////////////////
+  // animating dice
+  // TODO
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // game ui
@@ -834,11 +988,11 @@ RK_SCENE_UPDATE(bd_update)
 #if BD_DETERMINED_DICE
                   if(sig.f & UI_SignalFlag_LeftClicked)
                   {
-                    bd_cell_flip(cell, BD_CellBinaryKind_Black, 0);
+                    bd_cell_flip(cell, BD_CellBinaryKind_Black, 0, 0);
                   }
                   else
                   {
-                    bd_cell_flip(cell, BD_CellBinaryKind_White, 0);
+                    bd_cell_flip(cell, BD_CellBinaryKind_White, 0, 0);
                   }
 #else
                   BD_CellBinaryKind binary = bd_state->draw_count_src==1 ? BD_CellBinaryKind_Black : rand()%BD_CellBinaryKind_COUNT;
@@ -861,7 +1015,7 @@ RK_SCENE_UPDATE(bd_update)
             else
             {
               UI_Box *b;
-              String8 display = bd_string_from_cell_kind[cell->kind];
+              String8 display = bd_name_from_cell_kind[cell->kind];
               RK_Texture2D *tex2d = cell->binary == BD_CellBinaryKind_Black ? rk_tex2d_from_handle(&bd_state->sprites[BD_SpriteKind_Black]) : rk_tex2d_from_handle(&bd_state->sprites[BD_SpriteKind_White]);
               UI_BoxFlags flags = UI_BoxFlag_Clickable|UI_BoxFlag_DrawImage;
               Vec4F32 overlay_clr = rk_rgba_from_theme_color(RK_ThemeColor_TextWeak);
@@ -925,7 +1079,7 @@ RK_SCENE_UPDATE(bd_update)
                   UI_PrefWidth(ui_text_dim(1.0, 0.0))
                   UI_FontSize(font_size)
                   UI_Palette(ui_build_palette(ui_top_palette(), .overlay = overlay_clr))
-                  ui_build_box_from_stringf(0, "%I64u##cell_value", cell->value);
+                  ui_build_box_from_stringf(0, "%I64u##cell_value", cell->cached_value);
               }
 
               if(ui_hovering(sig))
@@ -949,14 +1103,14 @@ RK_SCENE_UPDATE(bd_update)
       
                       ui_labelf("kind");
                       ui_spacer(ui_pct(1.0,0.0));
-                      ui_label(bd_string_from_cell_kind[cell->kind]);
+                      ui_label(bd_name_from_cell_kind[cell->kind]);
                     }
                     UI_Row
                     {
       
                       ui_labelf("value");
                       ui_spacer(ui_pct(1.0,0.0));
-                      ui_labelf("%I64u", cell->value);
+                      ui_labelf("%I64u", cell->cached_value);
                     }
                     UI_Row
                     {
@@ -1051,45 +1205,10 @@ RK_SCENE_UPDATE(bd_update)
     for(U64 i = 0; i < cell_count; i++)
     {
       BD_Cell *cell = &bd_state->cells[i];
-      if(cell->flipped)
-      {
-        U64 value = cell->base_value;
-
-        BD_Cell *neighbors[8] = {0};
-        bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
-        BD_Cell *direct_neighbors[4] = {0};
-        direct_neighbors[0] = neighbors[BD_CellNeighborKind_Left];
-        direct_neighbors[1] = neighbors[BD_CellNeighborKind_Top];
-        direct_neighbors[2] = neighbors[BD_CellNeighborKind_Right];
-        direct_neighbors[3] = neighbors[BD_CellNeighborKind_Down];
-
-        for(U64 i = 0; i < 4; i++)
-        {
-          if(direct_neighbors[i])
-          {
-            BD_Cell *n = direct_neighbors[i];
-            B32 same_binary = bd_is_same_binary(cell, n);
-            if(same_binary)
-            {
-              switch(n->kind)
-              {
-                case BD_CellKind_Default:
-                case BD_CellKind_Wolf:
-                case BD_CellKind_Tiger:break;
-                case BD_CellKind_Unity:
-                {
-                  value *= 2;
-                }break;
-                default:{InvalidPath;}break;
-
-              }
-            }
-          }
-        }
-        cell->value = value;
-        if(cell->binary == BD_CellBinaryKind_Black) black_value_sum += value;
-        if(cell->binary == BD_CellBinaryKind_White) white_value_sum += value;
-      }
+      U64 value = bd_value_from_cell(cell);
+      cell->cached_value = value;
+      if(cell->binary == BD_CellBinaryKind_Black) black_value_sum += value;
+      if(cell->binary == BD_CellBinaryKind_White) white_value_sum += value;
     }
 
     ////////////////////////////////
@@ -1280,11 +1399,11 @@ RK_SCENE_UPDATE(bd_update)
   ///////////////////////////////////////////////////////////////////////////////////////
   // next round or end game
 
-#if 1
   U64 score_u64 = 0;
   if(score > 0) score_u64 = (U64)score;
-  {
+
 #if !BD_NO_NEXT_ROUND
+  {
     if(bd_state->goal <= score_u64)
     {
       bd_round_end(1);
@@ -1297,45 +1416,8 @@ RK_SCENE_UPDATE(bd_update)
       bd_round_begin();
       sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Boop], 0, 0.2, 12, 1.0);
     }
-#endif
   }
 #endif
-
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // animations
-
-  ////////////////////////////////
-  // animating cell
-
-  for(U64 i = 0; i < bd_state->cell_count; i++)
-  {
-    BD_Cell *cell = &bd_state->cells[i];
-    if(cell->flipped)
-    {
-      if(cell->animating)
-      {
-        cell->animation_t += rk_state->animation.vast_rate * (cell->animating-cell->animation_t);
-        F32 diff = abs_f32(cell->animation_t-cell->animating);
-        if(diff < 0.01)
-        {
-          cell->animating = 0;
-        }
-      }
-      else
-      {
-        cell->animation_t += rk_state->animation.slow_rate * (cell->animating-cell->animation_t);
-        F32 diff = abs_f32(cell->animation_t-cell->animating);
-        if(diff < 0.08)
-        {
-          cell->animation_t = 0.0;
-        }
-      }
-    }
-  }
-
-  ////////////////////////////////
-  // animating dice
-  // TODO
 
   scratch_end(scratch);
 }
@@ -1345,6 +1427,8 @@ RK_SCENE_SETUP(bd_setup)
   BD_State *bd_state = scene->custom_data;
   bd_state->flip_arena = arena_alloc();
   bd_state->flip_arena_pos = arena_pos(bd_state->flip_arena);
+  bd_state->animation_arena = arena_alloc();
+  bd_state->animation_arena_pos = arena_pos(bd_state->animation_arena);
 
   for(U64 i = 0; i < BD_InstrumentKind_COUNT; i++)
   {
@@ -1534,7 +1618,7 @@ RK_SCENE_SETUP(bd_setup)
   // spawn some cell
   {
     U64 cell_index = 0;
-    for(U64 i = 0; i < 3 && cell_index < bd_state->cell_count; i++,cell_index++)
+    for(U64 i = 0; i < 30 && cell_index < bd_state->cell_count; i++,cell_index++)
     {
       bd_state->cells[cell_index].kind = BD_CellKind_Unity;
     }

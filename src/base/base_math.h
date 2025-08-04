@@ -688,7 +688,7 @@ internal Vec2F32 clamp_2f32(Rng2F32 r, Vec2F32 v);
 // internal F32     rand_f32(void);
 // internal void    gsrand(U32);
 #define rand_u32() rand()
-#define rand_f32() ((F32)rand() / RAND_MAX)
+#define rand_f32() ((F32)rand() / (F32)RAND_MAX)
 
 internal Vec3F32 hsv_from_rgb(Vec3F32 rgb);
 internal Vec3F32 rgb_from_hsv(Vec3F32 hsv);

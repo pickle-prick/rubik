@@ -3733,7 +3733,7 @@ rk_frame(void)
           }
         }
 
-        RK_SpriteSheetFrame *frame;
+        RK_SpriteSheetFrame *frame = 0;
         F32 frame_duration_acc = 0;
 
         // find the frame

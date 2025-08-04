@@ -1,10 +1,10 @@
 .PHONY: build_debug build_full run_full clean debug run r
 
 build_debug:
-	./build.sh rubik no_shader no_meta profile
+	./build.sh rubik clang no_shader no_meta profile
 build_full:
 	make clean
-	./build.sh rubik shader meta profile
+	./build.sh rubik clang shader meta profile
 run_full:
 	make build_full
 	./build/rubik
