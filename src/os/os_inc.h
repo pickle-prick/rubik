@@ -11,14 +11,16 @@
 
 #include "os/core/os_core.h"
 #if OS_FEATURE_GRAPHICAL
+#  include <vulkan/vulkan.h>
 #if OS_WINDOWS
 #  define VK_USE_PLATFORM_WIN32_KHR
 #  define VK_PROTOTYPES
+#  include <windows.h>
+#  include <vulkan/vulkan_win32.h>
 #elif OS_LINUX
 #  define VK_USE_PLATFORM_XLIB_KHR
 #  define VK_PROTOTYPES
 #endif
-#  include <vulkan/vulkan.h>
 #  include "os/gfx/os_gfx.h"
 #endif
 

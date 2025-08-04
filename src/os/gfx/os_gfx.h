@@ -21,7 +21,8 @@ struct OS_GfxInfo
 typedef U32 OS_WindowFlags;
 enum
 {
-  OS_WindowFlag_CustomBorder = (1<<0),
+  OS_WindowFlag_CustomBorder       = (1<<0),
+  OS_WindowFlag_UseDefaultPosition = (1<<1),
 };
 
 typedef void OS_WindowRepaintFunctionType(OS_Handle window, void *user_data);

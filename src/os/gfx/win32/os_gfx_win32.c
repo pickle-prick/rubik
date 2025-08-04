@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////
@@ -8,9 +8,11 @@
 
 typedef BOOL w32_SetProcessDpiAwarenessContext_Type(void* value);
 typedef UINT w32_GetDpiForWindow_Type(HWND hwnd);
+typedef HRESULT w32_GetDpiForMonitor_Type(HMONITOR hmonitor, MONITOR_DPI_TYPE dpiType, UINT *dpiX, UINT *dpiY);
 typedef int w32_GetSystemMetricsForDpi_Type(int nIndex, UINT dpi);
 #define w32_DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((void*)-4)
 global w32_GetDpiForWindow_Type *w32_GetDpiForWindow_func = 0;
+global w32_GetDpiForMonitor_Type *w32_GetDpiForMonitor_func = 0;
 global w32_GetSystemMetricsForDpi_Type *w32_GetSystemMetricsForDpi_func = 0;
 
 ////////////////////////////////
@@ -93,6 +95,7 @@ os_w32_window_release(OS_W32_Window *window)
   {
     arena_release(window->paint_arena);
   }
+  ReleaseDC(window->hwnd, window->hdc);
   DestroyWindow(window->hwnd);
   DLLRemove(os_w32_gfx_state->first_window, os_w32_gfx_state->last_window, window);
   SLLStackPush(os_w32_gfx_state->free_window, window);
@@ -328,6 +331,7 @@ os_w32_vkey_from_os_key(OS_Key key)
 internal LRESULT
 os_w32_wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+  ProfBeginFunction();
   LRESULT result = 0;
   B32 good = 1;
   if(os_w32_event_arena == 0)
@@ -427,7 +431,7 @@ os_w32_wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         ScreenToClient(window->hwnd, &p);
         event->pos.x = (F32)p.x;
         event->pos.y = (F32)p.y;
-        event->delta = v2f32(0.f, (F32)wheel_delta);
+        event->delta = v2f32(0.f, -(F32)wheel_delta);
       }break;
       
       case WM_MOUSEHWHEEL:
@@ -486,7 +490,15 @@ os_w32_wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       
       case WM_SYSCHAR:
       {
-        result = DefWindowProcW(hwnd, uMsg, wParam, lParam);
+        WORD vk_code = LOWORD(wParam);
+        if(vk_code == VK_SPACE)
+        {
+          result = DefWindowProcW(hwnd, uMsg, wParam, lParam);
+        }
+        else
+        {
+          result = 0;
+        }
       }break;
       
       case WM_CHAR:
@@ -511,7 +523,7 @@ os_w32_wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       
       case WM_SETCURSOR:
       {
-        Rng2F32 window_rect = os_client_rect_from_window(window_handle);
+        Rng2F32 window_rect = os_client_rect_from_window(window_handle, 1);
         Vec2F32 mouse = os_mouse_from_window(window_handle);
         B32 on_border = 0;
         DWORD window_style = window ? GetWindowLong(window->hwnd, GWL_STYLE) : 0;
@@ -642,36 +654,26 @@ os_w32_wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       {
         if(os_w32_new_window_custom_border || (window && window->custom_border))
         {
+          F32 dpi = w32_GetDpiForWindow_func ? (F32)w32_GetDpiForWindow_func(hwnd) : 96.f;
+          S32 frame_x = w32_GetSystemMetricsForDpi_func ? w32_GetSystemMetricsForDpi_func(SM_CXFRAME, dpi) : GetSystemMetrics(SM_CXFRAME);
+          S32 frame_y = w32_GetSystemMetricsForDpi_func ? w32_GetSystemMetricsForDpi_func(SM_CYFRAME, dpi) : GetSystemMetrics(SM_CYFRAME);
+          S32 padding = w32_GetSystemMetricsForDpi_func ? w32_GetSystemMetricsForDpi_func(SM_CXPADDEDBORDER, dpi) : GetSystemMetrics(SM_CXPADDEDBORDER);
           DWORD window_style = GetWindowLong(hwnd, GWL_STYLE);
-          B32 window_is_fullscreen = !(window_style & WS_OVERLAPPEDWINDOW);
-          if(IsZoomed(hwnd) && !window_is_fullscreen)
+          B32 is_fullscreen = !(window_style & WS_OVERLAPPEDWINDOW);
+          if(!is_fullscreen)
           {
-            F32 dpi = w32_GetDpiForWindow_func ? (F32)w32_GetDpiForWindow_func(hwnd) : 96.f;
-            S32 title_bar_size = w32_GetSystemMetricsForDpi_func ? w32_GetSystemMetricsForDpi_func(SM_CYCAPTION, dpi) : 0;
-            S32 border_lr_size = 0;//w32_GetSystemMetricsForDpi_func ? w32_GetSystemMetricsForDpi_func(SM_CXPADDEDBORDER, dpi) : 0;
-            S32 border_b_size = 0;//w32_GetSystemMetricsForDpi_func ? w32_GetSystemMetricsForDpi_func(SM_CXPADDEDBORDER, dpi) : 0;
-            if(wParam == 1)
+            RECT* rect = wParam == 0 ? (RECT*)lParam : ((NCCALCSIZE_PARAMS*)lParam)->rgrc;
+            rect->right  -= frame_x + padding;
+            rect->left   += frame_x + padding;
+            rect->bottom -= frame_y + padding;
+            
+            if(IsMaximized(hwnd))
             {
-              NCCALCSIZE_PARAMS *pncsp = (NCCALCSIZE_PARAMS *)lParam;
-              pncsp->rgrc[0].top -= title_bar_size;
-              pncsp->rgrc[0].left += border_lr_size;
-              pncsp->rgrc[0].right -= border_lr_size;
-              pncsp->rgrc[0].bottom -= border_b_size;
+              rect->top += frame_y + padding;
+              // If we do not do this hidden taskbar can not be unhidden on mouse hover
+              // Unfortunately it can create an ugly bottom border when maximized...
+              rect->bottom -= 1; 
             }
-            else
-            {
-              RECT *rect = (RECT *)lParam;
-              rect->top -= title_bar_size;
-              rect->left += border_lr_size;
-              rect->right -= border_lr_size;
-              rect->bottom -= border_b_size;
-            }
-            result = DefWindowProc(hwnd, uMsg, wParam, lParam);
-          }
-          else if(wParam == 1)
-          {
-            NCCALCSIZE_PARAMS *pncsp = (NCCALCSIZE_PARAMS *)lParam;
-            pncsp->rgrc[0].right += 1;
           }
         }
         else
@@ -691,106 +693,99 @@ os_w32_wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         }
         else
         {
-          POINT pos_monitor;
-          pos_monitor.x = GET_X_LPARAM(lParam);
-          pos_monitor.y = GET_Y_LPARAM(lParam);
-          POINT pos_client = pos_monitor;
-          ScreenToClient(hwnd, &pos_client);
+          B32 is_default_handled = 0;
           
-          //- rjf: check against window boundaries
-          RECT frame_rect;
-          GetWindowRect(hwnd, &frame_rect);
-          B32 is_over_window = (frame_rect.left <= pos_monitor.x && pos_monitor.x < frame_rect.right &&
-                                frame_rect.top <= pos_monitor.y && pos_monitor.y < frame_rect.bottom);
-          
-          //- rjf: check against borders
-          B32 is_over_left   = 0;
-          B32 is_over_right  = 0;
-          B32 is_over_top    = 0;
-          B32 is_over_bottom = 0;
+          // Let the default procedure handle resizing areas
+          result = DefWindowProc(hwnd, uMsg, wParam, lParam);
+          switch (result)
           {
-            RECT rect;
-            GetClientRect(hwnd, &rect);
-            if(!IsZoomed(hwnd))
+            case HTNOWHERE:
+            case HTRIGHT:
+            case HTLEFT:
+            case HTTOPLEFT:
+            case HTTOPRIGHT:
+            case HTBOTTOMRIGHT:
+            case HTBOTTOM:
+            case HTBOTTOMLEFT:
             {
-              if(rect.left <= pos_client.x && pos_client.x < rect.left + window->custom_border_edge_thickness)
-              {
-                is_over_left = 1;
-              }
-              if(rect.right - window->custom_border_edge_thickness <= pos_client.x && pos_client.x < rect.right)
-              {
-                is_over_right = 1;
-              }
-              if(rect.bottom - window->custom_border_edge_thickness <= pos_client.y && pos_client.y < rect.bottom)
-              {
-                is_over_bottom = 1;
-              }
-              if(rect.top <= pos_client.y && pos_client.y < rect.top + window->custom_border_edge_thickness)
-              {
-                is_over_top = 1;
-              }
-            }
+              is_default_handled = 1;
+            } break;
           }
           
-          //- rjf: check against title bar
-          B32 is_over_title_bar = 0;
+          if (!is_default_handled)
           {
-            RECT rect;
-            GetClientRect(hwnd, &rect);
-            is_over_title_bar = (rect.left <= pos_client.x && pos_client.x < rect.right &&
-                                 rect.top <= pos_client.y && pos_client.y < rect.top + window->custom_border_title_thickness);
-          }
-          
-          //- rjf: check against title bar client areas
-          B32 is_over_title_bar_client_area = 0;
-          for(OS_W32_TitleBarClientArea *area = window->first_title_bar_client_area;
-              area != 0;
-              area = area->next)
-          {
-            Rng2F32 rect = area->rect;
-            if(rect.x0 <= pos_client.x && pos_client.x < rect.x1 &&
-               rect.y0 <= pos_client.y && pos_client.y < rect.y1)
-            {
-              is_over_title_bar_client_area = 1;
-              break;
-            }
-          }
-          
-          //- rjf: resolve hovering to result
-          result = HTNOWHERE;
-          if(is_over_window)
-          {
-            // rjf: default to client area
-            result = HTCLIENT;
+            POINT pos_monitor;
+            pos_monitor.x = GET_X_LPARAM(lParam);
+            pos_monitor.y = GET_Y_LPARAM(lParam);
+            POINT pos_client = pos_monitor;
+            ScreenToClient(hwnd, &pos_client);
             
-            // rjf: title bar
-            if(is_over_title_bar)
+            // Adjustments happening in NCCALCSIZE are messing with the detection
+            // of the top hit area so manually checking that.
+            F32 dpi = w32_GetDpiForWindow_func ? (F32)w32_GetDpiForWindow_func(hwnd) : 96.f;
+            S32 frame_y = w32_GetSystemMetricsForDpi_func ? w32_GetSystemMetricsForDpi_func(SM_CYFRAME, dpi) : GetSystemMetrics(SM_CYFRAME);
+            // NOTE(rjf): it seems incorrect to apply this padding here...
+            // S32 padding = w32_GetSystemMetricsForDpi_func ? w32_GetSystemMetricsForDpi_func(SM_CXPADDEDBORDER, dpi) : GetSystemMetrics(SM_CXPADDEDBORDER);
+            
+            B32 is_over_top_resize = pos_client.y >= 0 && pos_client.y < frame_y; // + padding;
+            B32 is_over_title_bar  = pos_client.y >= 0 && pos_client.y < window->custom_border_title_thickness;
+            
+            //- rjf: check against title bar client areas
+            B32 is_over_title_bar_client_area = 0;
+            for(OS_W32_TitleBarClientArea *area = window->first_title_bar_client_area;
+                area != 0;
+                area = area->next)
             {
-              result = HTCAPTION;
+              Rng2F32 rect = area->rect;
+              if(rect.x0 <= pos_client.x && pos_client.x < rect.x1 &&
+                 rect.y0 <= pos_client.y && pos_client.y < rect.y1)
+              {
+                is_over_title_bar_client_area = 1;
+                break;
+              }
             }
             
-            // rjf: normal edges
-            if(is_over_left)   { result = HTLEFT; }
-            if(is_over_right)  { result = HTRIGHT; }
-            if(is_over_top)    { result = HTTOP; }
-            if(is_over_bottom) { result = HTBOTTOM; }
-            
-            // rjf: corners
-            if(is_over_left  && is_over_top)    { result = HTTOPLEFT; }
-            if(is_over_left  && is_over_bottom) { result = HTBOTTOMLEFT; }
-            if(is_over_right && is_over_top)    { result = HTTOPRIGHT; }
-            if(is_over_right && is_over_bottom) { result = HTBOTTOMRIGHT; }
-            
-            // rjf: title bar client area
-            if(is_over_title_bar_client_area)
+            if (IsMaximized(hwnd))
             {
-              result = HTCLIENT;
+              if (is_over_title_bar_client_area)
+              {
+                result = HTCLIENT;
+              }
+              else if (is_over_title_bar)
+              {
+                result = HTCAPTION;
+              }
+              else 
+              {
+                result = HTCLIENT;
+              }
+            }
+            else
+            {
+              //Swap the first two conditions to choose if hovering the top border
+              //should prioritize resize or title bar buttons.
+              if (is_over_title_bar_client_area)
+              {
+                result = HTCLIENT;
+              }
+              else if (is_over_top_resize)
+              {
+                result = HTTOP;
+              }
+              else if (is_over_title_bar)
+              {
+                result = HTCAPTION;
+              }
+              else {
+                result = HTCLIENT;
+              }
             }
           }
         }
       }break;
     }
   }
+  ProfEnd();
   return result;
 }
 
@@ -828,12 +823,28 @@ os_gfx_init(void)
     (w32_SetProcessDpiAwarenessContext_Type*)GetProcAddress(module, "SetProcessDpiAwarenessContext");
     w32_GetDpiForWindow_func =
     (w32_GetDpiForWindow_Type*)GetProcAddress(module, "GetDpiForWindow");
+    w32_GetDpiForMonitor_func = (w32_GetDpiForMonitor_Type *)GetProcAddress(module, "GetDpiForMonitor");
     w32_GetSystemMetricsForDpi_func = (w32_GetSystemMetricsForDpi_Type *)GetProcAddress(module, "GetSystemMetricsForDpi");
     FreeLibrary(module);
   }
   if(SetProcessDpiAwarenessContext_func != 0)
   {
     SetProcessDpiAwarenessContext_func(w32_DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+  }
+  else
+  {
+    HMODULE shcore = LoadLibraryA("shcore.dll");
+    if(shcore)
+    {
+      typedef HRESULT (WINAPI* SetProcessDpiAwareness_t)(int);
+      SetProcessDpiAwareness_t SetProcessDpiAwareness = (void*)GetProcAddress(shcore, "SetProcessDpiAwareness");
+      if(SetProcessDpiAwareness)
+      {
+        SetProcessDpiAwareness(2);
+      }
+      FreeLibrary(shcore);
+    }
+    SetProcessDPIAware();
   }
   
   //- rjf: register graphical-window class
@@ -985,37 +996,41 @@ os_get_gfx_info(void)
 internal void
 os_set_clipboard_text(String8 string)
 {
+  Temp scratch = scratch_begin(0, 0);
   if(OpenClipboard(0))
   {
     EmptyClipboard();
-    HANDLE string_copy_handle = GlobalAlloc(GMEM_MOVEABLE, string.size+1);
-    if(string_copy_handle)
+    String16 string16 = str16_from_8(scratch.arena, string);
+    HANDLE string16_copy_handle = GlobalAlloc(GMEM_MOVEABLE, (string16.size+1)*sizeof(string16.str[0]));
+    if(string16_copy_handle)
     {
-      U8 *copy_buffer = (U8 *)GlobalLock(string_copy_handle);
-      MemoryCopy(copy_buffer, string.str, string.size);
-      copy_buffer[string.size] = 0;
-      GlobalUnlock(string_copy_handle);
-      SetClipboardData(CF_TEXT, string_copy_handle);
+      U16 *copy_buffer = (U16 *)GlobalLock(string16_copy_handle);
+      MemoryCopy(copy_buffer, string16.str, string16.size*sizeof(string16.str[0]));
+      copy_buffer[string16.size] = 0;
+      GlobalUnlock(string16_copy_handle);
+      SetClipboardData(CF_UNICODETEXT, string16_copy_handle);
     }
     CloseClipboard();
   }
+  scratch_end(scratch);
 }
 
 internal String8
 os_get_clipboard_text(Arena *arena)
 {
   String8 result = {0};
-  if(IsClipboardFormatAvailable(CF_TEXT) &&
+  if(IsClipboardFormatAvailable(CF_UNICODETEXT) &&
      OpenClipboard(0))
   {
-    HANDLE data_handle = GetClipboardData(CF_TEXT);
+    HANDLE data_handle = GetClipboardData(CF_UNICODETEXT);
     if(data_handle)
     {
-      U8 *buffer = (U8 *)GlobalLock(data_handle);
+      U16 *buffer = (U16 *)GlobalLock(data_handle);
       if(buffer)
       {
-        U64 size = cstring8_length(buffer);
-        result = push_str8_copy(arena, str8(buffer, size));
+        U64 size = cstring16_length(buffer);
+        String16 string16 = str16(buffer, size);
+        result = str8_from_16(arena, string16);
         GlobalUnlock(data_handle);
       }
     }
@@ -1028,9 +1043,12 @@ os_get_clipboard_text(Arena *arena)
 //~ rjf: @os_hooks Windows (Implemented Per-OS)
 
 internal OS_Handle
-os_window_open(Vec2F32 resolution, OS_WindowFlags flags, String8 title)
+os_window_open(Rng2F32 rect, OS_WindowFlags flags, String8 title)
 {
   B32 custom_border = !!(flags & OS_WindowFlag_CustomBorder);
+  B32 use_default_position = !!(flags & OS_WindowFlag_UseDefaultPosition);
+  Vec2F32 pos = rect.p0;
+  Vec2F32 dim = dim_2f32(rect);
   
   //- rjf: make hwnd
   HWND hwnd = 0;
@@ -1042,9 +1060,10 @@ os_window_open(Vec2F32 resolution, OS_WindowFlags flags, String8 title)
                            L"graphical-window",
                            (WCHAR*)title16.str,
                            WS_OVERLAPPEDWINDOW | WS_SIZEBOX,
-                           CW_USEDEFAULT, CW_USEDEFAULT,
-                           (int)resolution.x,
-                           (int)resolution.y,
+                           use_default_position ? CW_USEDEFAULT : (S32)pos.x,
+                           use_default_position ? CW_USEDEFAULT : (S32)pos.y,
+                           (S32)dim.x,
+                           (S32)dim.y,
                            0, 0,
                            os_w32_gfx_state->hInstance,
                            0);
@@ -1057,6 +1076,7 @@ os_window_open(Vec2F32 resolution, OS_WindowFlags flags, String8 title)
   OS_W32_Window *window = os_w32_window_alloc();
   {
     window->hwnd = hwnd;
+    window->hdc = GetDC(hwnd);
     if(w32_GetDpiForWindow_func != 0)
     {
       window->dpi = (F32)w32_GetDpiForWindow_func(hwnd);
@@ -1091,6 +1111,16 @@ os_window_close(OS_Handle handle)
 {
   OS_W32_Window *window = os_w32_window_from_handle(handle);
   os_w32_window_release(window);
+}
+
+internal void
+os_window_set_title(OS_Handle handle, String8 title)
+{
+  Temp scratch = scratch_begin(0, 0);
+  OS_W32_Window *window = os_w32_window_from_handle(handle);
+  String16 title16 = str16_from_8(scratch.arena, title);
+  SetWindowTextW(window->hwnd, (WCHAR *)title16.str);
+  scratch_end(scratch);
 }
 
 internal void
@@ -1311,8 +1341,9 @@ os_rect_from_window(OS_Handle handle)
   return r;
 }
 
+// TODO(k): forced is not needed for windows, X11 sucks ass
 internal Rng2F32
-os_client_rect_from_window(OS_Handle handle)
+os_client_rect_from_window(OS_Handle handle, B32 forced)
 {
   Rng2F32 r = {0};
   OS_W32_Window *window = os_w32_window_from_handle(handle);
@@ -1402,6 +1433,21 @@ os_dim_from_monitor(OS_Handle monitor)
   return result;
 }
 
+internal F32
+os_dpi_from_monitor(OS_Handle monitor)
+{
+  F32 result = 96.f;
+  HMONITOR monitor_handle = (HMONITOR)monitor.u64[0];
+  if(w32_GetDpiForMonitor_func != 0)
+  {
+    UINT dpi_x = 0;
+    UINT dpi_y = 0;
+    HRESULT hr = w32_GetDpiForMonitor_func(monitor_handle, MDT_EFFECTIVE_DPI, &dpi_x, &dpi_y);
+    result = (F32)dpi_x;
+  }
+  return result;
+}
+
 ////////////////////////////////
 //~ rjf: @os_hooks Events (Implemented Per-OS)
 
@@ -1467,6 +1513,7 @@ os_key_is_down(OS_Key key)
 internal Vec2F32
 os_mouse_from_window(OS_Handle handle)
 {
+  ProfBeginFunction();
   Vec2F32 v = {0};
   POINT p;
   if(GetCursorPos(&p))
@@ -1476,6 +1523,7 @@ os_mouse_from_window(OS_Handle handle)
     v.x = (F32)p.x;
     v.y = (F32)p.y;
   }
+  ProfEnd();
   return v;
 }
 
@@ -1522,45 +1570,49 @@ hcursor = curs; }break;
 }
 
 internal void
-os_hide_cursor(OS_Handle window) {}
+os_hide_cursor(OS_Handle window)
+{
+  // TODO(k)
+}
 
 internal void
-os_show_cursor(OS_Handle window) {}
-
+os_show_cursor(OS_Handle window)
+{
+  // TODO(k)
+}
 internal void
-os_wrap_cursor(OS_Handle window, F32 dst_x, F32 dst_y) {}
+os_wrap_cursor(OS_Handle window, F32 dst_x, F32 dst_y)
+{
+  // TODO(k)
+}
 
 ////////////////////////////////
 //~ k: @os_hooks Vulkan (Implemented Per-OS)
 
 internal VkSurfaceKHR
-os_vulkan_surface_from_window(OS_Handle window, VkInstance instance)
+os_vulkan_surface_from_window(OS_Handle handle, VkInstance instance)
 {
-    OS_W32_Window *win32_window = os_w32_window_from_handle(window);
-    HWND win32_hwnd = os_w32_hwnd_from_window(win32_window);
-    HINSTANCE win32_hinstance = GetModuleHandle(NULL);
+  OS_W32_Window *window = os_w32_window_from_handle(handle);
 
-    VkWin32SurfaceCreateInfoKHR sci = {0};
-    PFN_vkCreateWin32SurfaceKHR vkCreateWin32SurfaceKHR;
-    VkSurfaceKHR surface;
+  VkWin32SurfaceCreateInfoKHR sci = {0};
+  PFN_vkCreateWin32SurfaceKHR vkCreateWin32SurfaceKHR;
+  VkSurfaceKHR surface;
 
-    // Dynamically load vkCreateWin32SurfaceKHR function
-    vkCreateWin32SurfaceKHR = (PFN_vkCreateWin32SurfaceKHR)vkGetInstanceProcAddr(instance, "vkCreateWin32SurfaceKHR");
-    AssertAlways(vkCreateWin32SurfaceKHR && "Win32: Vulkan instance missing VK_KHR_win32_surface extension");
+  vkCreateWin32SurfaceKHR = (PFN_vkCreateWin32SurfaceKHR)vkGetInstanceProcAddr(instance, "vkCreateWin32SurfaceKHR");
+  AssertAlways(vkCreateWin32SurfaceKHR && "Win32: Vulkan instance missing VK_KHR_win32_surface extension");
 
-    sci.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-    sci.pNext = NULL;
-    sci.flags = 0;
-    sci.hinstance = win32_hinstance;
-    sci.hwnd = win32_hwnd;
-    AssertAlways(vkCreateWin32SurfaceKHR(instance, &sci, NULL, &surface) == VK_SUCCESS && "Win32: Failed to create Vulkan Win32 surface");
-    return surface;
+  sci.sType     = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+  sci.hinstance = os_w32_gfx_state->hInstance;
+  sci.hwnd      = window->hwnd;
+
+  AssertAlways(vkCreateWin32SurfaceKHR(instance, &sci, NULL, &surface) == VK_SUCCESS && "Failed to create Win32 surface");
+  return surface;
 }
 
 internal char *
 os_vulkan_surface_ext()
 {
-    return "VK_KHR_win32_surface";
+  return "VK_KHR_win32_surface";
 }
 
 ////////////////////////////////
@@ -1574,6 +1626,29 @@ os_graphical_message(B32 error, String8 title, String8 message)
   String16 message16 = str16_from_8(scratch.arena, message);
   MessageBoxW(0, (WCHAR *)message16.str, (WCHAR *)title16.str, MB_OK|(!!error*MB_ICONERROR));
   scratch_end(scratch);
+}
+
+internal String8
+os_graphical_pick_file(Arena *arena, String8 initial_path)
+{
+  String8 result = {0};
+  {
+    Temp scratch = scratch_begin(&arena, 1);
+    U64 buffer_size = 4096;
+    U16 *buffer = push_array(scratch.arena, U16, buffer_size);
+    OPENFILENAMEW params = {sizeof(params)};
+    {
+      params.lpstrFile = (WCHAR *)buffer;
+      params.nMaxFile = buffer_size;
+      params.lpstrInitialDir = (WCHAR *)str16_from_8(scratch.arena, initial_path).str;
+    }
+    if(GetOpenFileNameW(&params))
+    {
+      result = str8_from_16(arena, str16_cstring((U16 *)buffer));
+    }
+    scratch_end(scratch);
+  }
+  return result;
 }
 
 ////////////////////////////////

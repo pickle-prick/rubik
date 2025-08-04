@@ -93,7 +93,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     printf("%d instance extensions supported\n", ext_count);
     for(U64 i = 0; i < ext_count; i++)
     {
-      printf("[%3ld]: %s [%d] is supported\n", i, extensions[i].extensionName, extensions[i].specVersion);
+      printf("[%3llu]: %s [%d] is supported\n", i, extensions[i].extensionName, extensions[i].specVersion);
     }
 
     // Required Extensions
