@@ -169,6 +169,7 @@ internal String8 os_string_from_guid(Arena *arena, Guid guid);
 internal OS_SystemInfo *os_get_system_info(void);
 internal OS_ProcessInfo *os_get_process_info(void);
 internal String8 os_get_current_path(Arena *arena);
+internal B32 os_set_current_path(String8 path);
 
 ////////////////////////////////
 //~ rjf: @os_hooks Memory Allocation (Implemented Per-OS)

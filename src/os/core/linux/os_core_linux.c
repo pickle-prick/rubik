@@ -154,6 +154,12 @@ os_get_current_path(Arena *arena)
   return string;
 }
 
+internal B32
+os_set_current_path(String8 path)
+{
+  return chdir((const char*)path.str) == 0;
+}
+
 ////////////////////////////////
 //~ rjf: @os_hooks Memory Allocation (Implemented Per-OS)
 

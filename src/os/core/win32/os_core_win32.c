@@ -179,6 +179,12 @@ os_get_current_path(Arena *arena)
   return name;
 }
 
+internal B32
+os_set_current_path(String8 path)
+{
+  return SetCurrentDirectory((const char*)path.str);
+}
+
 internal U32
 os_get_process_start_time_unix(void)
 {
