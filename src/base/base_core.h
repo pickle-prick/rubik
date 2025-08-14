@@ -562,7 +562,7 @@ StaticAssert(sizeof(Guid) == 16, g_guid_size_check);
 typedef struct HashNode HashNode;
 struct HashNode
 {
-  U64           key;
+  U64 key;
   HashNode *hash_next;
   HashNode *hash_prev;
 
@@ -581,8 +581,8 @@ struct HashNode
 typedef struct HashSlot HashSlot;
 struct HashSlot
 {
-    HashNode *first;
-    HashNode *last;
+  HashNode *first;
+  HashNode *last;
 };
 
 ////////////////////////////////

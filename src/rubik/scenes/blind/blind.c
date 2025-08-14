@@ -5,14 +5,14 @@
 #define BD_INITIAL_GOAL 20
 
 // cheating
-#define BD_DETERMINED_DICE 1
-#define BD_UNLIMITED_ROLL  1
-#define BD_NO_NEXT_ROUND   1
+#define BD_DETERMINED_DICE 0
+#define BD_UNLIMITED_ROLL  0
+#define BD_NO_NEXT_ROUND   0
 #define BD_IGNORE_DICE     0
 
 // rules
 #define BD_RULE_CAPTURE       1
-#define BD_RULE_JUMP_ONE      0
+#define BD_RULE_JUMP_ONE      1
 #define BD_RULE_LUCK_FLIP     0
 #define BD_RULE_TICK_TACK_TOE 0
 #define BD_RULE_UPPER_HAND    1
@@ -133,6 +133,10 @@ struct BD_State
   U64 roll_count;
   U64 gold;
 
+  B32 is_shopping;
+  B32 is_round_end;
+  B32 is_failed;
+
   // resource
   RK_Handle sprites[BD_SpriteKind_COUNT];
 
@@ -169,7 +173,7 @@ internal const String8 bd_string_from_cell_binary[BD_CellBinaryKind_COUNT] =
 internal const String8 bd_name_from_cell_kind[BD_CellKind_COUNT] =
 {
   str8_lit_comp("Default"),
-  str8_lit_comp("Unity"),   // double the score of allies
+  str8_lit_comp("Unity"), // double the score of allies
   str8_lit_comp("Tiger"),
   str8_lit_comp("Wolf"),
 };
@@ -273,6 +277,55 @@ bd_cell_next(BD_Cell *cell, BD_CellNeighborKind next_kind)
   return ret;
 }
 
+// TODO: cheange the name
+internal BD_CellBinaryKind
+bd_binary(BD_Cell *cell)
+{
+  RK_Scene *scene = rk_top_scene();
+  BD_State *bd_state = scene->custom_data;
+  BD_CellBinaryKind ret = BD_CellBinaryKind_Invalid;
+
+  // collect neighbors
+  BD_Cell *neighbors[8] = {0};
+  bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
+
+  // wolf
+  U64 black_wolves_count = 0;
+  U64 white_wolves_count = 0;
+  for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
+  {
+    BD_Cell *n = neighbors[i];
+    if(n && n->flipped && n->kind == BD_CellKind_Wolf)
+    {
+      if(n->binary == BD_CellBinaryKind_Black)
+      {
+        black_wolves_count++;
+      }
+      else
+      {
+        white_wolves_count++;
+      }
+    }
+  }
+  if(black_wolves_count+white_wolves_count != 0)
+  {
+    if(black_wolves_count > white_wolves_count)
+    {
+      ret = BD_CellBinaryKind_Black;
+    }
+    else
+    {
+      ret = BD_CellBinaryKind_White;
+    }
+  }
+
+  if(ret == BD_CellBinaryKind_Invalid)
+    ret = bd_state->draw_count_src==1 ? BD_CellBinaryKind_Black : rand()%BD_CellBinaryKind_COUNT;
+
+  return ret;
+}
+
+
 internal void
 bd_cell_update_qi(BD_Cell *cell)
 {
@@ -305,6 +358,7 @@ internal void
 bd_cell_flood_fill(Arena *arena, B32 *grid, BD_CellList *list, BD_Cell *cell)
 {
   ProfBeginFunction();
+
   // push if not pushed
   if(!grid[cell->index]) 
   {
@@ -319,22 +373,19 @@ bd_cell_flood_fill(Arena *arena, B32 *grid, BD_CellList *list, BD_Cell *cell)
     direct_neighbors[2] = neighbors[BD_CellNeighborKind_Right];
     direct_neighbors[3] = neighbors[BD_CellNeighborKind_Down];
 
-    // push to list if provided
+    // push to linear list if provided, representing result with grid may be not enough
     if(list)
     {
       bd_cell_list_push(arena, list, cell);
     }
 
+    // recursivly check all direct neighbors
     for(U64 i = 0; i < 4; i++)
     {
-      if(direct_neighbors[i])
+      BD_Cell *n = direct_neighbors[i];
+      if(n && bd_is_same_binary(n, cell) && !grid[n->index])
       {
-        BD_Cell *n = direct_neighbors[i];
-        B32 same_kind = !cell->flipped ? !n->flipped : n->flipped && cell->binary == n->binary;
-        if(same_kind)
-        {
-          bd_cell_flood_fill(arena, grid, list, n);
-        }
+        bd_cell_flood_fill(arena, grid, list, n);
       }
     }
   }
@@ -375,10 +426,12 @@ bd_group_boundary(Arena *arena, BD_CellList *group)
 }
 
 // TODO(k): this would causing infinite or unnecessary long recusivly loop
+// NOTE(k): we are expecting this function be called in grid order
 internal B32
 bd_cell_has_liberties(BD_Cell *cell, B32 *block_grid, B32 *whitelist_grid, B32 is_root)
 {
   ProfBeginFunction();
+  // NOTE: any cell in whitelist has liberties (we don't check yet, so we could handle upper hand situaition)
   B32 ret = whitelist_grid[cell->index];
   RK_Scene *scene = rk_top_scene();
   BD_State *bd_state = scene->custom_data;
@@ -395,27 +448,30 @@ bd_cell_has_liberties(BD_Cell *cell, B32 *block_grid, B32 *whitelist_grid, B32 i
   ///////////////////////////////////////////////////////////////////////////////////////
   // fast path (top and left are expected visited)
 
+  // not cached? => use fast path first
   if(is_root && ret == 0)
   {
     for(U64 i = 0; i < 2 && ret == 0; i++)
     {
-      if(!direct_neighbors[i]) continue;
-      BD_Cell *n = direct_neighbors[i];
-      B32 same_kind = n->flipped && n->binary == cell->binary;
-
-      // top or left has liberties
-      if(same_kind)
+      if(direct_neighbors[i])
       {
-        ret = n->has_liberties;
+        BD_Cell *n = direct_neighbors[i];
+        B32 same_kind = n->flipped && n->binary == cell->binary;
+
+        // top or left has liberties
+        if(same_kind)
+        {
+          ret = n->has_liberties;
+        }
       }
     }
   }
-  // check if any unflipped neighbor
+
+  // top and left has no liberties => check if any unflipped neighbor
   if(ret == 0) for(U64 i = 0; i < 4 && ret == 0; i++)
   {
-    if(!direct_neighbors[i]) continue;
     BD_Cell *n = direct_neighbors[i];
-    if(!n->flipped)
+    if(n && !n->flipped)
     {
       ret = 1;
     }
@@ -453,10 +509,7 @@ bd_value_from_cell(BD_Cell *cell)
   for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
   {
     BD_Cell *n = neighbors[i];
-    B32 is_direct = (i == BD_CellNeighborKind_Top)   ||
-                    (i == BD_CellNeighborKind_Right) ||
-                    (i == BD_CellNeighborKind_Down)  ||
-                    (i == BD_CellNeighborKind_Left);
+    B32 is_direct = (i == BD_CellNeighborKind_Top)   || (i == BD_CellNeighborKind_Right) || (i == BD_CellNeighborKind_Down)  || (i == BD_CellNeighborKind_Left);
     if(n && n->flipped)
     {
       B32 same_binary = bd_is_same_binary(cell, n);
@@ -483,6 +536,10 @@ bd_cell_flip(BD_Cell *cell, BD_CellBinaryKind binary, B32 passive, B32 turned)
 {
   ProfBeginFunction();
 
+  // collect neighbors
+  BD_Cell *neighbors[BD_CellNeighborKind_COUNT] = {0};
+  bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
+
   Temp scratch = scratch_begin(0,0);
   RK_Scene *scene = rk_top_scene();
   BD_State *bd_state = scene->custom_data;
@@ -491,10 +548,6 @@ bd_cell_flip(BD_Cell *cell, BD_CellBinaryKind binary, B32 passive, B32 turned)
 
   cell->binary = binary;
   cell->flipped = 1;
-
-  // collect neighbors
-  BD_Cell *neighbors[8] = {0};
-  bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // generic rules (capture, ...)
@@ -512,7 +565,7 @@ bd_cell_flip(BD_Cell *cell, BD_CellBinaryKind binary, B32 passive, B32 turned)
 
     for(U64 pass_index = 0; pass_index < 2; pass_index++)
     {
-      // first pass with whitelist
+      // first pass with whitelist (upper hand)
       if(pass_index == 0)
       {
         bd_cell_flood_fill(scratch.arena, whitelist_grid, 0, cell);
@@ -526,6 +579,7 @@ bd_cell_flip(BD_Cell *cell, BD_CellBinaryKind binary, B32 passive, B32 turned)
         MemoryZero(whitelist_grid, sizeof(B32)*bd_state->cell_count);
       }
 
+      // add all flipped cell without any liberty to prune list
       for(U64 i = 0; i < bd_state->cell_count; i++)
       {
         BD_Cell *c = &bd_state->cells[i];
@@ -563,23 +617,19 @@ bd_cell_flip(BD_Cell *cell, BD_CellBinaryKind binary, B32 passive, B32 turned)
 #endif
 
   ///////////////////////////////////////////////////////////////////////////////////////
-  // triggering rules
+  // triggering dice rules
 
   ////////////////////////////////
   // upper hand
 
 #if BD_RULE_UPPER_HAND
-  if(!turned)
+  if(!turned & !passive)
   {
     bd_cell_update_qi(cell);
     for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
     {
       BD_Cell *n = neighbors[i];
-      B32 is_direct = (i == BD_CellNeighborKind_Top)   ||
-                      (i == BD_CellNeighborKind_Right) ||
-                      (i == BD_CellNeighborKind_Down)  ||
-                      (i == BD_CellNeighborKind_Left);
-
+      B32 is_direct = (i == BD_CellNeighborKind_Top)   || (i == BD_CellNeighborKind_Right) || (i == BD_CellNeighborKind_Down)  || (i == BD_CellNeighborKind_Left);
       if(n && is_direct && n->flipped)
       {
         B32 same_binary = bd_is_same_binary(cell, n);
@@ -658,15 +708,26 @@ bd_cell_flip(BD_Cell *cell, BD_CellBinaryKind binary, B32 passive, B32 turned)
 #if BD_RULE_TICK_TACK_TOE
 
   // TODO
-  // for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
-  // {
-  //   BD_Cell *n = neighbors[i];
-  //   if(n && !n->flipped)
-  //   {
-  //   }
-  // }
 #endif
 
+  ///////////////////////////////////////////////////////////////////////////////////////
+  // triggering cell rule
+
+  switch(cell->kind)
+  {
+    case BD_CellKind_Tiger:
+    {
+      for(U64 i = 0; i < BD_CellNeighborKind_COUNT; i++)
+      {
+        BD_Cell *n = neighbors[i];
+        if(n && !n->flipped)
+        {
+          bd_cell_flip(n, cell->binary, 1,0);
+        }
+      }
+    }break;
+    default:{}break;
+  }
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // trigger animation
@@ -798,7 +859,7 @@ RK_SCENE_UPDATE(bd_update)
       sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Beep], 0, 0.1, 12, 1.0);
     }
 
-    cell->flip_t += rk_state->animation.fish_rate * (cell->flipped-cell->flip_t);
+    cell->flip_t += rk_state->animation.vast_rate * (cell->flipped-cell->flip_t);
     F32 diff = abs_f32(cell->flip_t-cell->flipped);
     if(diff < 0.01) cell->flip_t = 1.0;
     cell->animation_t = cell->flip_t;
@@ -904,12 +965,14 @@ RK_SCENE_UPDATE(bd_update)
   ///////////////////////////////////////////////////////////////////////////////////////
   // game ui
 
+  B32 can_play = !bd_state->is_round_end && !bd_state->is_shopping && !is_flipping && !is_animating;
+
   D_BucketScope(rk_state->bucket_rect)
   {
     UI_Box *overlay_container = 0;
     UI_Rect(rk_state->window_rect)
     {
-      overlay_container = ui_build_box_from_stringf(0, "###game_overlay");
+      overlay_container = ui_build_box_from_stringf(0, "##game_overlay");
     }
     ui_push_parent(overlay_container);
 
@@ -917,207 +980,296 @@ RK_SCENE_UPDATE(bd_update)
     Vec2F32 window_dim_hh = scale_2f32(rk_state->window_dim, 0.25);
 
     /////////////////////////////////////////////////////////////////////////////////////
-    // grid (deck)
+    // Failure summary
 
-    Vec2F32 grid_dim = {1300,1300};
-    Vec2F32 grid_dim_h = scale_2f32(grid_dim, 0.5);
-    Vec2F32 cell_dim = {grid_dim.x/(F32)bd_state->grid_size.x, grid_dim.y/(F32)bd_state->grid_size.y};
+    F32 summary_open_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "summary_open_t"), bd_state->is_failed, .reset = 0, .rate = rk_state->animation.slow_rate);
+    if(bd_state->is_failed && !is_animating && !is_flipping)
+    {
+      // TODO(k): don't use hard-coded px values
+      Vec2F32 dim = {1700, 1400};
+      dim = mix_2f32(scale_2f32(dim, 0.0), dim, summary_open_t);
+      Vec2F32 dim_h = scale_2f32(dim, 0.5);
+      Rng2F32 rect = {0,0,dim.x,dim.y};
+      rect = shift_2f32(rect, v2f32(window_dim_h.x-dim_h.x, window_dim_h.y-dim_h.y));
+      UI_Box *container;
+      UI_Rect(rect)
+        UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_Clickable)
+        UI_ChildLayoutAxis(Axis2_Y)
+        UI_Transparency(0.1)
+        container = ui_build_box_from_stringf(0, "##failed_summary");
+
+      UI_Parent(container)
+      UI_PrefWidth(ui_pct(1.0,0.0))
+      {
+        UI_PrefHeight(ui_pct(1.0,0.0))
+          UI_Flags(UI_BoxFlag_DrawText)
+          UI_TextAlignment(UI_TextAlign_Center)
+          UI_FontSize(ui_top_font_size()*3)
+          ui_build_box_from_stringf(0, "You will do better next time");
+
+        if(ui_clicked(ui_buttonf("Restart")))
+        {
+          bd_round_end(0);
+          bd_round_begin();
+          sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Beep], 0, 0.2, 6, 1.0);
+          bd_state->is_failed = 0;
+          bd_state->is_round_end = 0;
+        }
+      }
+
+      ui_signal_from_box(container);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    // Shopping ui
+
+    F32 shop_open_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "shop_open_t"), bd_state->is_shopping, .reset = 0, .rate = rk_state->animation.slow_rate);
+    if((bd_state->is_shopping || shop_open_t > 0.0) && !is_animating && !is_flipping)
+    {
+      // TODO(k): don't use hard-coded px values
+      Vec2F32 dim = {1700, 1400};
+      dim = mix_2f32(scale_2f32(dim, 0.0), dim, shop_open_t);
+      Vec2F32 dim_h = scale_2f32(dim, 0.5);
+      Rng2F32 rect = {0,0,dim.x,dim.y};
+      rect = shift_2f32(rect, v2f32(window_dim_h.x-dim_h.x, window_dim_h.y-dim_h.y));
+      UI_Box *container;
+      UI_Rect(rect)
+        UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_Clickable)
+        UI_ChildLayoutAxis(Axis2_Y)
+        UI_Transparency(mix_1f32(1.0, 0.1, shop_open_t))
+        container = ui_build_box_from_stringf(0, "##shopping");
+
+      UI_Parent(container)
+      UI_PrefWidth(ui_pct(1.0,0.0))
+      {
+        UI_PrefHeight(ui_pct(1.0,0.0))
+          UI_Flags(UI_BoxFlag_DrawText)
+          UI_TextAlignment(UI_TextAlign_Center)
+          UI_FontSize(ui_top_font_size()*3)
+          ui_build_box_from_stringf(0, "Shop");
+
+        if(bd_state->is_shopping && ui_clicked(ui_buttonf("Next")))
+        {
+          bd_round_end(1);
+          bd_round_begin();
+          sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Beep], 0, 0.2, 6, 1.0);
+          bd_state->is_shopping = 0;
+          bd_state->is_round_end = 0;
+        }
+      }
+
+      ui_signal_from_box(container);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////
+    // main grid (deck)
 
     UI_Box *grid_container = 0;
     {
-      // center the grid
-      Rng2F32 rect = {0,0,grid_dim.x,grid_dim.y};
-      rect = shift_2f32(rect, v2f32(window_dim_h.x-grid_dim_h.x, window_dim_h.y-grid_dim_h.y));
+      // TODO(k): don't use hard-coded px values
+      Vec2F32 grid_dim = {1300,1300};
+      Vec2F32 grid_dim_h = scale_2f32(grid_dim, 0.5);
+      Vec2F32 cell_dim = {grid_dim.x/(F32)bd_state->grid_size.x, grid_dim.y/(F32)bd_state->grid_size.y};
 
-      UI_Rect(rect)
-        UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground)
-        UI_ChildLayoutAxis(Axis2_Y)
-      grid_container = ui_build_box_from_stringf(0, "##grid_container");
-    }
-
-    Vec2U64 grid_size = bd_state->grid_size;
-    // slots
-    UI_Parent(grid_container)
-    {
-      for(U64 j = 0; j < grid_size.y; j++) 
       {
-        UI_Box *row_container;
-        UI_PrefWidth(ui_pct(1.0,0.0))
-          UI_PrefHeight(ui_pct(1.0,0.0))
-          UI_ChildLayoutAxis(Axis2_X)
-          row_container = ui_build_box_from_stringf(0, "row_%I64u", j);
+        // center the grid
+        Rng2F32 rect = {0,0,grid_dim.x,grid_dim.y};
+        rect = shift_2f32(rect, v2f32(window_dim_h.x-grid_dim_h.x, window_dim_h.y-grid_dim_h.y));
 
-        for(U64 i = 0; i < grid_size.y; i++) UI_Parent(row_container)
+        UI_Rect(rect)
+          UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground)
+          UI_ChildLayoutAxis(Axis2_Y)
+          grid_container = ui_build_box_from_stringf(0, "##grid_container");
+      }
+
+      Vec2U64 grid_size = bd_state->grid_size;
+      // slots
+      UI_Parent(grid_container)
+      {
+        for(U64 j = 0; j < grid_size.y; j++) 
         {
-          BD_Cell *cell = &bd_state->cells[j*grid_size.x+i];
-          UI_Box *cell_container;
+          UI_Box *row_container;
           UI_PrefWidth(ui_pct(1.0,0.0))
             UI_PrefHeight(ui_pct(1.0,0.0))
-            UI_Flags(UI_BoxFlag_DrawBorder)
-          {
-            cell_container = ui_build_box_from_stringf(0, "cell_%I64u:%I64u", i,j);
-          }
+            UI_ChildLayoutAxis(Axis2_X)
+            row_container = ui_build_box_from_stringf(0, "row_%I64u", j);
 
-          UI_Parent(cell_container) ProfScope("draw cell")
+          for(U64 i = 0; i < grid_size.y; i++) UI_Parent(row_container)
           {
-            if(!cell->flipped || cell->flip_t == 0.0)
+            BD_Cell *cell = &bd_state->cells[j*grid_size.x+i];
+            UI_Box *cell_container;
+            UI_PrefWidth(ui_pct(1.0,0.0))
+              UI_PrefHeight(ui_pct(1.0,0.0))
+              UI_Flags(UI_BoxFlag_DrawBorder)
             {
-              UI_Box *b;
-              UI_HeightFill
-                UI_WidthFill
-                UI_Column
-                UI_Padding(ui_em(0.35,1.0))
-                UI_Row
-                UI_Padding(ui_em(0.35,1.0))
-                UI_Flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_Clickable|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects)
-                UI_Palette(ui_build_palette(ui_top_palette(), .background = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)))
-                UI_CornerRadius(2.0)
-                UI_TextAlignment(UI_TextAlign_Center)
-                b = ui_build_box_from_stringf(0, "btn");
-              UI_Signal sig = ui_signal_from_box(b);
+              cell_container = ui_build_box_from_stringf(0, "cell_%I64u:%I64u", i,j);
+            }
+
+            UI_Parent(cell_container) ProfScope("draw cell")
+            {
+              if(!cell->flipped || cell->flip_t == 0.0)
+              {
+                UI_Box *b;
+                UI_HeightFill
+                  UI_WidthFill
+                  UI_Column
+                  UI_Padding(ui_em(0.35,1.0))
+                  UI_Row
+                  UI_Padding(ui_em(0.35,1.0))
+                  UI_Flags(UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_Clickable|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects)
+                  UI_Palette(ui_build_palette(ui_top_palette(), .background = rk_rgba_from_theme_color(RK_ThemeColor_HighlightOverlay)))
+                  UI_CornerRadius(2.0)
+                  UI_TextAlignment(UI_TextAlign_Center)
+                  b = ui_build_box_from_stringf(0, "btn");
+                UI_Signal sig = ui_signal_from_box(b);
 
 #if BD_IGNORE_DICE
-              B32 can_flip = !cell->flipped;
+                B32 can_flip = !cell->flipped;
 #else
-              B32 can_flip = bd_state->dice_rolled && bd_state->draw_count>0;
+                B32 can_flip = bd_state->dice_rolled && bd_state->draw_count>0 && can_play;
 #endif
-              if(((sig.f&UI_SignalFlag_LeftClicked) || (sig.f&UI_SignalFlag_RightClicked)))
-              {
-                if(can_flip)
+                if(((sig.f&UI_SignalFlag_LeftClicked) || (sig.f&UI_SignalFlag_RightClicked)))
                 {
-#if BD_DETERMINED_DICE
-                  if(sig.f & UI_SignalFlag_LeftClicked)
+                  if(can_flip)
                   {
-                    bd_cell_flip(cell, BD_CellBinaryKind_Black, 0, 0);
+#if BD_DETERMINED_DICE
+                    if(sig.f & UI_SignalFlag_LeftClicked)
+                    {
+                      bd_cell_flip(cell, BD_CellBinaryKind_Black, 0, 0);
+                    }
+                    else
+                    {
+                      bd_cell_flip(cell, BD_CellBinaryKind_White, 0, 0);
+                    }
+#else
+                    BD_CellBinaryKind binary = bd_binary(cell);
+                    bd_cell_flip(cell, binary, 0, 0);
+#endif
+
+                    bd_state->draw_count--;
+                    if(bd_state->draw_count == 0)
+                    {
+                      bd_state->dice_rolled = 0;
+                    }
                   }
                   else
                   {
-                    bd_cell_flip(cell, BD_CellBinaryKind_White, 0, 0);
+                    sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Boop], 0, 0.1, 12, 1.0);
+                    sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Boop], 0.11, 0.1, 1, 1.0);
                   }
-#else
-                  BD_CellBinaryKind binary = bd_state->draw_count_src==1 ? BD_CellBinaryKind_Black : rand()%BD_CellBinaryKind_COUNT;
-                  bd_cell_flip(cell, binary, 0, 0);
-#endif
-
-                  bd_state->draw_count--;
-                  if(bd_state->draw_count == 0)
-                  {
-                    bd_state->dice_rolled = 0;
-                  }
-                }
-                else
-                {
-                  sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Boop], 0, 0.1, 12, 1.0);
-                  sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Boop], 0.11, 0.1, 1, 1.0);
                 }
               }
-            }
-            else
-            {
-              UI_Box *b;
-              String8 display = bd_name_from_cell_kind[cell->kind];
-              RK_Texture2D *tex2d = cell->binary == BD_CellBinaryKind_Black ? rk_tex2d_from_handle(&bd_state->sprites[BD_SpriteKind_Black]) : rk_tex2d_from_handle(&bd_state->sprites[BD_SpriteKind_White]);
-              UI_BoxFlags flags = UI_BoxFlag_Clickable|UI_BoxFlag_DrawImage;
-              Vec4F32 overlay_clr = rk_rgba_from_theme_color(RK_ThemeColor_TextWeak);
-              overlay_clr.w = 0.1*cell->flip_t;
-              Vec4F32 text_clr = cell->binary == BD_CellBinaryKind_Black ? rk_rgba_from_theme_color(RK_ThemeColor_TextPositive) : rk_rgba_from_theme_color(RK_ThemeColor_TextNeutral);
-              text_clr.w *= cell->flip_t;
-              // F32 font_size = mix_1f32(cell_dim.y*0.5, cell_dim.y*0.9, cell->animation_t);
-              if(cell->captured) flags |= UI_BoxFlag_DrawOverlay;
-
-              UI_HeightFill
-                UI_WidthFill
-                UI_Column
-                UI_Padding(ui_em(0.5,1.0))
-                UI_Row
-                UI_Padding(ui_em(0.5,1.0))
-                UI_Flags(flags)
-                // UI_Font(ui_icon_font())
-                // UI_FontSize(ui_top_font_size()*1.1)
-                UI_TextAlignment(UI_TextAlign_Center)
-                UI_Palette(ui_build_palette(ui_top_palette(), .overlay = overlay_clr, .text = text_clr))
-                b = ui_build_box_from_stringf(0, "%S##%I64u", display, cell->index);
-              b->albedo_tex = tex2d->tex;
-              b->albedo_clr = v4f32(0.9, 0.9, 0.9, 1.0*cell->flip_t);
-              b->src = r2f32p(0,0, tex2d->size.x, tex2d->size.y);
-              UI_Signal sig = ui_signal_from_box(b);
-
-              // draw sprite from cell kind
+              else
               {
-                RK_Handle tex2d_handle = bd_state->sprites[bd_sprite_kind_from_cell_kind[cell->kind]];
-                // RK_Handle tex2d_handle = bd_state->sprites[BD_SpriteKind_FaceTiger];
-                RK_Texture2D *tex2d = rk_tex2d_from_handle(&tex2d_handle);
-                UI_BoxFlags flags = UI_BoxFlag_Clickable|UI_BoxFlag_DrawImage|UI_BoxFlag_DrawDropShadow;
-                UI_Box *icon_box;
-                Vec4F32 clr = cell->binary == BD_CellBinaryKind_Black ? v4f32(1.0,1.0,1.0,0.1) : v4f32(0,0,0,1);
-                clr.w *= cell->flip_t;
-                F32 padding = mix_1f32(0.5, 0, cell->animation_t);
-                UI_Parent(b)
-                  UI_HeightFill
+                // draw score at the top left
+                {
+                  Vec2F32 size = {cell_dim.x*0.2, cell_dim.y*0.2};
+                  size.y = mix_1f32(size.y, size.y*2.0f, cell->animation_t);
+                  F32 font_size = ui_top_font_size();
+                  font_size = mix_1f32(font_size, font_size*2.0f, cell->animation_t);
+                  Vec4F32 background_clr = rk_rgba_from_theme_color(RK_ThemeColor_TextWeak);
+                  Vec4F32 text_clr = rk_rgba_from_theme_color(RK_ThemeColor_BaseBackground);
+                  background_clr.w = cell->flip_t;
+                  text_clr.w = cell->flip_t;
+                  UI_Flags(UI_BoxFlag_DrawText|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_Floating)
+                    UI_PrefHeight(ui_px(size.y,0.0))
+                    UI_PrefWidth(ui_text_dim(1.0, 0.0))
+                    UI_Palette(ui_build_palette(ui_top_palette(), .background = background_clr, .text = text_clr))
+                    UI_FontSize(font_size)
+                    ui_build_box_from_stringf(0, "%I64u##cell_value", cell->cached_value);
+                }
+
+                UI_Box *b;
+                String8 display = bd_name_from_cell_kind[cell->kind];
+                RK_Texture2D *tex2d = cell->binary == BD_CellBinaryKind_Black ? rk_tex2d_from_handle(&bd_state->sprites[BD_SpriteKind_Black]) : rk_tex2d_from_handle(&bd_state->sprites[BD_SpriteKind_White]);
+                UI_BoxFlags flags = UI_BoxFlag_Clickable|UI_BoxFlag_DrawImage|UI_BoxFlag_DrawOverlay|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow;
+                Vec4F32 overlay_clr = rk_rgba_from_theme_color(RK_ThemeColor_TextWeak);
+                overlay_clr.w = mix_1f32(0, 0.3, cell->animation_t);
+                Vec4F32 text_clr = cell->binary == BD_CellBinaryKind_Black ? rk_rgba_from_theme_color(RK_ThemeColor_TextPositive) : rk_rgba_from_theme_color(RK_ThemeColor_TextNeutral);
+                text_clr.w = cell->flip_t;
+                // F32 font_size = mix_1f32(cell_dim.y*0.5, cell_dim.y*0.9, cell->animation_t);
+                if(cell->captured) flags |= UI_BoxFlag_DrawOverlay;
+
+                UI_HeightFill
                   UI_WidthFill
                   UI_Column
-                  UI_Padding(ui_em(padding,1.0))
+                  UI_Padding(ui_em(0.5,1.0))
                   UI_Row
-                  UI_Padding(ui_em(padding,1.0))
+                  UI_Padding(ui_em(0.5,1.0))
                   UI_Flags(flags)
-                  UI_Palette(ui_build_palette(ui_top_palette(), .overlay = overlay_clr))
-                  icon_box = ui_build_box_from_stringf(0, "icon");
-                icon_box->albedo_tex = tex2d->tex;
-                icon_box->albedo_white_texture_override = 1;
-                icon_box->albedo_clr = clr;
-                icon_box->src = r2f32p(0,0, tex2d->size.x, tex2d->size.y);
-              }
+                  // UI_Font(ui_icon_font())
+                  // UI_FontSize(ui_top_font_size()*1.1)
+                  UI_TextAlignment(UI_TextAlign_Center)
+                  UI_Palette(ui_build_palette(ui_top_palette(), .overlay = overlay_clr, .text = text_clr))
+                  b = ui_build_box_from_stringf(0, "%S##%I64u", display, cell->index);
+                b->albedo_tex = tex2d->tex;
+                b->albedo_clr = v4f32(0.9, 0.9, 0.9, 1.0*cell->flip_t);
+                b->src = r2f32p(0,0, tex2d->size.x, tex2d->size.y);
+                UI_Signal sig = ui_signal_from_box(b);
 
-              // draw score at the top left
-              {
-                Vec2F32 size = {cell_dim.x*0.2, cell_dim.y*0.2};
-                size.y = mix_1f32(size.y, size.y*2.0f, cell->animation_t);
-                F32 font_size = ui_top_font_size();
-                font_size = mix_1f32(font_size, font_size*2.0f, cell->animation_t);
-                UI_Flags(UI_BoxFlag_DrawText|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_Floating|UI_BoxFlag_DrawOverlay)
-                  UI_PrefHeight(ui_px(size.y,0.0))
-                  UI_PrefWidth(ui_text_dim(1.0, 0.0))
-                  UI_FontSize(font_size)
-                  UI_Palette(ui_build_palette(ui_top_palette(), .overlay = overlay_clr))
-                  ui_build_box_from_stringf(0, "%I64u##cell_value", cell->cached_value);
-              }
-
-              if(ui_hovering(sig))
-              {
-                // TODO: draw a selection box
-
-                UI_Tooltip
+                // draw sprite from cell kind
                 {
-                  UI_Box *container;
-                  UI_PrefWidth(ui_em(10, 0))
-                    UI_PrefHeight(ui_children_sum(0.0))
-                    UI_ChildLayoutAxis(Axis2_Y)
-                    container = ui_build_box_from_stringf(0, "container");
+                  RK_Handle tex2d_handle = bd_state->sprites[bd_sprite_kind_from_cell_kind[cell->kind]];
+                  // RK_Handle tex2d_handle = bd_state->sprites[BD_SpriteKind_FaceTiger];
+                  RK_Texture2D *tex2d = rk_tex2d_from_handle(&tex2d_handle);
+                  UI_BoxFlags flags = UI_BoxFlag_Clickable|UI_BoxFlag_DrawImage|UI_BoxFlag_DrawDropShadow;
+                  UI_Box *icon_box;
+                  Vec4F32 clr = cell->binary == BD_CellBinaryKind_Black ? v4f32(1.0,1.0,1.0,0.1) : v4f32(0,0,0,1);
+                  clr.w *= cell->flip_t;
+                  F32 padding = mix_1f32(0.5, 0, cell->animation_t);
+                  UI_Parent(b)
+                    UI_HeightFill
+                    UI_WidthFill
+                    UI_Column
+                    UI_Padding(ui_em(padding,1.0))
+                    UI_Row
+                    UI_Padding(ui_em(padding,1.0))
+                    UI_Flags(flags)
+                    UI_Palette(ui_build_palette(ui_top_palette(), .overlay = overlay_clr))
+                    icon_box = ui_build_box_from_stringf(0, "icon");
+                  icon_box->albedo_tex = tex2d->tex;
+                  icon_box->albedo_white_texture_override = 1;
+                  icon_box->albedo_clr = clr;
+                  icon_box->src = r2f32p(0,0, tex2d->size.x, tex2d->size.y);
+                }
 
-                  UI_Parent(container)
-                    UI_PrefWidth(ui_pct(1.0,0.0))
+                if(ui_hovering(sig))
+                {
+                  // TODO: draw a selection box
+
+                  UI_Tooltip
                   {
-                    ui_labelf("%I64u-%I64u", cell->i, cell->j);
-                    UI_Row
+                    UI_Box *container;
+                    UI_PrefWidth(ui_em(10, 0))
+                      UI_PrefHeight(ui_children_sum(0.0))
+                      UI_ChildLayoutAxis(Axis2_Y)
+                      container = ui_build_box_from_stringf(0, "container");
+
+                    UI_Parent(container)
+                      UI_PrefWidth(ui_pct(1.0,0.0))
                     {
-      
-                      ui_labelf("kind");
-                      ui_spacer(ui_pct(1.0,0.0));
-                      ui_label(bd_name_from_cell_kind[cell->kind]);
-                    }
-                    UI_Row
-                    {
-      
-                      ui_labelf("value");
-                      ui_spacer(ui_pct(1.0,0.0));
-                      ui_labelf("%I64u", cell->cached_value);
-                    }
-                    UI_Row
-                    {
-      
-                      ui_labelf("qi");
-                      ui_spacer(ui_pct(1.0,0.0));
-                      ui_labelf("%I64u", cell->qi);
+                      ui_labelf("%I64u-%I64u", cell->i, cell->j);
+                      UI_Row
+                      {
+        
+                        ui_labelf("kind");
+                        ui_spacer(ui_pct(1.0,0.0));
+                        ui_label(bd_name_from_cell_kind[cell->kind]);
+                      }
+                      UI_Row
+                      {
+        
+                        ui_labelf("value");
+                        ui_spacer(ui_pct(1.0,0.0));
+                        ui_labelf("%I64u", cell->cached_value);
+                      }
+                      UI_Row
+                      {
+        
+                        ui_labelf("qi");
+                        ui_spacer(ui_pct(1.0,0.0));
+                        ui_labelf("%I64u", cell->qi);
+                      }
                     }
                   }
                 }
@@ -1270,6 +1422,7 @@ RK_SCENE_UPDATE(bd_update)
       {
         captures += cell->captured;
         black_count++;
+
         // collect neighbors
         BD_Cell *neighbors[8] = {0};
         bd_neighbors_for_cell(cell, (BD_Cell**)neighbors);
@@ -1403,17 +1556,20 @@ RK_SCENE_UPDATE(bd_update)
   if(score > 0) score_u64 = (U64)score;
 
 #if !BD_NO_NEXT_ROUND
+  if(!bd_state->is_round_end)
   {
     if(bd_state->goal <= score_u64)
     {
-      bd_round_end(1);
-      bd_round_begin();
-      sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Beep], 0, 0.2, 6, 1.0);
+      bd_state->is_shopping = 1;
+      bd_state->is_round_end = 1;
     }
+    // game failture
     else if(bd_state->roll_count == 0 && bd_state->draw_count == 0)
     {
-      bd_round_end(0);
-      bd_round_begin();
+      bd_state->is_round_end = 1;
+      bd_state->is_failed = 1;
+      // bd_round_end(0);
+      // bd_round_begin();
       sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Boop], 0, 0.2, 12, 1.0);
     }
   }
@@ -1525,7 +1681,6 @@ RK_SCENE_SETUP(bd_setup)
       }break;
       case BD_InstrumentKind_AirPressor:
       {
-#if 1
         src = sy_instrument_alloc(str8_lit("air_pressor"));
         src->env.attack_time  = 0.001f;
         src->env.decay_time   = 0.8f;
@@ -1539,21 +1694,6 @@ RK_SCENE_SETUP(bd_setup)
           osc->kind = SY_OSC_Kind_NoiseWhite;
           osc->amp = 1.0;
         }
-#else
-        src  = sy_instrument_alloc(str8_lit("air_pressor"));
-        src->env.attack_time  = 0.001f;
-        src->env.decay_time   = 0.0f;
-        src->env.release_time = 0.0f;
-        src->env.start_amp    = 1.0f;
-        src->env.sustain_amp  = 1.0f;
-        {
-
-          SY_InstrumentOSCNode *osc = sy_instrument_push_osc(src);
-          osc->base_hz = 0.0;
-          osc->kind = SY_OSC_Kind_NoiseBrown;
-          osc->amp = 1.0;
-        }
-#endif
       }break;
       case BD_InstrumentKind_Ping:
       {
@@ -1618,7 +1758,7 @@ RK_SCENE_SETUP(bd_setup)
   // spawn some cell
   {
     U64 cell_index = 0;
-    for(U64 i = 0; i < 30 && cell_index < bd_state->cell_count; i++,cell_index++)
+    for(U64 i = 0; i < 10 && cell_index < bd_state->cell_count; i++,cell_index++)
     {
       bd_state->cells[cell_index].kind = BD_CellKind_Unity;
     }
