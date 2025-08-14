@@ -1217,6 +1217,7 @@ void r_vulkan_window_resize(R_Vulkan_Window *window)
 
   // we need to recreate the render targets if either size or format of swapchain is chagned
   SLLStackPush(r_vulkan_state->first_to_free_render_targets, render_targets);
+  render_targets->deprecated_at_frame = r_vulkan_state->frame_count;
   window->render_targets = r_vulkan_render_targets_alloc(window->os_wnd, &window->surface, window->render_targets);
 
   // TODO(XXX): NotImplemented 
@@ -2987,9 +2988,9 @@ r_vulkan_render_targets_alloc(OS_Handle os_wnd, R_Vulkan_Surface *surface, R_Vul
 
     // create sampler descriptor set
     r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind_Tex2D,
-        1,16,NULL,&geo3d_pre_depth_image->view,
-        &r_vulkan_state->samplers[R_Tex2DSampleKind_Nearest],
-        geo3d_pre_depth_ds);
+                                  1,16,NULL,&geo3d_pre_depth_image->view,
+                                  &r_vulkan_state->samplers[R_Tex2DSampleKind_Nearest],
+                                  geo3d_pre_depth_ds);
   }
   return ret;
 }
@@ -4846,7 +4847,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
   for(R_Vulkan_RenderTargets *t = r_vulkan_state->first_to_free_render_targets; t != 0;)
   {
     R_Vulkan_RenderTargets *next = t->next;
-    if(t->rc == 0)
+    if(t->rc == 0 && (r_vulkan_state->frame_count-t->deprecated_at_frame) >= MAX_FRAMES_IN_FLIGHT)
     {
       SLLQueuePop(r_vulkan_state->first_to_free_render_targets, r_vulkan_state->last_to_free_render_targets);
       r_vulkan_render_targets_destroy(t);
@@ -5076,7 +5077,9 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
 
   VkResult prest_ret = 0;
   ProfScope("queue present")
+  {
     prest_ret = vkQueuePresentKHR(r_vulkan_state->logical_device.prest_queue, &prest_info);
+  }
 
   // NOTE(k): It is important to only check window_resized here to ensure that the job-done semaphores are in a consistent state
   //          otherwise a signaled semaphore may never be properly waited upon
@@ -5088,6 +5091,7 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
 
   // Update curr_frame_idx
   wnd->curr_frame_idx = (wnd->curr_frame_idx + 1) % MAX_FRAMES_IN_FLIGHT;
+  r_vulkan_state->frame_count++;
   r_vulkan_pop_cmd();
   ProfEnd();
   return id;

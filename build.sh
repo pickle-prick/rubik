@@ -81,6 +81,7 @@ fi
 # --- Build Everything (@build_targets) ---------------------------------------
 cd build
 if [ -v rubik ]; then didbuild=1 && $compile ../src/rubik/rubik_main.c  $compile_link $link_os_gfx $link_render $link_os_audio $out rubik; fi
+if [ -v ink ];   then didbuild=1 && $compile ../src/ink/ink_main.c      $compile_link $link_os_gfx $link_render $link_os_audio $out ink;   fi
 cd ..
 
 # --- Warn On No Builds -------------------------------------------------------

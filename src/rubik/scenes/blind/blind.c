@@ -521,8 +521,7 @@ bd_value_from_cell(BD_Cell *cell)
         }break;
         case BD_CellKind_Default:
         case BD_CellKind_Tiger:
-        case BD_CellKind_Wolf:
-        {}break;
+        case BD_CellKind_Wolf:{}break;
         default:{InvalidPath;}break;
       }
     }
@@ -1568,8 +1567,6 @@ RK_SCENE_UPDATE(bd_update)
     {
       bd_state->is_round_end = 1;
       bd_state->is_failed = 1;
-      // bd_round_end(0);
-      // bd_round_begin();
       sy_instrument_play(bd_state->instruments[S5_InstrumentKind_Boop], 0, 0.2, 12, 1.0);
     }
   }

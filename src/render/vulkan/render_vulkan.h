@@ -475,6 +475,7 @@ struct R_Vulkan_RenderTargets
   R_Vulkan_DescriptorSet geo3d_pre_depth_ds;
 
   U64                    rc;
+  U64                    deprecated_at_frame;
 };
 
 typedef struct
@@ -598,6 +599,7 @@ struct R_Vulkan_State
   // TODO(k): we may want to keep track of filled ds_pool
 
   R_Handle                            backup_texture;
+  U64                                 frame_count;
 
   R_Vulkan_DeclStackNils;
   R_Vulkan_DeclStacks;
