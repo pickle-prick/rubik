@@ -1,11 +1,19 @@
 #ifndef INK_CORE_H
 #define INK_CORE_H
 
-/////////////////////////////////////////////////////////////////////////////////////////
-//~ Enum
+////////////////////////////////
+//~ Mouse Button Kinds
+
+typedef enum IK_MouseButtonKind
+{
+  IK_MouseButtonKind_Left,
+  IK_MouseButtonKind_Middle,
+  IK_MouseButtonKind_Right,
+  IK_MouseButtonKind_COUNT
+} IK_MouseButtonKind;
 
 ////////////////////////////////
-//- Drag/Drop Types
+//~ Drag/Drop Types
 
 typedef enum IK_DragDropState
 {
@@ -16,11 +24,8 @@ typedef enum IK_DragDropState
 }
 IK_DragDropState;
 
-/////////////////////////////////////////////////////////////////////////////////////////
-//~ Types
-
 ////////////////////////////////
-//- Key
+//~ Key
 
 typedef struct IK_Key IK_Key;
 struct IK_Key
@@ -29,7 +34,7 @@ struct IK_Key
 };
 
 ////////////////////////////////
-//- Setting Types
+//~ Setting Types
 
 typedef struct IK_SettingVal IK_SettingVal;
 struct IK_SettingVal
@@ -40,7 +45,7 @@ struct IK_SettingVal
 };
 
 ////////////////////////////////
-//- Camera
+//~ Camera
 
 typedef struct IK_Camera IK_Camera;
 struct IK_Camera
@@ -54,17 +59,20 @@ struct IK_Camera
 
   // drag state
   B32 dragging;
-  Vec2F32 mouse_drag_start;
-  Rng2F32 rect_drag_start;
+  Vec2F32 drag_start_mouse;
+  Vec2F32 drag_start_mouse_scale;
+  Rng2F32 drag_start_rect;
 };
 
 ////////////////////////////////
-//- Box types
+//~ Box types
 
 typedef U64 IK_BoxFlags;
-# define IK_BoxFlag_DrawRect  (IK_BoxFlags)(1ull<<0)
-# define IK_BoxFlag_DrawText  (IK_BoxFlags)(1ull<<1)
-# define IK_BoxFlag_DrawImage (IK_BoxFlags)(1ull<<2)
+# define IK_BoxFlag_MouseClickable (IK_BoxFlags)(1ull<<0)
+# define IK_BoxFlag_Scroll         (IK_BoxFlags)(1ull<<1)
+# define IK_BoxFlag_DrawRect       (IK_BoxFlags)(1ull<<2)
+# define IK_BoxFlag_DrawText       (IK_BoxFlags)(1ull<<3)
+# define IK_BoxFlag_DrawImage      (IK_BoxFlags)(1ull<<4)
 
 typedef struct IK_Frame IK_Frame;
 typedef struct IK_Box IK_Box;
@@ -102,6 +110,92 @@ struct IK_BoxRec
 };
 
 ////////////////////////////////
+//~ Signal types
+
+typedef U32 IK_SignalFlags;
+enum
+{
+  // mouse press -> box was pressed while hovering
+  IK_SignalFlag_LeftPressed         = (1<<0),
+  IK_SignalFlag_MiddlePressed       = (1<<1),
+  IK_SignalFlag_RightPressed        = (1<<2),
+
+  // dragging -> box was previously pressed, user is still holding button
+  IK_SignalFlag_LeftDragging        = (1<<3),
+  IK_SignalFlag_MiddleDragging      = (1<<4),
+  IK_SignalFlag_RightDragging       = (1<<5),
+
+  // double-dragging -> box was previously double-clicked, user is still holding button
+  IK_SignalFlag_LeftDoubleDragging  = (1<<6),
+  IK_SignalFlag_MiddleDoubleDragging= (1<<7),
+  IK_SignalFlag_RightDoubleDragging = (1<<8),
+
+  // triple-dragging -> box was previously triple-clicked, user is still holding button
+  IK_SignalFlag_LeftTripleDragging  = (1<<9),
+  IK_SignalFlag_MiddleTripleDragging= (1<<10),
+  IK_SignalFlag_RightTripleDragging = (1<<11),
+
+  // released -> box was previously pressed & user released, in or out of bounds
+  IK_SignalFlag_LeftReleased        = (1<<12),
+  IK_SignalFlag_MiddleReleased      = (1<<13),
+  IK_SignalFlag_RightReleased       = (1<<14),
+
+  // clicked -> box was previously pressed & user released, in bounds
+  IK_SignalFlag_LeftClicked         = (1<<15),
+  IK_SignalFlag_MiddleClicked       = (1<<16),
+  IK_SignalFlag_RightClicked        = (1<<17),
+
+  // double clicked -> box was previously clicked, pressed again
+  IK_SignalFlag_LeftDoubleClicked   = (1<<18),
+  IK_SignalFlag_MiddleDoubleClicked = (1<<19),
+  IK_SignalFlag_RightDoubleClicked  = (1<<20),
+
+  // triple clicked -> box was previously clicked twice, pressed again
+  IK_SignalFlag_LeftTripleClicked   = (1<<21),
+  IK_SignalFlag_MiddleTripleClicked = (1<<22),
+  IK_SignalFlag_RightTripleClicked  = (1<<23),
+
+  // keyboard pressed -> box had focus, user activated via their keyboard
+  IK_SignalFlag_KeyboardPressed     = (1<<24),
+
+  // passive mouse info
+  IK_SignalFlag_Hovering            = (1<<25), // hovering specifically this box
+  IK_SignalFlag_MouseOver           = (1<<26), // mouse is over, but may be occluded
+
+  // committing state changes via user interaction
+  IK_SignalFlag_Commit              = (1<<27),
+
+  // high-level combos
+  IK_SignalFlag_Pressed       = IK_SignalFlag_LeftPressed|IK_SignalFlag_KeyboardPressed,
+  IK_SignalFlag_Released      = IK_SignalFlag_LeftReleased,
+  IK_SignalFlag_Clicked       = IK_SignalFlag_LeftClicked|IK_SignalFlag_KeyboardPressed,
+  IK_SignalFlag_DoubleClicked = IK_SignalFlag_LeftDoubleClicked,
+  IK_SignalFlag_TripleClicked = IK_SignalFlag_LeftTripleClicked,
+  IK_SignalFlag_Dragging      = IK_SignalFlag_LeftDragging,
+};
+
+typedef struct IK_Signal IK_Signal;
+struct IK_Signal
+{
+  IK_Box *box;
+  OS_Modifiers event_flags;
+  Vec2S16 scroll;
+  IK_SignalFlags f;
+};
+
+#define ik_pressed(s)        !!((s).f&IK_SignalFlag_Pressed)
+#define ik_clicked(s)        !!((s).f&IK_SignalFlag_Clicked)
+#define ik_released(s)       !!((s).f&IK_SignalFlag_Released)
+#define ik_double_clicked(s) !!((s).f&IK_SignalFlag_DoubleClicked)
+#define ik_triple_clicked(s) !!((s).f&IK_SignalFlag_TripleClicked)
+#define ik_middle_clicked(s) !!((s).f&IK_SignalFlag_MiddleClicked)
+#define ik_right_clicked(s)  !!((s).f&IK_SignalFlag_RightClicked)
+#define ik_dragging(s)       !!((s).f&IK_SignalFlag_Dragging)
+#define ik_hovering(s)       !!((s).f&IK_SignalFlag_Hovering)
+#define ik_mouse_over(s)     !!((s).f&IK_SignalFlag_MouseOver)
+#define ik_committed(s)      !!((s).f&IK_SignalFlag_Commit)
+
+////////////////////////////////
 //- Frame
 
 typedef struct IK_BoxHashSlot IK_BoxHashSlot;
@@ -129,12 +223,12 @@ struct IK_Frame
 };
 
 /////////////////////////////////
-//- Generated code
+//~ Generated code
 
 #include "generated/ink.meta.h"
 
 /////////////////////////////////
-//- Theme Types 
+//~ Theme Types 
 
 typedef struct IK_Theme IK_Theme;
 struct IK_Theme
@@ -219,7 +313,7 @@ struct IK_DrawList
 };
 
 ////////////////////////////////
-//- State 
+//~ State 
 
 typedef struct IK_State IK_State;
 struct IK_State
@@ -264,16 +358,21 @@ struct IK_State
   F32                   last_dpi;
   B32                   window_should_close;
 
-  // cursor
-  Vec2F32               cursor;
-  Vec2F32               last_cursor;
-  Vec2F32               cursor_delta;
+  // mouse
+  Vec2F32               mouse;
+  Vec2F32               last_mouse;
+  Vec2F32               mouse_delta; // frame delta
   B32                   cursor_hidden;
 
   // user interaction state
   IK_Key                hot_box_key;
-  IK_Key                active_box_key;
+  IK_Key                active_box_key[IK_MouseButtonKind_COUNT];
   U64                   hot_pixel_key; // hot pixel key from renderer
+  U64                   press_timestamp_history_us[IK_MouseButtonKind_COUNT][3];
+  IK_Key                press_key_history[IK_MouseButtonKind_COUNT][3];
+  Vec2F32               drag_start_mouse;
+  Arena                 *drag_state_arena;
+  String8               drag_state_data;
 
   // drag/drop state
   IK_DragDropState      drag_drop_state;
@@ -313,23 +412,20 @@ struct IK_State
   IK_DeclStacks;
 };
 
-/////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////
 //~ Globals
 
 global IK_State *ik_state;
 
-/////////////////////////////////////////////////////////////////////////////////////////
-//~ Functions
-
 /////////////////////////////////
-//- Basic Type Functions
+//~ Basic Type Functions
 
 internal U64     ik_hash_from_string(U64 seed, String8 string);
 internal String8 ik_hash_part_from_key_string(String8 string);
 internal String8 ik_display_part_from_key_string(String8 string);
 
 /////////////////////////////////
-//- Key
+//~ Key
 
 internal IK_Key ik_key_from_string(IK_Key seed, String8 string);
 internal IK_Key ik_key_from_stringf(IK_Key seed, char* fmt, ...);
@@ -338,34 +434,42 @@ internal IK_Key ik_key_make(U64 a, U64 b);
 internal IK_Key ik_key_zero();
 
 /////////////////////////////////
-//- Handle
+//~ Handle
 
 // internal IK_Handle ik_handle_zero();
 // internal B32       ik_handle_match(IK_Handle a, IK_Handle b);
 
 /////////////////////////////////
-//- State accessor/mutator
+//~ State accessor/mutator
 
-// init
+//- init
 internal void ik_init(OS_Handle os_wnd, R_Handle r_wnd);
 
-// frame
+//- frame
 internal B32          ik_frame(void);
 internal Arena*       ik_frame_arena();
 internal IK_DrawList* ik_frame_drawlist();
 
-// color
+//- color
 internal Vec4F32 ik_rgba_from_theme_color(IK_ThemeColor color);
 
-// code -> palette
+//- code -> palette
 internal UI_Palette* ik_palette_from_code(IK_PaletteCode code);
 
-// fonts/size
+//- fonts/size
 internal F_Tag ik_font_from_slot(IK_FontSlot slot);
 internal F32   ik_font_size_from_slot(IK_FontSlot slot);
 
-// box lookup
+//- box lookup
 internal IK_Box* ik_box_from_key(IK_Key key);
+
+//- drag data
+internal Vec2F32 ik_drag_start_mouse(void);
+internal Vec2F32 ik_drag_delta(void);
+internal void    ik_store_drag_data(String8 string);
+internal String8 ik_get_drag_data(U64 min_required_size);
+#define ik_store_drag_struct(ptr) ik_store_drag_data(str8_struct(ptr))
+#define ik_get_drag_struct(type) ((type *)ik_get_drag_data(sizeof(type)).str)
 
 /////////////////////////////////
 //~ OS event consumption helpers
@@ -377,13 +481,13 @@ internal B32  ik_key_release(OS_Modifiers mods, OS_Key key);
 /////////////////////////////////
 //~ Dynamic drawing (in immediate mode fashion)
 
-//- Basic building API
+//- basic building API
 internal IK_DrawList* ik_drawlist_alloc(Arena *arena, U64 vertex_buffer_cap, U64 indice_buffer_cap);
 internal IK_DrawNode* ik_drawlist_push(Arena *arena, IK_DrawList *drawlist, R_Vertex *vertices_src, U64 vertex_count, U32 *indices_src, U64 indice_count);
 internal void         ik_drawlist_build(IK_DrawList *drawlist); /* upload buffer from cpu to gpu */
 internal void         ik_drawlist_reset(IK_DrawList *drawlist);
 
-//- High level building API
+//- high level building API
 internal IK_DrawNode* ik_drawlist_push_rect(Arena *arena, IK_DrawList *drawlist, Rng2F32 dst, Rng2F32 src);
 
 /////////////////////////////////
@@ -412,12 +516,20 @@ internal IK_Box* ik_build_box_from_stringf(IK_BoxFlags flags, char *fmt, ...);
 internal String8 ik_box_equip_display_string(IK_Box *box, String8 string);
 
 /////////////////////////////////
+//~ User interaction
+
+internal IK_Signal ik_signal_from_box(IK_Box *box);
+
+/////////////////////////////////
 //~ UI Widget
 
 internal void ik_ui_stats(void);
 
 /////////////////////////////////
 //~ Helpers
+
+internal Vec2F32 ik_screen_pos_in_world(Mat4x4F32 proj_view_inv_mat, Vec2F32 pos);
+#define ik_mouse_in_world(pvim) ik_screen_pos_in_world(pvim, ik_state->mouse)
 
 ////////////////////////////////
 //~ Macro Loop Wrappers

@@ -1577,7 +1577,7 @@ ui_signal_from_box(UI_Box *box)
        !evt_mouse_in_bounds &&
        evt_key_is_mouse)
     {
-      ui_state->hot_box_key = box->key;
+      ui_state->hot_box_key = ui_key_zero();
       ui_state->active_box_key[evt_mouse_button_kind] = ui_key_zero();
       sig.f |= (UI_SignalFlag_LeftReleased << evt_mouse_button_kind);
 
@@ -1624,6 +1624,7 @@ ui_signal_from_box(UI_Box *box)
 
   //////////////////////////////
   //- rjf: mouse is over this box's rect -> always mark mouse-over
+
   if(contains_2f32(rect, ui_state->mouse))
   {
     sig.f |= UI_SignalFlag_MouseOver;

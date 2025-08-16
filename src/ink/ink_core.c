@@ -275,7 +275,7 @@ ik_ui_draw()
       }
     }
 
-    // Call custom draw callback
+    // call custom draw callback
     if(box->custom_draw != 0)
     {
       box->custom_draw(box, box->custom_draw_user_data);
@@ -395,7 +395,7 @@ ik_ui_draw()
 }
 
 
-/////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////
 //~ Basic Type Functions
 
 internal U64
@@ -476,11 +476,10 @@ ik_key_zero()
   return (IK_Key){0}; 
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////
 //~ State accessor/mutator
 
-/////////////////////////////////
-//- Init
+//- init
 
 internal void
 ik_init(OS_Handle os_wnd, R_Handle r_wnd)
@@ -488,13 +487,14 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
   Arena *arena = arena_alloc();
   ik_state = push_array(arena, IK_State, 1);
   {
-    ik_state->arena       = arena;
-    ik_state->os_wnd      = os_wnd;
-    ik_state->r_wnd       = r_wnd;
-    ik_state->dpi         = os_dpi_from_window(os_wnd);
-    ik_state->last_dpi    = ik_state->last_dpi;
+    ik_state->arena = arena;
+    ik_state->os_wnd = os_wnd;
+    ik_state->r_wnd = r_wnd;
+    ik_state->dpi = os_dpi_from_window(os_wnd);
+    ik_state->last_dpi = ik_state->last_dpi;
     ik_state->window_rect = os_client_rect_from_window(os_wnd, 1);
-    ik_state->window_dim  = dim_2f32(ik_state->window_rect);
+    ik_state->window_dim = dim_2f32(ik_state->window_rect);
+    ik_state->drag_state_arena = arena_alloc();
 
     // frame arena
     for(U64 i = 0; i < ArrayCount(ik_state->frame_arenas); i++)
@@ -594,7 +594,7 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
 }
 
 /////////////////////////////////
-//- Frame
+//- frame
 
 internal B32
 ik_frame(void)
@@ -602,20 +602,20 @@ ik_frame(void)
   ProfBeginFunction();
   Temp scratch = scratch_begin(0,0);
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  //~ Do per-frame resets
+  /////////////////////////////////
+  // do per-frame resets
 
   ik_drawlist_reset(ik_frame_drawlist());
   arena_clear(ik_frame_arena());
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  //~ Remake drawing buckets every frame
+  /////////////////////////////////
+  // remake drawing buckets every frame
 
   d_begin_frame();
   ik_state->bucket_rect = d_bucket_make();
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  //~ Get events from os
+  /////////////////////////////////
+  // get events from os
   
   {
     ik_state->os_events          = os_get_events(ik_frame_arena(), 0);
@@ -624,16 +624,16 @@ ik_frame(void)
     ik_state->window_res_changed = ik_state->window_rect.x0 == ik_state->last_window_rect.x0 && ik_state->window_rect.x1 == ik_state->last_window_rect.x1 && ik_state->window_rect.y0 == ik_state->last_window_rect.y0 && ik_state->window_rect.y1 == ik_state->last_window_rect.y1;
     ik_state->window_rect        = os_client_rect_from_window(ik_state->os_wnd, 0);
     ik_state->window_dim         = dim_2f32(ik_state->window_rect);
-    ik_state->last_cursor        = ik_state->cursor;
+    ik_state->last_mouse         = ik_state->mouse;
     {
-      Vec2F32 cursor = os_window_is_focused(ik_state->os_wnd) ? os_mouse_from_window(ik_state->os_wnd) : v2f32(-100,-100);
-      if(cursor.x >= 0 && cursor.x <= ik_state->window_dim.x &&
-         cursor.y >= 0 && cursor.y <= ik_state->window_dim.y)
+      Vec2F32 mouse = os_window_is_focused(ik_state->os_wnd) ? os_mouse_from_window(ik_state->os_wnd) : v2f32(-100,-100);
+      if(mouse.x >= 0 && mouse.x <= ik_state->window_dim.x &&
+         mouse.y >= 0 && mouse.y <= ik_state->window_dim.y)
       {
-        ik_state->cursor = cursor;
+        ik_state->mouse = mouse;
       }
     }
-    ik_state->cursor_delta       = sub_2f32(ik_state->cursor, ik_state->last_cursor);
+    ik_state->mouse_delta       = sub_2f32(ik_state->mouse, ik_state->last_mouse);
     ik_state->last_dpi           = ik_state->dpi;
     ik_state->dpi                = os_dpi_from_window(ik_state->os_wnd);
 
@@ -646,8 +646,8 @@ ik_frame(void)
     ik_state->animation.slaf_rate = 1 - pow_f32(2, (-8.f  * ui_state->animation_dt));
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  //~ Calculate avg length in us of last many frames
+  /////////////////////////////////
+  // calculate avg length in us of last many frames
 
   U64 frame_time_history_avg_us = 0;
   ProfScope("calculate avg length in us of last many frames")
@@ -664,8 +664,8 @@ ik_frame(void)
     }
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  //~ Pick target hz
+  /////////////////////////////////
+  // pick target hz
 
   // pick among a number of sensible targets to snap to, given how well we've been performing
   F32 target_hz = os_get_gfx_info()->default_refresh_rate;
@@ -697,11 +697,11 @@ ik_frame(void)
   // begin measuring actual per-frame work
   U64 begin_time_us = os_now_microseconds();
 
-  ///////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////
   //~ Build UI
 
   ////////////////////////////////
-  //- Build event list for UI
+  //- build event list for UI
 
   UI_EventList ui_events = {0};
   for(OS_Event *os_evt = ik_state->os_events.first; os_evt != 0; os_evt = os_evt->next)
@@ -783,15 +783,15 @@ ik_frame(void)
   }
 
   ////////////////////////////////
-  //- Begin build UI
+  //- begin build UI
 
   {
-    // Gather font info
+    // gather font info
     F_Tag main_font = ik_font_from_slot(IK_FontSlot_Main);
     F32 main_font_size = ik_font_size_from_slot(IK_FontSlot_Main);
     F_Tag icon_font = ik_font_from_slot(IK_FontSlot_Icons);
 
-    // Build icon info
+    // build icon info
     UI_IconInfo icon_info = {0};
     {
       icon_info.icon_font = icon_font;
@@ -814,7 +814,7 @@ ik_frame(void)
       widget_palette_info.scrollbar_palette = ik_palette_from_code(IK_PaletteCode_ScrollBarButton);
     }
 
-    // Build animation info
+    // build animation info
     UI_AnimationInfo animation_info = {0};
     {
       animation_info.hot_animation_rate      = ik_state->animation.fast_rate;
@@ -825,7 +825,7 @@ ik_frame(void)
       animation_info.scroll_animation_rate   = ik_state->animation.fast_rate;
     }
 
-    // Begin & push initial stack values
+    // begin & push initial stack values
     ui_begin_build(ik_state->os_wnd, &ui_events, &icon_info, &widget_palette_info, &animation_info, ik_state->frame_dt);
 
     ui_push_font(main_font);
@@ -837,39 +837,130 @@ ik_frame(void)
     ui_push_palette(ik_palette_from_code(IK_PaletteCode_Base));
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////
   //~ Build Debug UI
 
-  {
-    ik_ui_stats();
-  }
-
-  ///////////////////////////////////////////////////////////////////////////////////////
-  //~ Main scene building
-
-  // Unpack ctx
-  IK_Frame *frame = ik_state->active_frame;
-  IK_Camera *camera = &frame->camera;
+  ik_ui_stats();
 
   ////////////////////////////////
-  // Camera
+  //~ Main scene building
 
-  // Camera zoom/pan
+  // unpack ctx
+  IK_Frame *frame = ik_state->active_frame;
+  IK_Camera *camera = &frame->camera;
+  // proj mat
+  // NOTE(k): since we are not using view_mat, it's a indentity matrix, so proj_mat == proj_view_mat
+  Mat4x4F32 proj_mat = make_orthographic_vulkan_4x4f32(camera->rect.x0, camera->rect.x1, camera->rect.y1, camera->rect.y0, camera->zn, camera->zf);
+  Mat4x4F32 proj_mat_inv = inverse_4x4f32(proj_mat);
+  B32 space_is_down = os_key_is_down(OS_Key_Space);
+  // TODO: bug, won't return the right result 
+  // B32 middle_is_down = os_key_is_down(OS_Key_MiddleMouseButton);
+  B32 middle_is_down = 0;
+
+  ////////////////////////////////
+  //- box interaction
+
+  typedef struct IK_BoxDrag IK_BoxDrag;
+  struct IK_BoxDrag
   {
-    B32 space_is_down = os_key_is_down(OS_Key_Space);
+    Rng2F32 drag_start_rect; 
+  };
+
+  IK_Frame(frame) IK_Parent(frame->root)
+  {
+    IK_Box *box = frame->root;
+    while(box != 0)
+    {
+      IK_BoxRec rec = ik_box_rec_df_post(box, frame->root);
+      IK_Signal sig = ik_signal_from_box(box);
+
+      if(sig.f & IK_SignalFlag_LeftDragging)
+      {
+        if(sig.f & IK_SignalFlag_Pressed)
+        {
+          IK_BoxDrag drag = {box->rect};
+          ik_store_drag_struct(&drag);
+        }
+        else
+        {
+          IK_BoxDrag drag = *ik_get_drag_struct(IK_BoxDrag);
+          // TODO: consider zoom level, store mouse scale factor
+          // TODO: we should just use mouse frame delta, since we could be reszing window when dragging
+          Vec2F32 delta = ik_drag_delta();
+          Rng2F32 rect = shift_2f32(drag.drag_start_rect, delta);
+          box->rect = rect;
+        }
+      }
+      box = rec.next;
+    }
+
+    /////////////////////////////////
+    //~ TODO: Create new rect
+
+    // click on empty and no active box
+    if(ik_key_match(ik_state->hot_box_key, ik_key_zero()) &&
+       ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Left], ik_key_zero()) &&
+       (!space_is_down) &&
+       (!middle_is_down) &&
+       ik_key_press(0, OS_Key_LeftMouseButton))
+    {
+      IK_Frame(frame) IK_Parent(frame->root)
+      {
+        IK_Key key = ik_key_from_stringf(ik_active_seed_key(), "##%I64u", os_now_microseconds());
+
+        // TODO: we should set resizing flags
+        ik_state->hot_box_key = key;
+        ik_state->active_box_key[IK_MouseButtonKind_Left] = key;
+
+        IK_Box *box = ik_build_box_from_key(0, key);
+        box->flags |= IK_BoxFlag_DrawRect|IK_BoxFlag_MouseClickable;
+        Vec2F32 mouse_in_world = ik_mouse_in_world(proj_mat_inv);
+        box->rect = r2f32p(mouse_in_world.x, mouse_in_world.y, mouse_in_world.x+300, mouse_in_world.y+300);
+        box->color = v4f32(1,1,0,1.0);
+        box->hover_cursor = OS_Cursor_HandPoint;
+
+        // TODO: not ideal
+        IK_BoxDrag drag = {box->rect};
+        ik_store_drag_struct(&drag);
+        ik_state->drag_start_mouse = ik_state->mouse;
+      }
+    }
+
+    /////////////////////////////////
+    //~ Hover cursor
+
+    {
+      IK_Box *hot = ik_box_from_key(ik_state->hot_box_key);
+      IK_Box *active = ik_box_from_key(ik_state->active_box_key[IK_MouseButtonKind_Left]);
+      IK_Box *box = active == 0 ? hot : active;
+      if(box)
+      {
+        OS_Cursor cursor = box->hover_cursor;
+        if(os_window_is_focused(ik_state->os_wnd) || active != 0)
+        {
+          // TODO: will be override by ui_end_build
+          os_set_cursor(cursor);
+        }
+      }
+    }
+  }
+
+  ////////////////////////////////
+  //- camera controls
+
+  {
     for(OS_Event *os_evt = ik_state->os_events.first, *next = 0; os_evt != 0;)
     {
       next = os_evt->next;
       B32 taken = 0;
 
-      // Zoom
+      ////////////////////////////////
+      //- zoom
+
       if(!space_is_down && os_evt->kind == OS_EventKind_Scroll && os_evt->modifiers == OS_Modifier_Ctrl)
       {
         F32 delta = os_evt->delta.y;
-
-        Mat4x4F32 proj_mat = make_orthographic_vulkan_4x4f32(camera->rect.x0, camera->rect.x1, camera->rect.y1, camera->rect.y0, camera->zn, camera->zf);
-
-        // Get normalized rect
+        // get normalized rect
         Rng2F32 rect = camera->rect;
         Vec2F32 rect_center = center_2f32(camera->rect);
         Vec2F32 shift = {-rect_center.x, -rect_center.y};
@@ -882,22 +973,36 @@ ik_frame(void)
         rect.y0 *= scale;
         rect.y1 *= scale;
         rect = shift_2f32(rect, shift_inv);
-        camera->target_rect = rect;
 
-        // TODO: anchor mouse pos in world
+        // anchor mouse pos in world
+        Vec2F32 mouse_in_world = ik_mouse_in_world(proj_mat_inv);
+        Mat4x4F32 proj_mat_after = make_orthographic_vulkan_4x4f32(rect.x0, rect.x1, rect.y1, rect.y0, camera->zn, camera->zf);
+        Mat4x4F32 proj_mat_inv_after = inverse_4x4f32(proj_mat_after);
+        Vec2F32 mouse_in_world_after = ik_mouse_in_world(proj_mat_inv_after);
+        Vec2F32 world_delta = sub_2f32(mouse_in_world, mouse_in_world_after);
+        rect = shift_2f32(rect, world_delta);
+        camera->target_rect = rect;
 
         // TODO: handle ratio changed caused by window resizing
         taken = 1;
       }
 
-      // Pan
+      ////////////////////////////////
+      //- pan
+
+      // TODO: support middle mouse dragging
+
+      // pan started
       if(space_is_down && os_evt->kind == OS_EventKind_Press && os_evt->key == OS_Key_LeftMouseButton)
       {
-        camera->mouse_drag_start = ik_state->cursor;
-        camera->rect_drag_start = camera->target_rect;
+        camera->drag_start_mouse = ik_state->mouse;
+        Vec2F32 rect_dim = dim_2f32(camera->rect);
+        camera->drag_start_mouse_scale = v2f32(rect_dim.x/ik_state->window_dim.x, rect_dim.y/ik_state->window_dim.y);
+        camera->drag_start_rect = camera->target_rect;
         camera->dragging = 1;
         taken = 1;
       }
+      // pan ended
       if(os_evt->kind == OS_EventKind_Release && (os_evt->key == OS_Key_LeftMouseButton || os_evt->key == OS_Key_Space))
       {
         taken = 1;
@@ -912,109 +1017,34 @@ ik_frame(void)
       os_evt = next;
     }
 
+    // apply pan
     if(camera->dragging)
     {
-      // Vec2F32 mouse_delta = sub_2f32(ik_state->cursor, camera->mouse_drag_start);
-      Vec2F32 mouse_delta = sub_2f32(camera->mouse_drag_start, ik_state->cursor);
-      // TODO: scale it based on the zoom level
-      Rng2F32 rect = shift_2f32(camera->rect_drag_start, mouse_delta);
+      Vec2F32 delta = sub_2f32(camera->drag_start_mouse, ik_state->mouse);
+      delta.x *= camera->drag_start_mouse_scale.x;
+      delta.y *= camera->drag_start_mouse_scale.y;
+      Rng2F32 rect = shift_2f32(camera->drag_start_rect, delta);
       camera->target_rect = rect;
     }
+
+    // camera animation
+    camera->rect.x0 += ik_state->animation.vast_rate * (camera->target_rect.x0-camera->rect.x0);
+    camera->rect.x1 += ik_state->animation.vast_rate * (camera->target_rect.x1-camera->rect.x1);
+    camera->rect.y0 += ik_state->animation.vast_rate * (camera->target_rect.y0-camera->rect.y0);
+    camera->rect.y1 += ik_state->animation.vast_rate * (camera->target_rect.y1-camera->rect.y1);
   }
 
-  // Camera animation
-  camera->rect.x0 += ik_state->animation.fast_rate * (camera->target_rect.x0-camera->rect.x0);
-  camera->rect.x1 += ik_state->animation.fast_rate * (camera->target_rect.x1-camera->rect.x1);
-  camera->rect.y0 += ik_state->animation.fast_rate * (camera->target_rect.y0-camera->rect.y0);
-  camera->rect.y1 += ik_state->animation.fast_rate * (camera->target_rect.y1-camera->rect.y1);
-
-  ////////////////////////////////
-  //~ Box interaction
-
-  IK_Frame(frame) IK_Parent(frame->root)
-  {
-    IK_Box *box = frame->root;
-    while(box != 0)
-    {
-      IK_BoxRec rec = ik_box_rec_df_post(box, frame->root);
-
-      /////////////////////////////////
-      //~ Process events related to this box
-
-      for(OS_Event *os_evt = ik_state->os_events.first, *next = 0; os_evt != 0;)
-      {
-        next = os_evt->next;
-        B32 taken = 0;
-
-        /////////////////////////////////
-        //- Mouse over this box -> set hot
-
-        IK_Key hot_pixel_key = ik_key_make(ik_state->hot_pixel_key, 0);
-        if(ik_key_match(hot_pixel_key, box->key))
-        {
-          ik_state->hot_box_key = box->key;
-        }
-
-        /////////////////////////////////
-        //- Mouse pressed in box -> set hot/active, mark signal accordingly
-
-        if(os_evt->kind == OS_EventKind_Press && ik_key_match(ik_state->hot_box_key, box->key))
-        {
-          ik_state->active_box_key = box->key;
-          taken = 1;
-        }
-
-        /////////////////////////////////
-        //- Mouse release in active box -> unset hot/active
-
-        /////////////////////////////////
-        //- Mouse release outside of active box -> unset hot/active
-
-        if(taken)
-        {
-          ik_eat_event(&ik_state->os_events, os_evt);
-        }
-
-        os_evt = next;
-      }
-
-      box = rec.next;
-    }
-
-    /////////////////////////////////
-    //~ TODO: Create new rect
-
-    /////////////////////////////////
-    //~ Hover cursor
-
-    {
-      IK_Box *hot = ik_box_from_key(ik_state->hot_box_key);
-      IK_Box *active = ik_box_from_key(ik_state->active_box_key);
-      IK_Box *box = active == 0 ? hot : active;
-      if(box)
-      {
-        OS_Cursor cursor = box->hover_cursor;
-        if(os_window_is_focused(ik_state->os_wnd) || active != 0)
-        {
-          // TODO: will be override by ui_end_build
-          os_set_cursor(cursor);
-        }
-      }
-    }
-  }
-
-  ///////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////
   //~ Main scene drawing
 
-  // Unpack camera settings
+  // unpack camera settings
   Rng2F32 viewport = ik_state->window_rect;
   Mat4x4F32 view_mat = mat_4x4f32(1.0);
-  Mat4x4F32 proj_mat = make_orthographic_vulkan_4x4f32(camera->rect.x0, camera->rect.x1, camera->rect.y1, camera->rect.y0, camera->zn, camera->zf);
 
-  // Start geo2d pass
+  // start geo2d pass
   ik_state->bucket_geo2d = d_bucket_make();
 
-  // Recursive drawing
+  // recursive drawing
   D_BucketScope(ik_state->bucket_geo2d)
   {
     d_geo2d_begin(viewport, view_mat, proj_mat);
@@ -1024,7 +1054,7 @@ ik_frame(void)
       IK_BoxRec rec = ik_box_rec_df_post(box, frame->root);
 
       // draw active indicator
-      if(ik_key_match(box->key, ik_state->active_box_key))
+      if(ik_key_match(box->key, ik_state->active_box_key[IK_MouseButtonKind_Left]))
       {
         Rng2F32 dst = box->rect;
         // TODO: change padding size based the area of the rect
@@ -1073,7 +1103,7 @@ ik_frame(void)
   // NOTE(k): there could be ui elements within node update
   // ik_state->sig = ui_signal_from_box(overlay);
 
-  ///////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////
   //~ Update hot/active key
 
   // scene->hot_key = ik_key_make(ik_state->hot_pixel_key, 0);
@@ -1087,7 +1117,7 @@ ik_frame(void)
   //   scene->active_key = ik_key_zero();
   // }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////
   //~ Handle cursor (hide/show/wrap)
 
   // ProfScope("handle cursor")
@@ -1110,7 +1140,7 @@ ik_frame(void)
   //   }
   // }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////
   //~ Draw UI
 
   ui_end_build();
@@ -1119,7 +1149,7 @@ ik_frame(void)
     ik_ui_draw();
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
+  /////////////////////////////////
   //~ End of frame
 
   // end drag/drop if needed (no code handled drop)
@@ -1128,8 +1158,8 @@ ik_frame(void)
     ik_state->drag_drop_state = IK_DragDropState_Null;
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // Submit work
+  /////////////////////////////////
+  //~ Submit work
 
   // Build frame drawlist before we submit draw bucket
   ProfScope("draw drawlist")
@@ -1152,12 +1182,12 @@ ik_frame(void)
     {
       d_submit_bucket(ik_state->os_wnd, ik_state->r_wnd, ik_state->bucket_rect);
     }
-    ik_state->hot_pixel_key = r_window_end_frame(ik_state->r_wnd, ik_state->cursor);
+    ik_state->hot_pixel_key = r_window_end_frame(ik_state->r_wnd, ik_state->mouse);
     r_end_frame();
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // Wait if we still have some cpu time left
+  /////////////////////////////////
+  //~ Wait if we still have some cpu time left
 
   local_persist B32 frame_missed = 0;
   local_persist U64 exiting_frame_index = 0;
@@ -1198,22 +1228,22 @@ ik_frame(void)
     ik_state->window_should_close = 1;
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // determine frame time, record it into history
+  /////////////////////////////////
+  //~ Determine frame time, record it into history
 
   U64 end_time_us = os_now_microseconds();
   U64 frame_time_us = end_time_us-begin_time_us;
   ik_state->frame_time_us_history[ik_state->frame_index%ArrayCount(ik_state->frame_time_us_history)] = frame_time_us;
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // bump frame time counters
+  /////////////////////////////////
+  //~ Bump frame time counters
 
   ik_state->frame_index++;
   ik_state->time_in_seconds += ik_state->frame_dt;
   ik_state->time_in_us += frame_time_us;
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // end
+  /////////////////////////////////
+  //~ End
 
   scratch_end(scratch);
   ProfEnd();
@@ -1296,7 +1326,7 @@ ik_font_size_from_slot(IK_FontSlot slot)
   return result;
 }
 
-// box table lookup
+//- box lookup
 internal IK_Box *
 ik_box_from_key(IK_Key key)
 {
@@ -1315,6 +1345,45 @@ ik_box_from_key(IK_Key key)
     }
   }
   return ret;
+}
+
+//- drag data
+
+internal Vec2F32
+ik_drag_start_mouse(void)
+{
+  return ik_state->drag_start_mouse;
+}
+
+internal Vec2F32
+ik_drag_delta(void)
+{
+  return sub_2f32(ik_state->mouse, ik_state->drag_start_mouse);
+}
+
+internal void
+ik_store_drag_data(String8 string)
+{
+  arena_clear(ik_state->drag_state_arena);
+  ik_state->drag_state_data = push_str8_copy(ik_state->drag_state_arena, string);
+}
+
+internal String8
+ik_get_drag_data(U64 min_required_size)
+{
+  // NOTE: if left size is 0 and it's causing assertion failed
+  //       check duplicated ui box keys
+  AssertAlways(ik_state->drag_state_data.size >= min_required_size);
+
+  // TODO: don't get it, what fuck is this
+  // if(ik_state->drag_state_data.size < min_required_size)
+  // {
+  //     Temp scratch = scratch_begin(0, 0);
+  //     String8 str = {push_array(scratch.arena, U8, min_required_size), min_required_size};
+  //     ik_store_drag_data(str);
+  //     scratch_end(scratch);
+  // }
+  return ik_state->drag_state_data;
 }
 
 /////////////////////////////////
@@ -1363,11 +1432,11 @@ ik_key_release(OS_Modifiers mods, OS_Key key)
   return result;
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////
 //~ Dynamic drawing (in immediate mode fashion)
 
 /////////////////////////////////
-//- Basic building API
+//- basic building API
 
 internal IK_DrawList *
 ik_drawlist_alloc(Arena *arena, U64 vertex_buffer_cap, U64 indice_buffer_cap)
@@ -1452,7 +1521,7 @@ ik_drawlist_reset(IK_DrawList *drawlist)
 }
 
 /////////////////////////////////
-//- High level building API 
+//- high level building API 
 
 internal IK_DrawNode *
 ik_drawlist_push_rect(Arena *arena, IK_DrawList *drawlist, Rng2F32 dst, Rng2F32 src)
@@ -1501,13 +1570,13 @@ ik_drawlist_push_rect(Arena *arena, IK_DrawList *drawlist, Rng2F32 dst, Rng2F32 
   return ret;
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////
 //~ Box Type Functions
 
 internal IK_BoxRec
 ik_box_rec_df(IK_Box *box, IK_Box *root, U64 sib_member_off, U64 child_member_off)
 {
-  // Depth first search starting from the current box 
+  // depth first search starting from the current box 
   IK_BoxRec result = {0};
   result.next = 0;
   if((*MemberFromOffset(IK_Box **, box, child_member_off)) != 0)
@@ -1527,7 +1596,7 @@ ik_box_rec_df(IK_Box *box, IK_Box *root, U64 sib_member_off, U64 child_member_of
   return result;
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////
 //~ Frame Building API
 
 internal IK_Frame *
@@ -1556,23 +1625,8 @@ ik_frame_alloc()
   ret->box_table_size = 1024;
   ret->box_table = push_array(arena, IK_BoxHashSlot, ret->box_table_size);
 
-  // Create root
-  ik_push_frame(ret);
-  IK_Box *root = ik_build_box_from_stringf(0, "##root");
-  ik_pop_frame();
-
-  // TODO: testing
-  IK_Frame(ret) IK_Parent(root)
-  {
-    IK_Box *box = ik_build_box_from_stringf(0, "##demo_rect");
-    box->flags |= IK_BoxFlag_DrawRect;
-    box->rect = r2f32p(300, 300, 600, 600);
-    box->color = v4f32(1,1,0,1.0);
-    box->hover_cursor = OS_Cursor_HandPoint;
-  }
-
   /////////////////////////////////
-  // Fill default settings
+  //~ Fill default settings
 
   // camera
   ret->camera.rect = ik_state->window_rect;
@@ -1580,7 +1634,31 @@ ik_frame_alloc()
   ret->camera.zn = -0.1;
   ret->camera.zf = 1000000.0;
 
+  // create root box
+  ik_push_frame(ret);
+  IK_Box *root = ik_build_box_from_stringf(0, "##root");
+  ik_pop_frame();
   ret->root = root;
+
+  // TODO: testing
+  IK_Frame(ret) IK_Parent(root)
+  {
+    {
+      IK_Box *box = ik_build_box_from_stringf(0, "##demo_rect_1");
+      box->flags |= IK_BoxFlag_DrawRect|IK_BoxFlag_MouseClickable;
+      box->rect = r2f32p(300, 300, 600, 600);
+      box->color = v4f32(1,1,0,1.0);
+      box->hover_cursor = OS_Cursor_HandPoint;
+    }
+    {
+      IK_Box *box = ik_build_box_from_stringf(0, "##demo_rect_2");
+      box->flags |= IK_BoxFlag_DrawRect|IK_BoxFlag_MouseClickable;
+      box->rect = r2f32p(400, 400, 600, 600);
+      box->color = v4f32(1,0,0,1.0);
+      box->hover_cursor = OS_Cursor_HandPoint;
+    }
+  }
+
   return ret;
 }
 
@@ -1590,7 +1668,7 @@ ik_frame_release(IK_Frame *frame)
   SLLStackPush(ik_state->first_free_frame, frame);
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////
 //~ Box Tree Building API
 
 /////////////////////////////////
@@ -1616,21 +1694,21 @@ ik_build_box_from_key(IK_BoxFlags flags, IK_Key key)
   }
   MemoryZeroStruct(ret);
 
-  // Grab active parent
+  // grab active parent
   IK_Box *parent = ik_top_parent();
   if(parent)
   {
-    // Insert to tree
+    // insert to tree
     DLLPushBack(parent->first, parent->last, ret);
     parent->children_count++;
   }
 
-  // Fill box info
+  // fill box info
   ret->key = key;
   ret->flags = flags;
   ret->frame = top_frame;
 
-  // Hook into lookup table
+  // hook into lookup table
   U64 slot_index = key.u64[0]%top_frame->box_table_size;
   IK_BoxHashSlot *slot = &top_frame->box_table[slot_index];
   DLLInsert_NPZ(0, slot->hash_first, slot->hash_last, slot->hash_last, ret, hash_next, hash_prev);
@@ -1658,7 +1736,7 @@ internal IK_Box *
 ik_build_box_from_string(IK_BoxFlags flags, String8 string)
 {
   ProfBeginFunction();
-  // Grab active parent
+  // grab active parent
   IK_Box *parent = ik_top_parent();
 
   IK_Key key = ik_key_from_string(ik_active_seed_key(), string);
@@ -1715,7 +1793,197 @@ ik_box_equip_display_string(IK_Box *box, String8 string)
   // }
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////
+//~ User interaction
+
+internal IK_Signal
+ik_signal_from_box(IK_Box *box)
+{
+  IK_Signal sig = {0};
+  sig.box = box;
+  sig.event_flags |= os_get_modifiers();
+
+  /////////////////////////////////
+  //~ Process events related to this box
+
+  B32 is_pixel_hot = ik_key_match(box->key, ik_key_make(ik_state->hot_pixel_key, 0));
+  for(OS_Event *evt = ik_state->os_events.first, *next = 0; evt != 0;)
+  {
+    next = evt->next;
+    B32 taken = 0;
+
+    //- unpack event
+    Vec2F32 evt_mouse = evt->pos;
+    // B32 evt_mouse_in_bounds = contains_2f32(rect, evt_mouse);
+    IK_MouseButtonKind evt_mouse_button_kind = 
+      evt->key == OS_Key_LeftMouseButton   ? IK_MouseButtonKind_Left   :
+      evt->key == OS_Key_RightMouseButton  ? IK_MouseButtonKind_Right  :
+      evt->key == OS_Key_MiddleMouseButton ? IK_MouseButtonKind_Middle :
+      IK_MouseButtonKind_Left;
+    B32 evt_key_is_mouse =
+      evt->key == OS_Key_LeftMouseButton  || 
+      evt->key == OS_Key_RightMouseButton ||
+      evt->key == OS_Key_MiddleMouseButton;
+    sig.event_flags |= evt->modifiers;
+
+    //- mouse pressed in box -> set hot/active, mark signal accordingly
+    if(box->flags & IK_BoxFlag_MouseClickable &&
+       evt->kind == OS_EventKind_Press &&
+       is_pixel_hot &&
+       evt_key_is_mouse)
+    {
+      ik_state->hot_box_key = box->key;
+      ik_state->active_box_key[evt_mouse_button_kind] = box->key;
+      sig.f |= (IK_SignalFlag_LeftPressed << evt_mouse_button_kind);
+      ik_state->drag_start_mouse = evt->pos;
+
+      if(ik_key_match(box->key, ik_state->press_key_history[evt_mouse_button_kind][0]) &&
+         evt->timestamp_us-ik_state->press_timestamp_history_us[evt_mouse_button_kind][0] <= 1000000*os_get_gfx_info()->double_click_time)
+      {
+        sig.f |= (IK_SignalFlag_LeftDoubleClicked<<evt_mouse_button_kind);
+      }
+
+      // TODO: handle tripled clicking
+      MemoryCopy(&ik_state->press_key_history[evt_mouse_button_kind][1],
+                 &ik_state->press_key_history[evt_mouse_button_kind][0],
+                 sizeof(ik_state->press_key_history[evt_mouse_button_kind][0]) * (ArrayCount(ik_state->press_key_history)-1));
+      MemoryCopy(&ik_state->press_timestamp_history_us[evt_mouse_button_kind][1],
+                 &ik_state->press_timestamp_history_us[evt_mouse_button_kind][0],
+                 sizeof(ik_state->press_timestamp_history_us[evt_mouse_button_kind][0]) * (ArrayCount(ik_state->press_timestamp_history_us)-1));
+      ik_state->press_key_history[evt_mouse_button_kind][0] = box->key;
+      ik_state->press_timestamp_history_us[evt_mouse_button_kind][0] = evt->timestamp_us;
+
+      taken = 1;
+    }
+
+    //- mouse released in active box -> unset active
+    if(box->flags & IK_BoxFlag_MouseClickable &&
+       evt->kind == OS_EventKind_Release &&
+       ik_key_match(box->key, ik_state->active_box_key[evt_mouse_button_kind]) &&
+       is_pixel_hot &&
+       evt_key_is_mouse)
+    {
+      ik_state->hot_box_key = box->key;
+      ik_state->active_box_key[evt_mouse_button_kind] = ik_key_zero();
+      sig.f |= (IK_SignalFlag_LeftReleased << evt_mouse_button_kind);
+      sig.f |= (IK_SignalFlag_LeftClicked << evt_mouse_button_kind);
+      taken = 1;
+    }
+
+    //- mouse released outside of active box -> unset hot & active
+    if(box->flags & IK_BoxFlag_MouseClickable &&
+       evt->kind == OS_EventKind_Release &&
+       ik_key_match(box->key, ik_state->active_box_key[evt_mouse_button_kind]) &&
+       !is_pixel_hot &&
+       evt_key_is_mouse)
+    {
+      ik_state->hot_box_key = ik_key_zero();
+      ik_state->active_box_key[evt_mouse_button_kind] = ik_key_zero();
+      sig.f |= (IK_SignalFlag_LeftReleased << evt_mouse_button_kind);
+      taken = 1;
+    }
+
+    //- scroll
+    if(box->flags & IK_BoxFlag_Scroll &&
+       evt->kind == OS_EventKind_Scroll &&
+       evt->modifiers != OS_Modifier_Ctrl &&
+       is_pixel_hot)
+    {
+      Vec2F32 delta = evt->delta;
+      if(evt->modifiers & OS_Modifier_Shift)
+      {
+        Swap(F32, delta.x, delta.y);
+      }
+      Vec2S16 delta16 = v2s16((S16)(delta.x/30.f), (S16)(delta.y/30.f));
+      if(delta.x > 0 && delta16.x == 0) { delta16.x = +1; }
+      if(delta.x < 0 && delta16.x == 0) { delta16.x = -1; }
+      if(delta.y > 0 && delta16.y == 0) { delta16.y = +1; }
+      if(delta.y < 0 && delta16.y == 0) { delta16.y = -1; }
+      sig.scroll.x += delta16.x;
+      sig.scroll.y += delta16.y;
+      taken = 1;
+    }
+
+    if(taken)
+    {
+      ik_eat_event(&ik_state->os_events, evt);
+    }
+
+    evt = next;
+  }
+
+  //////////////////////////////
+  //~ Mouse is over this box's rect -> always mark mouse-over
+
+  if(is_pixel_hot)
+  {
+    sig.f |= IK_SignalFlag_MouseOver;
+  }
+
+  //////////////////////////////
+  //~ Mouse is over this box's rect, no other hot key? -> set hot key, mark hovering
+
+  if(box->flags & IK_BoxFlag_MouseClickable &&
+     is_pixel_hot &&
+     (ik_key_match(ik_state->hot_box_key, ik_key_zero()) || ik_key_match(ik_state->hot_box_key, box->key)) &&
+     (ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Left], ik_key_zero()) || ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Left], box->key)) &&
+     (ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Middle], ik_key_zero()) || ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Middle], box->key)) &&
+     (ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Right], ik_key_zero()) || ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Right], box->key)))
+  {
+    ik_state->hot_box_key = box->key;
+    sig.f |= IK_SignalFlag_Hovering;
+  }
+
+  //////////////////////////////
+  // TODO: Mouse is over this box's rect, drop site, no other drop hot key? -> set drop hot key
+
+  // {
+  //   if(box->flags & UI_BoxFlag_DropSite &&
+  //      contains_2f32(rect, ui_state->mouse) &&
+  //      (ui_key_match(ui_state->drop_hot_box_key, ui_key_zero()) || ui_key_match(ui_state->drop_hot_box_key, box->key)))
+  //   {
+  //     ui_state->drop_hot_box_key = box->key;
+  //   }
+  // }
+
+  //////////////////////////////
+  // TODO: Mouse is not over this box's rect, but this is the drop hot key? -> zero drop hot key
+
+  // {
+  //   if(box->flags & UI_BoxFlag_DropSite &&
+  //      !contains_2f32(rect, ui_state->mouse) &&
+  //      ui_key_match(ui_state->drop_hot_box_key, box->key))
+  //   {
+  //     ui_state->drop_hot_box_key = ui_key_zero();
+  //   }
+  // }
+
+  //////////////////////////////
+  // Active -> dragging
+
+  if(box->flags & IK_BoxFlag_MouseClickable)
+  {
+    for EachEnumVal(IK_MouseButtonKind, k)
+    {
+      if(ik_key_match(ik_state->active_box_key[k], box->key) || sig.f & (IK_SignalFlag_LeftPressed<<k))
+      {
+        sig.f |= (IK_SignalFlag_LeftDragging<<k);
+      }
+    }
+  }
+
+  //////////////////////////////
+  // Mouse is not over this box, hot key is the box? -> unset hot key
+
+  if(!is_pixel_hot && ik_key_match(ik_state->hot_box_key, box->key))
+  {
+    ik_state->hot_box_key = ik_key_zero();
+  }
+
+  return sig;
+}
+
+/////////////////////////////////
 //~ UI Widget
 
 internal void ik_ui_stats(void)
@@ -1744,6 +2012,7 @@ internal void ik_ui_stats(void)
     UI_Parent(stats_container)
       UI_TextAlignment(UI_TextAlign_Left)
       UI_TextPadding(9)
+      UI_PrefWidth(ui_pct(1.0, 0.0))
       UI_Transparency(0.1)
     {
       // collect some values
@@ -1774,6 +2043,20 @@ internal void ik_ui_stats(void)
         ui_spacer(ui_pct(1.0, 0.0));
         ui_labelf("%.2f", 1.0 / (last_frame_us/1000000.0));
       }
+      ui_divider(ui_em(0.1, 0.0));
+      UI_Row
+      {
+        ui_labelf("ik_hot_key");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%lu", ik_state->hot_box_key.u64[0]);
+      }
+      UI_Row
+      {
+        ui_labelf("ik_active_key");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%lu", ik_state->active_box_key[IK_MouseButtonKind_Left].u64[0]);
+      }
+      ui_divider(ui_em(0.1, 0.0));
       UI_Row
       {
         ui_labelf("ui_hot_key");
@@ -1800,6 +2083,13 @@ internal void ik_ui_stats(void)
       }
       UI_Row
       {
+        ui_labelf("drag start mouse");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%.2f, %.2f", ui_state->drag_start_mouse.x, ui_state->drag_start_mouse.y);
+      }
+      ui_divider(ui_em(0.1, 0.0));
+      UI_Row
+      {
         ui_labelf("mouse");
         ui_spacer(ui_pct(1.0, 0.0));
         ui_labelf("%.2f, %.2f", ui_state->mouse.x, ui_state->mouse.y);
@@ -1810,13 +2100,20 @@ internal void ik_ui_stats(void)
         ui_spacer(ui_pct(1.0, 0.0));
         ui_labelf("%.2f, %.2f", ik_state->window_dim.x, ik_state->window_dim.y);
       }
-      UI_Row
-      {
-        ui_labelf("drag start mouse");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%.2f, %.2f", ui_state->drag_start_mouse.x, ui_state->drag_start_mouse.y);
-      }
     }
   }
+}
 
+/////////////////////////////////
+//~ Helpers
+
+internal Vec2F32
+ik_screen_pos_in_world(Mat4x4F32 proj_view_inv_mat, Vec2F32 pos)
+{
+  // mouse ndc pos
+  F32 mox_ndc = (ik_state->mouse.x / ik_state->window_dim.x) * 2.f - 1.f;
+  F32 moy_ndc = (ik_state->mouse.y / ik_state->window_dim.y) * 2.f - 1.f;
+  Vec4F32 mouse_in_world_4 = transform_4x4f32(proj_view_inv_mat, v4f32(mox_ndc, moy_ndc, 1., 1.));
+  Vec2F32 ret = v2f32(mouse_in_world_4.x, mouse_in_world_4.y);
+  return ret;
 }
