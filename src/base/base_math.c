@@ -372,8 +372,7 @@ internal Vec4F32 normalize_4f32(Vec4F32 v) {
   return v;
 }
 internal Vec4F32 mix_4f32(Vec4F32 a, Vec4F32 b, F32 t) {
-  Vec4F32 c = {mix_1f32(a.x, b.x, t), mix_1f32(a.y, b.y, t),
-    mix_1f32(a.z, b.z, t), mix_1f32(a.w, b.w, t)};
+  Vec4F32 c = {mix_1f32(a.x, b.x, t), mix_1f32(a.y, b.y, t), mix_1f32(a.z, b.z, t), mix_1f32(a.w, b.w, t)};
   return c;
 }
 

@@ -657,6 +657,7 @@ internal void     ui_pop_corner_radius(void);
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // State Types
+
 typedef struct UI_BoxHashSlot UI_BoxHashSlot;
 struct UI_BoxHashSlot
 {
@@ -829,6 +830,7 @@ internal String8           ui_get_drag_data(U64 min_required_size);
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //- rjf: interaction keys
+
 internal UI_Key            ui_hot_key(void);
 internal UI_Key            ui_active_key(UI_MouseButtonKind button_kind);
 internal UI_Key            ui_drop_hot_key(void);

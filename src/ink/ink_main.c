@@ -91,6 +91,7 @@ entry_point(CmdLine *cmd_line)
 
   // init game state
   ik_init(os_wnd, r_wnd);
+  ik_state->active_frame = ik_frame_alloc();
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // main loop

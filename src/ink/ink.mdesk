@@ -3,11 +3,20 @@
 @table(name, name_lower, type, default)
 IK_StackTable:
 {
+  //- k: parents
+  { Parent                             parent                       `IK_Box *`             `0`                                }
+
+  //- k: frame
+  { Frame                              frame                        `IK_Frame *`           `0`                                }
+
   //- k: font
   { Font                               font                          F_Tag                 `f_tag_zero()`                     }
   { FontSize                           font_size                     F32                   24.f                               }
   { TextRasterFlags                    text_raster_flags             F_RasterFlags         F_RasterFlag_Hinted                }
   { TabSize                            tab_size                      F32                   `24.f*4.f`                         }
+
+  //- k: flags
+  { Flags                              flags                         IK_BoxFlags           0                                  }
 }
 
 //- rjf: declaring stack node types

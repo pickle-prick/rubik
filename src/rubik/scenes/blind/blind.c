@@ -279,7 +279,7 @@ bd_cell_next(BD_Cell *cell, BD_CellNeighborKind next_kind)
 
 // TODO: cheange the name
 internal BD_CellBinaryKind
-bd_binary(BD_Cell *cell)
+bd_draw_binary(BD_Cell *cell)
 {
   RK_Scene *scene = rk_top_scene();
   BD_State *bd_state = scene->custom_data;
@@ -1141,7 +1141,7 @@ RK_SCENE_UPDATE(bd_update)
                       bd_cell_flip(cell, BD_CellBinaryKind_White, 0, 0);
                     }
 #else
-                    BD_CellBinaryKind binary = bd_binary(cell);
+                    BD_CellBinaryKind binary = bd_draw_binary(cell);
                     bd_cell_flip(cell, binary, 0, 0);
 #endif
 

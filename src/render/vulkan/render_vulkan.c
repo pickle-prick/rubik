@@ -1960,7 +1960,7 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
   // VkPresentModeKHR preferred_prest_mode = VK_PRESENT_MODE_MAILBOX_KHR;
   VkPresentModeKHR preferred_prest_mode = VK_PRESENT_MODE_FIFO_KHR;
   // TODO: is this working?
-  VkPresentModeKHR selected_prest_mode  = VK_PRESENT_MODE_IMMEDIATE_KHR;
+  VkPresentModeKHR selected_prest_mode = VK_PRESENT_MODE_FIFO_KHR;
   for(U64 i = 0; i < surface->prest_mode_count; i++)
   {
     // VK_PRESENT_MODE_MAILBOX_KHR is a very nice trade-off if energy usage is not a concern.
@@ -4847,7 +4847,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
   for(R_Vulkan_RenderTargets *t = r_vulkan_state->first_to_free_render_targets; t != 0;)
   {
     R_Vulkan_RenderTargets *next = t->next;
-    if(t->rc == 0 && (r_vulkan_state->frame_count-t->deprecated_at_frame) >= MAX_FRAMES_IN_FLIGHT)
+    if(t->rc == 0 && (r_vulkan_state->frame_count-t->deprecated_at_frame) > MAX_FRAMES_IN_FLIGHT)
     {
       SLLQueuePop(r_vulkan_state->first_to_free_render_targets, r_vulkan_state->last_to_free_render_targets);
       r_vulkan_render_targets_destroy(t);

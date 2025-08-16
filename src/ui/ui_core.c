@@ -396,7 +396,6 @@ ui_box_from_key(UI_Key key)
       }
     }
   }
-
   return result;
 }
 
@@ -1099,9 +1098,9 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
   {
     U64 slot = key.u64[0] % ui_state->box_table_size;
     DLLInsert_NPZ(&ui_nil_box, ui_state->box_table[slot].hash_first,
-        ui_state->box_table[slot].hash_last,
-        ui_state->box_table[slot].hash_last,
-        box, hash_next, hash_prev);
+                  ui_state->box_table[slot].hash_last,
+                  ui_state->box_table[slot].hash_last,
+                  box, hash_next, hash_prev);
   }
 
   // Hook into per-frame tree structure
@@ -1503,6 +1502,7 @@ ui_signal_from_box(UI_Box *box)
 
   /////////////////////////////////////////////////////////////////////////////////////
   //- k: process events related to this box
+
   for(UI_EventNode *n = ui_state->events->first, *next=0; n != 0; n = next)
   {
     B32 taken = 0;

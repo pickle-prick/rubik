@@ -698,10 +698,10 @@ ik_frame(void)
   U64 begin_time_us = os_now_microseconds();
 
   ///////////////////////////////////////////////////////////////////////////////////////
-  //~ Build ui
+  //~ Build UI
 
   ////////////////////////////////
-  //- Build event list for ui
+  //- Build event list for UI
 
   UI_EventList ui_events = {0};
   for(OS_Event *os_evt = ik_state->os_events.first; os_evt != 0; os_evt = os_evt->next)
@@ -783,7 +783,7 @@ ik_frame(void)
   }
 
   ////////////////////////////////
-  //- Begin build ui
+  //- Begin build UI
 
   {
     // Gather font info
@@ -838,7 +838,237 @@ ik_frame(void)
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
-  //~ TODO: Main scene
+  //~ Build Debug UI
+
+  {
+    ik_ui_stats();
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  //~ Main scene building
+
+  // Unpack ctx
+  IK_Frame *frame = ik_state->active_frame;
+  IK_Camera *camera = &frame->camera;
+
+  ////////////////////////////////
+  // Camera
+
+  // Camera zoom/pan
+  {
+    B32 space_is_down = os_key_is_down(OS_Key_Space);
+    for(OS_Event *os_evt = ik_state->os_events.first, *next = 0; os_evt != 0;)
+    {
+      next = os_evt->next;
+      B32 taken = 0;
+
+      // Zoom
+      if(!space_is_down && os_evt->kind == OS_EventKind_Scroll && os_evt->modifiers == OS_Modifier_Ctrl)
+      {
+        F32 delta = os_evt->delta.y;
+
+        Mat4x4F32 proj_mat = make_orthographic_vulkan_4x4f32(camera->rect.x0, camera->rect.x1, camera->rect.y1, camera->rect.y0, camera->zn, camera->zf);
+
+        // Get normalized rect
+        Rng2F32 rect = camera->rect;
+        Vec2F32 rect_center = center_2f32(camera->rect);
+        Vec2F32 shift = {-rect_center.x, -rect_center.y};
+        Vec2F32 shift_inv = rect_center;
+        rect = shift_2f32(rect, shift);
+
+        F32 scale = 1 + delta*0.1;
+        rect.x0 *= scale;
+        rect.x1 *= scale;
+        rect.y0 *= scale;
+        rect.y1 *= scale;
+        rect = shift_2f32(rect, shift_inv);
+        camera->target_rect = rect;
+
+        // TODO: anchor mouse pos in world
+
+        // TODO: handle ratio changed caused by window resizing
+        taken = 1;
+      }
+
+      // Pan
+      if(space_is_down && os_evt->kind == OS_EventKind_Press && os_evt->key == OS_Key_LeftMouseButton)
+      {
+        camera->mouse_drag_start = ik_state->cursor;
+        camera->rect_drag_start = camera->target_rect;
+        camera->dragging = 1;
+        taken = 1;
+      }
+      if(os_evt->kind == OS_EventKind_Release && (os_evt->key == OS_Key_LeftMouseButton || os_evt->key == OS_Key_Space))
+      {
+        taken = 1;
+        camera->dragging = 0;
+      }
+
+      if(taken)
+      {
+        ik_eat_event(&ik_state->os_events, os_evt);
+      }
+
+      os_evt = next;
+    }
+
+    if(camera->dragging)
+    {
+      // Vec2F32 mouse_delta = sub_2f32(ik_state->cursor, camera->mouse_drag_start);
+      Vec2F32 mouse_delta = sub_2f32(camera->mouse_drag_start, ik_state->cursor);
+      // TODO: scale it based on the zoom level
+      Rng2F32 rect = shift_2f32(camera->rect_drag_start, mouse_delta);
+      camera->target_rect = rect;
+    }
+  }
+
+  // Camera animation
+  camera->rect.x0 += ik_state->animation.fast_rate * (camera->target_rect.x0-camera->rect.x0);
+  camera->rect.x1 += ik_state->animation.fast_rate * (camera->target_rect.x1-camera->rect.x1);
+  camera->rect.y0 += ik_state->animation.fast_rate * (camera->target_rect.y0-camera->rect.y0);
+  camera->rect.y1 += ik_state->animation.fast_rate * (camera->target_rect.y1-camera->rect.y1);
+
+  ////////////////////////////////
+  //~ Box interaction
+
+  IK_Frame(frame) IK_Parent(frame->root)
+  {
+    IK_Box *box = frame->root;
+    while(box != 0)
+    {
+      IK_BoxRec rec = ik_box_rec_df_post(box, frame->root);
+
+      /////////////////////////////////
+      //~ Process events related to this box
+
+      for(OS_Event *os_evt = ik_state->os_events.first, *next = 0; os_evt != 0;)
+      {
+        next = os_evt->next;
+        B32 taken = 0;
+
+        /////////////////////////////////
+        //- Mouse over this box -> set hot
+
+        IK_Key hot_pixel_key = ik_key_make(ik_state->hot_pixel_key, 0);
+        if(ik_key_match(hot_pixel_key, box->key))
+        {
+          ik_state->hot_box_key = box->key;
+        }
+
+        /////////////////////////////////
+        //- Mouse pressed in box -> set hot/active, mark signal accordingly
+
+        if(os_evt->kind == OS_EventKind_Press && ik_key_match(ik_state->hot_box_key, box->key))
+        {
+          ik_state->active_box_key = box->key;
+          taken = 1;
+        }
+
+        /////////////////////////////////
+        //- Mouse release in active box -> unset hot/active
+
+        /////////////////////////////////
+        //- Mouse release outside of active box -> unset hot/active
+
+        if(taken)
+        {
+          ik_eat_event(&ik_state->os_events, os_evt);
+        }
+
+        os_evt = next;
+      }
+
+      box = rec.next;
+    }
+
+    /////////////////////////////////
+    //~ TODO: Create new rect
+
+    /////////////////////////////////
+    //~ Hover cursor
+
+    {
+      IK_Box *hot = ik_box_from_key(ik_state->hot_box_key);
+      IK_Box *active = ik_box_from_key(ik_state->active_box_key);
+      IK_Box *box = active == 0 ? hot : active;
+      if(box)
+      {
+        OS_Cursor cursor = box->hover_cursor;
+        if(os_window_is_focused(ik_state->os_wnd) || active != 0)
+        {
+          // TODO: will be override by ui_end_build
+          os_set_cursor(cursor);
+        }
+      }
+    }
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  //~ Main scene drawing
+
+  // Unpack camera settings
+  Rng2F32 viewport = ik_state->window_rect;
+  Mat4x4F32 view_mat = mat_4x4f32(1.0);
+  Mat4x4F32 proj_mat = make_orthographic_vulkan_4x4f32(camera->rect.x0, camera->rect.x1, camera->rect.y1, camera->rect.y0, camera->zn, camera->zf);
+
+  // Start geo2d pass
+  ik_state->bucket_geo2d = d_bucket_make();
+
+  // Recursive drawing
+  D_BucketScope(ik_state->bucket_geo2d)
+  {
+    d_geo2d_begin(viewport, view_mat, proj_mat);
+    IK_Box *box = frame->root;
+    while(box != 0)
+    {
+      IK_BoxRec rec = ik_box_rec_df_post(box, frame->root);
+
+      // draw active indicator
+      if(ik_key_match(box->key, ik_state->active_box_key))
+      {
+        Rng2F32 dst = box->rect;
+        // TODO: change padding size based the area of the rect
+        dst = pad_2f32(dst, 3);
+        Rng2F32 src = {0,0,1,1};
+        IK_DrawNode *dn = ik_drawlist_push_rect(ik_frame_arena(), ik_frame_drawlist(), dst, src);
+        Mat4x4F32 xform = mat_4x4f32(1.0);
+        Mat4x4F32 xform_inv = mat_4x4f32(1.0);
+
+        R_Mesh2DInst *inst = d_sprite(dn->vertices, dn->indices, dn->vertices_buffer_offset, dn->indices_buffer_offset, dn->indice_count, dn->topology, dn->polygon, 0, r_handle_zero(), 1.);
+        inst->key = box->key.u64[0];
+        inst->xform = xform;
+        inst->xform_inv = xform_inv;
+        inst->has_texture = 0;
+        inst->has_color = 1;
+        inst->color = v4f32(1,0,0,1);
+        // TODO: draw_edge is not working for now
+        inst->draw_edge = 1;
+      }
+
+      // draw rect
+      if(box->flags & IK_BoxFlag_DrawRect)
+      {
+        Rng2F32 dst = box->rect;
+        Rng2F32 src = {0,0,1,1};
+        IK_DrawNode *dn = ik_drawlist_push_rect(ik_frame_arena(), ik_frame_drawlist(), dst, src);
+        Mat4x4F32 xform = mat_4x4f32(1.0);
+        Mat4x4F32 xform_inv = mat_4x4f32(1.0);
+
+        R_Mesh2DInst *inst = d_sprite(dn->vertices, dn->indices, dn->vertices_buffer_offset, dn->indices_buffer_offset, dn->indice_count, dn->topology, dn->polygon, 0, r_handle_zero(), 1.);
+        inst->key = box->key.u64[0];
+        inst->xform = xform;
+        inst->xform_inv = xform_inv;
+        inst->has_texture = 0;
+        inst->has_color = 1;
+        inst->color = box->color;
+        inst->draw_edge = 1;
+      }
+      
+      // TODO: draw image
+
+      box = rec.next;
+    }
+  }
 
   // NOTE(k): there could be ui elements within node update
   // ik_state->sig = ui_signal_from_box(overlay);
@@ -881,7 +1111,7 @@ ik_frame(void)
   // }
 
   ///////////////////////////////////////////////////////////////////////////////////////
-  //~ Draw ui
+  //~ Draw UI
 
   ui_end_build();
   D_BucketScope(ik_state->bucket_rect)
@@ -899,21 +1129,25 @@ ik_frame(void)
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
-  // submit work
+  // Submit work
 
-  // build frame drawlist before we submit draw bucket
-  // ProfScope("draw drawlist")
-  // {
-  //   ik_drawlist_build(ik_frame_drawlist());
-  // }
+  // Build frame drawlist before we submit draw bucket
+  ProfScope("draw drawlist")
+  {
+    ik_drawlist_build(ik_frame_drawlist());
+  }
 
   ik_state->pre_cpu_time_us = os_now_microseconds()-begin_time_us;
 
-  // submit
+  // Submit
   ProfScope("submit")
   {
     r_begin_frame();
     r_window_begin_frame(ik_state->os_wnd, ik_state->r_wnd);
+    if(!d_bucket_is_empty(ik_state->bucket_geo2d))
+    {
+      d_submit_bucket(ik_state->os_wnd, ik_state->r_wnd, ik_state->bucket_geo2d);
+    }
     if(!d_bucket_is_empty(ik_state->bucket_rect))
     {
       d_submit_bucket(ik_state->os_wnd, ik_state->r_wnd, ik_state->bucket_rect);
@@ -923,7 +1157,7 @@ ik_frame(void)
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
-  // wait if we still have some cpu time left
+  // Wait if we still have some cpu time left
 
   local_persist B32 frame_missed = 0;
   local_persist U64 exiting_frame_index = 0;
@@ -1062,8 +1296,78 @@ ik_font_size_from_slot(IK_FontSlot slot)
   return result;
 }
 
+// box table lookup
+internal IK_Box *
+ik_box_from_key(IK_Key key)
+{
+  IK_Box *ret = 0;
+  if(!ik_key_match(key, ik_key_zero()))
+  {
+    IK_Frame *frame = ik_top_frame();
+    U64 slot = key.u64[0]%frame->box_table_size;
+    for(IK_Box *b = frame->box_table[slot].hash_first; b != 0; b = b->hash_next)
+    {
+      if(ik_key_match(b->key, key))
+      {
+        ret = b;
+        break;
+      }
+    }
+  }
+  return ret;
+}
+
+/////////////////////////////////
+//~ OS event consumption helpers
+
+internal void
+ik_eat_event(OS_EventList *list, OS_Event *evt)
+{
+  DLLRemove(list->first, list->last, evt);
+  list->count--;
+}
+
+internal B32
+ik_key_press(OS_Modifiers mods, OS_Key key)
+{
+  ProfBeginFunction();
+  B32 result = 0;
+  for(OS_Event *evt = ik_state->os_events.first; evt != 0; evt = evt->next)
+  {
+    if(evt->kind == OS_EventKind_Press && evt->key == key && evt->modifiers == mods)
+    {
+      result = 1;
+      ik_eat_event(&ik_state->os_events, evt);
+      break;
+    }
+  }
+  ProfEnd();
+  return result;
+}
+
+internal B32
+ik_key_release(OS_Modifiers mods, OS_Key key)
+{
+  ProfBeginFunction();
+  B32 result = 0;
+  for(OS_Event *evt = ik_state->os_events.first; evt != 0; evt = evt->next)
+  {
+    if(evt->kind == OS_EventKind_Release && evt->key == key && evt->modifiers == mods)
+    {
+      result = 1;
+      ik_eat_event(&ik_state->os_events, evt);
+      break;
+    }
+  }
+  ProfEnd();
+  return result;
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 //~ Dynamic drawing (in immediate mode fashion)
+
+/////////////////////////////////
+//- Basic building API
 
 internal IK_DrawList *
 ik_drawlist_alloc(Arena *arena, U64 vertex_buffer_cap, U64 indice_buffer_cap)
@@ -1145,4 +1449,374 @@ ik_drawlist_reset(IK_DrawList *drawlist)
   drawlist->node_count = 0;
   drawlist->vertex_buffer_cmt = 0;
   drawlist->indice_buffer_cmt = 0;
+}
+
+/////////////////////////////////
+//- High level building API 
+
+internal IK_DrawNode *
+ik_drawlist_push_rect(Arena *arena, IK_DrawList *drawlist, Rng2F32 dst, Rng2F32 src)
+{
+  R_Vertex *vertices = push_array(arena, R_Vertex, 4);
+  U64 vertex_count = 4;
+  U32 indice_count = 6;
+  U32 *indices = push_array(arena, U32, 6);
+
+  Vec4F32 color_zero = v4f32(0,0,0,0);
+  // top left 0
+  vertices[0].col = color_zero;
+  vertices[0].nor = v3f32(0,0,-1);
+  vertices[0].pos = v3f32(dst.x0, dst.y0, 0);
+  vertices[0].tex = v2f32(src.x0, src.y0);
+
+  // bottom left 1
+  vertices[1].col = color_zero;
+  vertices[1].nor = v3f32(0,0,-1);
+  vertices[1].pos = v3f32(dst.x0, dst.y1, 0);
+  vertices[1].tex = v2f32(src.x0, src.y1);
+
+  // top right 2
+  vertices[2].col = color_zero;
+  vertices[2].nor = v3f32(0,0,-1);
+  vertices[2].pos = v3f32(dst.x1, dst.y0, 0);
+  vertices[2].tex = v2f32(src.x1, src.y0);
+
+  // bottom right 3
+  vertices[3].col = color_zero;
+  vertices[3].nor = v3f32(0,0,-1);
+  vertices[3].pos = v3f32(dst.x1, dst.y1, 0);
+  vertices[3].tex = v2f32(src.x1, src.y1);
+
+  indices[0] = 0;
+  indices[1] = 1;
+  indices[2] = 2;
+
+  indices[3] = 1;
+  indices[4] = 3;
+  indices[5] = 2;
+
+  IK_DrawNode *ret = ik_drawlist_push(arena, drawlist, vertices, vertex_count, indices, indice_count);
+  ret->topology = R_GeoTopologyKind_Triangles;
+  ret->polygon = R_GeoPolygonKind_Fill;
+  return ret;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+//~ Box Type Functions
+
+internal IK_BoxRec
+ik_box_rec_df(IK_Box *box, IK_Box *root, U64 sib_member_off, U64 child_member_off)
+{
+  // Depth first search starting from the current box 
+  IK_BoxRec result = {0};
+  result.next = 0;
+  if((*MemberFromOffset(IK_Box **, box, child_member_off)) != 0)
+  {
+    result.next = *MemberFromOffset(IK_Box **, box, child_member_off);
+    result.push_count = 1;
+  }
+  else for(IK_Box *p = box; p != 0 && p != root; p = p->parent)
+  {
+    if((*MemberFromOffset(IK_Box **, p, sib_member_off)) != 0)
+    {
+      result.next = *MemberFromOffset(IK_Box **, p, sib_member_off);
+      break;
+    }
+    result.pop_count += 1;
+  }
+  return result;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+//~ Frame Building API
+
+internal IK_Frame *
+ik_frame_alloc()
+{
+  IK_Frame *ret = ik_state->first_free_frame;
+  if(ret)
+  {
+    SLLStackPop(ik_state->first_free_frame);
+    Arena *arena = ret->arena;
+    U64 arena_clear_pos = ret->arena_clear_pos;
+    arena_pop_to(arena, arena_clear_pos);
+    MemoryZeroStruct(ret);
+    ret->arena = arena;
+    ret->arena_clear_pos = arena_clear_pos;
+  }
+  else
+  {
+    Arena *arena = arena_alloc();
+    ret = push_array(arena, IK_Frame, 1);
+    ret->arena = arena;
+    ret->arena_clear_pos = arena_pos(arena);
+  }
+
+  Arena *arena = ret->arena;
+  ret->box_table_size = 1024;
+  ret->box_table = push_array(arena, IK_BoxHashSlot, ret->box_table_size);
+
+  // Create root
+  ik_push_frame(ret);
+  IK_Box *root = ik_build_box_from_stringf(0, "##root");
+  ik_pop_frame();
+
+  // TODO: testing
+  IK_Frame(ret) IK_Parent(root)
+  {
+    IK_Box *box = ik_build_box_from_stringf(0, "##demo_rect");
+    box->flags |= IK_BoxFlag_DrawRect;
+    box->rect = r2f32p(300, 300, 600, 600);
+    box->color = v4f32(1,1,0,1.0);
+    box->hover_cursor = OS_Cursor_HandPoint;
+  }
+
+  /////////////////////////////////
+  // Fill default settings
+
+  // camera
+  ret->camera.rect = ik_state->window_rect;
+  ret->camera.target_rect = ret->camera.rect;
+  ret->camera.zn = -0.1;
+  ret->camera.zf = 1000000.0;
+
+  ret->root = root;
+  return ret;
+}
+
+internal void
+ik_frame_release(IK_Frame *frame)
+{
+  SLLStackPush(ik_state->first_free_frame, frame);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+//~ Box Tree Building API
+
+/////////////////////////////////
+//- box node construction
+
+internal IK_Box *
+ik_build_box_from_key(IK_BoxFlags flags, IK_Key key)
+{
+  ProfBeginFunction();
+
+  IK_Frame *top_frame = ik_top_frame();
+  AssertAlways(top_frame);
+  Arena *arena = top_frame->arena;
+
+  IK_Box *ret = top_frame->first_free_box;
+  if(ret != 0)
+  {
+    SLLStackPop(top_frame->first_free_box);
+  }
+  else
+  {
+    ret = push_array_no_zero(arena, IK_Box, 1);
+  }
+  MemoryZeroStruct(ret);
+
+  // Grab active parent
+  IK_Box *parent = ik_top_parent();
+  if(parent)
+  {
+    // Insert to tree
+    DLLPushBack(parent->first, parent->last, ret);
+    parent->children_count++;
+  }
+
+  // Fill box info
+  ret->key = key;
+  ret->flags = flags;
+  ret->frame = top_frame;
+
+  // Hook into lookup table
+  U64 slot_index = key.u64[0]%top_frame->box_table_size;
+  IK_BoxHashSlot *slot = &top_frame->box_table[slot_index];
+  DLLInsert_NPZ(0, slot->hash_first, slot->hash_last, slot->hash_last, ret, hash_next, hash_prev);
+
+  ProfEnd();
+  return ret;
+}
+
+internal IK_Key
+ik_active_seed_key(void)
+{
+  IK_Key ret = ik_key_zero();
+  for(IK_Box *p = ik_top_parent(); p != 0; p = p->parent)
+  {
+    if(!ik_key_match(ik_key_zero(), p->key))
+    {
+      ret = p->key;
+      break;
+    }
+  }
+  return ret;
+}
+
+internal IK_Box *
+ik_build_box_from_string(IK_BoxFlags flags, String8 string)
+{
+  ProfBeginFunction();
+  // Grab active parent
+  IK_Box *parent = ik_top_parent();
+
+  IK_Key key = ik_key_from_string(ik_active_seed_key(), string);
+
+  IK_Box *box = ik_build_box_from_key(flags, key);
+  if(box->flags & IK_BoxFlag_DrawText)
+  {
+    ik_box_equip_display_string(box, string);
+  }
+  ProfEnd();
+  return box;
+}
+
+internal IK_Box *
+ik_build_box_from_stringf(IK_BoxFlags flags, char *fmt, ...)
+{
+  Temp scratch = scratch_begin(0,0);
+  va_list args;
+  va_start(args, fmt);
+  String8 string = push_str8fv(scratch.arena, fmt, args);
+  va_end(args);
+  IK_Box *box = ik_build_box_from_string(flags, string);
+  scratch_end(scratch);
+  return box;
+}
+
+/////////////////////////////////
+//- box node equipment
+
+internal String8
+ik_box_equip_display_string(IK_Box *box, String8 string)
+{
+  // box->string = push_str8_copy(ui_build_arena(), string);
+  // box->flags |= IK_BoxFlag_HasDisplayString;
+  // IK_ColorCode text_color_code = (box->flags & IK_BoxFlag_DrawTextWeak ? IK_ColorCode_TextWeak : IK_ColorCode_Text);
+
+  // if(box->flags & IK_BoxFlag_DrawText)
+  // {
+  //   String8 display_string = ui_box_display_string(box);
+  //   D_FancyStringNode fancy_string_n = {0};
+  //   fancy_string_n.next = 0;
+  //   fancy_string_n.v.font                    = box->font;
+  //   fancy_string_n.v.string                  = display_string;
+  //   fancy_string_n.v.color                   = box->palette->colors[text_color_code];
+  //   fancy_string_n.v.size                    = box->font_size;
+  //   fancy_string_n.v.underline_thickness     = 0;
+  //   fancy_string_n.v.strikethrough_thickness = 0;
+
+  //   D_FancyStringList fancy_strings = {0};
+  //   fancy_strings.first = &fancy_string_n;
+  //   fancy_strings.last = &fancy_string_n;
+  //   fancy_strings.node_count = 1;
+  //   box->display_string_runs = d_fancy_run_list_from_fancy_string_list(ui_build_arena(), box->tab_size, box->text_raster_flags, &fancy_strings);
+  // }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+//~ UI Widget
+
+internal void ik_ui_stats(void)
+{
+  UI_Box *container = 0;
+  UI_Rect(ik_state->window_rect)
+    UI_ChildLayoutAxis(Axis2_X)
+  {
+    container = ui_build_box_from_stringf(0, "###stats_container");
+  }
+
+  UI_Parent(container)
+  {
+    ui_spacer(ui_pct(1.0, 0.0));
+
+    // stats, push to the right side of screen  
+    UI_Box *stats_container;
+    UI_ChildLayoutAxis(Axis2_Y)
+      UI_PrefWidth(ui_px(800, 1.0))
+      UI_PrefHeight(ui_children_sum(0.0))
+      UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow)
+    {
+      stats_container = ui_build_box_from_stringf(0, "###stats_body");
+    }
+
+    UI_Parent(stats_container)
+      UI_TextAlignment(UI_TextAlign_Left)
+      UI_TextPadding(9)
+      UI_Transparency(0.1)
+    {
+      // collect some values
+      U64 last_frame_index = ik_state->frame_index > 0 ? ik_state->frame_index-1 : 0;
+      U64 last_frame_us = ik_state->frame_time_us_history[last_frame_index%ArrayCount(ik_state->frame_time_us_history)];
+
+      UI_Row
+      {
+        ui_labelf("frame");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%.3fms", (F32)last_frame_us/1000.0);
+      }
+      UI_Row
+      {
+        ui_labelf("pre cpu time");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%.3fms", (F32)ik_state->pre_cpu_time_us/1000.0);
+      }
+      UI_Row
+      {
+        ui_labelf("cpu time");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%.3fms", (F32)ik_state->cpu_time_us/1000.0);
+      }
+      UI_Row
+      {
+        ui_labelf("fps");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%.2f", 1.0 / (last_frame_us/1000000.0));
+      }
+      UI_Row
+      {
+        ui_labelf("ui_hot_key");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%lu", ui_state->hot_box_key.u64[0]);
+      }
+      UI_Row
+      {
+        ui_labelf("hot_pixel_key");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%I64u", ik_state->hot_pixel_key);
+      }
+      UI_Row
+      {
+        ui_labelf("ui_last_build_box_count");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%lu", ui_state->last_build_box_count);
+      }
+      UI_Row
+      {
+        ui_labelf("ui_build_box_count");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%lu", ui_state->build_box_count);
+      }
+      UI_Row
+      {
+        ui_labelf("mouse");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%.2f, %.2f", ui_state->mouse.x, ui_state->mouse.y);
+      }
+      UI_Row
+      {
+        ui_labelf("window");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%.2f, %.2f", ik_state->window_dim.x, ik_state->window_dim.y);
+      }
+      UI_Row
+      {
+        ui_labelf("drag start mouse");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%.2f, %.2f", ui_state->drag_start_mouse.x, ui_state->drag_start_mouse.y);
+      }
+    }
+  }
+
 }
