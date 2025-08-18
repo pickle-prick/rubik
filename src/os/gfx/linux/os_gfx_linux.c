@@ -107,7 +107,236 @@ internal String8
 os_get_clipboard_text(Arena *arena)
 {
   String8 result = {0};
+  Atom clipboard = XInternAtom(os_lnx_gfx_state->display, "CLIPBOARD", false);
+  Atom utf8 = XInternAtom(os_lnx_gfx_state->display, "UTF8_STRING", false);
+  Atom prop = XInternAtom(os_lnx_gfx_state->display, "XSEL_DATA", false);
+  OS_LNX_Window *w = os_lnx_gfx_state->first_window;
+
+  // request the clipboard content to be converted to UTF8_STRING
+  XConvertSelection(os_lnx_gfx_state->display, clipboard, utf8, prop, w->window, CurrentTime);
+
+  // wait for SelectionNotify event
+  XEvent ev;
+  for(;;)
+  {
+    XNextEvent(os_lnx_gfx_state->display, &ev);
+    if(ev.type == SelectionNotify && ev.xselection.selection == clipboard)
+    {
+      if(ev.xselection.property)
+      {
+        Atom actual_type;
+        int actual_format;
+        unsigned long nitems, bytes_after;
+        unsigned char *data = NULL;
+        XGetWindowProperty(os_lnx_gfx_state->display, w->window, prop, 0, (~0L), false,
+                           AnyPropertyType, &actual_type, &actual_format,
+                           &nitems, &bytes_after, &data);
+
+        // char *type_name = XGetAtomName(os_lnx_gfx_state->display, actual_type);
+        // printf("Actual type: %s\n", type_name ? type_name : "(null)");
+        // printf("Format: %d bits\n", actual_format);
+        // printf("Items: %lu\n", nitems);
+        // printf("Bytes left: %lu\n", bytes_after);
+
+        if(data)
+        {
+          // printf("Clipboard: %s\n", data);
+          result = push_str8_copy(arena, str8_cstring(data));
+          XFree(data);
+        }
+      }
+      else
+      {
+        // no clipboard data available
+      }
+      break;
+    }
+  }
   return result;
+}
+
+internal String8
+os_get_clipboard_image(Arena *arena)
+{
+  String8 ret = {0};
+#if 0
+  Atom targets = XInternAtom(os_lnx_gfx_state->display, "TARGETS", False);
+  Atom clipboard = XInternAtom(os_lnx_gfx_state->display, "CLIPBOARD", false);
+  // Atom png = XInternAtom(d, "image/png", False);
+  Atom prop = XInternAtom(os_lnx_gfx_state->display, "XSEL_DATA", false);
+  OS_LNX_Window *w = os_lnx_gfx_state->first_window;
+
+  // ask for TARGETS (what formats are avaiable)
+  XConvertSelection(os_lnx_gfx_state->display, clipboard, targets, prop, w->window, CurrentTime);
+
+  // wait for SelectionNotify event
+  XEvent ev;
+  for(;;)
+  {
+    XNextEvent(os_lnx_gfx_state->display, &ev);
+    if(ev.type == SelectionNotify && ev.xselection.selection == clipboard)
+    {
+      if(ev.xselection.property)
+      {
+        Atom actual_type;
+        int actual_format;
+        unsigned long nitems, bytes_after;
+        unsigned char *data = NULL;
+        XGetWindowProperty(os_lnx_gfx_state->display, w->window, prop, 0, (~0L), false,
+                           AnyPropertyType, &actual_type, &actual_format,
+                           &nitems, &bytes_after, &data);
+
+        // char *type_name = XGetAtomName(os_lnx_gfx_state->display, actual_type);
+        // printf("Actual type: %s\n", type_name ? type_name : "(null)");
+        // printf("Format: %d bits\n", actual_format);
+        // printf("Items: %lu\n", nitems);
+        // printf("Bytes left: %lu\n", bytes_after);
+
+        if(actual_type == XA_ATOM && actual_format == 32)
+        {
+          Atom *atoms = (Atom*)data;
+          printf("Available TARGETS (%lu):\n", nitems);
+          for(U64 i = 0; i < nitems; i++)
+          {
+            char *name = XGetAtomName(os_lnx_gfx_state->display, atoms[i]);
+            if(name)
+            {
+              printf(":  %s\n", name);
+              XFree(name);
+            }
+          }
+        }
+        else
+        {
+          printf("Clipboard did not return TARGETS list\n");
+        }
+
+        if(data)
+        {
+          XFree(data);
+        }
+      }
+      else
+      {
+        // no clipboard data available
+        printf("No clipboard data\n");
+      }
+      break;
+    }
+  }
+#else
+  Atom clipboard = XInternAtom(os_lnx_gfx_state->display, "CLIPBOARD", false);
+  Atom png = XInternAtom(os_lnx_gfx_state->display, "image/png", false);
+  Atom property = XInternAtom(os_lnx_gfx_state->display, "MY_CLIP_TEMP", false);
+  OS_LNX_Window *w = os_lnx_gfx_state->first_window;
+
+  // ask for TARGETS (what formats are avaiable)
+  // XConvertSelection(os_lnx_gfx_state->display, clipboard, png, prop, w->window, CurrentTime);
+  XConvertSelection(os_lnx_gfx_state->display, clipboard, png, property, w->window, CurrentTime);
+
+  Temp scratch = scratch_begin(&arena,1);
+  U8 *image_data = 0;
+  U64 image_data_size = 0;
+
+  // wait for SelectionNotify event
+  XEvent ev;
+  for(;;)
+  {
+    XNextEvent(os_lnx_gfx_state->display, &ev);
+    if(ev.type == SelectionNotify && ev.xselection.selection == clipboard)
+    {
+      if(ev.xselection.property)
+      {
+        Atom actual_type;
+        int actual_format;
+        unsigned long nitems, bytes_after;
+        unsigned char *prop = NULL;
+        XGetWindowProperty(os_lnx_gfx_state->display, w->window, property, 0, (~0L), false,
+                           AnyPropertyType, &actual_type, &actual_format,
+                           &nitems, &bytes_after, &prop);
+        if(prop) XFree(prop);
+
+        // char *type_name = XGetAtomName(os_lnx_gfx_state->display, actual_type);
+        // printf("Actual type: %s\n", type_name ? type_name : "(null)");
+        // printf("Format: %d bits\n", actual_format);
+        // printf("Items: %lu\n", nitems);
+        // printf("Bytes left: %lu\n", bytes_after);
+
+        // has streaming data
+        if(actual_type == XInternAtom(os_lnx_gfx_state->display, "INCR", false))
+        {
+          // INCR protocol: listen for PropertyNotify and collect chunks
+          XDeleteProperty(os_lnx_gfx_state->display, w->window, property);
+          // TODO: add a hard limitation
+          for(;;)
+          {
+            XNextEvent(os_lnx_gfx_state->display, &ev);
+            if(ev.type == PropertyNotify && ev.xproperty.state == PropertyNewValue && ev.xproperty.atom == property)
+            {
+              XGetWindowProperty(os_lnx_gfx_state->display, w->window, property,
+                                 0, (~0L), true,
+                                 AnyPropertyType, &actual_type, &actual_format,
+                                 &nitems, &bytes_after, &prop);
+
+              printf("Format: %d bits\n", actual_format);
+              printf("Items: %lu\n", nitems);
+              printf("Bytes left: %lu\n", bytes_after);
+
+              if(!prop || nitems == 0)
+              {
+                if(prop) XFree(prop);
+                // end of transfer
+                goto done;
+              }
+
+              // copy data
+              // 8, 16, 32 bits
+              U64 chunk_bytes = nitems * (actual_format/8);
+              U8 *src = image_data;
+              U8 *dst = push_array(scratch.arena, U8, image_data_size+chunk_bytes);
+              MemoryCopy(dst, src, image_data_size);
+              MemoryCopy(dst+image_data_size, prop, chunk_bytes);
+              image_data = dst;
+              image_data_size += chunk_bytes;
+              XFree(prop);
+
+              // must delete property to signal ready for next chunk
+              XDeleteProperty(os_lnx_gfx_state->display, w->window, property);
+            }
+          }
+        }
+        // Non-INCR: got whole data in one go
+        else
+        {
+          XGetWindowProperty(os_lnx_gfx_state->display, w->window, property,
+                             0, (~0L), true,
+                             AnyPropertyType, &actual_type, &actual_format,
+                             &nitems, &bytes_after, &prop);
+          image_data = push_array(scratch.arena, U8, nitems);
+          MemoryCopy(image_data, prop, nitems);
+          image_data_size = nitems;
+          XFree(prop);
+          goto done;
+        }
+      }
+      else
+      {
+        // no clipboard data available
+        // printf("No clipboard data\n");
+      }
+      break;
+    }
+  }
+
+done:
+  if(image_data_size > 0)
+  {
+    String8 src = {image_data, image_data_size};
+    ret = push_str8_copy(arena, src);
+  }
+  scratch_end(scratch);
+  return ret;
+#endif
 }
 
 ////////////////////////////////
@@ -149,6 +378,7 @@ os_window_open(Rng2F32 rect, OS_WindowFlags flags, String8 title)
                KeyPressMask|
                KeyReleaseMask|
                StructureNotifyMask| // for detecting ConfigureNotify (window resizing)
+               PropertyChangeMask| // for clipboard data streaming
                FocusChangeMask);
   Atom protocols[] =
   {

@@ -69,10 +69,11 @@ struct IK_Camera
 
 typedef U64 IK_BoxFlags;
 # define IK_BoxFlag_MouseClickable (IK_BoxFlags)(1ull<<0)
-# define IK_BoxFlag_Scroll         (IK_BoxFlags)(1ull<<1)
-# define IK_BoxFlag_DrawRect       (IK_BoxFlags)(1ull<<2)
-# define IK_BoxFlag_DrawText       (IK_BoxFlags)(1ull<<3)
-# define IK_BoxFlag_DrawImage      (IK_BoxFlags)(1ull<<4)
+# define IK_BoxFlag_ClickToFocus   (IK_BoxFlags)(1ull<<1)
+# define IK_BoxFlag_Scroll         (IK_BoxFlags)(1ull<<2)
+# define IK_BoxFlag_DrawRect       (IK_BoxFlags)(1ull<<3)
+# define IK_BoxFlag_DrawText       (IK_BoxFlags)(1ull<<4)
+# define IK_BoxFlag_DrawImage      (IK_BoxFlags)(1ull<<5)
 
 typedef struct IK_Frame IK_Frame;
 typedef struct IK_Box IK_Box;
@@ -95,10 +96,26 @@ struct IK_Box
   // Per-build equipment
   U64 children_count;
   IK_BoxFlags flags;
-  Rng2F32 rect;
+  Vec2F32 position; // top left
+  F32 rotation; // around center, turns
+  F32 scale;
+  Vec2F32 rect_size;
   Vec4F32 color;
   R_Handle albedo_tex;
   OS_Cursor hover_cursor;
+
+  // Per-frmae artifacts
+  Rng2F32 fixed_rect;
+  // F32 fixed_width;
+  // F32 fixed_height;
+  Mat4x4F32 fixed_xform;
+
+  // Animation
+  F32 hot_t;
+  F32 active_t;
+  F32 disabled_t;
+  F32 focus_hot_t;
+  F32 focus_active_t;
 };
 
 typedef struct IK_BoxRec IK_BoxRec;
@@ -212,6 +229,7 @@ struct IK_Frame
   U64 arena_clear_pos;
   IK_Frame *next;
   IK_Box *root;
+  IK_Box *root_overlay;
   IK_Camera camera;
 
   // lookup table
@@ -367,6 +385,8 @@ struct IK_State
   // user interaction state
   IK_Key                hot_box_key;
   IK_Key                active_box_key[IK_MouseButtonKind_COUNT];
+  IK_Key                focus_hot_box_key;
+  IK_Key                focus_active_box_key;
   U64                   hot_pixel_key; // hot pixel key from renderer
   U64                   press_timestamp_history_us[IK_MouseButtonKind_COUNT][3];
   IK_Key                press_key_history[IK_MouseButtonKind_COUNT][3];
@@ -512,6 +532,9 @@ internal IK_Key  ik_active_seed_key(void);
 internal IK_Box* ik_build_box_from_string(IK_BoxFlags flags, String8 string);
 internal IK_Box* ik_build_box_from_stringf(IK_BoxFlags flags, char *fmt, ...);
 
+//- box node destruction
+internal void ik_box_release(IK_Box *box);
+
 //- box node equipment
 internal String8 ik_box_equip_display_string(IK_Box *box, String8 string);
 
@@ -524,6 +547,7 @@ internal IK_Signal ik_signal_from_box(IK_Box *box);
 //~ UI Widget
 
 internal void ik_ui_stats(void);
+internal void ik_ui_selection(void);
 
 /////////////////////////////////
 //~ Helpers

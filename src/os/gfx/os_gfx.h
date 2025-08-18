@@ -137,6 +137,7 @@ internal OS_GfxInfo *os_get_gfx_info(void);
 
 internal void    os_set_clipboard_text(String8 string);
 internal String8 os_get_clipboard_text(Arena *arena);
+internal String8 os_get_clipboard_image(Arena *arena);
 
 ////////////////////////////////
 //~ rjf: @os_hooks Windows (Implemented Per-OS)

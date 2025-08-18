@@ -838,15 +838,24 @@ ik_frame(void)
   }
 
   ////////////////////////////////
+  //~ Push frame ctx
+
+  IK_Frame *frame = ik_state->active_frame;
+  ik_push_frame(frame);
+  ik_push_parent(frame->root);
+
+  ////////////////////////////////
   //~ Build Debug UI
 
   ik_ui_stats();
+  ik_ui_selection();
+
+  // TODO: rebuild os_events from the remaining ui_events
 
   ////////////////////////////////
   //~ Main scene building
 
   // unpack ctx
-  IK_Frame *frame = ik_state->active_frame;
   IK_Camera *camera = &frame->camera;
   // proj mat
   // NOTE(k): since we are not using view_mat, it's a indentity matrix, so proj_mat == proj_view_mat
@@ -863,22 +872,53 @@ ik_frame(void)
   typedef struct IK_BoxDrag IK_BoxDrag;
   struct IK_BoxDrag
   {
-    Rng2F32 drag_start_rect; 
+    Vec2F32 drag_start_position; 
   };
 
-  IK_Frame(frame) IK_Parent(frame->root)
   {
     IK_Box *box = frame->root;
     while(box != 0)
     {
       IK_BoxRec rec = ik_box_rec_df_post(box, frame->root);
+      IK_Box *parent = box->parent;
+
+      // update xform (in TRS order)
+      Vec2F32 rect_size_half = scale_2f32(box->rect_size, 0.5);
+      Vec3F32 center = {box->position.x+rect_size_half.x, box->position.y+rect_size_half.y, 0.0};
+      Mat4x4F32 fixed_xform = mat_4x4f32(1.0);
+      Mat4x4F32 scale_mat = make_scale_4x4f32(v3f32(box->scale, box->scale, 1.0));
+      Mat4x4F32 rotation_mat = mat_4x4f32_from_quat_f32(make_rotate_quat_f32(v3f32(0,0,-1), box->rotation));
+      Mat4x4F32 translation_mat = make_translate_4x4f32(center);
+      fixed_xform = mul_4x4f32(scale_mat, fixed_xform);
+      fixed_xform = mul_4x4f32(rotation_mat, fixed_xform);
+      fixed_xform = mul_4x4f32(translation_mat, fixed_xform);
+      if(parent)
+      {
+        fixed_xform = mul_4x4f32(parent->fixed_xform, fixed_xform);
+      }
+
+      // update rect
+      Vec4F32 p0 = {-rect_size_half.x, -rect_size_half.y, 0.0, 1.0};
+      Vec4F32 p1 = {rect_size_half.x, rect_size_half.y, 0.0, 1.0};
+      p0 = transform_4x4f32(fixed_xform, p0);
+      p1 = transform_4x4f32(fixed_xform, p1);
+      Rng2F32 fixed_rect = {0};
+      fixed_rect.x0 = p0.x;
+      fixed_rect.y0 = p0.y;
+      fixed_rect.x1 = p1.x;
+      fixed_rect.y1 = p1.y;
+
+      // update artifacts
+      box->fixed_xform = fixed_xform;
+      box->fixed_rect = fixed_rect;
+
       IK_Signal sig = ik_signal_from_box(box);
 
       if(sig.f & IK_SignalFlag_LeftDragging)
       {
         if(sig.f & IK_SignalFlag_Pressed)
         {
-          IK_BoxDrag drag = {box->rect};
+          IK_BoxDrag drag = {box->position};
           ik_store_drag_struct(&drag);
         }
         else
@@ -887,10 +927,14 @@ ik_frame(void)
           // TODO: consider zoom level, store mouse scale factor
           // TODO: we should just use mouse frame delta, since we could be reszing window when dragging
           Vec2F32 delta = ik_drag_delta();
-          Rng2F32 rect = shift_2f32(drag.drag_start_rect, delta);
-          box->rect = rect;
+          Vec2F32 position = add_2f32(drag.drag_start_position, delta);
+          box->position = position;
         }
       }
+
+      // TODO: animation (hot_t, ...)
+      //
+
       box = rec.next;
     }
 
@@ -898,32 +942,69 @@ ik_frame(void)
     //~ TODO: Create new rect
 
     // click on empty and no active box
-    if(ik_key_match(ik_state->hot_box_key, ik_key_zero()) &&
-       ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Left], ik_key_zero()) &&
-       (!space_is_down) &&
-       (!middle_is_down) &&
-       ik_key_press(0, OS_Key_LeftMouseButton))
+    // if(ik_key_match(ik_state->hot_box_key, ik_key_zero()) &&
+    //    ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Left], ik_key_zero()) &&
+    //    (!space_is_down) &&
+    //    (!middle_is_down) &&
+    //    ik_key_press(0, OS_Key_LeftMouseButton))
+    // {
+    //   IK_Frame(frame) IK_Parent(frame->root)
+    //   {
+    //     IK_Key key = ik_key_from_stringf(ik_active_seed_key(), "##%I64u", os_now_microseconds());
+
+    //     // TODO: we should set resizing flags
+    //     ik_state->hot_box_key = key;
+    //     ik_state->active_box_key[IK_MouseButtonKind_Left] = key;
+
+    //     IK_Box *box = ik_build_box_from_key(0, key);
+    //     box->flags |= IK_BoxFlag_DrawRect|IK_BoxFlag_MouseClickable;
+    //     Vec2F32 mouse_in_world = ik_mouse_in_world(proj_mat_inv);
+    //     box->rect = r2f32p(mouse_in_world.x, mouse_in_world.y, mouse_in_world.x+300, mouse_in_world.y+300);
+    //     box->color = v4f32(1,1,0,1.0);
+    //     box->hover_cursor = OS_Cursor_HandPoint;
+
+    //     // TODO: not ideal
+    //     IK_BoxDrag drag = {box->rect};
+    //     ik_store_drag_struct(&drag);
+    //     ik_state->drag_start_mouse = ik_state->mouse;
+    //   }
+    // }
+
+    /////////////////////////////////
+    //~ Paste image
+
+    if(ik_key_press(OS_Modifier_Ctrl, OS_Key_V))
     {
-      IK_Frame(frame) IK_Parent(frame->root)
+      Temp scratch = scratch_begin(0,0);
+      // TODO: check if clipboard's content is string or image
+      // String8 src = os_get_clipboard_text(scratch.arena);
+      String8 src = os_get_clipboard_image(scratch.arena);
+
+      if(src.size > 0)
       {
-        IK_Key key = ik_key_from_stringf(ik_active_seed_key(), "##%I64u", os_now_microseconds());
-
-        // TODO: we should set resizing flags
-        ik_state->hot_box_key = key;
-        ik_state->active_box_key[IK_MouseButtonKind_Left] = key;
-
-        IK_Box *box = ik_build_box_from_key(0, key);
-        box->flags |= IK_BoxFlag_DrawRect|IK_BoxFlag_MouseClickable;
-        Vec2F32 mouse_in_world = ik_mouse_in_world(proj_mat_inv);
-        box->rect = r2f32p(mouse_in_world.x, mouse_in_world.y, mouse_in_world.x+300, mouse_in_world.y+300);
-        box->color = v4f32(1,1,0,1.0);
-        box->hover_cursor = OS_Cursor_HandPoint;
-
-        // TODO: not ideal
-        IK_BoxDrag drag = {box->rect};
-        ik_store_drag_struct(&drag);
-        ik_state->drag_start_mouse = ik_state->mouse;
+        int x = 0;
+        int y = 0;
+        int z = 0;
+        U8 *data = stbi_load_from_memory(src.str, src.size, &x, &y, &z, 4);
+        // TODO: data, x, y, z could be all 0s, what fuck
+        if(data)
+        {
+          R_Handle tex_handle = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Nearest, v2s32(x, y), R_Tex2DFormat_RGBA8, data);
+          IK_Box *box = ik_build_box_from_stringf(0, "##image_%I64u", os_now_microseconds());
+          box->flags |= IK_BoxFlag_DrawImage|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus;
+          box->position = v2f32(0,0);
+          box->rect_size = v2f32(x, y);
+          box->color = v4f32(1,1,0,1.0);
+          box->hover_cursor = OS_Cursor_HandPoint;
+          box->albedo_tex = tex_handle;
+        }
+        else
+        {
+          printf("what fuck\n");
+        }
+        stbi_image_free(data);
       }
+      scratch_end(scratch);
     }
 
     /////////////////////////////////
@@ -1035,6 +1116,15 @@ ik_frame(void)
   }
 
   /////////////////////////////////
+  //~ UI drawing
+
+  ui_end_build();
+  D_BucketScope(ik_state->bucket_rect)
+  {
+    ik_ui_draw();
+  }
+
+  /////////////////////////////////
   //~ Main scene drawing
 
   // unpack camera settings
@@ -1053,10 +1143,11 @@ ik_frame(void)
     {
       IK_BoxRec rec = ik_box_rec_df_post(box, frame->root);
 
-      // draw active indicator
-      if(ik_key_match(box->key, ik_state->active_box_key[IK_MouseButtonKind_Left]))
+      // draw focus hot indicator
+      if(ik_key_match(box->key, ik_state->focus_hot_box_key))
+      // if(ik_key_match(box->key, ik_state->active_box_key[IK_MouseButtonKind_Left]))
       {
-        Rng2F32 dst = box->rect;
+        Rng2F32 dst = box->fixed_rect;
         // TODO: change padding size based the area of the rect
         dst = pad_2f32(dst, 3);
         Rng2F32 src = {0,0,1,1};
@@ -1078,7 +1169,7 @@ ik_frame(void)
       // draw rect
       if(box->flags & IK_BoxFlag_DrawRect)
       {
-        Rng2F32 dst = box->rect;
+        Rng2F32 dst = box->fixed_rect;
         Rng2F32 src = {0,0,1,1};
         IK_DrawNode *dn = ik_drawlist_push_rect(ik_frame_arena(), ik_frame_drawlist(), dst, src);
         Mat4x4F32 xform = mat_4x4f32(1.0);
@@ -1094,7 +1185,24 @@ ik_frame(void)
         inst->draw_edge = 1;
       }
       
-      // TODO: draw image
+      // draw image
+      if(box->flags & IK_BoxFlag_DrawImage)
+      {
+        Rng2F32 dst = box->fixed_rect;
+        Rng2F32 src = {0,0,1,1};
+        IK_DrawNode *dn = ik_drawlist_push_rect(ik_frame_arena(), ik_frame_drawlist(), dst, src);
+        Mat4x4F32 xform = mat_4x4f32(1.0);
+        Mat4x4F32 xform_inv = mat_4x4f32(1.0);
+
+        R_Mesh2DInst *inst = d_sprite(dn->vertices, dn->indices, dn->vertices_buffer_offset, dn->indices_buffer_offset, dn->indice_count, dn->topology, dn->polygon, 0, box->albedo_tex, 1.);
+        inst->key = box->key.u64[0];
+        inst->xform = xform;
+        inst->xform_inv = xform_inv;
+        inst->has_texture = 1;
+        inst->has_color = 0;
+        inst->color = box->color;
+        inst->draw_edge = 1;
+      }
 
       box = rec.next;
     }
@@ -1139,15 +1247,6 @@ ik_frame(void)
   //     ik_state->cursor = cursor;
   //   }
   // }
-
-  /////////////////////////////////
-  //~ Draw UI
-
-  ui_end_build();
-  D_BucketScope(ik_state->bucket_rect)
-  {
-    ik_ui_draw();
-  }
 
   /////////////////////////////////
   //~ End of frame
@@ -1241,6 +1340,12 @@ ik_frame(void)
   ik_state->frame_index++;
   ik_state->time_in_seconds += ik_state->frame_dt;
   ik_state->time_in_us += frame_time_us;
+
+  ////////////////////////////////
+  //~ Pop frame ctx
+
+  ik_pop_frame();
+  ik_pop_parent();
 
   /////////////////////////////////
   //~ End
@@ -1637,24 +1742,28 @@ ik_frame_alloc()
   // create root box
   ik_push_frame(ret);
   IK_Box *root = ik_build_box_from_stringf(0, "##root");
+  IK_Box *root_overlay = ik_build_box_from_stringf(0, "##root_overlay");
   ik_pop_frame();
   ret->root = root;
+  ret->root_overlay = root_overlay;
 
   // TODO: testing
   IK_Frame(ret) IK_Parent(root)
   {
     {
       IK_Box *box = ik_build_box_from_stringf(0, "##demo_rect_1");
-      box->flags |= IK_BoxFlag_DrawRect|IK_BoxFlag_MouseClickable;
-      box->rect = r2f32p(300, 300, 600, 600);
+      box->flags |= IK_BoxFlag_DrawRect|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus;
+      box->position = v2f32(0,0);
+      box->rect_size = v2f32(300, 300);
       box->color = v4f32(1,1,0,1.0);
       box->hover_cursor = OS_Cursor_HandPoint;
     }
     {
       IK_Box *box = ik_build_box_from_stringf(0, "##demo_rect_2");
-      box->flags |= IK_BoxFlag_DrawRect|IK_BoxFlag_MouseClickable;
-      box->rect = r2f32p(400, 400, 600, 600);
-      box->color = v4f32(1,0,0,1.0);
+      box->flags |= IK_BoxFlag_DrawRect|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus;
+      box->position = v2f32(600,600);
+      box->rect_size = v2f32(300, 300);
+      box->color = v4f32(0,1,0,1.0);
       box->hover_cursor = OS_Cursor_HandPoint;
     }
   }
@@ -1706,7 +1815,9 @@ ik_build_box_from_key(IK_BoxFlags flags, IK_Key key)
   // fill box info
   ret->key = key;
   ret->flags = flags;
+  ret->parent = parent;
   ret->frame = top_frame;
+  ret->scale = 1.0;
 
   // hook into lookup table
   U64 slot_index = key.u64[0]%top_frame->box_table_size;
@@ -1761,6 +1872,35 @@ ik_build_box_from_stringf(IK_BoxFlags flags, char *fmt, ...)
   IK_Box *box = ik_build_box_from_string(flags, string);
   scratch_end(scratch);
   return box;
+}
+
+//- box node destruction
+internal void
+ik_box_release(IK_Box *box)
+{
+  IK_Frame *frame = box->frame;
+  IK_Box *parent = box->parent;
+
+  // recursively remove children first
+  for(IK_Box *c = box->first, *next = 0; c != 0; c = next)
+  {
+    next = c->next;
+    ik_box_release(c);
+  }
+
+  if(parent)
+  {
+    DLLRemove(parent->first, parent->last, box);
+    parent->children_count--;
+  }
+
+  // remove from lookup table
+  U64 slot_index = box->key.u64[0]%frame->box_table_size;
+  IK_BoxHashSlot *slot = &frame->box_table[slot_index];
+  DLLRemove_NP(slot->hash_first, slot->hash_last, box, hash_next, hash_prev);
+
+  // push to free list stack
+  SLLStackPush(frame->first_free_box, box);
 }
 
 /////////////////////////////////
@@ -1980,6 +2120,23 @@ ik_signal_from_box(IK_Box *box)
     ik_state->hot_box_key = ik_key_zero();
   }
 
+
+  //////////////////////////////
+  // Clicked and set focus_hot_key
+
+  if(box->flags & IK_BoxFlag_ClickToFocus && sig.f&IK_SignalFlag_Pressed)
+  {
+    ik_state->focus_hot_box_key = box->key;
+  }
+
+  //////////////////////////////
+  // Double clicked and set focus_active_key
+
+  if(box->flags & IK_BoxFlag_ClickToFocus && sig.f&IK_SignalFlag_LeftDoubleClicked)
+  {
+    ik_state->focus_active_box_key = box->key;
+  }
+
   return sig;
 }
 
@@ -2056,6 +2213,12 @@ internal void ik_ui_stats(void)
         ui_spacer(ui_pct(1.0, 0.0));
         ui_labelf("%lu", ik_state->active_box_key[IK_MouseButtonKind_Left].u64[0]);
       }
+      UI_Row
+      {
+        ui_labelf("ik_focus_hot_key");
+        ui_spacer(ui_pct(1.0, 0.0));
+        ui_labelf("%lu", ik_state->focus_hot_box_key.u64[0]);
+      }
       ui_divider(ui_em(0.1, 0.0));
       UI_Row
       {
@@ -2099,6 +2262,167 @@ internal void ik_ui_stats(void)
         ui_labelf("window");
         ui_spacer(ui_pct(1.0, 0.0));
         ui_labelf("%.2f, %.2f", ik_state->window_dim.x, ik_state->window_dim.y);
+      }
+    }
+  }
+}
+
+internal void
+ik_ui_selection(void)
+{
+  IK_Frame *frame = ik_top_frame();
+  IK_Camera *camera = &frame->camera;
+
+  IK_Box *focus_hot_box = ik_box_from_key(ik_state->focus_hot_box_key);
+  if(focus_hot_box)
+  {
+    Rng2F32 camera_rect = camera->rect;
+    Mat4x4F32 proj_mat = make_orthographic_vulkan_4x4f32(camera_rect.x0, camera_rect.x1, camera_rect.y1, camera_rect.y0, camera->zn, camera->zf);
+    Rng2F32 fixed_rect = focus_hot_box->fixed_rect;
+    Vec4F32 p0 = {fixed_rect.x0, fixed_rect.y0, 0, 1.0};
+    Vec4F32 p1 = {fixed_rect.x1, fixed_rect.y1, 0, 1.0};
+    p0 = transform_4x4f32(proj_mat, p0);
+    p1 = transform_4x4f32(proj_mat, p1);
+    p0.x = ((p0.x+1.0)/2.0) * ik_state->window_dim.x;
+    p1.x = ((p1.x+1.0)/2.0) * ik_state->window_dim.x;
+    p0.y = ((p0.y+1.0)/2.0) * ik_state->window_dim.y;
+    p1.y = ((p1.y+1.0)/2.0) * ik_state->window_dim.y;
+    Rng2F32 rect = r2f32p(p0.x, p0.y, p1.x, p1.y);
+    F32 padding_px = 9;
+    rect = pad_2f32(rect, padding_px*2);
+    Vec2F32 rect_dim = dim_2f32(rect);
+
+    UI_Box *container;
+    UI_Rect(rect)
+      UI_Transparency(0.1)
+      // UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground)
+      container = ui_build_box_from_stringf(0, "##selection_box");
+
+    UI_Parent(container)
+    {
+      /////////////////////////////////
+      //~ Corners
+
+      F32 corner_size = 30;
+      UI_BoxFlags flags = UI_BoxFlag_DrawBackground|UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_Floating;
+
+      typedef struct IK_BoxResizeDrag IK_BoxResizeDrag;
+      struct IK_BoxResizeDrag
+      {
+        Vec2F32 drag_start_position;
+        Vec2F32 drag_start_rect_size;
+      };
+
+      // top left
+      {
+        // anchor
+        UI_Box *anchor;
+        UI_Rect(r2f32p(0,0, padding_px, padding_px))
+          UI_Flags(flags|UI_BoxFlag_DrawSideTop|UI_BoxFlag_DrawSideLeft)
+          UI_HoverCursor(OS_Cursor_UpLeft)
+          anchor = ui_build_box_from_stringf(0, "##top_left -> anchor");
+        UI_Signal sig1 = ui_signal_from_box(anchor);
+
+        // => right
+        UI_Box *right;
+        UI_Rect(r2f32p(padding_px,0, padding_px+corner_size, padding_px))
+          UI_Flags(flags|UI_BoxFlag_DrawSideTop|UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideRight)
+          UI_HoverCursor(OS_Cursor_UpLeft)
+          right = ui_build_box_from_stringf(0, "##top_left -> right");
+        UI_Signal sig2 = ui_signal_from_box(right);
+
+        // => down
+        UI_Box *down;
+        UI_Rect(r2f32p(0,padding_px, padding_px, padding_px+corner_size))
+          UI_Flags(flags|UI_BoxFlag_DrawSideLeft|UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideRight)
+          UI_HoverCursor(OS_Cursor_UpLeft)
+          down = ui_build_box_from_stringf(0, "##top_left -> down");
+        UI_Signal sig3 = ui_signal_from_box(down);
+
+        // dragging
+        UI_Signal sigs[3] = {sig1, sig2, sig3};
+        for(U64 i = 0; i < 3; i++)
+        {
+          UI_Signal sig = sigs[i];
+          if(sig.f&UI_SignalFlag_LeftDragging)
+          {
+            if(sig.f&UI_SignalFlag_LeftPressed)
+            {
+              IK_BoxResizeDrag drag = {focus_hot_box->position, focus_hot_box->rect_size};
+              ui_store_drag_struct(&drag);
+            }
+            else
+            {
+              IK_BoxResizeDrag drag = *ui_get_drag_struct(IK_BoxResizeDrag);
+              Vec2F32 delta = ui_drag_delta();
+              // TODO: scale delta based on zoom
+              focus_hot_box->rect_size = add_2f32(drag.drag_start_rect_size, scale_2f32(delta, -1));
+              focus_hot_box->position = add_2f32(drag.drag_start_position, delta);
+            }
+            break;
+          }
+        }
+      }
+
+      // bottom right
+      {
+        // anchor
+        UI_Box *anchor;
+        UI_Rect(r2f32p(rect_dim.x-padding_px,rect_dim.y-padding_px, rect_dim.x, rect_dim.y))
+          UI_Flags(flags|UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideRight)
+          UI_HoverCursor(OS_Cursor_DownRight)
+          anchor = ui_build_box_from_stringf(0, "##bottom_right -> anchor");
+        UI_Signal sig1 = ui_signal_from_box(anchor);
+
+        // => left
+        UI_Box *left;
+        UI_Rect(r2f32p(rect_dim.x-corner_size-padding_px, rect_dim.y-padding_px, rect_dim.x-padding_px, rect_dim.y))
+          UI_Flags(flags|UI_BoxFlag_DrawSideLeft|UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideTop)
+          UI_HoverCursor(OS_Cursor_DownRight)
+          left = ui_build_box_from_stringf(0, "##bottom_right -> left");
+        UI_Signal sig2 = ui_signal_from_box(left);
+
+        // => up
+        UI_Box *up;
+        UI_Rect(r2f32p(rect_dim.x-padding_px, rect_dim.y-padding_px-corner_size, rect_dim.x, rect_dim.y-padding_px))
+          UI_Flags(flags|UI_BoxFlag_DrawSideTop|UI_BoxFlag_DrawSideLeft|UI_BoxFlag_DrawSideRight)
+          UI_HoverCursor(OS_Cursor_DownRight)
+          up = ui_build_box_from_stringf(0, "##bottom_right -> up");
+        UI_Signal sig3 = ui_signal_from_box(up);
+
+        // dragging
+        UI_Signal sigs[3] = {sig1, sig2, sig3};
+        for(U64 i = 0; i < 3; i++)
+        {
+          UI_Signal sig = sigs[i];
+          if(sig.f&UI_SignalFlag_LeftDragging)
+          {
+            if(sig.f&UI_SignalFlag_LeftPressed)
+            {
+              IK_BoxResizeDrag drag = {focus_hot_box->position, focus_hot_box->rect_size};
+              ui_store_drag_struct(&drag);
+            }
+            else
+            {
+              IK_BoxResizeDrag drag = *ui_get_drag_struct(IK_BoxResizeDrag);
+              Vec2F32 delta = ui_drag_delta();
+              // TODO: scale delta based on zoom
+              focus_hot_box->rect_size = add_2f32(drag.drag_start_rect_size, delta);
+            }
+            break;
+          }
+        }
+      }
+
+      /////////////////////////////////
+      //~ Border
+
+      {
+        UI_BoxFlags flags = UI_BoxFlag_DrawBorder|UI_BoxFlag_Floating;
+        Rng2F32 border_rect = {0,0, rect_dim.x, rect_dim.y};
+        UI_Rect(pad_2f32(border_rect, -padding_px/2.0))
+          UI_Flags(flags)
+          ui_build_box_from_stringf(0, "##border");
       }
     }
   }
