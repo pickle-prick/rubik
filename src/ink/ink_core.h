@@ -69,7 +69,10 @@ struct IK_Camera
   F32 zn;
   F32 zf;
 
-  // TODO: store zoom level
+  // TODO: we may need to store zoom level
+  F32 min_zoom_step;
+  F32 max_zoom_step;
+  F32 zoom_t;
 
   // drag state
   B32 dragging;

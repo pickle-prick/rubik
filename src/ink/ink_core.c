@@ -888,12 +888,13 @@ ik_frame(void)
   //- camera controls
 
   {
+    B32 is_zooming = 0;
+
     ////////////////////////////////
     //- window resized
 
     if(ik_state->window_res_changed)
     {
-      printf("resizing\n");
       Vec2F32 camera_dim = dim_2f32(camera->target_rect);
       F32 area = camera_dim.x*camera_dim.y;
       F32 ratio = ik_state->window_dim.x/ik_state->window_dim.y;
@@ -916,6 +917,7 @@ ik_frame(void)
 
       if(!space_is_down && os_evt->kind == OS_EventKind_Scroll && os_evt->modifiers == OS_Modifier_Ctrl)
       {
+        is_zooming = 1;
         F32 delta = os_evt->delta.y;
         // get normalized rect
         Rng2F32 rect = camera->rect;
@@ -924,7 +926,8 @@ ik_frame(void)
         Vec2F32 shift_inv = rect_center;
         rect = shift_2f32(rect, shift);
 
-        F32 scale = 1 + delta*0.1;
+        F32 zoom_step = mix_1f32(camera->min_zoom_step, camera->max_zoom_step, camera->zoom_t);
+        F32 scale = 1 + delta*zoom_step;
         rect.x0 *= scale;
         rect.x1 *= scale;
         rect.y0 *= scale;
@@ -991,6 +994,7 @@ ik_frame(void)
     camera->rect.x1 += ik_state->animation.fast_rate * (camera->target_rect.x1-camera->rect.x1);
     camera->rect.y0 += ik_state->animation.fast_rate * (camera->target_rect.y0-camera->rect.y0);
     camera->rect.y1 += ik_state->animation.fast_rate * (camera->target_rect.y1-camera->rect.y1);
+    camera->zoom_t += ik_state->animation.slow_rate * ((F32)is_zooming-camera->zoom_t);
   }
 
   ////////////////////////////////
@@ -1228,7 +1232,7 @@ ik_frame(void)
           // TODO: cache tex2d
           R_Handle tex_handle = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Linear, v2s32(x, y), R_Tex2DFormat_RGBA8, data);
 
-          F32 default_screen_width = ik_state->window_dim.x * 0.35;
+          F32 default_screen_width = Min(ik_state->window_dim.x * 0.35, x);
           F32 ratio = (F32)x/y;
           F32 width_in_world = default_screen_width * ik_state->world_to_screen_ratio.x;
           F32 height_in_world = width_in_world / ratio;
@@ -1895,6 +1899,8 @@ ik_frame_alloc()
   ret->camera.target_rect = ret->camera.rect;
   ret->camera.zn = -0.1;
   ret->camera.zf = 1000000.0;
+  ret->camera.min_zoom_step = 0.05;
+  ret->camera.max_zoom_step = 0.35;
 
   // create root box
   ik_push_frame(ret);
