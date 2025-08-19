@@ -746,6 +746,7 @@ ui_end_build(void)
     if(os_window_is_focused(ui_state->os_wnd) || !ui_box_is_nil(active))
     {
       os_set_cursor(cursor);
+      ui_state->grab_cursor = !ui_box_is_nil(box);
     }
   }
 

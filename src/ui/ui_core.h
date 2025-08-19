@@ -146,6 +146,7 @@ struct UI_EventNode
   UI_EventNode *next;
   UI_EventNode *prev;
   UI_Event     v;
+  OS_Event     src;
 };
 
 typedef struct UI_EventList UI_EventList;
@@ -714,6 +715,7 @@ struct UI_State
   U64                  press_timestamp_history_us[UI_MouseButtonKind_COUNT][3];
   UI_Key               press_key_history[UI_MouseButtonKind_COUNT][3];
   U64                  last_time_mousemoved_us;
+  B32                  grab_cursor;
 
   // tooltip state
   F32                  tooltip_open_t;

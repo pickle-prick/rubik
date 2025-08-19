@@ -13,6 +13,20 @@ typedef enum IK_MouseButtonKind
 } IK_MouseButtonKind;
 
 ////////////////////////////////
+//~ Tool Types
+
+typedef enum IK_ToolKind
+{
+  IK_ToolKind_Hand,
+  IK_ToolKind_Selection,
+  IK_ToolKind_Rectangle,
+  IK_ToolKind_Draw,
+  IK_ToolKind_InsertImage,
+  IK_ToolKind_Eraser,
+  IK_ToolKind_COUNT,
+} IK_ToolKind;
+
+////////////////////////////////
 //~ Drag/Drop Types
 
 typedef enum IK_DragDropState
@@ -60,7 +74,6 @@ struct IK_Camera
   // drag state
   B32 dragging;
   Vec2F32 drag_start_mouse;
-  Vec2F32 drag_start_mouse_scale;
   Rng2F32 drag_start_rect;
 };
 
@@ -71,9 +84,11 @@ typedef U64 IK_BoxFlags;
 # define IK_BoxFlag_MouseClickable (IK_BoxFlags)(1ull<<0)
 # define IK_BoxFlag_ClickToFocus   (IK_BoxFlags)(1ull<<1)
 # define IK_BoxFlag_Scroll         (IK_BoxFlags)(1ull<<2)
-# define IK_BoxFlag_DrawRect       (IK_BoxFlags)(1ull<<3)
-# define IK_BoxFlag_DrawText       (IK_BoxFlags)(1ull<<4)
-# define IK_BoxFlag_DrawImage      (IK_BoxFlags)(1ull<<5)
+# define IK_BoxFlag_FixedRatio     (IK_BoxFlags)(1ull<<3)
+# define IK_BoxFlag_DrawRect       (IK_BoxFlags)(1ull<<4)
+# define IK_BoxFlag_DrawText       (IK_BoxFlags)(1ull<<5)
+# define IK_BoxFlag_DrawImage      (IK_BoxFlags)(1ull<<6)
+# define IK_BoxFlag_Disabled       (IK_BoxFlags)(1ull<<7)
 
 typedef struct IK_Frame IK_Frame;
 typedef struct IK_Box IK_Box;
@@ -103,6 +118,7 @@ struct IK_Box
   Vec4F32 color;
   R_Handle albedo_tex;
   OS_Cursor hover_cursor;
+  F32 ratio; // width/height
 
   // Per-frmae artifacts
   Rng2F32 fixed_rect;
@@ -259,7 +275,7 @@ typedef enum IK_FontSlot
   IK_FontSlot_Main,
   IK_FontSlot_Code,
   IK_FontSlot_Icons,
-  IK_FontSlot_Game,
+  IK_FontSlot_ToolbarIcons,
   IK_FontSlot_COUNT
 } IK_FontSlot;
 
@@ -343,9 +359,6 @@ struct IK_State
   OS_Handle             os_wnd;
   OS_EventList          os_events;
 
-  //- UI overlay signal (used for handle user input)
-  UI_Signal             sig;
-
   IK_Frame              *active_frame;
 
   // drawing buckets
@@ -376,8 +389,14 @@ struct IK_State
   F32                   last_dpi;
   B32                   window_should_close;
 
+  // camera
+  Mat4x4F32             proj_mat;
+  Mat4x4F32             proj_mat_inv;
+  Vec2F32               world_to_screen_ratio;
+
   // mouse
   Vec2F32               mouse;
+  Vec2F32               mouse_in_world;
   Vec2F32               last_mouse;
   Vec2F32               mouse_delta; // frame delta
   B32                   cursor_hidden;
@@ -393,6 +412,9 @@ struct IK_State
   Vec2F32               drag_start_mouse;
   Arena                 *drag_state_arena;
   String8               drag_state_data;
+
+  // toolbar
+  IK_ToolKind           tool;
 
   // drag/drop state
   IK_DragDropState      drag_drop_state;
@@ -467,8 +489,12 @@ internal void ik_init(OS_Handle os_wnd, R_Handle r_wnd);
 
 //- frame
 internal B32          ik_frame(void);
-internal Arena*       ik_frame_arena();
-internal IK_DrawList* ik_frame_drawlist();
+internal Arena*       ik_frame_arena(void);
+internal IK_DrawList* ik_frame_drawlist(void);
+
+//- editor
+
+internal IK_ToolKind ik_tool(void);
 
 //- color
 internal Vec4F32 ik_rgba_from_theme_color(IK_ThemeColor color);
@@ -547,13 +573,14 @@ internal IK_Signal ik_signal_from_box(IK_Box *box);
 //~ UI Widget
 
 internal void ik_ui_stats(void);
+internal void ik_ui_toolbar(void);
 internal void ik_ui_selection(void);
 
 /////////////////////////////////
 //~ Helpers
 
-internal Vec2F32 ik_screen_pos_in_world(Mat4x4F32 proj_view_inv_mat, Vec2F32 pos);
-#define ik_mouse_in_world(pvim) ik_screen_pos_in_world(pvim, ik_state->mouse)
+internal Vec2F32 ik_screen_pos_in_world(Mat4x4F32 proj_view_mat_inv, Vec2F32 pos);
+#define ik_mouse_in_world(pvmi) ik_screen_pos_in_world(pvmi, ik_state->mouse)
 
 ////////////////////////////////
 //~ Macro Loop Wrappers

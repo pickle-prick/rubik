@@ -260,9 +260,12 @@ os_event_list_push_new(Arena *arena, OS_EventList *evts, OS_EventKind kind)
   return evt;
 }
 
-internal void
-os_event_list_push(OS_EventList *evts, OS_Event *evt)
+internal OS_Event *
+os_event_list_push(Arena *arena, OS_EventList *evts, OS_Event *evt)
 {
-  DLLPushBack(evts->first, evts->last, evt);
+  OS_Event *dst = push_array(arena, OS_Event, 1);
+  MemoryCopy(dst, evt, sizeof(OS_Event));
+  DLLPushBack(evts->first, evts->last, dst);
   evts->count += 1;
+  return dst;
 }

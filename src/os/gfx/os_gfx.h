@@ -120,7 +120,7 @@ internal B32          os_text(OS_EventList *events, OS_Handle window, U32 charac
 internal OS_EventList os_event_list_copy(Arena *arena, OS_EventList *src);
 internal void         os_event_list_concat_in_place(OS_EventList *dst, OS_EventList *to_push);
 internal OS_Event*    os_event_list_push_new(Arena *arena, OS_EventList *evts, OS_EventKind kind);
-internal void         os_event_list_push(OS_EventList *evts, OS_Event *evt);
+internal OS_Event*    os_event_list_push(Arena *arena, OS_EventList *evts, OS_Event *evt);
 
 ////////////////////////////////
 //~ rjf: @os_hooks Main Initialization API (Implemented Per-OS)

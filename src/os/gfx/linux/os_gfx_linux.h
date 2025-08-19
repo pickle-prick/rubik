@@ -62,8 +62,12 @@ global OS_LNX_GfxState *os_lnx_gfx_state = 0;
 ////////////////////////////////
 //~ rjf: Helpers
 
+// window
 internal OS_LNX_Window *os_lnx_window_from_x11window(Window window);
 internal OS_LNX_Window *os_lnx_window_from_handle(OS_Handle window);
 internal Window        os_lnx_x11window_from_handle(OS_Handle window);
+
+// clipboard
+internal String8 os_lnx_get_clipboard_content(Arena *arena, char *bufname, char *fmtname);
 
 #endif // OS_GFX_LINUX_H
