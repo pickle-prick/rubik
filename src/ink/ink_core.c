@@ -1007,7 +1007,7 @@ ik_frame(void)
     IK_Box *box = frame->root;
     while(box != 0)
     {
-      IK_BoxRec rec = ik_box_rec_df_post(box, frame->root);
+      IK_BoxRec rec = ik_box_rec_df_pre(box, frame->root);
       IK_Box *parent = box->parent;
 
       // update xform (in TRS order)
@@ -1035,6 +1035,7 @@ ik_frame(void)
       fixed_rect.y0 = p0.y;
       fixed_rect.x1 = p1.x;
       fixed_rect.y1 = p1.y;
+      // TODO: don't keep changing this, only at the start of ratio-fixed resizing
       Vec2F32 fixed_rect_dim = dim_2f32(fixed_rect);
       box->ratio = fixed_rect_dim.x/fixed_rect_dim.y;
 
@@ -1307,7 +1308,7 @@ ik_frame(void)
     IK_Box *box = frame->root;
     while(box != 0)
     {
-      IK_BoxRec rec = ik_box_rec_df_post(box, frame->root);
+      IK_BoxRec rec = ik_box_rec_df_pre(box, frame->root);
 
       // draw rect
       if(box->flags & IK_BoxFlag_DrawRect)

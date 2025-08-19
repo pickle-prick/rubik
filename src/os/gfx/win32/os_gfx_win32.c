@@ -1039,6 +1039,14 @@ os_get_clipboard_text(Arena *arena)
   return result;
 }
 
+internal String8
+os_get_clipboard_image(Arena *arena)
+{
+  // TODO(k)
+  String8 ret = {0};
+  return ret;
+}
+
 ////////////////////////////////
 //~ rjf: @os_hooks Windows (Implemented Per-OS)
 
