@@ -195,7 +195,12 @@ typedef struct IK_FontNode IK_FontNode; struct IK_FontNode{IK_FontNode *next; F_
 typedef struct IK_FontSizeNode IK_FontSizeNode; struct IK_FontSizeNode{IK_FontSizeNode *next; F32 v;};
 typedef struct IK_TextRasterFlagsNode IK_TextRasterFlagsNode; struct IK_TextRasterFlagsNode{IK_TextRasterFlagsNode *next; F_RasterFlags v;};
 typedef struct IK_TabSizeNode IK_TabSizeNode; struct IK_TabSizeNode{IK_TabSizeNode *next; F32 v;};
+typedef struct IK_TransparencyNode IK_TransparencyNode; struct IK_TransparencyNode{IK_TransparencyNode *next; F32 v;};
+typedef struct IK_PaletteNode IK_PaletteNode; struct IK_PaletteNode{IK_PaletteNode *next; IK_Palette*     v;};
 typedef struct IK_FlagsNode IK_FlagsNode; struct IK_FlagsNode{IK_FlagsNode *next; IK_BoxFlags v;};
+typedef struct IK_HoverCursorNode IK_HoverCursorNode; struct IK_HoverCursorNode{IK_HoverCursorNode *next; OS_Cursor v;};
+typedef struct IK_TextPaddingNode IK_TextPaddingNode; struct IK_TextPaddingNode{IK_TextPaddingNode *next; F32 v;};
+typedef struct IK_TextAlignmentNode IK_TextAlignmentNode; struct IK_TextAlignmentNode{IK_TextAlignmentNode *next; IK_TextAlign v;};
 #define IK_DeclStackNils \
 struct\
 {\
@@ -205,7 +210,12 @@ IK_FontNode font_nil_stack_top;\
 IK_FontSizeNode font_size_nil_stack_top;\
 IK_TextRasterFlagsNode text_raster_flags_nil_stack_top;\
 IK_TabSizeNode tab_size_nil_stack_top;\
+IK_TransparencyNode transparency_nil_stack_top;\
+IK_PaletteNode palette_nil_stack_top;\
 IK_FlagsNode flags_nil_stack_top;\
+IK_HoverCursorNode hover_cursor_nil_stack_top;\
+IK_TextPaddingNode text_padding_nil_stack_top;\
+IK_TextAlignmentNode text_alignment_nil_stack_top;\
 }
 #define IK_InitStackNils(state) \
 state->parent_nil_stack_top.v = 0;\
@@ -214,7 +224,12 @@ state->font_nil_stack_top.v = f_tag_zero();\
 state->font_size_nil_stack_top.v = 24.f;\
 state->text_raster_flags_nil_stack_top.v = F_RasterFlag_Hinted;\
 state->tab_size_nil_stack_top.v = 24.f*4.f;\
+state->transparency_nil_stack_top.v = 0;\
+state->palette_nil_stack_top.v = 0;\
 state->flags_nil_stack_top.v = 0;\
+state->hover_cursor_nil_stack_top.v = OS_Cursor_Pointer;\
+state->text_padding_nil_stack_top.v = 0;\
+state->text_alignment_nil_stack_top.v = IK_TextAlign_Left;\
 
 #define IK_DeclStacks \
 struct\
@@ -225,7 +240,12 @@ struct { IK_FontNode *top; F_Tag bottom_val; IK_FontNode *free; B32 auto_pop; } 
 struct { IK_FontSizeNode *top; F32 bottom_val; IK_FontSizeNode *free; B32 auto_pop; } font_size_stack;\
 struct { IK_TextRasterFlagsNode *top; F_RasterFlags bottom_val; IK_TextRasterFlagsNode *free; B32 auto_pop; } text_raster_flags_stack;\
 struct { IK_TabSizeNode *top; F32 bottom_val; IK_TabSizeNode *free; B32 auto_pop; } tab_size_stack;\
+struct { IK_TransparencyNode *top; F32 bottom_val; IK_TransparencyNode *free; B32 auto_pop; } transparency_stack;\
+struct { IK_PaletteNode *top; IK_Palette*     bottom_val; IK_PaletteNode *free; B32 auto_pop; } palette_stack;\
 struct { IK_FlagsNode *top; IK_BoxFlags bottom_val; IK_FlagsNode *free; B32 auto_pop; } flags_stack;\
+struct { IK_HoverCursorNode *top; OS_Cursor bottom_val; IK_HoverCursorNode *free; B32 auto_pop; } hover_cursor_stack;\
+struct { IK_TextPaddingNode *top; F32 bottom_val; IK_TextPaddingNode *free; B32 auto_pop; } text_padding_stack;\
+struct { IK_TextAlignmentNode *top; IK_TextAlign bottom_val; IK_TextAlignmentNode *free; B32 auto_pop; } text_alignment_stack;\
 }
 #define IK_InitStacks(state) \
 state->parent_stack.top = &state->parent_nil_stack_top; state->parent_stack.bottom_val = 0; state->parent_stack.free = 0; state->parent_stack.auto_pop = 0;\
@@ -234,7 +254,12 @@ state->font_stack.top = &state->font_nil_stack_top; state->font_stack.bottom_val
 state->font_size_stack.top = &state->font_size_nil_stack_top; state->font_size_stack.bottom_val = 24.f; state->font_size_stack.free = 0; state->font_size_stack.auto_pop = 0;\
 state->text_raster_flags_stack.top = &state->text_raster_flags_nil_stack_top; state->text_raster_flags_stack.bottom_val = F_RasterFlag_Hinted; state->text_raster_flags_stack.free = 0; state->text_raster_flags_stack.auto_pop = 0;\
 state->tab_size_stack.top = &state->tab_size_nil_stack_top; state->tab_size_stack.bottom_val = 24.f*4.f; state->tab_size_stack.free = 0; state->tab_size_stack.auto_pop = 0;\
+state->transparency_stack.top = &state->transparency_nil_stack_top; state->transparency_stack.bottom_val = 0; state->transparency_stack.free = 0; state->transparency_stack.auto_pop = 0;\
+state->palette_stack.top = &state->palette_nil_stack_top; state->palette_stack.bottom_val = 0; state->palette_stack.free = 0; state->palette_stack.auto_pop = 0;\
 state->flags_stack.top = &state->flags_nil_stack_top; state->flags_stack.bottom_val = 0; state->flags_stack.free = 0; state->flags_stack.auto_pop = 0;\
+state->hover_cursor_stack.top = &state->hover_cursor_nil_stack_top; state->hover_cursor_stack.bottom_val = OS_Cursor_Pointer; state->hover_cursor_stack.free = 0; state->hover_cursor_stack.auto_pop = 0;\
+state->text_padding_stack.top = &state->text_padding_nil_stack_top; state->text_padding_stack.bottom_val = 0; state->text_padding_stack.free = 0; state->text_padding_stack.auto_pop = 0;\
+state->text_alignment_stack.top = &state->text_alignment_nil_stack_top; state->text_alignment_stack.bottom_val = IK_TextAlign_Left; state->text_alignment_stack.free = 0; state->text_alignment_stack.auto_pop = 0;\
 
 #define IK_AutoPopStacks(state) \
 if(state->parent_stack.auto_pop) { ik_pop_parent(); state->parent_stack.auto_pop = 0; }\
@@ -243,7 +268,12 @@ if(state->font_stack.auto_pop) { ik_pop_font(); state->font_stack.auto_pop = 0; 
 if(state->font_size_stack.auto_pop) { ik_pop_font_size(); state->font_size_stack.auto_pop = 0; }\
 if(state->text_raster_flags_stack.auto_pop) { ik_pop_text_raster_flags(); state->text_raster_flags_stack.auto_pop = 0; }\
 if(state->tab_size_stack.auto_pop) { ik_pop_tab_size(); state->tab_size_stack.auto_pop = 0; }\
+if(state->transparency_stack.auto_pop) { ik_pop_transparency(); state->transparency_stack.auto_pop = 0; }\
+if(state->palette_stack.auto_pop) { ik_pop_palette(); state->palette_stack.auto_pop = 0; }\
 if(state->flags_stack.auto_pop) { ik_pop_flags(); state->flags_stack.auto_pop = 0; }\
+if(state->hover_cursor_stack.auto_pop) { ik_pop_hover_cursor(); state->hover_cursor_stack.auto_pop = 0; }\
+if(state->text_padding_stack.auto_pop) { ik_pop_text_padding(); state->text_padding_stack.auto_pop = 0; }\
+if(state->text_alignment_stack.auto_pop) { ik_pop_text_alignment(); state->text_alignment_stack.auto_pop = 0; }\
 
 internal IK_Box *                   ik_top_parent(void);
 internal IK_Frame *                 ik_top_frame(void);
@@ -251,35 +281,60 @@ internal F_Tag                      ik_top_font(void);
 internal F32                        ik_top_font_size(void);
 internal F_RasterFlags              ik_top_text_raster_flags(void);
 internal F32                        ik_top_tab_size(void);
+internal F32                        ik_top_transparency(void);
+internal IK_Palette*                ik_top_palette(void);
 internal IK_BoxFlags                ik_top_flags(void);
+internal OS_Cursor                  ik_top_hover_cursor(void);
+internal F32                        ik_top_text_padding(void);
+internal IK_TextAlign               ik_top_text_alignment(void);
 internal IK_Box *                   ik_bottom_parent(void);
 internal IK_Frame *                 ik_bottom_frame(void);
 internal F_Tag                      ik_bottom_font(void);
 internal F32                        ik_bottom_font_size(void);
 internal F_RasterFlags              ik_bottom_text_raster_flags(void);
 internal F32                        ik_bottom_tab_size(void);
+internal F32                        ik_bottom_transparency(void);
+internal IK_Palette*                ik_bottom_palette(void);
 internal IK_BoxFlags                ik_bottom_flags(void);
+internal OS_Cursor                  ik_bottom_hover_cursor(void);
+internal F32                        ik_bottom_text_padding(void);
+internal IK_TextAlign               ik_bottom_text_alignment(void);
 internal IK_Box *                   ik_push_parent(IK_Box * v);
 internal IK_Frame *                 ik_push_frame(IK_Frame * v);
 internal F_Tag                      ik_push_font(F_Tag v);
 internal F32                        ik_push_font_size(F32 v);
 internal F_RasterFlags              ik_push_text_raster_flags(F_RasterFlags v);
 internal F32                        ik_push_tab_size(F32 v);
+internal F32                        ik_push_transparency(F32 v);
+internal IK_Palette*                ik_push_palette(IK_Palette*     v);
 internal IK_BoxFlags                ik_push_flags(IK_BoxFlags v);
+internal OS_Cursor                  ik_push_hover_cursor(OS_Cursor v);
+internal F32                        ik_push_text_padding(F32 v);
+internal IK_TextAlign               ik_push_text_alignment(IK_TextAlign v);
 internal IK_Box *                   ik_pop_parent(void);
 internal IK_Frame *                 ik_pop_frame(void);
 internal F_Tag                      ik_pop_font(void);
 internal F32                        ik_pop_font_size(void);
 internal F_RasterFlags              ik_pop_text_raster_flags(void);
 internal F32                        ik_pop_tab_size(void);
+internal F32                        ik_pop_transparency(void);
+internal IK_Palette*                ik_pop_palette(void);
 internal IK_BoxFlags                ik_pop_flags(void);
+internal OS_Cursor                  ik_pop_hover_cursor(void);
+internal F32                        ik_pop_text_padding(void);
+internal IK_TextAlign               ik_pop_text_alignment(void);
 internal IK_Box *                   ik_set_next_parent(IK_Box * v);
 internal IK_Frame *                 ik_set_next_frame(IK_Frame * v);
 internal F_Tag                      ik_set_next_font(F_Tag v);
 internal F32                        ik_set_next_font_size(F32 v);
 internal F_RasterFlags              ik_set_next_text_raster_flags(F_RasterFlags v);
 internal F32                        ik_set_next_tab_size(F32 v);
+internal F32                        ik_set_next_transparency(F32 v);
+internal IK_Palette*                ik_set_next_palette(IK_Palette*     v);
 internal IK_BoxFlags                ik_set_next_flags(IK_BoxFlags v);
+internal OS_Cursor                  ik_set_next_hover_cursor(OS_Cursor v);
+internal F32                        ik_set_next_text_padding(F32 v);
+internal IK_TextAlign               ik_set_next_text_alignment(IK_TextAlign v);
 C_LINKAGE_BEGIN
 extern String8 ik_icon_kind_text_table[69];
 extern String8 ik_theme_preset_display_string_table[9];

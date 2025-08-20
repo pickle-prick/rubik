@@ -1253,10 +1253,10 @@ ui_box_equip_display_string(UI_Box *box, String8 string)
     String8 display_string = ui_box_display_string(box);
     D_FancyStringNode fancy_string_n = {0};
     fancy_string_n.next = 0;
-    fancy_string_n.v.font                    = box->font;
-    fancy_string_n.v.string                  = display_string;
-    fancy_string_n.v.color                   = box->palette->colors[text_color_code];
-    fancy_string_n.v.size                    = box->font_size;
+    fancy_string_n.v.font = box->font;
+    fancy_string_n.v.string = display_string;
+    fancy_string_n.v.color = box->palette->colors[text_color_code];
+    fancy_string_n.v.size = box->font_size;
     fancy_string_n.v.underline_thickness     = 0;
     fancy_string_n.v.strikethrough_thickness = 0;
 

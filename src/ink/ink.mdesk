@@ -15,8 +15,19 @@ IK_StackTable:
   { TextRasterFlags                    text_raster_flags             F_RasterFlags         F_RasterFlag_Hinted                }
   { TabSize                            tab_size                      F32                   `24.f*4.f`                         }
 
+  //- k: colors
+  { Transparency                       transparency                  F32                   0                                  }
+  { Palette                            palette                      `IK_Palette*    `     `0`                                 }
+
   //- k: flags
   { Flags                              flags                         IK_BoxFlags           0                                  }
+
+  //- k: hover cursor
+  { HoverCursor                        hover_cursor                  OS_Cursor             OS_Cursor_Pointer                  }
+
+  //- rjf: text parameters
+  { TextPadding                        text_padding                  F32                   0                                  }
+  { TextAlignment                      text_alignment                IK_TextAlign          IK_TextAlign_Left                  }
 }
 
 //- rjf: declaring stack node types

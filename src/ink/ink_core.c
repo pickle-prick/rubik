@@ -200,7 +200,7 @@ ik_ui_draw()
     // draw string
     if(box->flags & UI_BoxFlag_DrawText)
     {
-      // TODO: handle font color
+      // TODO(k): handle font color
       Vec2F32 text_position = ui_box_text_position(box);
 
       // max width
@@ -476,6 +476,14 @@ ik_key_zero()
   return (IK_Key){0}; 
 }
 
+internal IK_Key
+ik_key_new()
+{
+  // TODO: we could use generation index here
+  IK_Key ret = ik_key_make(os_now_microseconds(), 0);
+  return ret;
+}
+
 /////////////////////////////////
 //~ State accessor/mutator
 
@@ -531,9 +539,11 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
   MemoryCopy(ik_state->cfg_theme.colors, ik_theme_preset_colors__handmade_hero, sizeof(ik_theme_preset_colors__handmade_hero));
 
   //////////////////////////////
-  //- k: compute ui palettes from theme
+  //- k: compute palettes from theme
   {
     IK_Theme *current = &ik_state->cfg_theme;
+
+    // ui palette
     for EachEnumVal(IK_PaletteCode, code)
     {
       ik_state->cfg_ui_debug_palettes[code].null       = v4f32(1, 0, 1, 1);
@@ -588,6 +598,62 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
     ik_state->cfg_ui_debug_palettes[IK_PaletteCode_DropSiteOverlay].text         = current->colors[IK_ThemeColor_DropSiteOverlay];
     ik_state->cfg_ui_debug_palettes[IK_PaletteCode_DropSiteOverlay].text_weak    = current->colors[IK_ThemeColor_DropSiteOverlay];
     ik_state->cfg_ui_debug_palettes[IK_PaletteCode_DropSiteOverlay].border       = current->colors[IK_ThemeColor_DropSiteOverlay];
+
+    // main palette
+    for EachEnumVal(IK_PaletteCode, code)
+    {
+      ik_state->cfg_main_palettes[code].null       = v4f32(1, 0, 1, 1);
+      ik_state->cfg_main_palettes[code].cursor     = current->colors[IK_ThemeColor_Cursor];
+      ik_state->cfg_main_palettes[code].selection  = current->colors[IK_ThemeColor_SelectionOverlay];
+    }
+    ik_state->cfg_main_palettes[IK_PaletteCode_Base].background              = current->colors[IK_ThemeColor_BaseBackground];
+    ik_state->cfg_main_palettes[IK_PaletteCode_Base].text                    = current->colors[IK_ThemeColor_Text];
+    ik_state->cfg_main_palettes[IK_PaletteCode_Base].text_weak               = current->colors[IK_ThemeColor_TextWeak];
+    ik_state->cfg_main_palettes[IK_PaletteCode_Base].border                  = current->colors[IK_ThemeColor_BaseBorder];
+    ik_state->cfg_main_palettes[IK_PaletteCode_MenuBar].background           = current->colors[IK_ThemeColor_MenuBarBackground];
+    ik_state->cfg_main_palettes[IK_PaletteCode_MenuBar].text                 = current->colors[IK_ThemeColor_Text];
+    ik_state->cfg_main_palettes[IK_PaletteCode_MenuBar].text_weak            = current->colors[IK_ThemeColor_TextWeak];
+    ik_state->cfg_main_palettes[IK_PaletteCode_MenuBar].border               = current->colors[IK_ThemeColor_MenuBarBorder];
+    ik_state->cfg_main_palettes[IK_PaletteCode_Floating].background          = current->colors[IK_ThemeColor_FloatingBackground];
+    ik_state->cfg_main_palettes[IK_PaletteCode_Floating].text                = current->colors[IK_ThemeColor_Text];
+    ik_state->cfg_main_palettes[IK_PaletteCode_Floating].text_weak           = current->colors[IK_ThemeColor_TextWeak];
+    ik_state->cfg_main_palettes[IK_PaletteCode_Floating].border              = current->colors[IK_ThemeColor_FloatingBorder];
+    ik_state->cfg_main_palettes[IK_PaletteCode_ImplicitButton].background    = current->colors[IK_ThemeColor_ImplicitButtonBackground];
+    ik_state->cfg_main_palettes[IK_PaletteCode_ImplicitButton].text          = current->colors[IK_ThemeColor_Text];
+    ik_state->cfg_main_palettes[IK_PaletteCode_ImplicitButton].text_weak     = current->colors[IK_ThemeColor_TextWeak];
+    ik_state->cfg_main_palettes[IK_PaletteCode_ImplicitButton].border        = current->colors[IK_ThemeColor_ImplicitButtonBorder];
+    ik_state->cfg_main_palettes[IK_PaletteCode_PlainButton].background       = current->colors[IK_ThemeColor_PlainButtonBackground];
+    ik_state->cfg_main_palettes[IK_PaletteCode_PlainButton].text             = current->colors[IK_ThemeColor_Text];
+    ik_state->cfg_main_palettes[IK_PaletteCode_PlainButton].text_weak        = current->colors[IK_ThemeColor_TextWeak];
+    ik_state->cfg_main_palettes[IK_PaletteCode_PlainButton].border           = current->colors[IK_ThemeColor_PlainButtonBorder];
+    ik_state->cfg_main_palettes[IK_PaletteCode_PositivePopButton].background = current->colors[IK_ThemeColor_PositivePopButtonBackground];
+    ik_state->cfg_main_palettes[IK_PaletteCode_PositivePopButton].text       = current->colors[IK_ThemeColor_Text];
+    ik_state->cfg_main_palettes[IK_PaletteCode_PositivePopButton].text_weak  = current->colors[IK_ThemeColor_TextWeak];
+    ik_state->cfg_main_palettes[IK_PaletteCode_PositivePopButton].border     = current->colors[IK_ThemeColor_PositivePopButtonBorder];
+    ik_state->cfg_main_palettes[IK_PaletteCode_NegativePopButton].background = current->colors[IK_ThemeColor_NegativePopButtonBackground];
+    ik_state->cfg_main_palettes[IK_PaletteCode_NegativePopButton].text       = current->colors[IK_ThemeColor_Text];
+    ik_state->cfg_main_palettes[IK_PaletteCode_NegativePopButton].text_weak  = current->colors[IK_ThemeColor_TextWeak];
+    ik_state->cfg_main_palettes[IK_PaletteCode_NegativePopButton].border     = current->colors[IK_ThemeColor_NegativePopButtonBorder];
+    ik_state->cfg_main_palettes[IK_PaletteCode_NeutralPopButton].background  = current->colors[IK_ThemeColor_NeutralPopButtonBackground];
+    ik_state->cfg_main_palettes[IK_PaletteCode_NeutralPopButton].text        = current->colors[IK_ThemeColor_Text];
+    ik_state->cfg_main_palettes[IK_PaletteCode_NeutralPopButton].text_weak   = current->colors[IK_ThemeColor_TextWeak];
+    ik_state->cfg_main_palettes[IK_PaletteCode_NeutralPopButton].border      = current->colors[IK_ThemeColor_NeutralPopButtonBorder];
+    ik_state->cfg_main_palettes[IK_PaletteCode_ScrollBarButton].background   = current->colors[IK_ThemeColor_ScrollBarButtonBackground];
+    ik_state->cfg_main_palettes[IK_PaletteCode_ScrollBarButton].text         = current->colors[IK_ThemeColor_Text];
+    ik_state->cfg_main_palettes[IK_PaletteCode_ScrollBarButton].text_weak    = current->colors[IK_ThemeColor_TextWeak];
+    ik_state->cfg_main_palettes[IK_PaletteCode_ScrollBarButton].border       = current->colors[IK_ThemeColor_ScrollBarButtonBorder];
+    ik_state->cfg_main_palettes[IK_PaletteCode_Tab].background               = current->colors[IK_ThemeColor_TabBackground];
+    ik_state->cfg_main_palettes[IK_PaletteCode_Tab].text                     = current->colors[IK_ThemeColor_Text];
+    ik_state->cfg_main_palettes[IK_PaletteCode_Tab].text_weak                = current->colors[IK_ThemeColor_TextWeak];
+    ik_state->cfg_main_palettes[IK_PaletteCode_Tab].border                   = current->colors[IK_ThemeColor_TabBorder];
+    ik_state->cfg_main_palettes[IK_PaletteCode_TabInactive].background       = current->colors[IK_ThemeColor_TabBackgroundInactive];
+    ik_state->cfg_main_palettes[IK_PaletteCode_TabInactive].text             = current->colors[IK_ThemeColor_Text];
+    ik_state->cfg_main_palettes[IK_PaletteCode_TabInactive].text_weak        = current->colors[IK_ThemeColor_TextWeak];
+    ik_state->cfg_main_palettes[IK_PaletteCode_TabInactive].border           = current->colors[IK_ThemeColor_TabBorderInactive];
+    ik_state->cfg_main_palettes[IK_PaletteCode_DropSiteOverlay].background   = current->colors[IK_ThemeColor_DropSiteOverlay];
+    ik_state->cfg_main_palettes[IK_PaletteCode_DropSiteOverlay].text         = current->colors[IK_ThemeColor_DropSiteOverlay];
+    ik_state->cfg_main_palettes[IK_PaletteCode_DropSiteOverlay].text_weak    = current->colors[IK_ThemeColor_DropSiteOverlay];
+    ik_state->cfg_main_palettes[IK_PaletteCode_DropSiteOverlay].border       = current->colors[IK_ThemeColor_DropSiteOverlay];
   }
 
   IK_InitStacks(ik_state)
@@ -617,8 +683,8 @@ ik_frame(void)
   /////////////////////////////////
   // get events from os
   
+  OS_EventList os_events = os_get_events(ik_frame_arena(), 0);
   {
-    ik_state->os_events          = os_get_events(ik_frame_arena(), 0);
     ik_state->last_window_rect   = ik_state->window_rect;
     ik_state->last_window_dim    = dim_2f32(ik_state->last_window_rect);
     ik_state->window_rect        = os_client_rect_from_window(ik_state->os_wnd, 0);
@@ -704,7 +770,7 @@ ik_frame(void)
   //- build event list for UI
 
   UI_EventList ui_events = {0};
-  for(OS_Event *os_evt = ik_state->os_events.first; os_evt != 0; os_evt = os_evt->next)
+  for(OS_Event *os_evt = os_events.first; os_evt != 0; os_evt = os_evt->next)
   {
     UI_Event ui_evt = {0};
 
@@ -777,7 +843,6 @@ ik_frame(void)
     }
 
     UI_EventNode *evt_node = ui_event_list_push(ui_build_arena(), &ui_events, &ui_evt);
-    evt_node->src = *os_evt;
 
     // TODO(k): we may want to handle this somewhere else
     if(os_evt->kind == OS_EventKind_WindowClose) {ik_state->window_should_close = 1;}
@@ -796,34 +861,34 @@ ik_frame(void)
     UI_IconInfo icon_info = {0};
     {
       icon_info.icon_font = icon_font;
-      icon_info.icon_kind_text_map[UI_IconKind_RightArrow]     = ik_icon_kind_text_table[IK_IconKind_RightScroll];
-      icon_info.icon_kind_text_map[UI_IconKind_DownArrow]      = ik_icon_kind_text_table[IK_IconKind_DownScroll];
-      icon_info.icon_kind_text_map[UI_IconKind_LeftArrow]      = ik_icon_kind_text_table[IK_IconKind_LeftScroll];
-      icon_info.icon_kind_text_map[UI_IconKind_UpArrow]        = ik_icon_kind_text_table[IK_IconKind_UpScroll];
-      icon_info.icon_kind_text_map[UI_IconKind_RightCaret]     = ik_icon_kind_text_table[IK_IconKind_RightCaret];
-      icon_info.icon_kind_text_map[UI_IconKind_DownCaret]      = ik_icon_kind_text_table[IK_IconKind_DownCaret];
-      icon_info.icon_kind_text_map[UI_IconKind_LeftCaret]      = ik_icon_kind_text_table[IK_IconKind_LeftCaret];
-      icon_info.icon_kind_text_map[UI_IconKind_UpCaret]        = ik_icon_kind_text_table[IK_IconKind_UpCaret];
-      icon_info.icon_kind_text_map[UI_IconKind_CheckHollow]    = ik_icon_kind_text_table[IK_IconKind_CheckHollow];
-      icon_info.icon_kind_text_map[UI_IconKind_CheckFilled]    = ik_icon_kind_text_table[IK_IconKind_CheckFilled];
+      icon_info.icon_kind_text_map[UI_IconKind_RightArrow]  = ik_icon_kind_text_table[IK_IconKind_RightScroll];
+      icon_info.icon_kind_text_map[UI_IconKind_DownArrow]   = ik_icon_kind_text_table[IK_IconKind_DownScroll];
+      icon_info.icon_kind_text_map[UI_IconKind_LeftArrow]   = ik_icon_kind_text_table[IK_IconKind_LeftScroll];
+      icon_info.icon_kind_text_map[UI_IconKind_UpArrow]     = ik_icon_kind_text_table[IK_IconKind_UpScroll];
+      icon_info.icon_kind_text_map[UI_IconKind_RightCaret]  = ik_icon_kind_text_table[IK_IconKind_RightCaret];
+      icon_info.icon_kind_text_map[UI_IconKind_DownCaret]   = ik_icon_kind_text_table[IK_IconKind_DownCaret];
+      icon_info.icon_kind_text_map[UI_IconKind_LeftCaret]   = ik_icon_kind_text_table[IK_IconKind_LeftCaret];
+      icon_info.icon_kind_text_map[UI_IconKind_UpCaret]     = ik_icon_kind_text_table[IK_IconKind_UpCaret];
+      icon_info.icon_kind_text_map[UI_IconKind_CheckHollow] = ik_icon_kind_text_table[IK_IconKind_CheckHollow];
+      icon_info.icon_kind_text_map[UI_IconKind_CheckFilled] = ik_icon_kind_text_table[IK_IconKind_CheckFilled];
     }
 
     UI_WidgetPaletteInfo widget_palette_info = {0};
     {
-      widget_palette_info.tooltip_palette   = ik_palette_from_code(IK_PaletteCode_Floating);
-      widget_palette_info.ctx_menu_palette  = ik_palette_from_code(IK_PaletteCode_Floating);
-      widget_palette_info.scrollbar_palette = ik_palette_from_code(IK_PaletteCode_ScrollBarButton);
+      widget_palette_info.tooltip_palette   = ik_ui_palette_from_code(IK_PaletteCode_Floating);
+      widget_palette_info.ctx_menu_palette  = ik_ui_palette_from_code(IK_PaletteCode_Floating);
+      widget_palette_info.scrollbar_palette = ik_ui_palette_from_code(IK_PaletteCode_ScrollBarButton);
     }
 
     // build animation info
     UI_AnimationInfo animation_info = {0};
     {
-      animation_info.hot_animation_rate      = ik_state->animation.fast_rate;
-      animation_info.active_animation_rate   = ik_state->animation.fast_rate;
-      animation_info.focus_animation_rate    = 1.f;
-      animation_info.tooltip_animation_rate  = ik_state->animation.fast_rate;
-      animation_info.menu_animation_rate     = ik_state->animation.fast_rate;
-      animation_info.scroll_animation_rate   = ik_state->animation.fast_rate;
+      animation_info.hot_animation_rate     = ik_state->animation.fast_rate;
+      animation_info.active_animation_rate  = ik_state->animation.fast_rate;
+      animation_info.focus_animation_rate   = 1.f;
+      animation_info.tooltip_animation_rate = ik_state->animation.fast_rate;
+      animation_info.menu_animation_rate    = ik_state->animation.fast_rate;
+      animation_info.scroll_animation_rate  = ik_state->animation.fast_rate;
     }
 
     // begin & push initial stack values
@@ -835,15 +900,35 @@ ik_frame(void)
     ui_push_text_padding(main_font_size*0.2f);
     ui_push_pref_width(ui_em(20.f, 1.f));
     ui_push_pref_height(ui_em(1.35f, 1.f));
-    ui_push_palette(ik_palette_from_code(IK_PaletteCode_Base));
+    ui_push_palette(ik_ui_palette_from_code(IK_PaletteCode_Base));
   }
 
   ////////////////////////////////
-  //~ Push frame ctx
+  //~ Begin build ink
+  //  TODO(k): we may want to move on top
 
   IK_Frame *frame = ik_state->active_frame;
+
+  // font
+  F_Tag main_font = ik_font_from_slot(IK_FontSlot_Main);
+  F32 main_font_size = ik_font_size_from_slot(IK_FontSlot_Main);
+  // F_Tag icon_font = ik_font_from_slot(IK_FontSlot_Icons);
+
+  // widget palette
+  IK_WidgetPaletteInfo widget_palette_info = {0};
+  {
+    widget_palette_info.tooltip_palette   = ik_palette_from_code(IK_PaletteCode_Floating);
+    widget_palette_info.ctx_menu_palette  = ik_palette_from_code(IK_PaletteCode_Floating);
+    widget_palette_info.scrollbar_palette = ik_palette_from_code(IK_PaletteCode_ScrollBarButton);
+  }
+  ik_state->widget_palette_info = widget_palette_info;
+
   ik_push_frame(frame);
   ik_push_parent(frame->root);
+  ik_push_font(main_font);
+  ik_push_font_size(main_font_size);
+  ik_push_text_padding(main_font_size*0.2f);
+  ik_push_palette(ik_palette_from_code(IK_PaletteCode_Base));
 
   ////////////////////////////////
   //~ Unpack camera
@@ -863,15 +948,18 @@ ik_frame(void)
   ik_ui_toolbar();
   ik_ui_selection();
 
+  // NOTE(k): deprecated, we just use ui_events
   ////////////////////////////////
   //~ Rebuild os_events from the remaining ui_events
 
-  OS_EventList os_events = {0};
-  for(UI_EventNode *n = ui_state->events->first, *next = 0; n != 0; n = n->next)
-  {
-    os_event_list_push(ik_frame_arena(), &os_events, &n->src);
-  }
-  ik_state->os_events = os_events;
+  // OS_EventList os_events = {0};
+  // for(UI_EventNode *n = ui_state->events->first, *next = 0; n != 0; n = n->next)
+  // {
+  //   os_event_list_push(ik_frame_arena(), &os_events, &n->src);
+  // }
+  // ik_state->os_events = os_events;
+
+  ik_state->events = &ui_events; // NOTE(k): ui_events is stored on the stack
 
   ////////////////////////////////
   //~ Main scene building
@@ -905,20 +993,21 @@ ik_frame(void)
     }
 
     ////////////////////////////////
-    //- os events related to camera
+    //- events related to camera
 
-    for(OS_Event *os_evt = ik_state->os_events.first, *next = 0; os_evt != 0;)
+    for(UI_EventNode *n = ik_state->events->first, *next = 0; n != 0; n = next)
     {
-      next = os_evt->next;
       B32 taken = 0;
+      next = n->next;
+      UI_Event *evt = &n->v;
 
       ////////////////////////////////
       //- zoom
 
-      if(!space_is_down && os_evt->kind == OS_EventKind_Scroll && os_evt->modifiers == OS_Modifier_Ctrl)
+      if(!space_is_down && evt->kind == UI_EventKind_Scroll && evt->modifiers == OS_Modifier_Ctrl)
       {
         is_zooming = 1;
-        F32 delta = os_evt->delta.y;
+        F32 delta = evt->delta_2f32.y;
         // get normalized rect
         Rng2F32 rect = camera->rect;
         Vec2F32 rect_center = center_2f32(camera->rect);
@@ -951,7 +1040,7 @@ ik_frame(void)
       // TODO(k): support middle mouse dragging
 
       // pan started
-      if((ik_tool() == IK_ToolKind_Hand) && os_evt->kind == OS_EventKind_Press && os_evt->key == OS_Key_LeftMouseButton)
+      if((ik_tool() == IK_ToolKind_Hand) && evt->kind == UI_EventKind_Press && evt->key == OS_Key_LeftMouseButton)
       {
         camera->drag_start_mouse = ik_state->mouse;
         Vec2F32 rect_dim = dim_2f32(camera->rect);
@@ -961,7 +1050,7 @@ ik_frame(void)
       }
 
       // pan ended
-      if(camera->dragging && os_evt->kind == OS_EventKind_Release && (os_evt->key == OS_Key_LeftMouseButton || os_evt->key == OS_Key_Space))
+      if(camera->dragging && evt->kind == UI_EventKind_Release && (evt->key == OS_Key_LeftMouseButton || evt->key == OS_Key_Space))
       {
         taken = 1;
         camera->dragging = 0;
@@ -969,10 +1058,8 @@ ik_frame(void)
 
       if(taken)
       {
-        ik_eat_event(&ik_state->os_events, os_evt);
+        ui_eat_event_node(ik_state->events, n);
       }
-
-      os_evt = next;
     }
 
     // apply pan
@@ -1008,7 +1095,8 @@ ik_frame(void)
   };
 
   {
-    IK_Box *box = frame->root;
+    IK_Box *root = frame->root;
+    IK_Box *box = root;
     while(box != 0)
     {
       IK_BoxRec rec = ik_box_rec_df_pre(box, frame->root);
@@ -1018,7 +1106,7 @@ ik_frame(void)
       Vec2F32 rect_size_half = scale_2f32(box->rect_size, 0.5);
       Vec3F32 center = {box->position.x+rect_size_half.x, box->position.y+rect_size_half.y, 0.0};
       Mat4x4F32 fixed_xform = mat_4x4f32(1.0);
-      Mat4x4F32 scale_mat = make_scale_4x4f32(v3f32(box->scale, box->scale, 1.0));
+      Mat4x4F32 scale_mat = make_scale_4x4f32(v3f32(box->scale.x, box->scale.y, 1.0));
       Mat4x4F32 rotation_mat = mat_4x4f32_from_quat_f32(make_rotate_quat_f32(v3f32(0,0,-1), box->rotation));
       Mat4x4F32 translation_mat = make_translate_4x4f32(center);
       fixed_xform = mul_4x4f32(scale_mat, fixed_xform);
@@ -1043,13 +1131,60 @@ ik_frame(void)
       Vec2F32 fixed_rect_dim = dim_2f32(fixed_rect);
       box->ratio = fixed_rect_dim.x/fixed_rect_dim.y;
 
+      IK_Signal sig = ik_signal_from_box(box);
       // update artifacts
+      // TODO(k): we don't really need xform here
       box->fixed_xform = fixed_xform;
       box->fixed_rect = fixed_rect;
+      box->fixed_size = dim_2f32(box->fixed_rect);
+      box->sig = sig;
 
-      IK_Signal sig = ik_signal_from_box(box);
+      if(box->flags & IK_BoxFlag_DrawText)
+      {
+        // unpack font settings
+        F_Tag font = box->font;
+        F32 font_size = box->font_size; // in world coordinate
+        IK_ColorCode text_color_code = (box->flags & IK_BoxFlag_DrawTextWeak ? IK_ColorCode_TextWeak : IK_ColorCode_Text);
+        F_RasterFlags text_raster_flags = box->text_raster_flags;
+        F32 tab_size = box->tab_size;
+        F32 text_padding = box->text_padding;
 
-      if(sig.f & IK_SignalFlag_LeftDragging)
+        // TODO(k): we may need to add another flags to indicate rect is growing as text growing
+        // TODO(k): move this into dedicated update function, some box may requiring text wraping
+        // split string by \n
+        char *by = "\n";
+        String8List lines = str8_split(ik_frame_arena(), box->string, (U8*)by, 1, StringSplitFlag_KeepEmpties);
+
+        Temp scratch = scratch_begin(0,0);
+        D_FancyStringList fancy_strings = {0};
+        for(String8Node *n = lines.first; n != 0; n = n->next)
+        {
+          String8 line = n->string;
+
+          D_FancyStringNode *fancy_string_n = push_array(scratch.arena, D_FancyStringNode, 1);
+          fancy_string_n->next = 0;
+          fancy_string_n->v.font = font;
+          fancy_string_n->v.string = line;
+          fancy_string_n->v.color = box->palette->colors[text_color_code];
+          fancy_string_n->v.size = font_size;
+          fancy_string_n->v.underline_thickness = 0;
+          fancy_string_n->v.strikethrough_thickness = 0;
+
+          SLLQueuePush(fancy_strings.first, fancy_strings.last, fancy_string_n);
+          fancy_strings.node_count++;
+          fancy_strings.total_size += line.size;
+        }
+
+        // TODO: we don't need to store this
+        box->display_string_runs  =
+          d_fancy_run_list_from_fancy_string_list(ik_frame_arena(),
+                                                  tab_size, text_raster_flags, &fancy_strings);
+
+        scratch_end(scratch);
+      }
+
+      // dragging
+      if((sig.f&IK_SignalFlag_LeftDragging) && box != frame->root)
       {
         if(sig.f & IK_SignalFlag_Pressed)
         {
@@ -1066,7 +1201,6 @@ ik_frame(void)
       }
 
       // animation (hot_t, ...)
-
       B32 is_hot = ik_key_match(box->key, ik_state->hot_box_key);
       B32 is_active = ik_key_match(box->key, ik_state->active_box_key[IK_MouseButtonKind_Left]);
       B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key);
@@ -1087,45 +1221,19 @@ ik_frame(void)
       box->focus_active_t = abs_f32(is_hot-box->focus_active_t) < epsilon ? (F32)is_hot : box->focus_active_t;
       box->disabled_t = abs_f32(is_hot-box->disabled_t) < epsilon ? (F32)is_hot : box->disabled_t;
 
+      // custom update
+      if(box->custom_update)
+      {
+        box->custom_update(box);
+      }
+
       box = rec.next;
     }
 
     /////////////////////////////////
-    //~ TODO: Create new rect
-
-    // click on empty and no active box
-    // if(ik_key_match(ik_state->hot_box_key, ik_key_zero()) &&
-    //    ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Left], ik_key_zero()) &&
-    //    (!space_is_down) &&
-    //    (!middle_is_down) &&
-    //    ik_key_press(0, OS_Key_LeftMouseButton))
-    // {
-    //   IK_Frame(frame) IK_Parent(frame->root)
-    //   {
-    //     IK_Key key = ik_key_from_stringf(ik_active_seed_key(), "##%I64u", os_now_microseconds());
-
-    //     // TODO: we should set resizing flags
-    //     ik_state->hot_box_key = key;
-    //     ik_state->active_box_key[IK_MouseButtonKind_Left] = key;
-
-    //     IK_Box *box = ik_build_box_from_key(0, key);
-    //     box->flags |= IK_BoxFlag_DrawRect|IK_BoxFlag_MouseClickable;
-    //     Vec2F32 mouse_in_world = ik_mouse_in_world(proj_mat_inv);
-    //     box->rect = r2f32p(mouse_in_world.x, mouse_in_world.y, mouse_in_world.x+300, mouse_in_world.y+300);
-    //     box->color = v4f32(1,1,0,1.0);
-    //     box->hover_cursor = OS_Cursor_HandPoint;
-
-    //     // TODO: not ideal
-    //     IK_BoxDrag drag = {box->rect};
-    //     ik_store_drag_struct(&drag);
-    //     ik_state->drag_start_mouse = ik_state->mouse;
-    //   }
-    // }
-
-    /////////////////////////////////
     //~ Mouse pressed on blank -> unset focus_hot & focus_active
 
-    if(ik_key_press(0, OS_Key_LeftMouseButton))
+    if(root->sig.f&IK_SignalFlag_LeftPressed)
     {
       ik_state->focus_hot_box_key = ik_key_zero();
       ik_state->focus_active_box_key = ik_key_zero();
@@ -1156,7 +1264,7 @@ ik_frame(void)
     /////////////////////////////////
     //~ Deletion
 
-    if(!ik_key_match(ik_state->focus_hot_box_key, ik_key_zero()) && ik_key_press(0, OS_Key_Delete))
+    if(!ik_key_match(ik_state->focus_hot_box_key, ik_key_zero()) && ui_key_press(0, OS_Key_Delete))
     {
       IK_Box *box = ik_box_from_key(ik_state->focus_hot_box_key);
       if(box)
@@ -1170,36 +1278,46 @@ ik_frame(void)
 
     if(os_window_is_focused(ik_state->os_wnd))
     {
-      if(ik_key_press(0, OS_Key_H))
+      if(ui_key_press(0, OS_Key_H))
       {
         ik_state->tool = IK_ToolKind_Hand;
       }
-      if(ik_key_press(0, OS_Key_S))
+      if(ui_key_press(0, OS_Key_S))
       {
         ik_state->tool = IK_ToolKind_Selection;
       }
-      if(ik_key_press(0, OS_Key_R))
+      if(ui_key_press(0, OS_Key_R))
       {
         ik_state->tool = IK_ToolKind_Rectangle;
       }
-      if(ik_key_press(0, OS_Key_D))
+      if(ui_key_press(0, OS_Key_D))
       {
         ik_state->tool = IK_ToolKind_Draw;
       }
-      if(ik_key_press(0, OS_Key_I))
+      if(ui_key_press(0, OS_Key_I))
       {
         ik_state->tool = IK_ToolKind_InsertImage;
       }
-      if(ik_key_press(0, OS_Key_E))
+      if(ui_key_press(0, OS_Key_E))
       {
         ik_state->tool = IK_ToolKind_Eraser;
       }
     }
 
     /////////////////////////////////
+    //~ Edit string (Double clicked on the blank)
+
+    if(root->sig.f&IK_SignalFlag_LeftDoubleClicked)
+    {
+      IK_Box *box = ik_edit_box(str8_lit("r2f32p(piece->rect.x0+x, piece->rect.y0+y, piece->rect.x1+x, piece->rect.y1+y);\nTest"));
+      ik_state->focus_hot_box_key = box->key;
+      ik_state->focus_active_box_key = box->key;
+    }
+
+    /////////////////////////////////
     //~ Paste image
 
-    if(ik_key_press(OS_Modifier_Ctrl, OS_Key_V))
+    if(ui_key_press(OS_Modifier_Ctrl, OS_Key_V))
     {
       Temp scratch = scratch_begin(0,0);
 
@@ -1237,14 +1355,7 @@ ik_frame(void)
           F32 width_in_world = default_screen_width * ik_state->world_to_screen_ratio.x;
           F32 height_in_world = width_in_world / ratio;
 
-          IK_Box *box = ik_build_box_from_stringf(0, "##image_%I64u", os_now_microseconds());
-          box->flags |= IK_BoxFlag_DrawImage|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio;
-          box->position = ik_state->mouse_in_world;
-          box->rect_size = v2f32(width_in_world, height_in_world);
-          box->color = v4f32(1,1,0,1.0);
-          box->hover_cursor = OS_Cursor_UpDownLeftRight;
-          box->albedo_tex = tex_handle;
-          box->ratio = (F32)x/y;
+          IK_Box *box = ik_image(0, ik_state->mouse_in_world, v2f32(width_in_world, height_in_world), tex_handle);
           box->disabled_t = 1.0;
         }
         stbi_image_free(data);
@@ -1314,6 +1425,8 @@ ik_frame(void)
     {
       IK_BoxRec rec = ik_box_rec_df_pre(box, frame->root);
 
+      // TODO: we may want to use the rect render pass mainly
+
       // draw rect
       if(box->flags & IK_BoxFlag_DrawRect)
       {
@@ -1355,12 +1468,14 @@ ik_frame(void)
         inst->draw_edge = 1;
       }
 
+      if(box->custom_draw)
+      {
+        box->custom_draw(box, box->custom_draw_user_data);
+      }
+
       box = rec.next;
     }
   }
-
-  // NOTE(k): there could be ui elements within node update
-  // ik_state->sig = ui_signal_from_box(overlay);
 
   /////////////////////////////////
   //~ Update hot/active key
@@ -1497,6 +1612,10 @@ ik_frame(void)
 
   ik_pop_frame();
   ik_pop_parent();
+  ik_pop_font();
+  ik_pop_font_size();
+  ik_pop_text_padding();
+  ik_pop_palette();
 
   /////////////////////////////////
   //~ End
@@ -1539,11 +1658,19 @@ ik_rgba_from_theme_color(IK_ThemeColor color)
 }
 
 //- code -> palette
-internal UI_Palette *
+internal IK_Palette *
 ik_palette_from_code(IK_PaletteCode code)
 {
-  UI_Palette *result = &ik_state->cfg_ui_debug_palettes[code];
-  return result;
+  IK_Palette *ret = &ik_state->cfg_main_palettes[code];
+  return ret;
+}
+
+//- code -> ui palette
+internal UI_Palette *
+ik_ui_palette_from_code(IK_PaletteCode code)
+{
+  UI_Palette *ret = &ik_state->cfg_ui_debug_palettes[code];
+  return ret;
 }
 
 //- fonts/sizes
@@ -1655,48 +1782,7 @@ ik_get_drag_data(U64 min_required_size)
 /////////////////////////////////
 //~ OS event consumption helpers
 
-internal void
-ik_eat_event(OS_EventList *list, OS_Event *evt)
-{
-  DLLRemove(list->first, list->last, evt);
-  list->count--;
-}
-
-internal B32
-ik_key_press(OS_Modifiers mods, OS_Key key)
-{
-  ProfBeginFunction();
-  B32 result = 0;
-  for(OS_Event *evt = ik_state->os_events.first; evt != 0; evt = evt->next)
-  {
-    if(evt->kind == OS_EventKind_Press && evt->key == key && evt->modifiers == mods)
-    {
-      result = 1;
-      ik_eat_event(&ik_state->os_events, evt);
-      break;
-    }
-  }
-  ProfEnd();
-  return result;
-}
-
-internal B32
-ik_key_release(OS_Modifiers mods, OS_Key key)
-{
-  ProfBeginFunction();
-  B32 result = 0;
-  for(OS_Event *evt = ik_state->os_events.first; evt != 0; evt = evt->next)
-  {
-    if(evt->kind == OS_EventKind_Release && evt->key == key && evt->modifiers == mods)
-    {
-      result = 1;
-      ik_eat_event(&ik_state->os_events, evt);
-      break;
-    }
-  }
-  ProfEnd();
-  return result;
-}
+// TODO(k): for now, we just reuse the ui eat consumption helpers, since we are using the same event list
 
 /////////////////////////////////
 //~ Dynamic drawing (in immediate mode fashion)
@@ -1837,6 +1923,51 @@ ik_drawlist_push_rect(Arena *arena, IK_DrawList *drawlist, Rng2F32 dst, Rng2F32 
 }
 
 /////////////////////////////////
+//~ String Block Functions
+
+internal void
+ik_string_block_release(String8 string)
+{
+  IK_Frame *frame = ik_top_frame();
+  IK_StringBlock *block = ptr_from_fat(string.str);
+  DLLPushFront_NP(frame->first_free_string_block, frame->last_free_string_block, block, free_next, free_prev);
+}
+
+internal String8
+ik_push_str8_copy(String8 src)
+{
+  String8 ret;
+  IK_Frame *frame = ik_top_frame();
+  Arena *arena = frame->arena;
+
+  U64 required_bytes = src.size + 1; // add one for null terminator
+  IK_StringBlock *block = 0;
+  for(IK_StringBlock *b = frame->first_free_string_block; b != 0; b = b->free_next)
+  {
+    U64 remain_bytes = b->cap_bytes - required_bytes;
+    F32 tolerance_pct = 0.05;
+    B32 fit = remain_bytes > 0 && remain_bytes < (b->cap_bytes*tolerance_pct);
+    block = b;
+    DLLRemove_NP(frame->first_free_string_block, frame->last_free_string_block, b, free_next, free_prev);
+    break;
+  }
+
+  if(block == 0)
+  {
+    block = push_array(arena, IK_StringBlock, 1);
+    // TODO: we can get away with no-zero
+    block->p = push_array_fat_sized(arena, required_bytes, block);
+    block->cap_bytes = required_bytes;
+  }
+
+  ret.str = block->p;
+  ret.size = src.size;
+  MemoryCopy(ret.str, src.str, src.size);
+  ret.str[ret.size] = 0;
+  return ret;
+}
+
+/////////////////////////////////
 //~ Box Type Functions
 
 internal IK_BoxRec
@@ -1904,11 +2035,10 @@ ik_frame_alloc()
 
   // create root box
   ik_push_frame(ret);
-  IK_Box *root = ik_build_box_from_stringf(0, "##root");
-  IK_Box *root_overlay = ik_build_box_from_stringf(0, "##root_overlay");
+  IK_Box *root = ik_build_box_from_key(IK_BoxFlag_MouseClickable, ik_key_zero());
+  // TODO: it may be ctx menu or tooltip root 
   ik_pop_frame();
   ret->root = root;
-  ret->root_overlay = root_overlay;
 
   // TODO: testing
   IK_Frame(ret) IK_Parent(root)
@@ -1980,7 +2110,15 @@ ik_build_box_from_key(IK_BoxFlags flags, IK_Key key)
   ret->flags = flags;
   ret->parent = parent;
   ret->frame = top_frame;
-  ret->scale = 1.0;
+  ret->scale = v2f32(1.0, 1.0);
+  ret->font = ik_top_font();
+  ret->font_size = ik_top_font_size();
+  ret->tab_size = ik_top_tab_size();
+  ret->text_raster_flags = ik_top_text_raster_flags();
+  ret->palette = ik_top_palette();
+  ret->transparency = ik_top_transparency();
+  ret->text_padding = ik_top_text_padding();
+  ret->hover_cursor = ik_top_hover_cursor();
 
   // hook into lookup table
   U64 slot_index = key.u64[0]%top_frame->box_table_size;
@@ -2070,30 +2208,152 @@ ik_box_release(IK_Box *box)
 //- box node equipment
 
 internal String8
-ik_box_equip_display_string(IK_Box *box, String8 string)
+ik_box_equip_display_string(IK_Box *box, String8 display_string)
 {
-  // box->string = push_str8_copy(ui_build_arena(), string);
-  // box->flags |= IK_BoxFlag_HasDisplayString;
-  // IK_ColorCode text_color_code = (box->flags & IK_BoxFlag_DrawTextWeak ? IK_ColorCode_TextWeak : IK_ColorCode_Text);
+  String8 ret = {0};
+  box->string = ik_push_str8_copy(display_string);
+  box->flags |= IK_BoxFlag_HasDisplayString;
+  return ret;
+}
 
-  // if(box->flags & IK_BoxFlag_DrawText)
-  // {
-  //   String8 display_string = ui_box_display_string(box);
-  //   D_FancyStringNode fancy_string_n = {0};
-  //   fancy_string_n.next = 0;
-  //   fancy_string_n.v.font                    = box->font;
-  //   fancy_string_n.v.string                  = display_string;
-  //   fancy_string_n.v.color                   = box->palette->colors[text_color_code];
-  //   fancy_string_n.v.size                    = box->font_size;
-  //   fancy_string_n.v.underline_thickness     = 0;
-  //   fancy_string_n.v.strikethrough_thickness = 0;
+internal void
+ik_box_equip_custom_draw(IK_Box *box, IK_BoxCustomDrawFunctionType *custom_draw, void *user_data)
+{
+  box->custom_draw = custom_draw;
+  box->custom_draw_user_data = user_data;
+}
 
-  //   D_FancyStringList fancy_strings = {0};
-  //   fancy_strings.first = &fancy_string_n;
-  //   fancy_strings.last = &fancy_string_n;
-  //   fancy_strings.node_count = 1;
-  //   box->display_string_runs = d_fancy_run_list_from_fancy_string_list(ui_build_arena(), box->tab_size, box->text_raster_flags, &fancy_strings);
-  // }
+/////////////////////////////////
+//~ High Level Box Building
+
+IK_BOX_CUSTOM_DRAW(ik_edit_box_draw)
+{
+  // TODO: change parent box rect size based on string size
+  // TODO: do consider padding here
+  // TODO: considering text alignment, for now we just do left align
+  F32 advance_x = 0;
+  F32 advance_y = 0;
+  F32 x = box->fixed_rect.p0.x;
+  F32 y = box->fixed_rect.p0.y + box->font_size/1.6; // TODO: not the best way, we can get the percise offset
+  for(D_FancyRunNode *n = box->display_string_runs.first; n != 0; n = n->next)
+  {
+    D_FancyRun run = n->v;
+    F_Piece *piece_first = run.run.pieces.v;
+    F_Piece *piece_opl = run.run.pieces.v + n->v.run.pieces.count;
+
+    // one line
+    for(F_Piece *piece = piece_first; piece < piece_opl; piece++)
+    {
+      // if(trailer_enabled && (off_x+advance+piece->advance) > (max_x-trailer_run.dim.x))
+      // {
+      //   trailer_found = 1; 
+      //   break;
+      // }
+
+      // if(!trailer_enabled && (off_x+advance+piece->advance) > max_x)
+      // {
+      //   goto end_draw;
+      // }
+
+      // NOTE(k): piece rect already computed x offset
+      Rng2F32 dst = r2f32p(piece->rect.x0+x, piece->rect.y0+y, piece->rect.x1+x, piece->rect.y1+y);
+      Rng2F32 src = r2f32p(piece->subrect.x0, piece->subrect.y0, piece->subrect.x1, piece->subrect.y1);
+      // normalize texture coordinate for geo2d pass
+      src.x0 /= piece->texture_dim.x;
+      src.x1 /= piece->texture_dim.x;
+      src.y0 /= piece->texture_dim.y;
+      src.y1 /= piece->texture_dim.y;
+      // TODO(k): src wil be all zeros in gcc release build but not with clang, wtf!!!
+      AssertAlways((src.x0 + src.x1 + src.y0 + src.y1) != 0);
+      Vec2F32 size = dim_2f32(dst);
+      AssertAlways(!r_handle_match(piece->texture, r_handle_zero()));
+      // TODO: why we need this
+      // last_color = n->v.color;
+
+      // issue draw
+
+      // NOTE(k): Space will have 0 extent
+      // if(size.x > 0 && size.y > 0)
+      // {
+      //   if(0)
+      //   {
+      //     d_rect(dst, n->v.color, 1.0, 1.0, 1.0);
+      //   }
+      //   d_img(dst, src, piece->texture, n->v.color, 0,0,0);
+      // }
+
+      // Rng2F32 dst = box->fixed_rect;
+      // dst = pad_2f32(dst, 6);
+      // dst.p1 = mix_2f32(v2f32(0,0), dst.p1, 1.0-box->disabled_t);
+
+      // Rng2F32 src = {0,0,1,1};
+      IK_DrawNode *dn = ik_drawlist_push_rect(ik_frame_arena(), ik_frame_drawlist(), dst, src);
+      Mat4x4F32 xform = mat_4x4f32(1.0);
+      Mat4x4F32 xform_inv = mat_4x4f32(1.0);
+
+      R_Mesh2DInst *inst = d_sprite(dn->vertices, dn->indices,
+                                    dn->vertices_buffer_offset, dn->indices_buffer_offset, dn->indice_count,
+                                    dn->topology, dn->polygon, 0, piece->texture, 1.);
+      inst->key = box->key.u64[0];
+      inst->xform = xform;
+      inst->xform_inv = xform_inv;
+      inst->has_texture = 1;
+      inst->has_color = 0;
+      inst->color = v4f32(1,0,1,1.0);
+      inst->draw_edge = 1;
+
+      advance_x += piece->advance;
+    }
+    advance_x = 0;
+    advance_y += run.run.dim.y;
+    y += run.run.dim.y;
+  }
+}
+
+IK_BOX_CUSTOM_UPDATE(ik_edit_box_update)
+{
+}
+
+internal IK_Box *
+ik_edit_box(String8 string)
+{
+  IK_Box *box;
+
+  F32 font_size = ik_top_font_size();
+  F32 font_size_in_world = font_size * ik_state->world_to_screen_ratio.x;
+
+  IK_Key key = ik_key_new();
+  box = ik_build_box_from_key(0, key);
+  box->flags |= IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio|IK_BoxFlag_DrawText;
+  box->position = ik_state->mouse_in_world;
+  box->rect_size = v2f32(font_size_in_world*3, font_size_in_world);
+  box->color = v4f32(1,1,0,1.0);
+  box->hover_cursor = OS_Cursor_UpDownLeftRight;
+  box->albedo_tex = r_handle_zero();
+  box->ratio = 0; // TODO(k): bugging
+  box->disabled_t = 1.0;
+  box->custom_draw = ik_edit_box_draw;
+  box->custom_update = ik_edit_box_update;
+
+  if(string.size > 0)
+  {
+    ik_box_equip_display_string(box, string);
+  }
+  return box;
+}
+
+internal IK_Box *
+ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 size, R_Handle tex)
+{
+  IK_Box *box;
+  box = ik_build_box_from_stringf(0, "##image_%I64u", os_now_microseconds());
+  box->flags |= IK_BoxFlag_DrawImage|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio;
+  box->position = pos;
+  box->rect_size = size;
+  box->hover_cursor = OS_Cursor_UpDownLeftRight;
+  box->albedo_tex = tex;
+  box->ratio = size.x/size.y;
+  return box;
 }
 
 /////////////////////////////////
@@ -2110,14 +2370,14 @@ ik_signal_from_box(IK_Box *box)
   //~ Process events related to this box
 
   B32 is_pixel_hot = ik_key_match(box->key, ik_key_make(ik_state->hot_pixel_key, 0));
-  for(OS_Event *evt = ik_state->os_events.first, *next = 0; evt != 0;)
+  for(UI_EventNode *n = ik_state->events->first, *next = 0; n != 0; n = next)
   {
-    next = evt->next;
     B32 taken = 0;
+    next = n->next;
+    UI_Event *evt = &n->v;
 
     //- unpack event
     Vec2F32 evt_mouse = evt->pos;
-    // B32 evt_mouse_in_bounds = contains_2f32(rect, evt_mouse);
     IK_MouseButtonKind evt_mouse_button_kind = 
       evt->key == OS_Key_LeftMouseButton   ? IK_MouseButtonKind_Left   :
       evt->key == OS_Key_RightMouseButton  ? IK_MouseButtonKind_Right  :
@@ -2131,7 +2391,7 @@ ik_signal_from_box(IK_Box *box)
 
     //- mouse pressed in box -> set hot/active, mark signal accordingly
     if(box->flags & IK_BoxFlag_MouseClickable &&
-       evt->kind == OS_EventKind_Press &&
+       evt->kind == UI_EventKind_Press &&
        is_pixel_hot &&
        evt_key_is_mouse)
     {
@@ -2161,7 +2421,7 @@ ik_signal_from_box(IK_Box *box)
 
     //- mouse released in active box -> unset active
     if(box->flags & IK_BoxFlag_MouseClickable &&
-       evt->kind == OS_EventKind_Release &&
+       evt->kind == UI_EventKind_Release &&
        ik_key_match(box->key, ik_state->active_box_key[evt_mouse_button_kind]) &&
        is_pixel_hot &&
        evt_key_is_mouse)
@@ -2175,7 +2435,7 @@ ik_signal_from_box(IK_Box *box)
 
     //- mouse released outside of active box -> unset hot & active
     if(box->flags & IK_BoxFlag_MouseClickable &&
-       evt->kind == OS_EventKind_Release &&
+       evt->kind == UI_EventKind_Release &&
        ik_key_match(box->key, ik_state->active_box_key[evt_mouse_button_kind]) &&
        !is_pixel_hot &&
        evt_key_is_mouse)
@@ -2188,11 +2448,11 @@ ik_signal_from_box(IK_Box *box)
 
     //- scroll
     if(box->flags & IK_BoxFlag_Scroll &&
-       evt->kind == OS_EventKind_Scroll &&
+       evt->kind == UI_EventKind_Scroll &&
        evt->modifiers != OS_Modifier_Ctrl &&
        is_pixel_hot)
     {
-      Vec2F32 delta = evt->delta;
+      Vec2F32 delta = evt->delta_2f32;
       if(evt->modifiers & OS_Modifier_Shift)
       {
         Swap(F32, delta.x, delta.y);
@@ -2209,10 +2469,8 @@ ik_signal_from_box(IK_Box *box)
 
     if(taken)
     {
-      ik_eat_event(&ik_state->os_events, evt);
+      ui_eat_event_node(ik_state->events, n);
     }
-
-    evt = next;
   }
 
   //////////////////////////////
@@ -2310,128 +2568,139 @@ internal void
 ik_ui_stats(void)
 {
   UI_Box *container = 0;
-  UI_Rect(ik_state->window_rect)
-    UI_ChildLayoutAxis(Axis2_X)
+  F32 width = 800;
+  Rng2F32 rect = {ik_state->window_dim.x-800, 0, ik_state->window_dim.x, ik_state->window_dim.y};
+  UI_Rect(rect)
+    UI_ChildLayoutAxis(Axis2_Y)
+    UI_Flags(UI_BoxFlag_Floating)
   {
     container = ui_build_box_from_stringf(0, "###stats_container");
   }
 
+  UI_Box *body;
   UI_Parent(container)
   {
-    ui_spacer(ui_pct(1.0, 0.0));
+    ui_spacer(ui_em(0.5, 0.0));
 
-    // stats, push to the right side of screen  
-    UI_Box *stats_container;
-    UI_ChildLayoutAxis(Axis2_Y)
-      UI_PrefWidth(ui_px(800, 1.0))
+    UI_WidthFill
       UI_PrefHeight(ui_children_sum(0.0))
-      UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow)
+      UI_Row
+      UI_Padding(ui_em(0.5, 0.0))
+      UI_PrefHeight(ui_pct(1.0, 0.0))
+      UI_PrefHeight(ui_children_sum(0.0))
+      UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBackground)
+      UI_Transparency(0.4)
+      UI_ChildLayoutAxis(Axis2_Y)
+      UI_CornerRadius(1.0)
+      body = ui_build_box_from_stringf(0, "###body");
+  }
+
+  UI_Parent(body)
+    UI_TextAlignment(UI_TextAlign_Left)
+    UI_TextPadding(9)
+    UI_PrefWidth(ui_pct(1.0, 0.0))
+  {
+    // collect some values
+    U64 last_frame_index = ik_state->frame_index > 0 ? ik_state->frame_index-1 : 0;
+    U64 last_frame_us = ik_state->frame_time_us_history[last_frame_index%ArrayCount(ik_state->frame_time_us_history)];
+
+    UI_Row
     {
-      stats_container = ui_build_box_from_stringf(0, "###stats_body");
+      ui_labelf("frame");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%.3fms", (F32)last_frame_us/1000.0);
     }
-
-    UI_Parent(stats_container)
-      UI_TextAlignment(UI_TextAlign_Left)
-      UI_TextPadding(9)
-      UI_PrefWidth(ui_pct(1.0, 0.0))
-      UI_Transparency(0.1)
+    UI_Row
     {
-      // collect some values
-      U64 last_frame_index = ik_state->frame_index > 0 ? ik_state->frame_index-1 : 0;
-      U64 last_frame_us = ik_state->frame_time_us_history[last_frame_index%ArrayCount(ik_state->frame_time_us_history)];
-
-      UI_Row
-      {
-        ui_labelf("frame");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%.3fms", (F32)last_frame_us/1000.0);
-      }
-      UI_Row
-      {
-        ui_labelf("pre cpu time");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%.3fms", (F32)ik_state->pre_cpu_time_us/1000.0);
-      }
-      UI_Row
-      {
-        ui_labelf("cpu time");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%.3fms", (F32)ik_state->cpu_time_us/1000.0);
-      }
-      UI_Row
-      {
-        ui_labelf("fps");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%.2f", 1.0 / (last_frame_us/1000000.0));
-      }
-      ui_divider(ui_em(0.1, 0.0));
-      UI_Row
-      {
-        ui_labelf("ik_hot_key");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%lu", ik_state->hot_box_key.u64[0]);
-      }
-      UI_Row
-      {
-        ui_labelf("ik_active_key");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%lu", ik_state->active_box_key[IK_MouseButtonKind_Left].u64[0]);
-      }
-      UI_Row
-      {
-        ui_labelf("ik_focus_hot_key");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%lu", ik_state->focus_hot_box_key.u64[0]);
-      }
-      UI_Row
-      {
-        ui_labelf("ik_mouse");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%f %f", ik_state->mouse.x, ik_state->mouse.y);
-      }
-      UI_Row
-      {
-        ui_labelf("ik_drag_start_mouse");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%f %f", ik_state->drag_start_mouse.x, ik_state->drag_start_mouse.y);
-      }
-      UI_Row
-      {
-        ui_labelf("window");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%.2f, %.2f", ik_state->window_dim.x, ik_state->window_dim.y);
-      }
-      ui_divider(ui_em(0.1, 0.0));
-      UI_Row
-      {
-        ui_labelf("ui_hot_key");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%lu", ui_state->hot_box_key.u64[0]);
-      }
-      UI_Row
-      {
-        ui_labelf("hot_pixel_key");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%I64u", ik_state->hot_pixel_key);
-      }
-      UI_Row
-      {
-        ui_labelf("ui_last_build_box_count");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%lu", ui_state->last_build_box_count);
-      }
-      UI_Row
-      {
-        ui_labelf("ui_build_box_count");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%lu", ui_state->build_box_count);
-      }
-      UI_Row
-      {
-        ui_labelf("drag start mouse");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%.2f, %.2f", ui_state->drag_start_mouse.x, ui_state->drag_start_mouse.y);
-      }
+      ui_labelf("pre cpu time");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%.3fms", (F32)ik_state->pre_cpu_time_us/1000.0);
+    }
+    UI_Row
+    {
+      ui_labelf("cpu time");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%.3fms", (F32)ik_state->cpu_time_us/1000.0);
+    }
+    UI_Row
+    {
+      ui_labelf("fps");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%.2f", 1.0 / (last_frame_us/1000000.0));
+    }
+    ui_divider(ui_em(0.1, 0.0));
+    UI_Row
+    {
+      ui_labelf("ik_hot_key");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%lu", ik_state->hot_box_key.u64[0]);
+    }
+    UI_Row
+    {
+      ui_labelf("ik_active_key");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%lu", ik_state->active_box_key[IK_MouseButtonKind_Left].u64[0]);
+    }
+    UI_Row
+    {
+      ui_labelf("ik_focus_hot_key");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%lu", ik_state->focus_hot_box_key.u64[0]);
+    }
+    UI_Row
+    {
+      ui_labelf("ik_focus_active_key");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%lu", ik_state->focus_active_box_key.u64[0]);
+    }
+    UI_Row
+    {
+      ui_labelf("ik_mouse");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%f %f", ik_state->mouse.x, ik_state->mouse.y);
+    }
+    UI_Row
+    {
+      ui_labelf("ik_drag_start_mouse");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%f %f", ik_state->drag_start_mouse.x, ik_state->drag_start_mouse.y);
+    }
+    UI_Row
+    {
+      ui_labelf("window");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%.2f, %.2f", ik_state->window_dim.x, ik_state->window_dim.y);
+    }
+    ui_divider(ui_em(0.1, 0.0));
+    UI_Row
+    {
+      ui_labelf("ui_hot_key");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%lu", ui_state->hot_box_key.u64[0]);
+    }
+    UI_Row
+    {
+      ui_labelf("hot_pixel_key");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%I64u", ik_state->hot_pixel_key);
+    }
+    UI_Row
+    {
+      ui_labelf("ui_last_build_box_count");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%lu", ui_state->last_build_box_count);
+    }
+    UI_Row
+    {
+      ui_labelf("ui_build_box_count");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%lu", ui_state->build_box_count);
+    }
+    UI_Row
+    {
+      ui_labelf("drag start mouse");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%.2f, %.2f", ui_state->drag_start_mouse.x, ui_state->drag_start_mouse.y);
     }
   }
 }

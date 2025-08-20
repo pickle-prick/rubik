@@ -39,6 +39,61 @@ typedef enum IK_DragDropState
 IK_DragDropState;
 
 ////////////////////////////////
+//~ Text
+
+typedef enum IK_TextAlign
+{
+  IK_TextAlign_Left,
+  IK_TextAlign_Center,
+  IK_TextAlign_Right,
+  IK_TextAlign_COUNT
+} IK_TextAlign;
+
+////////////////////////////////
+//~ Palettes
+
+typedef enum IK_ColorCode
+{
+  IK_ColorCode_Null,
+  IK_ColorCode_Background,
+  IK_ColorCode_Text,
+  IK_ColorCode_TextWeak,
+  IK_ColorCode_Border,
+  IK_ColorCode_Overlay,
+  IK_ColorCode_Cursor,
+  IK_ColorCode_Selection,
+  IK_ColorCode_COUNT
+} IK_ColorCode;
+
+typedef struct IK_Palette IK_Palette;
+struct IK_Palette
+{
+  union
+  {
+    Vec4F32 colors[IK_ColorCode_COUNT];
+    struct
+    {
+      Vec4F32 null;
+      Vec4F32 background;
+      Vec4F32 text;
+      Vec4F32 text_weak;
+      Vec4F32 border;
+      Vec4F32 overlay;
+      Vec4F32 cursor;
+      Vec4F32 selection;
+    };
+  };
+};
+
+typedef struct IK_WidgetPaletteInfo IK_WidgetPaletteInfo;
+struct IK_WidgetPaletteInfo
+{
+  IK_Palette *tooltip_palette;
+  IK_Palette *ctx_menu_palette;
+  IK_Palette *scrollbar_palette;
+};
+
+////////////////////////////////
 //~ Key
 
 typedef struct IK_Key IK_Key;
@@ -56,6 +111,18 @@ struct IK_SettingVal
   B32 set;
   // TODO(k): we may want to support different number type here later
   S32 s32;
+};
+
+////////////////////////////////
+//~ String Block
+
+typedef struct IK_StringBlock IK_StringBlock;
+struct IK_StringBlock
+{
+  IK_StringBlock *free_next;
+  IK_StringBlock *free_prev;
+  U8 *p;
+  U64 cap_bytes;
 };
 
 ////////////////////////////////
@@ -78,71 +145,6 @@ struct IK_Camera
   B32 dragging;
   Vec2F32 drag_start_mouse;
   Rng2F32 drag_start_rect;
-};
-
-////////////////////////////////
-//~ Box types
-
-typedef U64 IK_BoxFlags;
-# define IK_BoxFlag_MouseClickable (IK_BoxFlags)(1ull<<0)
-# define IK_BoxFlag_ClickToFocus   (IK_BoxFlags)(1ull<<1)
-# define IK_BoxFlag_Scroll         (IK_BoxFlags)(1ull<<2)
-# define IK_BoxFlag_FixedRatio     (IK_BoxFlags)(1ull<<3)
-# define IK_BoxFlag_DrawRect       (IK_BoxFlags)(1ull<<4)
-# define IK_BoxFlag_DrawText       (IK_BoxFlags)(1ull<<5)
-# define IK_BoxFlag_DrawImage      (IK_BoxFlags)(1ull<<6)
-# define IK_BoxFlag_Disabled       (IK_BoxFlags)(1ull<<7)
-
-typedef struct IK_Frame IK_Frame;
-typedef struct IK_Box IK_Box;
-struct IK_Box
-{
-  IK_Key key;
-  IK_Frame *frame;
-
-  // Lookup table links
-  IK_Box *hash_next;
-  IK_Box *hash_prev;
-
-  // Tree links
-  IK_Box *next;
-  IK_Box *prev;
-  IK_Box *first;
-  IK_Box *last;
-  IK_Box *parent;
-
-  // Per-build equipment
-  U64 children_count;
-  IK_BoxFlags flags;
-  Vec2F32 position; // top left
-  F32 rotation; // around center, turns
-  F32 scale;
-  Vec2F32 rect_size;
-  Vec4F32 color;
-  R_Handle albedo_tex;
-  OS_Cursor hover_cursor;
-  F32 ratio; // width/height
-
-  // Per-frmae artifacts
-  Rng2F32 fixed_rect;
-  // F32 fixed_width;
-  // F32 fixed_height;
-  Mat4x4F32 fixed_xform;
-
-  // Animation
-  F32 hot_t;
-  F32 active_t;
-  F32 disabled_t;
-  F32 focus_hot_t;
-  F32 focus_active_t;
-};
-
-typedef struct IK_BoxRec IK_BoxRec;
-struct IK_BoxRec
-{
-  IK_Box *next;
-  S32 push_count;
-  S32 pop_count;
 };
 
 ////////////////////////////////
@@ -210,6 +212,7 @@ enum
   IK_SignalFlag_Dragging      = IK_SignalFlag_LeftDragging,
 };
 
+typedef struct IK_Box IK_Box;
 typedef struct IK_Signal IK_Signal;
 struct IK_Signal
 {
@@ -232,6 +235,100 @@ struct IK_Signal
 #define ik_committed(s)      !!((s).f&IK_SignalFlag_Commit)
 
 ////////////////////////////////
+//~ Box types
+
+typedef U64 IK_BoxFlags;
+# define IK_BoxFlag_MouseClickable   (IK_BoxFlags)(1ull<<0)
+# define IK_BoxFlag_ClickToFocus     (IK_BoxFlags)(1ull<<1)
+# define IK_BoxFlag_Scroll           (IK_BoxFlags)(1ull<<2)
+# define IK_BoxFlag_FixedRatio       (IK_BoxFlags)(1ull<<3)
+# define IK_BoxFlag_DrawRect         (IK_BoxFlags)(1ull<<4)
+# define IK_BoxFlag_DrawText         (IK_BoxFlags)(1ull<<5)
+# define IK_BoxFlag_DrawImage        (IK_BoxFlags)(1ull<<6)
+# define IK_BoxFlag_Disabled         (IK_BoxFlags)(1ull<<7)
+# define IK_BoxFlag_HasDisplayString (IK_BoxFlags)(1ull<<8)
+# define IK_BoxFlag_DrawTextWeak     (IK_BoxFlags)(1ull<<9)
+
+typedef struct IK_Box IK_Box;
+
+//- custom draw
+#define IK_BOX_CUSTOM_DRAW(name) void name(IK_Box *box, void *user_data)
+typedef IK_BOX_CUSTOM_DRAW(IK_BoxCustomDrawFunctionType);
+
+//- custom update
+#define IK_BOX_CUSTOM_UPDATE(name) void name(IK_Box *box)
+typedef IK_BOX_CUSTOM_UPDATE(IK_BoxCustomUpdateFunctionType);
+
+typedef struct IK_Frame IK_Frame;
+struct IK_Box
+{
+  IK_Key key;
+  IK_Frame *frame;
+
+  // Lookup table links
+  IK_Box *hash_next;
+  IK_Box *hash_prev;
+
+  // Tree links
+  IK_Box *next;
+  IK_Box *prev;
+  IK_Box *first;
+  IK_Box *last;
+  IK_Box *parent;
+  U64 children_count;
+
+  // Per-build equipment
+  String8 string;
+  IK_BoxFlags flags;
+  Vec2F32 position; // top left
+  F32 rotation; // around center, turns
+  Vec2F32 scale;
+  Vec2F32 rect_size;
+  Vec4F32 color;
+  R_Handle albedo_tex;
+  OS_Cursor hover_cursor;
+  F32 ratio; // width/height
+  // text
+  F_Tag font;
+  U64 font_size;
+  U64 tab_size;
+  F_RasterFlags text_raster_flags;
+  // TODO(k): make it effective
+  F32 transparency;
+  F32 text_padding;
+  // F32 squish;
+  // F32 text_padding;
+  IK_Palette *palette;
+  // TODO(k): add a name or indentifier for better debugging
+  IK_BoxCustomDrawFunctionType *custom_draw;
+  // TODO(k): we want to reuse this memory block
+  void *custom_draw_user_data;
+  IK_BoxCustomUpdateFunctionType *custom_update;
+
+  // Per-frmae artifacts
+  Rng2F32 fixed_rect;
+  Mat4x4F32 fixed_xform;
+  Vec2F32 fixed_size;
+  IK_Signal sig;
+  D_FancyRunList display_string_runs;
+
+  // Animation
+  F32 hot_t;
+  F32 active_t;
+  F32 disabled_t;
+  F32 focus_hot_t;
+  F32 focus_active_t;
+};
+
+typedef struct IK_BoxRec IK_BoxRec;
+struct IK_BoxRec
+{
+  IK_Box *next;
+  S32 push_count;
+  S32 pop_count;
+};
+
+////////////////////////////////
 //- Frame
 
 typedef struct IK_BoxHashSlot IK_BoxHashSlot;
@@ -248,7 +345,6 @@ struct IK_Frame
   U64 arena_clear_pos;
   IK_Frame *next;
   IK_Box *root;
-  IK_Box *root_overlay;
   IK_Camera camera;
 
   // lookup table
@@ -257,6 +353,8 @@ struct IK_Frame
 
   // free links
   IK_Box *first_free_box;
+  IK_StringBlock *first_free_string_block;
+  IK_StringBlock *last_free_string_block;
 };
 
 /////////////////////////////////
@@ -360,7 +458,7 @@ struct IK_State
 
   R_Handle              r_wnd;
   OS_Handle             os_wnd;
-  OS_EventList          os_events;
+  UI_EventList          *events;
 
   IK_Frame              *active_frame;
 
@@ -404,6 +502,10 @@ struct IK_State
   Vec2F32               mouse_delta; // frame delta
   B32                   cursor_hidden;
 
+  // palette
+  // IK_IconInfo           icon_info;
+  IK_WidgetPaletteInfo  widget_palette_info;
+
   // user interaction state
   IK_Key                hot_box_key;
   IK_Key                active_box_key[IK_MouseButtonKind_COUNT];
@@ -431,6 +533,7 @@ struct IK_State
 
   // palette
   UI_Palette            cfg_ui_debug_palettes[IK_PaletteCode_COUNT]; // derivative from theme
+  IK_Palette            cfg_main_palettes[IK_PaletteCode_COUNT]; // derivative from theme
 
   // global Settings
   IK_SettingVal         setting_vals[IK_SettingCode_COUNT];
@@ -477,6 +580,7 @@ internal IK_Key ik_key_from_stringf(IK_Key seed, char* fmt, ...);
 internal B32    ik_key_match(IK_Key a, IK_Key b);
 internal IK_Key ik_key_make(U64 a, U64 b);
 internal IK_Key ik_key_zero();
+internal IK_Key ik_key_new();
 
 /////////////////////////////////
 //~ Handle
@@ -503,7 +607,10 @@ internal IK_ToolKind ik_tool(void);
 internal Vec4F32 ik_rgba_from_theme_color(IK_ThemeColor color);
 
 //- code -> palette
-internal UI_Palette* ik_palette_from_code(IK_PaletteCode code);
+internal IK_Palette* ik_palette_from_code(IK_PaletteCode code);
+
+//- code -> ui palette
+internal UI_Palette* ik_ui_palette_from_code(IK_PaletteCode code);
 
 //- fonts/size
 internal F_Tag ik_font_from_slot(IK_FontSlot slot);
@@ -523,9 +630,10 @@ internal String8 ik_get_drag_data(U64 min_required_size);
 /////////////////////////////////
 //~ OS event consumption helpers
 
-internal void ik_eat_event(OS_EventList *list, OS_Event *event);
-internal B32  ik_key_press(OS_Modifiers mods, OS_Key key);
-internal B32  ik_key_release(OS_Modifiers mods, OS_Key key);
+// TODO(k): for now, we just reuse the ui eat consumption helpers, since we are using the same event list
+// internal void ik_eat_event_node(UI_EventList *list, UI_EventNode *node);
+// internal B32  ik_key_press(OS_Modifiers mods, OS_Key key);
+// internal B32  ik_key_release(OS_Modifiers mods, OS_Key key);
 
 /////////////////////////////////
 //~ Dynamic drawing (in immediate mode fashion)
@@ -538,6 +646,11 @@ internal void         ik_drawlist_reset(IK_DrawList *drawlist);
 
 //- high level building API
 internal IK_DrawNode* ik_drawlist_push_rect(Arena *arena, IK_DrawList *drawlist, Rng2F32 dst, Rng2F32 src);
+
+/////////////////////////////////
+//~ String Block Functions
+
+internal String8 ik_push_str8_copy(String8 src);
 
 /////////////////////////////////
 //~ Box Type Functions
@@ -566,11 +679,26 @@ internal void ik_box_release(IK_Box *box);
 
 //- box node equipment
 internal String8 ik_box_equip_display_string(IK_Box *box, String8 string);
+internal void    ik_box_equip_custom_draw(IK_Box *box, IK_BoxCustomDrawFunctionType *custom_draw, void *user_data);
+
+/////////////////////////////////
+//~ High Level Box Building
+
+internal IK_Box* ik_edit_box(String8 string);
+internal IK_Box* ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 size, R_Handle tex);
 
 /////////////////////////////////
 //~ User interaction
 
 internal IK_Signal ik_signal_from_box(IK_Box *box);
+
+/////////////////////////////////
+//~ Rendering
+
+//- text
+
+internal void ik_fancy_run_list(Vec2F32 p, D_FancyRunList *list, F32 max_x);
+
 
 /////////////////////////////////
 //~ UI Widget

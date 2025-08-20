@@ -1499,6 +1499,7 @@ internal int       rk_path_cmp(const void *left_, const void *right_);
 internal U64       rk_no_from_filename(String8 filename);
 #define rk_handle_from_se(h) ((RK_Handle){ .u64 = {h.u64[0], h.u64[1], h.u64[2], h.u64[3], h.u64[4], h.u64[5]} })
 
+// TODO: move these into base_arena
 #define rk_ptr_from_fat(payload_ptr)  *(void**)((U8*)payload_ptr-16)
 #define rk_size_from_fat(payload_ptr) *(U64*)((U8*)payload_ptr-8)
 

@@ -5180,7 +5180,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
         R_Vulkan_Buffer *inst_buffer = &frame->inst_buffer_rect[ui_pass_index];
 
         // Draw each group
-        // Rects in the same group share some features
+        // Rects in the same group share the globals
         U64 inst_idx = 0;
         for(R_BatchGroupRectNode *group_n = rect_batch_groups->first; group_n != 0; group_n = group_n->next)
         {

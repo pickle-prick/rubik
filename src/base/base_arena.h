@@ -95,4 +95,7 @@ internal void* fat_finalize(Arena *arena, void* base, void* ptr, U64 size);
 #define push_array_fat(a, T, ptr) (T*)fat_finalize((a), MemoryZero(arena_push((a), 16+sizeof(T), 16), 16+sizeof(T)), ptr, sizeof(T))
 #define push_array_fat_sized(a, s, ptr) (void*)fat_finalize((a), MemoryZero(arena_push((a), 16+s, 16), 16+s), ptr, s)
 
+#define ptr_from_fat(payload_ptr)  *(void**)((U8*)payload_ptr-16)
+#define size_from_fat(payload_ptr) *(U64*)((U8*)payload_ptr-8)
+
 #endif // BASE_ARENA_H

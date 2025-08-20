@@ -146,7 +146,6 @@ struct UI_EventNode
   UI_EventNode *next;
   UI_EventNode *prev;
   UI_Event     v;
-  OS_Event     src;
 };
 
 typedef struct UI_EventList UI_EventList;
