@@ -296,6 +296,8 @@ struct IK_Box
   U64 font_size;
   U64 tab_size;
   F_RasterFlags text_raster_flags;
+  TxtPt cursor;
+  TxtPt mark;
   // TODO(k): make it effective
   F32 transparency;
   F32 text_padding;
@@ -306,7 +308,6 @@ struct IK_Box
   IK_BoxCustomDrawFunctionType *custom_draw;
   void *custom_draw_user_data;
   IK_BoxCustomUpdateFunctionType *custom_update;
-  void *scratch_data; // on focus active
   U64 draw_frame_index;
 
   // Per-frmae artifacts
@@ -602,6 +603,14 @@ internal IK_Key ik_key_new();
 //- init
 internal void ik_init(OS_Handle os_wnd, R_Handle r_wnd);
 
+//- key
+internal IK_Key ik_hot_key(void);
+internal IK_Key ik_active_key(IK_MouseButtonKind button_kind);
+internal IK_Key ik_drop_hot_key(void);
+
+//- interaction
+internal void ik_kill_action(void);
+
 //- frame
 internal B32          ik_frame(void);
 internal Arena*       ik_frame_arena(void);
@@ -708,7 +717,6 @@ internal IK_Signal ik_signal_from_box(IK_Box *box);
 
 internal void ik_fancy_run_list(Vec2F32 p, D_FancyRunList *list, F32 max_x);
 
-
 /////////////////////////////////
 //~ UI Widget
 
@@ -719,7 +727,7 @@ internal void ik_ui_selection(void);
 /////////////////////////////////
 //~ Text Operation Functions
 
-internal UI_TxtOp ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, String8List lines, TxtPt cursor, TxtPt mark);
+internal UI_TxtOp ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, TxtPt cursor, TxtPt mark);
 internal Rng1U64  ik_replace_range_from_txtrng(String8 string, TxtRng txt_rng);
 
 /////////////////////////////////

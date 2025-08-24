@@ -209,7 +209,7 @@ os_gfx_init(void)
   os_lnx_gfx_state->xim = XOpenIM(os_lnx_gfx_state->display, 0, 0, 0);
   
   //- rjf: fill out gfx info
-  os_lnx_gfx_state->gfx_info.double_click_time = 0.5f;
+  os_lnx_gfx_state->gfx_info.double_click_time = 0.25f;
   os_lnx_gfx_state->gfx_info.caret_blink_time = 0.5f;
   os_lnx_gfx_state->gfx_info.default_refresh_rate = 60.f;
   

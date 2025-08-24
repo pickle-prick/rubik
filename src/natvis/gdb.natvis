@@ -149,6 +149,14 @@
     </Expand>
   </Type>
 
+  <Type Name="Rng2F32">
+    <DisplayString>{{ min={v[0]} max={v[1]} }}</DisplayString>
+    <Expand>
+      <Item Name="min">v[0]</Item>
+      <Item Name="max">v[1]</Item>
+    </Expand>
+  </Type>
+
   <Type Name="TxtPt">
     <DisplayString>{{ line={line} column={column} }}</DisplayString>
     <Expand>

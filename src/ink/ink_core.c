@@ -665,6 +665,37 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
   IK_InitStackNils(ik_state)
 }
 
+//- key
+
+internal IK_Key
+ik_hot_key(void)
+{
+  return ik_state->hot_box_key;
+}
+
+internal IK_Key
+ik_active_key(IK_MouseButtonKind button_kind)
+{
+  return ik_state->active_box_key[button_kind];
+}
+
+internal IK_Key
+ik_drop_hot_key(void)
+{
+  NotImplemented;
+}
+
+//- interaction
+
+internal void
+ik_kill_action(void)
+{
+  for EachEnumVal(IK_MouseButtonKind, k)
+  {
+    ik_state->active_box_key[k] = ik_key_zero();
+  }
+}
+
 //- frame
 
 internal B32
@@ -1130,6 +1161,12 @@ ik_frame(void)
         IK_Box *parent = box->parent;
         IK_Signal sig = ik_signal_from_box(box);
 
+        B32 is_hot = ik_key_match(box->key, ik_state->hot_box_key);
+        B32 is_active = ik_key_match(box->key, ik_state->active_box_key[IK_MouseButtonKind_Left]);
+        B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key);
+        B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
+        B32 is_disabled = box->flags&IK_BoxFlag_Disabled;
+
         if(box->flags & IK_BoxFlag_FitViewport)
         {
           box->position = camera->rect.p0;
@@ -1223,7 +1260,7 @@ ik_frame(void)
         }
 
         // dragging
-        if((sig.f&IK_SignalFlag_LeftDragging) && box != frame->root)
+        if((sig.f&IK_SignalFlag_LeftDragging) && box != frame->root && (!is_focus_active))
         {
           if(sig.f & IK_SignalFlag_Pressed)
           {
@@ -1240,12 +1277,6 @@ ik_frame(void)
         }
 
         // animation (hot_t, ...)
-        B32 is_hot = ik_key_match(box->key, ik_state->hot_box_key);
-        B32 is_active = ik_key_match(box->key, ik_state->active_box_key[IK_MouseButtonKind_Left]);
-        B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key);
-        B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
-        B32 is_disabled = box->flags&IK_BoxFlag_Disabled;
-
         box->hot_t += ik_state->animation.fast_rate * ((F32)is_hot-box->hot_t);
         box->active_t += ik_state->animation.fast_rate * ((F32)is_active-box->active_t);
         box->focus_hot_t += ik_state->animation.fast_rate * ((F32)is_focus_hot-box->focus_hot_t);
@@ -2289,20 +2320,15 @@ ik_box_equip_custom_draw(IK_Box *box, IK_BoxCustomDrawFunctionType *custom_draw,
 /////////////////////////////////
 //~ High Level Box Building
 
-typedef struct IK_EditBoxScratchData IK_EditBoxScratchData;
-struct IK_EditBoxScratchData
-{
-  TxtPt cursor;
-  TxtPt mark;
-};
-
 typedef struct IK_EditBoxTextRect IK_EditBoxTextRect;
 struct IK_EditBoxTextRect
 {
+  Rng2F32 parent_rect;
   Rng2F32 dst;
   Rng2F32 src;
   R_Handle tex;
   Vec4F32 color;
+  B32 highlight;
 };
 
 typedef struct IK_EditBoxDrawData IK_EditBoxDrawData;
@@ -2318,112 +2344,16 @@ IK_BOX_CUSTOM_UPDATE(ik_edit_box_update)
   B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key);
   B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
 
-  // TODO(Next): many setting are not used here
-  // unpack font settings
-  F_Tag font = box->font;
-  F32 font_size = box->font_size; // in world coordinate
-  // IK_ColorCode text_color_code = (box->flags & IK_BoxFlag_DrawTextWeak ? IK_ColorCode_TextWeak : IK_ColorCode_Text);
-  F_RasterFlags text_raster_flags = box->text_raster_flags;
-  F32 tab_size = box->tab_size;
-  F32 text_padding = box->text_padding;
-
   // data buffer
-  IK_EditBoxScratchData *scratch_data = box->scratch_data;
   IK_EditBoxDrawData *draw_data = push_array(ik_frame_arena(), IK_EditBoxDrawData, 1);
   box->custom_draw_user_data = draw_data;
 
-  TxtPt *cursor = 0;
-  TxtPt *mark = 0;
+  TxtPt *cursor = &box->cursor;
+  TxtPt *mark = &box->mark;
 
-  if(is_focus_active)
-  {
-    // TODO(Next): weird here, check it out later
-    // NOTE(k): somewhere else could set this box active 
-    if(scratch_data == 0)
-    {
-      arena_clear(ik_state->box_scratch_arena);
-      scratch_data = push_array(ik_state->box_scratch_arena, IK_EditBoxScratchData, 1);
-      // TODO(Next): testing, didn't selection all
-      scratch_data->mark.line = 1;
-      scratch_data->mark.column = 1;
-      scratch_data->cursor.line = 1;
-      scratch_data->cursor.column = 1;
-      // TODO(Next): to be fixed
-      // scratch_data->cursor.line = box->display_lines.node_count;
-      // scratch_data->cursor.column = box->display_lines.last.string.size;
-      box->scratch_data = scratch_data;
-    }
-    cursor = &scratch_data->cursor;
-    mark = &scratch_data->mark;
-  }
+  ////////////////////////////////
+  // Take navigation actions for editing
 
-  // TODO(Next): to be deleted
-  if(cursor)
-  {
-    // printf("cursor: %ld %ld\n", cursor->line, cursor->column);
-    // printf("mark:   %ld %ld\n", mark->line, mark->column);
-  }
-
-  if(!is_focus_active && box->sig.f&(IK_SignalFlag_DoubleClicked|IK_SignalFlag_KeyboardPressed))
-  {
-    ik_state->focus_hot_box_key = box->key;
-    ik_state->focus_active_box_key = box->key;
-    arena_clear(ik_state->box_scratch_arena);
-    IK_EditBoxScratchData *scratch_data = push_array(ik_state->box_scratch_arena, IK_EditBoxScratchData, 1);
-    // TODO(Next): revisit this
-    scratch_data->mark.line = 1;
-    scratch_data->mark.column = 1;
-    // TODO(Next): to be fixed
-    // scratch_data->cursor.line = box->display_lines.node_count;
-    // scratch_data->cursor.column = box->display_lines.last.string.size;
-    box->scratch_data = scratch_data;
-  }
-
-  // TODO(Next): to be deleted
-  // testing
-  {
-    {
-      String8 string = str8_lit("123456");
-      TxtRng rng = {0};
-      rng.min = (TxtPt){1, 1};
-      rng.max = (TxtPt){1, 6};
-      Rng1U64 range = ik_replace_range_from_txtrng(string, rng);
-      AssertAlways(range.min == 0);
-      AssertAlways(range.max == 5);
-    }
-
-    {
-      String8 string = str8_lit("123456");
-      TxtRng rng = {0};
-      rng.min = (TxtPt){1, 2};
-      rng.max = (TxtPt){1, 3};
-      Rng1U64 range = ik_replace_range_from_txtrng(string, rng);
-      AssertAlways(range.min == 1);
-      AssertAlways(range.max == 2);
-    }
-
-    {
-      String8 string = str8_lit("123456");
-      TxtRng rng = {0};
-      rng.min = (TxtPt){1, 1};
-      rng.max = (TxtPt){1, 1};
-      Rng1U64 range = ik_replace_range_from_txtrng(string, rng);
-      AssertAlways(range.min == 0);
-      AssertAlways(range.max == 0);
-    }
-
-    {
-      String8 string = str8_lit("123\n456");
-      TxtRng rng = {0};
-      rng.min = (TxtPt){1, 1};
-      rng.max = (TxtPt){2, 4};
-      Rng1U64 range = ik_replace_range_from_txtrng(string, rng);
-      AssertAlways(range.min == 0);
-      AssertAlways(range.max == 7);
-    }
-  }
-
-  // take navigation actions for editing
   if(is_focus_active)
   {
     Temp scratch = scratch_begin(0,0);
@@ -2436,25 +2366,18 @@ IK_BOX_CUSTOM_UPDATE(ik_edit_box_update)
       {
         evt->kind = UI_EventKind_Text;
         evt->string = str8_lit("\n");
-        // TODO(Next): we could change delta here or not
       }
 
       // don't consume anything that doesn't fit a single|multi-line's operations
       if((evt->kind != UI_EventKind_Edit && evt->kind != UI_EventKind_Navigate && evt->kind != UI_EventKind_Text)) { continue; }
 
       // map this action to an TxtOp
-      UI_TxtOp op = ik_multi_line_txt_op_from_event(scratch.arena, &n->v, box->string, box->display_lines, *cursor, *mark);
+      UI_TxtOp op = ik_multi_line_txt_op_from_event(scratch.arena, &n->v, box->string, *cursor, *mark);
 
       // perform replace range
       if(!txt_pt_match(op.range.min, op.range.max) || op.replace.size != 0)
       {
-        printf("range_min: %lu %lu\n", op.range.min.line, op.range.min.column);
-        printf("range_max: %lu %lu\n", op.range.max.line, op.range.max.column);
-        Rng1U64 range = ik_replace_range_from_txtrng(box->string, op.range);
-        printf("replace range: %lu %lu\n", range.min, range.max);
-        // TODO(Next): not ideal, just for testing, we can create out own ui_push_string_replace_range
-        // String8 new_string = ui_push_string_replace_range(scratch.arena, box->string, r1s64(op.range.min.column, op.range.max.column), op.replace);
-        String8 new_string = ui_push_string_replace_range(scratch.arena, box->string, r1s64(range.min+1, range.max+1), op.replace);
+        String8 new_string = ui_push_string_replace_range(scratch.arena, box->string, r1s64(op.range.min.column, op.range.max.column), op.replace);
         ik_box_equip_display_string(box, new_string);
       }
 
@@ -2468,8 +2391,13 @@ IK_BOX_CUSTOM_UPDATE(ik_edit_box_update)
     scratch_end(scratch);
   }
 
+  ////////////////////////////////
   // rendering
+
+  TxtPt mouse_pt = {1, 1};
+  Vec2F32 text_bounds = {0};
   {
+    F32 best_mouse_offset = inf32();
     F32 advance_x = 0;
     F32 advance_y = 0;
     F32 x = box->fixed_rect.p0.x;
@@ -2477,29 +2405,33 @@ IK_BOX_CUSTOM_UPDATE(ik_edit_box_update)
 
     Rng2F32 mark_rect ={0};
     Rng2F32 cursor_rect ={0};
+    TxtRng selection_rng = is_focus_active ? txt_rng(*cursor, *mark) : (TxtRng){0};
+    F32 font_size_scale = box->font_size / (F32)M_1;
 
-    F32 font_size_scale = font_size / M_1;
-    // TODO(Next): change i to line_index for better clarity: 
-    for(U64 i = 0; i < box->display_lines.node_count; i++)
+    U64 c_index = 0;
+    for(U64 line_index = 0; line_index < box->display_lines.node_count; line_index++)
     {
       // one line
-      D_FancyRunList *fruns = &box->display_line_fruns[i];
+      D_FancyRunList *fruns = &box->display_line_fruns[line_index];
       for(D_FancyRunNode *n = fruns->first; n != 0; n = n->next)
       {
         D_FancyRun run = n->v;
         Vec2F32 line_run_dim = scale_2f32(run.run.dim, font_size_scale);
+        text_bounds.x = Max(text_bounds.x, line_run_dim.x);
+        text_bounds.y += line_run_dim.y;
 
         F_Piece *piece_first = run.run.pieces.v;
         F_Piece *piece_opl = run.run.pieces.v + n->v.run.pieces.count;
 
         F32 line_x = x;
         F32 line_y = y + run.run.ascent*font_size_scale;;
-        Rng2F32 line_rect = {x, y, x+line_run_dim.x, y+line_run_dim.y};
         Rng2F32 line_cursor = {x,y,x,y+line_run_dim.y};
+        // Rng2F32 line_rect = {x, y, x+line_run_dim.x, y+line_run_dim.y};
+        B32 mouse_in_line_bounds = ik_state->mouse_in_world.y > y && ik_state->mouse_in_world.y < (y+line_run_dim.y);
 
-        U64 column = 0;
-        for(F_Piece *piece = piece_first; piece < piece_opl; piece++, column++)
+        for(F_Piece *piece = piece_first; piece < piece_opl; piece++, c_index++)
         {
+          F32 this_advance_x = piece->advance*font_size_scale;
           // NOTE(k): piece rect already computed x offset
           Rng2F32 dst = r2f32p(piece->rect.x0*font_size_scale + line_x,
                                piece->rect.y0*font_size_scale + line_y,
@@ -2512,58 +2444,102 @@ IK_BOX_CUSTOM_UPDATE(ik_edit_box_update)
           AssertAlways(!r_handle_match(piece->texture, r_handle_zero()));
 
           // issue draw
-          // TODO(k): Space will have 0 extent, what heck?
-          if(size.x > 0 && size.y > 0)
+          // TODO(Next): Space will have 0 extent, what heck, fix this?
+          // if(size.x > 0 && size.y > 0)
+          // TODO(Next): how we handle space
+          B32 highlight = (c_index+1) >= selection_rng.min.column && (c_index+1) < selection_rng.max.column;
+          Rng2F32 parent_rect = {x+advance_x, y, x+advance_x+piece->advance*font_size_scale, y+line_run_dim.y};
+          IK_EditBoxTextRect text_rect = {parent_rect, dst, src, piece->texture, run.color, highlight};
+          darray_push(ik_frame_arena(), draw_data->text_rects, text_rect);
+
+          // TODO(Next): we have to handle \n, not pretty, fix it later
+          if(mark && mark->column == (c_index+1))     mark_rect = line_cursor;
+          if(cursor && cursor->column == (c_index+1)) cursor_rect = line_cursor;
+
+          // update mouse_pt if it's closer
+          // TODO:(Next): this won't work on empty line
+          if(mouse_in_line_bounds)
           {
-            IK_EditBoxTextRect text_rect = {dst, src, piece->texture, run.color};
-            darray_push(ik_frame_arena(), draw_data->text_rects, text_rect);
+            F32 dist_to_mouse = length_2f32(sub_2f32(ik_state->mouse_in_world, center_2f32(parent_rect)));
+            if(dist_to_mouse < best_mouse_offset)
+            {
+              // TODO(k): if we are handling unicode, we want the decode_size_offset too
+              best_mouse_offset = dist_to_mouse;
+              mouse_pt.column = abs_f32(ik_state->mouse_in_world.x-dst.x0) < abs_f32(ik_state->mouse_in_world.x-dst.x0-this_advance_x) ? c_index+1 : c_index+2;
+            }
           }
 
-          // TODO(Next): to be deleted
-          // else
-          // {
-          //   // TODO(Next): fix it
-          //   dst.x1 += font_size *font_size_scale;
-          //   dst.y1 += font_size *font_size_scale;
-          //   IK_EditBoxTextRect text_rect = {dst, src, piece->texture, run.color};
-          //   darray_push(ik_frame_arena(), draw_data->text_rects, text_rect);
-          // }
-
-          // TODO(Next)
-          if(mark && mark->line == (i+1) && mark->column == (column+1))
-          {
-            mark_rect = line_cursor;
-          }
-
-          if(cursor && cursor->line == (i+1) && cursor->column == (column+1))
-          {
-            cursor_rect = line_cursor;
-          }
-
-          advance_x += piece->advance*font_size_scale;
-          line_cursor.x1 += piece->advance*font_size_scale;
-          line_cursor.x0 += piece->advance*font_size_scale;
+          advance_x += this_advance_x;
+          line_cursor.x1 += this_advance_x;
+          line_cursor.x0 += this_advance_x;
         }
 
         // TODO(Next): we have to handle \n, not pretty, fix it later
-        if(mark && mark->line == (i+1) && mark->column == (column+1))
-        {
-          mark_rect = line_cursor;
-        }
-        if(cursor && cursor->line == (i+1) && cursor->column == (column+1))
-        {
-          cursor_rect = line_cursor;
-        }
+        if(mark && mark->column == (c_index+1))     mark_rect = line_cursor;
+        if(cursor && cursor->column == (c_index+1)) cursor_rect = line_cursor;
 
         advance_x = 0;
         advance_y += line_run_dim.y;
         y += line_run_dim.y;
       }
+
+      // has next line => inc c_index for \n
+      if(line_index < (box->display_lines.node_count-1)) c_index++;
     }
-    // draw_data->mark_rect = mark_rect;
-    draw_data->mark_rect = cursor_rect;
-    draw_data->cursor_rect = cursor_rect;
+
+    // TODO(Next): fix it
+    if(is_focus_active)
+    {
+      draw_data->mark_rect = mark_rect;
+      draw_data->cursor_rect = cursor_rect;
+    }
   }
+
+  ////////////////////////////////
+  // Update box rect base on text bounds
+
+  // TODO(Next): we shoudl query font ascent+descend+padding
+  box->rect_size.x = Max(text_bounds.x, box->font_size);
+  box->rect_size.y = Max(text_bounds.y, box->font_size);
+
+  ////////////////////////////////
+  // interaction
+
+  IK_Signal sig = box->sig;
+
+  // not focus active => doubleclicked or keyboard
+  if(!is_focus_active && sig.f&(IK_SignalFlag_DoubleClicked|IK_SignalFlag_KeyboardPressed))
+  {
+    ik_state->focus_hot_box_key = box->key;
+    ik_state->focus_active_box_key = box->key;
+
+    // select all text
+    mark->line = 1;
+    mark->column = 1;
+    cursor->line = 1;
+    cursor->column = box->string.size+1;
+    ik_kill_action();
+  }
+
+  // dragging => move cursor
+  if(is_focus_active && ik_dragging(sig))
+  {
+    if(ik_pressed(sig))
+    {
+      *mark = mouse_pt;
+    }
+    *cursor = mouse_pt;
+  }
+
+  // focus active and double clicked => select all
+  if(is_focus_active && sig.f&IK_SignalFlag_DoubleClicked)
+  {
+    *mark = txt_pt(1,1);
+    *cursor = txt_pt(1, box->string.size+1);
+    ik_kill_action();
+  }
+
+  box->hover_cursor = is_focus_active ? OS_Cursor_IBar : OS_Cursor_Pointer;
 }
 
 IK_BOX_CUSTOM_DRAW(ik_edit_box_draw)
@@ -2575,10 +2551,14 @@ IK_BOX_CUSTOM_DRAW(ik_edit_box_draw)
   {
     IK_EditBoxTextRect *text_rect = &draw_data->text_rects[i];
     d_img(text_rect->dst, text_rect->src, text_rect->tex, text_rect->color, 0,0,0);
-    // TODO(Next): debugging
-    d_rect(text_rect->dst, v4f32(0.1,0.1,0.1,0.1), 0,0.1,0);
+
+    if(text_rect->highlight)
+    {
+      d_rect(text_rect->parent_rect, v4f32(0,0,1,0.2), 0, 0, 0);
+    }
   }
 
+  // TODO(Next): fix this
   // draw mark & cursor
   F32 line_height = draw_data->cursor_rect.y1-draw_data->cursor_rect.y0;
   F32 cursor_thickness = line_height*0.05;
@@ -2588,8 +2568,8 @@ IK_BOX_CUSTOM_DRAW(ik_edit_box_draw)
   cursor_rect.x1 += cursor_thickness;
   mark_rect.x0 -= cursor_thickness;
   mark_rect.x1 += cursor_thickness;
-  // d_rect(draw_data->mark_rect, v4f32(0,0,1,0.5), 0, 0, 0);
-  d_rect(cursor_rect, v4f32(0,0,1,0.5), 0, 0, 0);
+  d_rect(cursor_rect, v4f32(0,0,1,0.5), cursor_thickness, 0, cursor_thickness*0.2);
+  d_rect(mark_rect, v4f32(0,1,0,0.5), cursor_thickness, 0, cursor_thickness*0.2);
 }
 
 internal IK_Box *
@@ -2612,6 +2592,8 @@ ik_edit_box(String8 string)
   box->disabled_t = 1.0;
   box->custom_draw = ik_edit_box_draw;
   box->custom_update = ik_edit_box_update;
+  box->cursor = txt_pt(1, string.size+1);
+  box->mark = box->cursor;
 
   if(string.size > 0)
   {
@@ -3264,20 +3246,18 @@ ik_ui_selection(void)
 //~ Text Operation Functions
 
 internal UI_TxtOp
-ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, String8List lines, TxtPt cursor, TxtPt mark)
+ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, TxtPt cursor, TxtPt mark)
 {
   TxtPt next_cursor = cursor;
   TxtPt next_mark = mark;
   TxtRng range = {0};
   String8 replace = {0};
   String8 copy = {0};
-  Vec2S32 delta = event->delta_2s32;
   UI_TxtOpFlags flags = 0;
-  U64 line_count = lines.node_count;
-  Temp scratch = scratch_begin(&arena,1);
+  Vec2S32 delta = event->delta_2s32;
 
-  // navigation
-  switch(event->delta_unit)
+  // Resolve high-lelvel delta into byte delta, based on unit
+  switch(event->delta_unit) 
   {
     default:{}break;
     case UI_EventDeltaUnit_Char:
@@ -3291,53 +3271,74 @@ ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, S
     }break;
     case UI_EventDeltaUnit_Line:
     {
-      // TODO(Next): this whole is not needed, we have clamp below
-      // String8Node *target_line_node = lines.first;
-      // for(U64 skipped = 0;
-      //     skipped < (cursor.line+delta.y) && target_line_node != 0;
-      //     skipped++, target_line_node = target_line_node->next);
+      char *first = (char*)string.str;
+      char *opl = (char*)(string.str+string.size);
+      char *curr = (char*)(string.str+cursor.column);
+      char *c = curr;
 
-      // if(target_line_node == 0)
-      // {
-      //   delta.y = 0;
-      // }
+      // skip to current line's head
+      for(; c > first && *(c-1) != '\n'; c--);
+      U64 curr_line_column = curr-c;
 
-      // if(target_line_node)
-      // {
-      //   // position column
-      //   U64 column = cursor.column + delta.x;
-      //   // TODO: it can refer to -1, the last line's \n
-      //   column = Clamp(1, column, target_line_node->string.size);
-      //   delta.x = column - cursor.column;
-      // }
+      // TODO(Next): finish it
+      if(delta.y < 0)
+      {
+        U64 linebreak_count = 0;
+        for(; c >= first && linebreak_count < 2; c--)
+        {
+          if(*c == '\n') linebreak_count++;
+        }
+        if(linebreak_count > 0) delta.x = (c-curr+curr_line_column+1);
+      }
+      else
+      {
+        // TODO(Next)
+      }
     }break;
     case UI_EventDeltaUnit_Whole:
+    case UI_EventDeltaUnit_Page: 
     {
-      // TODO(Next)
-      // U64 first_nonwhitespace_column = 1;
-    }break;
-    case UI_EventDeltaUnit_Page:
-    {
-      NotImplemented;
+      U64 first_nonwhitespace_column = 1;
+      for(U64 idx = 0; idx < string.size; idx++)
+      {
+        if(!char_is_space(string.str[idx]))
+        {
+          first_nonwhitespace_column = idx + 1;
+          break;
+        }
+      }
+      S64 home_dest_column = (first_nonwhitespace_column == cursor.column) ? 1 : first_nonwhitespace_column;
+      delta.x = (delta.x > 0) ? ((S64)string.size+1 - cursor.column) : (home_dest_column - cursor.column);
     }break;
   }
 
-  // form next cursor, TODO(Next): wtf
-  if(txt_pt_match(cursor, mark))
+  // Form next cursor
+  if(txt_pt_match(cursor,mark))
   {
     next_cursor.column += delta.x;
-    next_cursor.line += delta.y;
   }
+
   if(!(event->flags & UI_EventFlag_KeepMark))
   {
     next_mark = next_cursor;
   }
 
-  // copy
+  // Copying
+  if(event->flags & UI_EventFlag_Copy)
+  {
+    copy = str8_substr(string, r1u64(cursor.column-1, mark.column-1));
+    flags |= UI_TxtOpFlag_Copy;
+  }
 
-  // paste
+  // Pasting
+  if(event->flags & UI_EventFlag_Paste)
+  {
+    range = txt_rng(cursor, mark);
+    replace = os_get_clipboard_text(arena);
+    next_cursor = next_mark = txt_pt(cursor.line, cursor.column+replace.size);
+  }
 
-  // deletion
+  // Deletion
   if(event->flags & UI_EventFlag_Delete)
   {
     TxtPt new_pos = txt_pt_min(next_cursor, next_mark);
@@ -3346,58 +3347,25 @@ ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, S
     next_cursor = next_mark = new_pos;
   }
 
-  // insertion
+  // Insertion
   if(event->string.size != 0)
   {
     range = txt_rng(cursor, mark);
     replace = push_str8_copy(arena, event->string);
-    U64 replace_linefeed_count = 0;
-    U64 replace_last_line_size = 0;
-    {
-      for(U64 i = 0; i < replace.size; i++)
-      {
-        if(replace.str[i] == '\n')
-        {
-          replace_linefeed_count++;
-          replace_last_line_size = 0;
-        }
-        else
-        {
-          replace_last_line_size++;
-        }
-      }
-    }
-
-    // TODO(Next): this is not right
-    next_cursor = next_mark = txt_pt(range.min.line+replace_linefeed_count, range.min.column - range.min.column*(replace_linefeed_count>0) + replace_last_line_size);
-    // next_cursor = next_mark = txt_pt(range.min.line, range.min.column+event->string.size);
+    next_cursor = next_mark = txt_pt(range.min.line, range.min.column+event->string.size);
   }
 
-  // determine if this event should be taken, base on bounds of cursor 
+  //- rjf: determine if this event should be taken, based on bounds of cursor
   {
-    // TODO(Next): wrong
-    if(next_cursor.column > string.size + 1 || next_cursor.column < 1 ||
-       next_cursor.line > line_count  || next_cursor.line < 1)
+    if(next_cursor.column > string.size + 1 || 1 > next_cursor.column || event->delta_2s32.y != 0)
     {
       flags |= UI_TxtOpFlag_Invalid;
     }
-
-    next_cursor.line = Clamp(1, next_cursor.line, line_count);
-    next_mark.line = Clamp(1, next_cursor.line, line_count);
-
-    // skip to the current line
-    // TODO(Next): this is wrong, we could insert paste new line here
-    String8Node *next_cursor_line_node = lines.first;
-    for(U64 i = 0; i < (next_cursor.line-1); i++, next_cursor_line_node = next_cursor_line_node->next);
-    String8 next_line_string = next_cursor_line_node->string;
-
-    // TODO(Next): this is multi line, we can't just add replace.size here, we may need to split it again, jesus!!!
-    // TODO(Next): consider \n, we may need to add 1 again
-    next_cursor.column = Clamp(1, next_cursor.column, next_line_string.size + replace.size + 1);
-    next_mark.column = Clamp(1, next_cursor.column, next_line_string.size + replace.size + 1);
+    next_cursor.column = Clamp(1, next_cursor.column, string.size + replace.size + 1);
+    next_mark.column   = Clamp(1, next_mark.column, string.size + replace.size + 1);
   }
 
-  // build & fill info
+  // Build+fill
   UI_TxtOp op = {0};
   op.flags = flags;
   op.replace = replace;
@@ -3405,7 +3373,6 @@ ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, S
   op.range = range;
   op.cursor = next_cursor;
   op.mark = next_mark;
-  scratch_end(scratch);
   return op;
 }
 
