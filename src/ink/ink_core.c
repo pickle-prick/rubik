@@ -40,11 +40,14 @@ return old_value;
 
 #include "generated/ink.meta.c"
 
+#define M_1 200
+
 internal void
 ik_ui_draw()
 {
   Temp scratch = scratch_begin(0,0);
   F32 box_squish_epsilon = 0.001f;
+  d_push_viewport(ik_state->window_dim);
 
   // DEBUG mouse
   if(0)
@@ -82,6 +85,7 @@ ik_ui_draw()
       Mat3x3F32 scale_xform = make_scale_3x3f32(v2f32(1-box->squish, 1-box->squish));
       Mat3x3F32 origin2box_xform = make_translate_3x3f32(v2f32(box->rect.x0 + box_dim.x/2 - anchor_off.x, box->rect.y0 - anchor_off.y));
       Mat3x3F32 xform = mul_3x3f32(origin2box_xform, mul_3x3f32(scale_xform, box2origin_xform));
+      // TODO: we may need to tranpose this
       d_push_xform2d(xform);
       d_push_tex2d_sample_kind(R_Tex2DSampleKind_Linear);
     }
@@ -391,9 +395,9 @@ ik_ui_draw()
     }
     box = rec.next;
   }
+  d_pop_viewport();
   scratch_end(scratch);
 }
-
 
 /////////////////////////////////
 //~ Basic Type Functions
@@ -503,6 +507,7 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
     ik_state->window_rect = os_client_rect_from_window(os_wnd, 1);
     ik_state->window_dim = dim_2f32(ik_state->window_rect);
     ik_state->drag_state_arena = arena_alloc();
+    ik_state->box_scratch_arena = arena_alloc();
     ik_state->tool = IK_ToolKind_Selection;
 
     // frame arena
@@ -842,6 +847,24 @@ ik_frame(void)
       ui_evt.delta_2s32 = v2s32(1,0);
     }
 
+    // k
+    if(ui_evt.key == OS_Key_Up && ui_evt.kind == UI_EventKind_Press)
+    {
+      ui_evt.kind       = UI_EventKind_Navigate;
+      ui_evt.flags      = 0;
+      ui_evt.delta_unit = UI_EventDeltaUnit_Line;
+      ui_evt.delta_2s32 = v2s32(0,-1);
+    }
+
+    // k
+    if(ui_evt.key == OS_Key_Down && ui_evt.kind == UI_EventKind_Press)
+    {
+      ui_evt.kind       = UI_EventKind_Navigate;
+      ui_evt.flags      = 0;
+      ui_evt.delta_unit = UI_EventDeltaUnit_Line;
+      ui_evt.delta_2s32 = v2s32(0,1);
+    }
+
     UI_EventNode *evt_node = ui_event_list_push(ui_build_arena(), &ui_events, &ui_evt);
 
     // TODO(k): we may want to handle this somewhere else
@@ -965,6 +988,7 @@ ik_frame(void)
   //~ Main scene building
 
   // unpack ctx
+  // TODO(Next): bug here, if there is any focus active box, we don't want to capture key press
   B32 space_is_down = os_key_is_down(OS_Key_Space);
   // TODO(k): bug, won't return the right result 
   // B32 middle_is_down = os_key_is_down(OS_Key_MiddleMouseButton);
@@ -1081,7 +1105,7 @@ ik_frame(void)
     camera->rect.x1 += ik_state->animation.fast_rate * (camera->target_rect.x1-camera->rect.x1);
     camera->rect.y0 += ik_state->animation.fast_rate * (camera->target_rect.y0-camera->rect.y0);
     camera->rect.y1 += ik_state->animation.fast_rate * (camera->target_rect.y1-camera->rect.y1);
-    camera->zoom_t += ik_state->animation.slow_rate * ((F32)is_zooming-camera->zoom_t);
+    camera->zoom_t  += ik_state->animation.slow_rate * ((F32)is_zooming-camera->zoom_t);
   }
 
   ////////////////////////////////
@@ -1095,145 +1119,167 @@ ik_frame(void)
   };
 
   {
-    IK_Box *root = frame->root;
-    IK_Box *box = root;
-    while(box != 0)
+    IK_Box *roots[2] = {frame->root, frame->blank};
+    for(U64 i = 0; i < ArrayCount(roots); i++)
     {
-      IK_BoxRec rec = ik_box_rec_df_pre(box, frame->root);
-      IK_Box *parent = box->parent;
-
-      // update xform (in TRS order)
-      Vec2F32 rect_size_half = scale_2f32(box->rect_size, 0.5);
-      Vec3F32 center = {box->position.x+rect_size_half.x, box->position.y+rect_size_half.y, 0.0};
-      Mat4x4F32 fixed_xform = mat_4x4f32(1.0);
-      Mat4x4F32 scale_mat = make_scale_4x4f32(v3f32(box->scale.x, box->scale.y, 1.0));
-      Mat4x4F32 rotation_mat = mat_4x4f32_from_quat_f32(make_rotate_quat_f32(v3f32(0,0,-1), box->rotation));
-      Mat4x4F32 translation_mat = make_translate_4x4f32(center);
-      fixed_xform = mul_4x4f32(scale_mat, fixed_xform);
-      fixed_xform = mul_4x4f32(rotation_mat, fixed_xform);
-      fixed_xform = mul_4x4f32(translation_mat, fixed_xform);
-      if(parent)
+      IK_Box *root = roots[i];
+      IK_Box *box = root;
+      while(box != 0)
       {
-        fixed_xform = mul_4x4f32(parent->fixed_xform, fixed_xform);
-      }
+        IK_BoxRec rec = ik_box_rec_df_post(box, root);
+        IK_Box *parent = box->parent;
+        IK_Signal sig = ik_signal_from_box(box);
 
-      // update rect
-      Vec4F32 p0 = {-rect_size_half.x, -rect_size_half.y, 0.0, 1.0};
-      Vec4F32 p1 = {rect_size_half.x, rect_size_half.y, 0.0, 1.0};
-      p0 = transform_4x4f32(fixed_xform, p0);
-      p1 = transform_4x4f32(fixed_xform, p1);
-      Rng2F32 fixed_rect = {0};
-      fixed_rect.x0 = p0.x;
-      fixed_rect.y0 = p0.y;
-      fixed_rect.x1 = p1.x;
-      fixed_rect.y1 = p1.y;
-      // TODO: don't keep changing this, only at the start of ratio-fixed resizing
-      Vec2F32 fixed_rect_dim = dim_2f32(fixed_rect);
-      box->ratio = fixed_rect_dim.x/fixed_rect_dim.y;
-
-      IK_Signal sig = ik_signal_from_box(box);
-      // update artifacts
-      // TODO(k): we don't really need xform here
-      box->fixed_xform = fixed_xform;
-      box->fixed_rect = fixed_rect;
-      box->fixed_size = dim_2f32(box->fixed_rect);
-      box->sig = sig;
-
-      if(box->flags & IK_BoxFlag_DrawText)
-      {
-        // unpack font settings
-        F_Tag font = box->font;
-        F32 font_size = box->font_size; // in world coordinate
-        IK_ColorCode text_color_code = (box->flags & IK_BoxFlag_DrawTextWeak ? IK_ColorCode_TextWeak : IK_ColorCode_Text);
-        F_RasterFlags text_raster_flags = box->text_raster_flags;
-        F32 tab_size = box->tab_size;
-        F32 text_padding = box->text_padding;
-
-        // TODO(k): we may need to add another flags to indicate rect is growing as text growing
-        // TODO(k): move this into dedicated update function, some box may requiring text wraping
-        // split string by \n
-        char *by = "\n";
-        String8List lines = str8_split(ik_frame_arena(), box->string, (U8*)by, 1, StringSplitFlag_KeepEmpties);
-
-        Temp scratch = scratch_begin(0,0);
-        D_FancyStringList fancy_strings = {0};
-        for(String8Node *n = lines.first; n != 0; n = n->next)
+        if(box->flags & IK_BoxFlag_FitViewport)
         {
-          String8 line = n->string;
-
-          D_FancyStringNode *fancy_string_n = push_array(scratch.arena, D_FancyStringNode, 1);
-          fancy_string_n->next = 0;
-          fancy_string_n->v.font = font;
-          fancy_string_n->v.string = line;
-          fancy_string_n->v.color = box->palette->colors[text_color_code];
-          fancy_string_n->v.size = font_size;
-          fancy_string_n->v.underline_thickness = 0;
-          fancy_string_n->v.strikethrough_thickness = 0;
-
-          SLLQueuePush(fancy_strings.first, fancy_strings.last, fancy_string_n);
-          fancy_strings.node_count++;
-          fancy_strings.total_size += line.size;
+          box->position = camera->rect.p0;
+          box->rect_size = dim_2f32(camera->rect);
+          // TODO: maybe reset scale, rotation?
         }
 
-        // TODO: we don't need to store this
-        box->display_string_runs  =
-          d_fancy_run_list_from_fancy_string_list(ik_frame_arena(),
-                                                  tab_size, text_raster_flags, &fancy_strings);
-
-        scratch_end(scratch);
-      }
-
-      // dragging
-      if((sig.f&IK_SignalFlag_LeftDragging) && box != frame->root)
-      {
-        if(sig.f & IK_SignalFlag_Pressed)
+        // update xform (in TRS order)
+        Vec2F32 rect_size_half = scale_2f32(box->rect_size, 0.5);
+        Vec3F32 center = {box->position.x+rect_size_half.x, box->position.y+rect_size_half.y, 0.0};
+        Mat4x4F32 fixed_xform = mat_4x4f32(1.0);
+        Mat4x4F32 scale_mat = make_scale_4x4f32(v3f32(box->scale.x, box->scale.y, 1.0));
+        // TODO: maybe just use euler rotation, quat may be too slow
+        Mat4x4F32 rotation_mat = mat_4x4f32_from_quat_f32(make_rotate_quat_f32(v3f32(0,0,-1), box->rotation));
+        Mat4x4F32 translation_mat = make_translate_4x4f32(center);
+        fixed_xform = mul_4x4f32(scale_mat, fixed_xform);
+        fixed_xform = mul_4x4f32(rotation_mat, fixed_xform);
+        fixed_xform = mul_4x4f32(translation_mat, fixed_xform);
+        if(parent)
         {
-          IK_BoxDrag drag = {box->position, ik_state->mouse_in_world};
-          ik_store_drag_struct(&drag);
+          fixed_xform = mul_4x4f32(parent->fixed_xform, fixed_xform);
         }
-        else
+
+        // update rect
+        Vec4F32 p0 = {-rect_size_half.x, -rect_size_half.y, 0.0, 1.0};
+        Vec4F32 p1 = {rect_size_half.x, rect_size_half.y, 0.0, 1.0};
+        p0 = transform_4x4f32(fixed_xform, p0);
+        p1 = transform_4x4f32(fixed_xform, p1);
+        Rng2F32 fixed_rect = {0};
+        fixed_rect.x0 = p0.x;
+        fixed_rect.y0 = p0.y;
+        fixed_rect.x1 = p1.x;
+        fixed_rect.y1 = p1.y;
+        // TODO: don't keep changing this, only at the start of ratio-fixed resizing
+        Vec2F32 fixed_rect_dim = dim_2f32(fixed_rect);
+        box->ratio = fixed_rect_dim.x/fixed_rect_dim.y;
+
+        // update artifacts
+        // TODO(k): we don't really need xform here
+        box->fixed_xform = fixed_xform;
+        box->fixed_rect = fixed_rect;
+        box->fixed_size = dim_2f32(box->fixed_rect);
+        box->sig = sig;
+
+        if((box->flags&IK_BoxFlag_DrawText) && (box->flags&IK_BoxFlag_HasDisplayString))
         {
-          IK_BoxDrag drag = *ik_get_drag_struct(IK_BoxDrag);
-          Vec2F32 delta = sub_2f32(ik_state->mouse_in_world, drag.drag_start_mouse_in_world);
-          Vec2F32 position = add_2f32(drag.drag_start_position, delta);
-          box->position = position;
+          Temp scratch = scratch_begin(0,0);
+          IK_ColorCode text_color_code = (box->flags & IK_BoxFlag_DrawTextWeak ? IK_ColorCode_TextWeak : IK_ColorCode_Text);
+          // push line runs
+          char *by = "\n";
+          String8List lines = str8_split(ik_frame_arena(), box->string, (U8*)by, 1, StringSplitFlag_KeepEmpties);
+          D_FancyRunList *line_fruns = push_array(ik_frame_arena(), D_FancyRunList, lines.node_count);
+
+          U64 line_index = 0;
+          for(String8Node *n = lines.first; n != 0; n = n->next, line_index++)
+          {
+            String8 line = n->string;
+
+            D_FancyStringList fancy_strings = {0};
+
+            D_FancyString fstr = {0};
+            fstr.font = box->font;
+            fstr.string = line;
+            fstr.color = box->palette->colors[text_color_code];
+            fstr.size = M_1;
+            fstr.underline_thickness = 0;
+            fstr.strikethrough_thickness = 0;
+            d_fancy_string_list_push(scratch.arena, &fancy_strings, &fstr);
+
+            // TODO(Next): TLDR, don't push a '\n', delete those lines if confirmed to be not usefull
+            // push '\n'
+            // if(n != lines.last)
+            // {
+            //   D_FancyString fstr = {0};
+            //   fstr.font = box->font;
+            //   fstr.string = str8_lit("\n");
+            //   fstr.color = box->palette->colors[text_color_code];
+            //   fstr.size = M_1;
+            //   fstr.underline_thickness = 0;
+            //   fstr.strikethrough_thickness = 0;
+            //   d_fancy_string_list_push(scratch.arena, &fancy_strings, &fstr);
+            // }
+
+            line_fruns[line_index] = d_fancy_run_list_from_fancy_string_list(ik_frame_arena(), box->tab_size, box->text_raster_flags, &fancy_strings);
+            scratch_end(scratch);
+          }
+
+          // fill
+          box->display_lines = lines;
+          box->display_line_fruns = line_fruns;
         }
+
+        // dragging
+        if((sig.f&IK_SignalFlag_LeftDragging) && box != frame->root)
+        {
+          if(sig.f & IK_SignalFlag_Pressed)
+          {
+            IK_BoxDrag drag = {box->position, ik_state->mouse_in_world};
+            ik_store_drag_struct(&drag);
+          }
+          else
+          {
+            IK_BoxDrag drag = *ik_get_drag_struct(IK_BoxDrag);
+            Vec2F32 delta = sub_2f32(ik_state->mouse_in_world, drag.drag_start_mouse_in_world);
+            Vec2F32 position = add_2f32(drag.drag_start_position, delta);
+            box->position = position;
+          }
+        }
+
+        // animation (hot_t, ...)
+        B32 is_hot = ik_key_match(box->key, ik_state->hot_box_key);
+        B32 is_active = ik_key_match(box->key, ik_state->active_box_key[IK_MouseButtonKind_Left]);
+        B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key);
+        B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
+        B32 is_disabled = box->flags&IK_BoxFlag_Disabled;
+
+        box->hot_t += ik_state->animation.fast_rate * ((F32)is_hot-box->hot_t);
+        box->active_t += ik_state->animation.fast_rate * ((F32)is_active-box->active_t);
+        box->focus_hot_t += ik_state->animation.fast_rate * ((F32)is_focus_hot-box->focus_hot_t);
+        box->focus_active_t += ik_state->animation.fast_rate * ((F32)is_focus_active-box->focus_active_t);
+        box->disabled_t += ik_state->animation.fast_rate * ((F32)is_disabled-box->disabled_t);
+
+
+        F32 epsilon = 1e-2;
+        box->hot_t = abs_f32(is_hot-box->hot_t) < epsilon ? (F32)is_hot : box->hot_t;
+        box->active_t = abs_f32(is_hot-box->active_t) < epsilon ? (F32)is_hot : box->active_t;
+        box->focus_hot_t = abs_f32(is_hot-box->focus_hot_t) < epsilon ? (F32)is_hot : box->focus_hot_t;
+        box->focus_active_t = abs_f32(is_hot-box->focus_active_t) < epsilon ? (F32)is_hot : box->focus_active_t;
+        box->disabled_t = abs_f32(is_hot-box->disabled_t) < epsilon ? (F32)is_hot : box->disabled_t;
+
+        // custom update
+        if(box->custom_update)
+        {
+          box->custom_update(box);
+        }
+
+        box = rec.next;
       }
-
-      // animation (hot_t, ...)
-      B32 is_hot = ik_key_match(box->key, ik_state->hot_box_key);
-      B32 is_active = ik_key_match(box->key, ik_state->active_box_key[IK_MouseButtonKind_Left]);
-      B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key);
-      B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
-      B32 is_disabled = box->flags&IK_BoxFlag_Disabled;
-
-      box->hot_t += ik_state->animation.fast_rate * ((F32)is_hot-box->hot_t);
-      box->active_t += ik_state->animation.fast_rate * ((F32)is_active-box->active_t);
-      box->focus_hot_t += ik_state->animation.fast_rate * ((F32)is_focus_hot-box->focus_hot_t);
-      box->focus_active_t += ik_state->animation.fast_rate * ((F32)is_focus_active-box->focus_active_t);
-      box->disabled_t += ik_state->animation.fast_rate * ((F32)is_disabled-box->disabled_t);
-
-
-      F32 epsilon = 1e-2;
-      box->hot_t = abs_f32(is_hot-box->hot_t) < epsilon ? (F32)is_hot : box->hot_t;
-      box->active_t = abs_f32(is_hot-box->active_t) < epsilon ? (F32)is_hot : box->active_t;
-      box->focus_hot_t = abs_f32(is_hot-box->focus_hot_t) < epsilon ? (F32)is_hot : box->focus_hot_t;
-      box->focus_active_t = abs_f32(is_hot-box->focus_active_t) < epsilon ? (F32)is_hot : box->focus_active_t;
-      box->disabled_t = abs_f32(is_hot-box->disabled_t) < epsilon ? (F32)is_hot : box->disabled_t;
-
-      // custom update
-      if(box->custom_update)
-      {
-        box->custom_update(box);
-      }
-
-      box = rec.next;
     }
+
+    /////////////////////////////////
+    //~ Blank box update and interaction
+
+    IK_Box *blank = frame->blank;
 
     /////////////////////////////////
     //~ Mouse pressed on blank -> unset focus_hot & focus_active
 
-    if(root->sig.f&IK_SignalFlag_LeftPressed)
+    // TODO(Next): broken now, since we are not using pixel id anymore
+    if(blank->sig.f&IK_SignalFlag_LeftPressed)
     {
       ik_state->focus_hot_box_key = ik_key_zero();
       ik_state->focus_active_box_key = ik_key_zero();
@@ -1276,7 +1322,7 @@ ik_frame(void)
     /////////////////////////////////
     //~ Hot keys
 
-    if(os_window_is_focused(ik_state->os_wnd))
+    if(os_window_is_focused(ik_state->os_wnd) && ik_key_match(ik_state->focus_active_box_key, ik_key_zero()))
     {
       if(ui_key_press(0, OS_Key_H))
       {
@@ -1307,9 +1353,12 @@ ik_frame(void)
     /////////////////////////////////
     //~ Edit string (Double clicked on the blank)
 
-    if(root->sig.f&IK_SignalFlag_LeftDoubleClicked)
+    // TODO(Next): broken for now, since we are not using pixel id anymore
+    if(blank->sig.f&IK_SignalFlag_LeftDoubleClicked)
     {
       IK_Box *box = ik_edit_box(str8_lit("r2f32p(piece->rect.x0+x, piece->rect.y0+y, piece->rect.x1+x, piece->rect.y1+y);\nTest"));
+      // TODO(Next): not ideal, fix it later
+      box->draw_frame_index = ik_state->frame_index+1;
       ik_state->focus_hot_box_key = box->key;
       ik_state->focus_active_box_key = box->key;
     }
@@ -1355,8 +1404,10 @@ ik_frame(void)
           F32 width_in_world = default_screen_width * ik_state->world_to_screen_ratio.x;
           F32 height_in_world = width_in_world / ratio;
 
-          IK_Box *box = ik_image(0, ik_state->mouse_in_world, v2f32(width_in_world, height_in_world), tex_handle);
+          IK_Box *box = ik_image(IK_BoxFlag_DrawBorder, ik_state->mouse_in_world, v2f32(width_in_world, height_in_world), tex_handle, v2f32((F32)x, (F32)y));
           box->disabled_t = 1.0;
+          // TODO(Next): not ideal, fix it later
+          box->draw_frame_index = ik_state->frame_index+1;
         }
         stbi_image_free(data);
       }
@@ -1409,72 +1460,77 @@ ik_frame(void)
   /////////////////////////////////
   //~ Main scene drawing
 
-  // unpack camera settings
-  Rng2F32 viewport = ik_state->window_rect;
-  Mat4x4F32 view_mat = mat_4x4f32(1.0);
-
   // start geo2d pass
   ik_state->bucket_geo2d = d_bucket_make();
 
   // recursive drawing
   D_BucketScope(ik_state->bucket_geo2d)
   {
-    d_geo2d_begin(viewport, view_mat, ik_state->proj_mat);
+    // unpack camera settings
+    Vec2F32 viewport = dim_2f32(camera->rect);
+    Mat3x3F32 xform2d = make_translate_3x3f32(negate_2f32(camera->rect.p0));
+
+    d_push_viewport(viewport);
+    // TODO: what heck?
+    d_push_xform2d(transpose_3x3f32(xform2d));
+
     IK_Box *box = frame->root;
     while(box != 0)
     {
       IK_BoxRec rec = ik_box_rec_df_pre(box, frame->root);
 
-      // TODO: we may want to use the rect render pass mainly
-
-      // draw rect
-      if(box->flags & IK_BoxFlag_DrawRect)
+      if(ik_state->frame_index >= box->draw_frame_index)
       {
         Rng2F32 dst = box->fixed_rect;
         dst.p1 = mix_2f32(v2f32(0,0), dst.p1, 1.0-box->disabled_t);
 
-        Rng2F32 src = {0,0,1,1};
-        IK_DrawNode *dn = ik_drawlist_push_rect(ik_frame_arena(), ik_frame_drawlist(), dst, src);
-        Mat4x4F32 xform = mat_4x4f32(1.0);
-        Mat4x4F32 xform_inv = mat_4x4f32(1.0);
+        // draw border
+        if(box->flags & IK_BoxFlag_DrawBorder)
+        {
+          Vec4F32 border_clr = box->palette->colors[IK_ColorCode_Border];
+          // TODO(Next): scale this px values using zoom
+          R_Rect2DInst *inst = d_rect(pad_2f32(dst, 6.0f), border_clr, 0, 1.0f, 1.0f);
+        }
 
-        R_Mesh2DInst *inst = d_sprite(dn->vertices, dn->indices, dn->vertices_buffer_offset, dn->indices_buffer_offset, dn->indice_count, dn->topology, dn->polygon, 0, r_handle_zero(), 1.);
-        inst->key = box->key.u64[0];
-        inst->xform = xform;
-        inst->xform_inv = xform_inv;
-        inst->has_texture = 0;
-        inst->has_color = 1;
-        inst->color = box->color;
-        inst->draw_edge = 1;
-      }
-      
-      // draw image
-      if(box->flags & IK_BoxFlag_DrawImage)
-      {
-        Rng2F32 dst = box->fixed_rect;
-        dst.p1 = mix_2f32(v2f32(0,0), dst.p1, 1.0-box->disabled_t);
-        Rng2F32 src = {0,0,1,1};
-        IK_DrawNode *dn = ik_drawlist_push_rect(ik_frame_arena(), ik_frame_drawlist(), dst, src);
-        Mat4x4F32 xform = mat_4x4f32(1.0);
-        Mat4x4F32 xform_inv = mat_4x4f32(1.0);
+        // draw rect
+        if(box->flags & IK_BoxFlag_DrawRect)
+        {
 
-        R_Mesh2DInst *inst = d_sprite(dn->vertices, dn->indices, dn->vertices_buffer_offset, dn->indices_buffer_offset, dn->indice_count, dn->topology, dn->polygon, 0, box->albedo_tex, 1.);
-        inst->key = box->key.u64[0];
-        inst->xform = xform;
-        inst->xform_inv = xform_inv;
-        inst->has_texture = 1;
-        inst->has_color = 0;
-        inst->color = box->color;
-        inst->draw_edge = 1;
-      }
+          R_Rect2DInst *inst = d_rect(dst, box->color, 0, 0, 0);
+        }
+        
+        // draw image
+        if(box->flags & IK_BoxFlag_DrawImage)
+        {
+          Rng2F32 src = {0,0, box->albedo_tex_size.x, box->albedo_tex_size.y};
+          // R_Rect2DInst *inst = d_rect(dst, v4f32(1,1,1,1), 0, 0, 0);
+          R_Rect2DInst *inst = d_img(dst, src, box->albedo_tex, v4f32(1,1,1,1), 0, 0, 0);
 
-      if(box->custom_draw)
-      {
-        box->custom_draw(box, box->custom_draw_user_data);
+          // IK_DrawNode *dn = ik_drawlist_push_rect(ik_frame_arena(), ik_frame_drawlist(), dst, src);
+          // Mat4x4F32 xform = mat_4x4f32(1.0);
+          // Mat4x4F32 xform_inv = mat_4x4f32(1.0);
+
+          // R_Mesh2DInst *inst = d_sprite(dn->vertices, dn->indices, dn->vertices_buffer_offset, dn->indices_buffer_offset, dn->indice_count, dn->topology, dn->polygon, 0, box->albedo_tex, 1.);
+          // inst->key = box->key.u64[0];
+          // inst->xform = xform;
+          // inst->xform_inv = xform_inv;
+          // inst->has_texture = 1;
+          // inst->has_color = 0;
+          // inst->color = box->color;
+          // inst->draw_edge = 1;
+        }
+
+        if(box->custom_draw)
+        {
+          box->custom_draw(box, box->custom_draw_user_data);
+        }
       }
 
       box = rec.next;
     }
+
+    d_pop_viewport();
+    d_pop_xform2d();
   }
 
   /////////////////////////////////
@@ -1526,6 +1582,7 @@ ik_frame(void)
   /////////////////////////////////
   //~ Submit work
 
+  // TODO: maybe we don't need dynamic drawlist
   // Build frame drawlist before we submit draw bucket
   ProfScope("draw drawlist")
   {
@@ -1925,14 +1982,6 @@ ik_drawlist_push_rect(Arena *arena, IK_DrawList *drawlist, Rng2F32 dst, Rng2F32 
 /////////////////////////////////
 //~ String Block Functions
 
-internal void
-ik_string_block_release(String8 string)
-{
-  IK_Frame *frame = ik_top_frame();
-  IK_StringBlock *block = ptr_from_fat(string.str);
-  DLLPushFront_NP(frame->first_free_string_block, frame->last_free_string_block, block, free_next, free_prev);
-}
-
 internal String8
 ik_push_str8_copy(String8 src)
 {
@@ -1956,8 +2005,8 @@ ik_push_str8_copy(String8 src)
   {
     block = push_array(arena, IK_StringBlock, 1);
     // TODO: we can get away with no-zero
-    block->p = push_array_fat_sized(arena, required_bytes, block);
-    block->cap_bytes = required_bytes;
+    block->p = push_array_fat_sized(arena, required_bytes*2, block);
+    block->cap_bytes = required_bytes*2;
   }
 
   ret.str = block->p;
@@ -1965,6 +2014,15 @@ ik_push_str8_copy(String8 src)
   MemoryCopy(ret.str, src.str, src.size);
   ret.str[ret.size] = 0;
   return ret;
+}
+
+
+internal void
+ik_string_block_release(String8 string)
+{
+  IK_Frame *frame = ik_top_frame();
+  IK_StringBlock *block = ptr_from_fat(string.str);
+  DLLPushFront_NP(frame->first_free_string_block, frame->last_free_string_block, block, free_next, free_prev);
 }
 
 /////////////////////////////////
@@ -2035,10 +2093,11 @@ ik_frame_alloc()
 
   // create root box
   ik_push_frame(ret);
-  IK_Box *root = ik_build_box_from_key(IK_BoxFlag_MouseClickable, ik_key_zero());
-  // TODO: it may be ctx menu or tooltip root 
+  IK_Box *root = ik_build_box_from_stringf(IK_BoxFlag_MouseClickable, "##root");
+  IK_Box *blank = ik_build_box_from_stringf(IK_BoxFlag_MouseClickable|IK_BoxFlag_FitViewport, "##blank");
   ik_pop_frame();
   ret->root = root;
+  ret->blank = blank;
 
   // TODO: testing
   IK_Frame(ret) IK_Parent(root)
@@ -2211,6 +2270,10 @@ internal String8
 ik_box_equip_display_string(IK_Box *box, String8 display_string)
 {
   String8 ret = {0};
+  if(box->string.size != 0)
+  {
+    ik_string_block_release(box->string);
+  }
   box->string = ik_push_str8_copy(display_string);
   box->flags |= IK_BoxFlag_HasDisplayString;
   return ret;
@@ -2226,92 +2289,307 @@ ik_box_equip_custom_draw(IK_Box *box, IK_BoxCustomDrawFunctionType *custom_draw,
 /////////////////////////////////
 //~ High Level Box Building
 
-IK_BOX_CUSTOM_DRAW(ik_edit_box_draw)
+typedef struct IK_EditBoxScratchData IK_EditBoxScratchData;
+struct IK_EditBoxScratchData
 {
-  // TODO: change parent box rect size based on string size
-  // TODO: do consider padding here
-  // TODO: considering text alignment, for now we just do left align
-  F32 advance_x = 0;
-  F32 advance_y = 0;
-  F32 x = box->fixed_rect.p0.x;
-  F32 y = box->fixed_rect.p0.y + box->font_size/1.6; // TODO: not the best way, we can get the percise offset
-  for(D_FancyRunNode *n = box->display_string_runs.first; n != 0; n = n->next)
+  TxtPt cursor;
+  TxtPt mark;
+};
+
+typedef struct IK_EditBoxTextRect IK_EditBoxTextRect;
+struct IK_EditBoxTextRect
+{
+  Rng2F32 dst;
+  Rng2F32 src;
+  R_Handle tex;
+  Vec4F32 color;
+};
+
+typedef struct IK_EditBoxDrawData IK_EditBoxDrawData;
+struct IK_EditBoxDrawData
+{
+  Rng2F32 mark_rect;
+  Rng2F32 cursor_rect;
+  IK_EditBoxTextRect *text_rects;
+};
+
+IK_BOX_CUSTOM_UPDATE(ik_edit_box_update)
+{ 
+  B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key);
+  B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
+
+  // TODO(Next): many setting are not used here
+  // unpack font settings
+  F_Tag font = box->font;
+  F32 font_size = box->font_size; // in world coordinate
+  // IK_ColorCode text_color_code = (box->flags & IK_BoxFlag_DrawTextWeak ? IK_ColorCode_TextWeak : IK_ColorCode_Text);
+  F_RasterFlags text_raster_flags = box->text_raster_flags;
+  F32 tab_size = box->tab_size;
+  F32 text_padding = box->text_padding;
+
+  // data buffer
+  IK_EditBoxScratchData *scratch_data = box->scratch_data;
+  IK_EditBoxDrawData *draw_data = push_array(ik_frame_arena(), IK_EditBoxDrawData, 1);
+  box->custom_draw_user_data = draw_data;
+
+  TxtPt *cursor = 0;
+  TxtPt *mark = 0;
+
+  if(is_focus_active)
   {
-    D_FancyRun run = n->v;
-    F_Piece *piece_first = run.run.pieces.v;
-    F_Piece *piece_opl = run.run.pieces.v + n->v.run.pieces.count;
-
-    // one line
-    for(F_Piece *piece = piece_first; piece < piece_opl; piece++)
+    // TODO(Next): weird here, check it out later
+    // NOTE(k): somewhere else could set this box active 
+    if(scratch_data == 0)
     {
-      // if(trailer_enabled && (off_x+advance+piece->advance) > (max_x-trailer_run.dim.x))
-      // {
-      //   trailer_found = 1; 
-      //   break;
-      // }
-
-      // if(!trailer_enabled && (off_x+advance+piece->advance) > max_x)
-      // {
-      //   goto end_draw;
-      // }
-
-      // NOTE(k): piece rect already computed x offset
-      Rng2F32 dst = r2f32p(piece->rect.x0+x, piece->rect.y0+y, piece->rect.x1+x, piece->rect.y1+y);
-      Rng2F32 src = r2f32p(piece->subrect.x0, piece->subrect.y0, piece->subrect.x1, piece->subrect.y1);
-      // normalize texture coordinate for geo2d pass
-      src.x0 /= piece->texture_dim.x;
-      src.x1 /= piece->texture_dim.x;
-      src.y0 /= piece->texture_dim.y;
-      src.y1 /= piece->texture_dim.y;
-      // TODO(k): src wil be all zeros in gcc release build but not with clang, wtf!!!
-      AssertAlways((src.x0 + src.x1 + src.y0 + src.y1) != 0);
-      Vec2F32 size = dim_2f32(dst);
-      AssertAlways(!r_handle_match(piece->texture, r_handle_zero()));
-      // TODO: why we need this
-      // last_color = n->v.color;
-
-      // issue draw
-
-      // NOTE(k): Space will have 0 extent
-      // if(size.x > 0 && size.y > 0)
-      // {
-      //   if(0)
-      //   {
-      //     d_rect(dst, n->v.color, 1.0, 1.0, 1.0);
-      //   }
-      //   d_img(dst, src, piece->texture, n->v.color, 0,0,0);
-      // }
-
-      // Rng2F32 dst = box->fixed_rect;
-      // dst = pad_2f32(dst, 6);
-      // dst.p1 = mix_2f32(v2f32(0,0), dst.p1, 1.0-box->disabled_t);
-
-      // Rng2F32 src = {0,0,1,1};
-      IK_DrawNode *dn = ik_drawlist_push_rect(ik_frame_arena(), ik_frame_drawlist(), dst, src);
-      Mat4x4F32 xform = mat_4x4f32(1.0);
-      Mat4x4F32 xform_inv = mat_4x4f32(1.0);
-
-      R_Mesh2DInst *inst = d_sprite(dn->vertices, dn->indices,
-                                    dn->vertices_buffer_offset, dn->indices_buffer_offset, dn->indice_count,
-                                    dn->topology, dn->polygon, 0, piece->texture, 1.);
-      inst->key = box->key.u64[0];
-      inst->xform = xform;
-      inst->xform_inv = xform_inv;
-      inst->has_texture = 1;
-      inst->has_color = 0;
-      inst->color = v4f32(1,0,1,1.0);
-      inst->draw_edge = 1;
-
-      advance_x += piece->advance;
+      arena_clear(ik_state->box_scratch_arena);
+      scratch_data = push_array(ik_state->box_scratch_arena, IK_EditBoxScratchData, 1);
+      // TODO(Next): testing, didn't selection all
+      scratch_data->mark.line = 1;
+      scratch_data->mark.column = 1;
+      scratch_data->cursor.line = 1;
+      scratch_data->cursor.column = 1;
+      // TODO(Next): to be fixed
+      // scratch_data->cursor.line = box->display_lines.node_count;
+      // scratch_data->cursor.column = box->display_lines.last.string.size;
+      box->scratch_data = scratch_data;
     }
-    advance_x = 0;
-    advance_y += run.run.dim.y;
-    y += run.run.dim.y;
+    cursor = &scratch_data->cursor;
+    mark = &scratch_data->mark;
+  }
+
+  // TODO(Next): to be deleted
+  if(cursor)
+  {
+    // printf("cursor: %ld %ld\n", cursor->line, cursor->column);
+    // printf("mark:   %ld %ld\n", mark->line, mark->column);
+  }
+
+  if(!is_focus_active && box->sig.f&(IK_SignalFlag_DoubleClicked|IK_SignalFlag_KeyboardPressed))
+  {
+    ik_state->focus_hot_box_key = box->key;
+    ik_state->focus_active_box_key = box->key;
+    arena_clear(ik_state->box_scratch_arena);
+    IK_EditBoxScratchData *scratch_data = push_array(ik_state->box_scratch_arena, IK_EditBoxScratchData, 1);
+    // TODO(Next): revisit this
+    scratch_data->mark.line = 1;
+    scratch_data->mark.column = 1;
+    // TODO(Next): to be fixed
+    // scratch_data->cursor.line = box->display_lines.node_count;
+    // scratch_data->cursor.column = box->display_lines.last.string.size;
+    box->scratch_data = scratch_data;
+  }
+
+  // TODO(Next): to be deleted
+  // testing
+  {
+    {
+      String8 string = str8_lit("123456");
+      TxtRng rng = {0};
+      rng.min = (TxtPt){1, 1};
+      rng.max = (TxtPt){1, 6};
+      Rng1U64 range = ik_replace_range_from_txtrng(string, rng);
+      AssertAlways(range.min == 0);
+      AssertAlways(range.max == 5);
+    }
+
+    {
+      String8 string = str8_lit("123456");
+      TxtRng rng = {0};
+      rng.min = (TxtPt){1, 2};
+      rng.max = (TxtPt){1, 3};
+      Rng1U64 range = ik_replace_range_from_txtrng(string, rng);
+      AssertAlways(range.min == 1);
+      AssertAlways(range.max == 2);
+    }
+
+    {
+      String8 string = str8_lit("123456");
+      TxtRng rng = {0};
+      rng.min = (TxtPt){1, 1};
+      rng.max = (TxtPt){1, 1};
+      Rng1U64 range = ik_replace_range_from_txtrng(string, rng);
+      AssertAlways(range.min == 0);
+      AssertAlways(range.max == 0);
+    }
+
+    {
+      String8 string = str8_lit("123\n456");
+      TxtRng rng = {0};
+      rng.min = (TxtPt){1, 1};
+      rng.max = (TxtPt){2, 4};
+      Rng1U64 range = ik_replace_range_from_txtrng(string, rng);
+      AssertAlways(range.min == 0);
+      AssertAlways(range.max == 7);
+    }
+  }
+
+  // take navigation actions for editing
+  if(is_focus_active)
+  {
+    Temp scratch = scratch_begin(0,0);
+    UI_EventList *events = ik_state->events;
+    for(UI_EventNode *n = events->first; n != 0; n = n->next)
+    {
+      UI_Event *evt = &n->v;
+
+      if(evt->key == OS_Key_Return && evt->kind == UI_EventKind_Press)
+      {
+        evt->kind = UI_EventKind_Text;
+        evt->string = str8_lit("\n");
+        // TODO(Next): we could change delta here or not
+      }
+
+      // don't consume anything that doesn't fit a single|multi-line's operations
+      if((evt->kind != UI_EventKind_Edit && evt->kind != UI_EventKind_Navigate && evt->kind != UI_EventKind_Text)) { continue; }
+
+      // map this action to an TxtOp
+      UI_TxtOp op = ik_multi_line_txt_op_from_event(scratch.arena, &n->v, box->string, box->display_lines, *cursor, *mark);
+
+      // perform replace range
+      if(!txt_pt_match(op.range.min, op.range.max) || op.replace.size != 0)
+      {
+        printf("range_min: %lu %lu\n", op.range.min.line, op.range.min.column);
+        printf("range_max: %lu %lu\n", op.range.max.line, op.range.max.column);
+        Rng1U64 range = ik_replace_range_from_txtrng(box->string, op.range);
+        printf("replace range: %lu %lu\n", range.min, range.max);
+        // TODO(Next): not ideal, just for testing, we can create out own ui_push_string_replace_range
+        // String8 new_string = ui_push_string_replace_range(scratch.arena, box->string, r1s64(op.range.min.column, op.range.max.column), op.replace);
+        String8 new_string = ui_push_string_replace_range(scratch.arena, box->string, r1s64(range.min+1, range.max+1), op.replace);
+        ik_box_equip_display_string(box, new_string);
+      }
+
+      // commit op's changed cursor & mark to caller-provided state
+      *cursor = op.cursor;
+      *mark = op.mark;
+
+      // consume event
+      ui_eat_event(&n->v);
+    }
+    scratch_end(scratch);
+  }
+
+  // rendering
+  {
+    F32 advance_x = 0;
+    F32 advance_y = 0;
+    F32 x = box->fixed_rect.p0.x;
+    F32 y = box->fixed_rect.p0.y;
+
+    Rng2F32 mark_rect ={0};
+    Rng2F32 cursor_rect ={0};
+
+    F32 font_size_scale = font_size / M_1;
+    // TODO(Next): change i to line_index for better clarity: 
+    for(U64 i = 0; i < box->display_lines.node_count; i++)
+    {
+      // one line
+      D_FancyRunList *fruns = &box->display_line_fruns[i];
+      for(D_FancyRunNode *n = fruns->first; n != 0; n = n->next)
+      {
+        D_FancyRun run = n->v;
+        Vec2F32 line_run_dim = scale_2f32(run.run.dim, font_size_scale);
+
+        F_Piece *piece_first = run.run.pieces.v;
+        F_Piece *piece_opl = run.run.pieces.v + n->v.run.pieces.count;
+
+        F32 line_x = x;
+        F32 line_y = y + run.run.ascent*font_size_scale;;
+        Rng2F32 line_rect = {x, y, x+line_run_dim.x, y+line_run_dim.y};
+        Rng2F32 line_cursor = {x,y,x,y+line_run_dim.y};
+
+        U64 column = 0;
+        for(F_Piece *piece = piece_first; piece < piece_opl; piece++, column++)
+        {
+          // NOTE(k): piece rect already computed x offset
+          Rng2F32 dst = r2f32p(piece->rect.x0*font_size_scale + line_x,
+                               piece->rect.y0*font_size_scale + line_y,
+                               piece->rect.x1*font_size_scale + line_x,
+                               piece->rect.y1*font_size_scale + line_y);
+          Rng2F32 src = r2f32p(piece->subrect.x0, piece->subrect.y0, piece->subrect.x1, piece->subrect.y1);
+          // TODO(k): src wil be all zeros in gcc release build but not with clang, wtf!!!
+          AssertAlways((src.x0 + src.x1 + src.y0 + src.y1) != 0);
+          Vec2F32 size = dim_2f32(dst);
+          AssertAlways(!r_handle_match(piece->texture, r_handle_zero()));
+
+          // issue draw
+          // TODO(k): Space will have 0 extent, what heck?
+          if(size.x > 0 && size.y > 0)
+          {
+            IK_EditBoxTextRect text_rect = {dst, src, piece->texture, run.color};
+            darray_push(ik_frame_arena(), draw_data->text_rects, text_rect);
+          }
+
+          // TODO(Next): to be deleted
+          // else
+          // {
+          //   // TODO(Next): fix it
+          //   dst.x1 += font_size *font_size_scale;
+          //   dst.y1 += font_size *font_size_scale;
+          //   IK_EditBoxTextRect text_rect = {dst, src, piece->texture, run.color};
+          //   darray_push(ik_frame_arena(), draw_data->text_rects, text_rect);
+          // }
+
+          // TODO(Next)
+          if(mark && mark->line == (i+1) && mark->column == (column+1))
+          {
+            mark_rect = line_cursor;
+          }
+
+          if(cursor && cursor->line == (i+1) && cursor->column == (column+1))
+          {
+            cursor_rect = line_cursor;
+          }
+
+          advance_x += piece->advance*font_size_scale;
+          line_cursor.x1 += piece->advance*font_size_scale;
+          line_cursor.x0 += piece->advance*font_size_scale;
+        }
+
+        // TODO(Next): we have to handle \n, not pretty, fix it later
+        if(mark && mark->line == (i+1) && mark->column == (column+1))
+        {
+          mark_rect = line_cursor;
+        }
+        if(cursor && cursor->line == (i+1) && cursor->column == (column+1))
+        {
+          cursor_rect = line_cursor;
+        }
+
+        advance_x = 0;
+        advance_y += line_run_dim.y;
+        y += line_run_dim.y;
+      }
+    }
+    // draw_data->mark_rect = mark_rect;
+    draw_data->mark_rect = cursor_rect;
+    draw_data->cursor_rect = cursor_rect;
   }
 }
 
-IK_BOX_CUSTOM_UPDATE(ik_edit_box_update)
+IK_BOX_CUSTOM_DRAW(ik_edit_box_draw)
 {
+  IK_EditBoxDrawData *draw_data = box->custom_draw_user_data;
+
+  // draw text rects
+  for(U64 i = 0; i < darray_size(draw_data->text_rects); i++)
+  {
+    IK_EditBoxTextRect *text_rect = &draw_data->text_rects[i];
+    d_img(text_rect->dst, text_rect->src, text_rect->tex, text_rect->color, 0,0,0);
+    // TODO(Next): debugging
+    d_rect(text_rect->dst, v4f32(0.1,0.1,0.1,0.1), 0,0.1,0);
+  }
+
+  // draw mark & cursor
+  F32 line_height = draw_data->cursor_rect.y1-draw_data->cursor_rect.y0;
+  F32 cursor_thickness = line_height*0.05;
+  Rng2F32 cursor_rect = draw_data->cursor_rect;
+  Rng2F32 mark_rect = draw_data->mark_rect;
+  cursor_rect.x0 -= cursor_thickness;
+  cursor_rect.x1 += cursor_thickness;
+  mark_rect.x0 -= cursor_thickness;
+  mark_rect.x1 += cursor_thickness;
+  // d_rect(draw_data->mark_rect, v4f32(0,0,1,0.5), 0, 0, 0);
+  d_rect(cursor_rect, v4f32(0,0,1,0.5), 0, 0, 0);
 }
 
 internal IK_Box *
@@ -2324,7 +2602,7 @@ ik_edit_box(String8 string)
 
   IK_Key key = ik_key_new();
   box = ik_build_box_from_key(0, key);
-  box->flags |= IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio|IK_BoxFlag_DrawText;
+  box->flags |= IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio|IK_BoxFlag_DrawText|IK_BoxFlag_DrawBorder;
   box->position = ik_state->mouse_in_world;
   box->rect_size = v2f32(font_size_in_world*3, font_size_in_world);
   box->color = v4f32(1,1,0,1.0);
@@ -2343,16 +2621,17 @@ ik_edit_box(String8 string)
 }
 
 internal IK_Box *
-ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 size, R_Handle tex)
+ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, R_Handle tex, Vec2F32 tex_size)
 {
   IK_Box *box;
   box = ik_build_box_from_stringf(0, "##image_%I64u", os_now_microseconds());
-  box->flags |= IK_BoxFlag_DrawImage|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio;
+  box->flags = flags|IK_BoxFlag_DrawImage|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio|IK_BoxFlag_DrawRect;
   box->position = pos;
-  box->rect_size = size;
+  box->rect_size = rect_size;
   box->hover_cursor = OS_Cursor_UpDownLeftRight;
   box->albedo_tex = tex;
-  box->ratio = size.x/size.y;
+  box->albedo_tex_size = tex_size;
+  box->ratio = rect_size.x/rect_size.y;
   return box;
 }
 
@@ -2377,7 +2656,9 @@ ik_signal_from_box(IK_Box *box)
     UI_Event *evt = &n->v;
 
     //- unpack event
-    Vec2F32 evt_mouse = evt->pos;
+    // Vec2F32 evt_mouse = evt->pos;
+    Vec2F32 evt_mouse = ik_state->mouse_in_world;
+    B32 evt_mouse_in_bounds = contains_2f32(box->fixed_rect, evt_mouse);
     IK_MouseButtonKind evt_mouse_button_kind = 
       evt->key == OS_Key_LeftMouseButton   ? IK_MouseButtonKind_Left   :
       evt->key == OS_Key_RightMouseButton  ? IK_MouseButtonKind_Right  :
@@ -2392,7 +2673,7 @@ ik_signal_from_box(IK_Box *box)
     //- mouse pressed in box -> set hot/active, mark signal accordingly
     if(box->flags & IK_BoxFlag_MouseClickable &&
        evt->kind == UI_EventKind_Press &&
-       is_pixel_hot &&
+       evt_mouse_in_bounds &&
        evt_key_is_mouse)
     {
       ik_state->hot_box_key = box->key;
@@ -2423,7 +2704,7 @@ ik_signal_from_box(IK_Box *box)
     if(box->flags & IK_BoxFlag_MouseClickable &&
        evt->kind == UI_EventKind_Release &&
        ik_key_match(box->key, ik_state->active_box_key[evt_mouse_button_kind]) &&
-       is_pixel_hot &&
+       evt_mouse_in_bounds &&
        evt_key_is_mouse)
     {
       ik_state->hot_box_key = box->key;
@@ -2437,7 +2718,7 @@ ik_signal_from_box(IK_Box *box)
     if(box->flags & IK_BoxFlag_MouseClickable &&
        evt->kind == UI_EventKind_Release &&
        ik_key_match(box->key, ik_state->active_box_key[evt_mouse_button_kind]) &&
-       !is_pixel_hot &&
+       !evt_mouse_in_bounds &&
        evt_key_is_mouse)
     {
       ik_state->hot_box_key = ik_key_zero();
@@ -2450,7 +2731,7 @@ ik_signal_from_box(IK_Box *box)
     if(box->flags & IK_BoxFlag_Scroll &&
        evt->kind == UI_EventKind_Scroll &&
        evt->modifiers != OS_Modifier_Ctrl &&
-       is_pixel_hot)
+       evt_mouse_in_bounds)
     {
       Vec2F32 delta = evt->delta_2f32;
       if(evt->modifiers & OS_Modifier_Shift)
@@ -2553,10 +2834,10 @@ ik_signal_from_box(IK_Box *box)
   //////////////////////////////
   // Double clicked and set focus_active_key
 
-  if(box->flags & IK_BoxFlag_ClickToFocus && sig.f&IK_SignalFlag_LeftDoubleClicked)
-  {
-    ik_state->focus_active_box_key = box->key;
-  }
+  // if(box->flags & IK_BoxFlag_ClickToFocus && sig.f&IK_SignalFlag_LeftDoubleClicked)
+  // {
+  //   ik_state->focus_active_box_key = box->key;
+  // }
 
   return sig;
 }
@@ -2567,6 +2848,9 @@ ik_signal_from_box(IK_Box *box)
 internal void
 ik_ui_stats(void)
 {
+  IK_Frame *frame = ik_top_frame();
+  IK_Camera *camera = &frame->camera;
+
   UI_Box *container = 0;
   F32 width = 800;
   Rng2F32 rect = {ik_state->window_dim.x-800, 0, ik_state->window_dim.x, ik_state->window_dim.y};
@@ -2655,6 +2939,12 @@ ik_ui_stats(void)
     }
     UI_Row
     {
+      ui_labelf("ik_pixel_hot_key");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%I64u", ik_state->hot_pixel_key);
+    }
+    UI_Row
+    {
       ui_labelf("ik_mouse");
       ui_spacer(ui_pct(1.0, 0.0));
       ui_labelf("%f %f", ik_state->mouse.x, ik_state->mouse.y);
@@ -2664,6 +2954,12 @@ ik_ui_stats(void)
       ui_labelf("ik_drag_start_mouse");
       ui_spacer(ui_pct(1.0, 0.0));
       ui_labelf("%f %f", ik_state->drag_start_mouse.x, ik_state->drag_start_mouse.y);
+    }
+    UI_Row
+    {
+      ui_labelf("ik_camera_rect");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%f %f %f %f", camera->rect.x0, camera->rect.y0, camera->rect.y0, camera->rect.y1);
     }
     UI_Row
     {
@@ -2962,6 +3258,213 @@ ik_ui_selection(void)
       }
     }
   }
+}
+
+/////////////////////////////////
+//~ Text Operation Functions
+
+internal UI_TxtOp
+ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, String8List lines, TxtPt cursor, TxtPt mark)
+{
+  TxtPt next_cursor = cursor;
+  TxtPt next_mark = mark;
+  TxtRng range = {0};
+  String8 replace = {0};
+  String8 copy = {0};
+  Vec2S32 delta = event->delta_2s32;
+  UI_TxtOpFlags flags = 0;
+  U64 line_count = lines.node_count;
+  Temp scratch = scratch_begin(&arena,1);
+
+  // navigation
+  switch(event->delta_unit)
+  {
+    default:{}break;
+    case UI_EventDeltaUnit_Char:
+    {
+      // TODO(k): this should account for multi-byte characters in UTF-8... for now, just assume ASCII now
+      // no-op
+    }break;
+    case UI_EventDeltaUnit_Word:
+    {
+      NotImplemented;
+    }break;
+    case UI_EventDeltaUnit_Line:
+    {
+      // TODO(Next): this whole is not needed, we have clamp below
+      // String8Node *target_line_node = lines.first;
+      // for(U64 skipped = 0;
+      //     skipped < (cursor.line+delta.y) && target_line_node != 0;
+      //     skipped++, target_line_node = target_line_node->next);
+
+      // if(target_line_node == 0)
+      // {
+      //   delta.y = 0;
+      // }
+
+      // if(target_line_node)
+      // {
+      //   // position column
+      //   U64 column = cursor.column + delta.x;
+      //   // TODO: it can refer to -1, the last line's \n
+      //   column = Clamp(1, column, target_line_node->string.size);
+      //   delta.x = column - cursor.column;
+      // }
+    }break;
+    case UI_EventDeltaUnit_Whole:
+    {
+      // TODO(Next)
+      // U64 first_nonwhitespace_column = 1;
+    }break;
+    case UI_EventDeltaUnit_Page:
+    {
+      NotImplemented;
+    }break;
+  }
+
+  // form next cursor, TODO(Next): wtf
+  if(txt_pt_match(cursor, mark))
+  {
+    next_cursor.column += delta.x;
+    next_cursor.line += delta.y;
+  }
+  if(!(event->flags & UI_EventFlag_KeepMark))
+  {
+    next_mark = next_cursor;
+  }
+
+  // copy
+
+  // paste
+
+  // deletion
+  if(event->flags & UI_EventFlag_Delete)
+  {
+    TxtPt new_pos = txt_pt_min(next_cursor, next_mark);
+    range = txt_rng(next_cursor, next_mark);
+    replace = str8_lit("");
+    next_cursor = next_mark = new_pos;
+  }
+
+  // insertion
+  if(event->string.size != 0)
+  {
+    range = txt_rng(cursor, mark);
+    replace = push_str8_copy(arena, event->string);
+    U64 replace_linefeed_count = 0;
+    U64 replace_last_line_size = 0;
+    {
+      for(U64 i = 0; i < replace.size; i++)
+      {
+        if(replace.str[i] == '\n')
+        {
+          replace_linefeed_count++;
+          replace_last_line_size = 0;
+        }
+        else
+        {
+          replace_last_line_size++;
+        }
+      }
+    }
+
+    // TODO(Next): this is not right
+    next_cursor = next_mark = txt_pt(range.min.line+replace_linefeed_count, range.min.column - range.min.column*(replace_linefeed_count>0) + replace_last_line_size);
+    // next_cursor = next_mark = txt_pt(range.min.line, range.min.column+event->string.size);
+  }
+
+  // determine if this event should be taken, base on bounds of cursor 
+  {
+    // TODO(Next): wrong
+    if(next_cursor.column > string.size + 1 || next_cursor.column < 1 ||
+       next_cursor.line > line_count  || next_cursor.line < 1)
+    {
+      flags |= UI_TxtOpFlag_Invalid;
+    }
+
+    next_cursor.line = Clamp(1, next_cursor.line, line_count);
+    next_mark.line = Clamp(1, next_cursor.line, line_count);
+
+    // skip to the current line
+    // TODO(Next): this is wrong, we could insert paste new line here
+    String8Node *next_cursor_line_node = lines.first;
+    for(U64 i = 0; i < (next_cursor.line-1); i++, next_cursor_line_node = next_cursor_line_node->next);
+    String8 next_line_string = next_cursor_line_node->string;
+
+    // TODO(Next): this is multi line, we can't just add replace.size here, we may need to split it again, jesus!!!
+    // TODO(Next): consider \n, we may need to add 1 again
+    next_cursor.column = Clamp(1, next_cursor.column, next_line_string.size + replace.size + 1);
+    next_mark.column = Clamp(1, next_cursor.column, next_line_string.size + replace.size + 1);
+  }
+
+  // build & fill info
+  UI_TxtOp op = {0};
+  op.flags = flags;
+  op.replace = replace;
+  op.copy = copy;
+  op.range = range;
+  op.cursor = next_cursor;
+  op.mark = next_mark;
+  scratch_end(scratch);
+  return op;
+}
+
+internal Rng1U64
+ik_replace_range_from_txtrng(String8 string, TxtRng txt_rng)
+{
+  char *first = (char*)string.str;
+  char *opl = first+string.size;
+  char *c = first;
+
+  U64 min = 0;
+  U64 max = 0;
+  U64 line_index = 1;
+  U64 column_index = 1;
+
+  // skip to the min line
+  for(; c < opl && line_index < txt_rng.min.line; c++)
+  {
+    if(*c == '\n')
+    {
+      line_index++;
+      column_index = 1;
+    }
+    else
+    {
+      column_index++;
+    }
+  }
+
+  // skip to the min column
+  for(; c < opl && column_index < txt_rng.min.column; c++, column_index++)
+  {
+    AssertAlways(*c != '\n');
+  }
+  min = c - first;
+
+  // skip to the last line
+  for(; c < opl && line_index < txt_rng.max.line; c++)
+  {
+    if(*c == '\n')
+    {
+      line_index++;
+      column_index = 1;
+    }
+    else
+    {
+      column_index++;
+    }
+  }
+
+  // skip to the max column
+  for(; c < opl && column_index < txt_rng.max.column; c++, column_index++)
+  {
+    AssertAlways(*c != '\n');
+  }
+  max = c - first;
+
+  Rng1U64 ret = {min,max};
+  return ret;
 }
 
 /////////////////////////////////

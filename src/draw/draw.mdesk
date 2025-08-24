@@ -4,6 +4,7 @@
 @table(name, name_lower, type, default_init)
 D_StackTable:
 {
+  {Viewport               viewport               Vec2F32             `{0,0}`                                       }
   {Tex2DSampleKind        tex2d_sample_kind      R_Tex2DSampleKind   `R_Tex2DSampleKind_Nearest`                   }
   {XForm2D                xform2d                Mat3x3F32           `{1, 0, 0, 0, 1, 0, 0, 0, 1}`                 }
   {Clip                   clip                   Rng2F32             `{0}`                                         }

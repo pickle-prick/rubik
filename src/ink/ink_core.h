@@ -245,9 +245,11 @@ typedef U64 IK_BoxFlags;
 # define IK_BoxFlag_DrawRect         (IK_BoxFlags)(1ull<<4)
 # define IK_BoxFlag_DrawText         (IK_BoxFlags)(1ull<<5)
 # define IK_BoxFlag_DrawImage        (IK_BoxFlags)(1ull<<6)
-# define IK_BoxFlag_Disabled         (IK_BoxFlags)(1ull<<7)
-# define IK_BoxFlag_HasDisplayString (IK_BoxFlags)(1ull<<8)
-# define IK_BoxFlag_DrawTextWeak     (IK_BoxFlags)(1ull<<9)
+# define IK_BoxFlag_DrawBorder       (IK_BoxFlags)(1ull<<7)
+# define IK_BoxFlag_Disabled         (IK_BoxFlags)(1ull<<8)
+# define IK_BoxFlag_HasDisplayString (IK_BoxFlags)(1ull<<9)
+# define IK_BoxFlag_DrawTextWeak     (IK_BoxFlags)(1ull<<10)
+# define IK_BoxFlag_FitViewport      (IK_BoxFlags)(1ull<<11)
 
 typedef struct IK_Box IK_Box;
 
@@ -286,6 +288,7 @@ struct IK_Box
   Vec2F32 rect_size;
   Vec4F32 color;
   R_Handle albedo_tex;
+  Vec2F32 albedo_tex_size;
   OS_Cursor hover_cursor;
   F32 ratio; // width/height
   // text
@@ -301,16 +304,19 @@ struct IK_Box
   IK_Palette *palette;
   // TODO(k): add a name or indentifier for better debugging
   IK_BoxCustomDrawFunctionType *custom_draw;
-  // TODO(k): we want to reuse this memory block
   void *custom_draw_user_data;
   IK_BoxCustomUpdateFunctionType *custom_update;
+  void *scratch_data; // on focus active
+  U64 draw_frame_index;
 
   // Per-frmae artifacts
+  String8List display_lines;
+  // D_FancyStringList *display_line_fstrs; // TODO: support fancy string
+  D_FancyRunList *display_line_fruns;
   Rng2F32 fixed_rect;
   Mat4x4F32 fixed_xform;
   Vec2F32 fixed_size;
   IK_Signal sig;
-  D_FancyRunList display_string_runs;
 
   // Animation
   F32 hot_t;
@@ -345,6 +351,7 @@ struct IK_Frame
   U64 arena_clear_pos;
   IK_Frame *next;
   IK_Box *root;
+  IK_Box *blank;
   IK_Camera camera;
 
   // lookup table
@@ -517,6 +524,7 @@ struct IK_State
   Vec2F32               drag_start_mouse;
   Arena                 *drag_state_arena;
   String8               drag_state_data;
+  Arena                 *box_scratch_arena; // e.g. edit buffer
 
   // toolbar
   IK_ToolKind           tool;
@@ -651,6 +659,7 @@ internal IK_DrawNode* ik_drawlist_push_rect(Arena *arena, IK_DrawList *drawlist,
 //~ String Block Functions
 
 internal String8 ik_push_str8_copy(String8 src);
+internal void    ik_string_block_release(String8 string);
 
 /////////////////////////////////
 //~ Box Type Functions
@@ -685,7 +694,7 @@ internal void    ik_box_equip_custom_draw(IK_Box *box, IK_BoxCustomDrawFunctionT
 //~ High Level Box Building
 
 internal IK_Box* ik_edit_box(String8 string);
-internal IK_Box* ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 size, R_Handle tex);
+internal IK_Box* ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 size, R_Handle tex, Vec2F32 tex_size);
 
 /////////////////////////////////
 //~ User interaction
@@ -706,6 +715,12 @@ internal void ik_fancy_run_list(Vec2F32 p, D_FancyRunList *list, F32 max_x);
 internal void ik_ui_stats(void);
 internal void ik_ui_toolbar(void);
 internal void ik_ui_selection(void);
+
+/////////////////////////////////
+//~ Text Operation Functions
+
+internal UI_TxtOp ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, String8List lines, TxtPt cursor, TxtPt mark);
+internal Rng1U64  ik_replace_range_from_txtrng(String8 string, TxtRng txt_rng);
 
 /////////////////////////////////
 //~ Helpers

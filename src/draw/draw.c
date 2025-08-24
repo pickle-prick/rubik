@@ -422,6 +422,29 @@ d_sub_bucket(D_Bucket *bucket, B32 merge_pass)
 ////////////////////////////////
 // Fancy String Type Functions
 
+internal void
+d_fancy_string_list_push(Arena *arena, D_FancyStringList *list, D_FancyString *str)
+{
+  D_FancyStringNode *node = push_array(arena, D_FancyStringNode, 1);
+  node->v = *str;
+  SLLQueuePush(list->first, list->last, node);
+  list->node_count++;
+  list->total_size += str->string.size;
+}
+
+internal void
+d_fancy_string_list_concat_in_place(D_FancyStringList *dst, D_FancyStringList *to_push)
+{
+  NotImplemented;
+}
+
+internal String8
+d_string_from_fancy_string_list(Arena *arena, D_FancyStringList *list)
+{
+  NotImplemented;
+}
+
+// NOTE(k): this is for a single line
 internal D_FancyRunList
 d_fancy_run_list_from_fancy_string_list(Arena *arena, F32 tab_size_px, F_RasterFlags flags, D_FancyStringList *strs)
 {
@@ -443,11 +466,17 @@ d_fancy_run_list_from_fancy_string_list(Arena *arena, F32 tab_size_px, F_RasterF
   return run_list;
 }
 
+internal D_FancyRunList
+d_fancy_run_list_copy(Arena *arena, D_FancyRunList *src)
+{
+  NotImplemented;
+}
+
 //~ k: text rendering
 internal void d_truncated_fancy_run_list(Vec2F32 p, D_FancyRunList *list, F32 max_x, F_Run trailer_run)
 {
   ProfBeginFunction();
-  // TODO: handle trailer_run, max_x, underline_thickness, trikethrough
+  // TODO: handle underline_thickness, trikethrough
   B32 trailer_enabled = ((p.x+list->dim.x) > max_x && (p.x+trailer_run.dim.x) < max_x);
 
   F32 off_x = p.x;
@@ -551,6 +580,7 @@ d_rect(Rng2F32 dst, Vec4F32 color, F32 corner_radius, F32 border_thickness, F32 
     rects->count += 1;
     node->batches = r_batch_list_make(sizeof(R_Rect2DInst));
     node->params.tex             = r_handle_zero();
+    node->params.viewport        = bucket->top_viewport->v;
     node->params.tex_sample_kind = bucket->top_tex2d_sample_kind->v;
     node->params.xform           = bucket->top_xform2d->v;
     node->params.clip            = bucket->top_clip->v;
@@ -599,6 +629,7 @@ d_img(Rng2F32 dst, Rng2F32 src, R_Handle texture, Vec4F32 color,
     rects->count += 1;
     node->batches = r_batch_list_make(sizeof(R_Rect2DInst));
     node->params.tex             = texture;
+    node->params.viewport        = bucket->top_viewport->v;
     node->params.tex_sample_kind = bucket->top_tex2d_sample_kind->v;
     node->params.xform           = bucket->top_xform2d->v;
     node->params.clip            = bucket->top_clip->v;

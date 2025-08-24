@@ -4342,6 +4342,9 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       color_blend_state_create_info.attachmentCount = 3;
     }break;
     case R_Vulkan_PipelineKind_GFX_Rect:
+    {
+      color_blend_state_create_info.attachmentCount = 1;
+    }break;
     // case R_Vulkan_PipelineKind_GFX_Blur:
     case R_Vulkan_PipelineKind_GFX_Noise:
     case R_Vulkan_PipelineKind_GFX_Edge:
@@ -4503,6 +4506,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
         color_attachment_count = 1;
         color_attachment_formats = push_array(scratch.arena, VkFormat, 1);
         color_attachment_formats[0] = swapchain_format;
+        // color_attachment_formats[1] = VK_FORMAT_R32G32_UINT;
       }break;
       case R_Vulkan_PipelineKind_GFX_Noise:
       {
@@ -4525,7 +4529,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       case R_Vulkan_PipelineKind_GFX_Geo2D_Forward:
       {
         color_attachment_count = 3;
-        color_attachment_formats = push_array(scratch.arena, VkFormat, 2);
+        color_attachment_formats = push_array(scratch.arena, VkFormat, 3);
         color_attachment_formats[0] = swapchain_format;
         color_attachment_formats[1] = VK_FORMAT_R32G32_UINT;
         color_attachment_formats[2] = VK_FORMAT_R32G32B32A32_SFLOAT;
@@ -5144,11 +5148,19 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
       {
         ProfBegin("ui_pass");
         Assert(ui_pass_index < MAX_RECT_PASS);
-        VkRenderingAttachmentInfo color_attachment_info = { VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
-        color_attachment_info.imageView = render_targets->stage_color_image.view;
-        color_attachment_info.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-        color_attachment_info.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-        color_attachment_info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        VkRenderingAttachmentInfo color_attachment_infos[1] = {0};
+
+        color_attachment_infos[0].sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        color_attachment_infos[0].imageView   = render_targets->stage_color_image.view;
+        color_attachment_infos[0].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        color_attachment_infos[0].loadOp      = VK_ATTACHMENT_LOAD_OP_LOAD;
+        color_attachment_infos[0].storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
+
+        // color_attachment_infos[1].sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        // color_attachment_infos[1].imageView   = render_targets->stage_id_image.view;
+        // color_attachment_infos[1].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        // color_attachment_infos[1].loadOp      = VK_ATTACHMENT_LOAD_OP_LOAD;
+        // color_attachment_infos[1].storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
 
         VkRenderingInfo render_info = { VK_STRUCTURE_TYPE_RENDERING_INFO };
         // The render area defiens where shader loads and stores will take place
@@ -5156,8 +5168,8 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
         render_info.renderArea.offset = (VkOffset2D){0, 0};
         render_info.renderArea.extent = wnd->render_targets->stage_color_image.extent;
         render_info.layerCount = 1;
-        render_info.colorAttachmentCount = 1;
-        render_info.pColorAttachments = &color_attachment_info;
+        render_info.colorAttachmentCount = ArrayCount(color_attachment_infos);
+        render_info.pColorAttachments = color_attachment_infos;
 
         // begin drawing
         vkCmdBeginRendering(cmd_buf, &render_info);
@@ -5237,7 +5249,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 
           // Upload uniforms
           R_Vulkan_UBO_Rect uniforms = {0};
-          uniforms.viewport_size = v2f32(render_targets->stage_color_image.extent.width, render_targets->stage_color_image.extent.height);
+          uniforms.viewport_size = group_params->viewport;
           uniforms.opacity = 1-group_params->transparency;
           MemoryCopyArray(uniforms.texture_sample_channel_map, &texture_sample_channel_map);
           // TODO(k): don't know if we need it or not

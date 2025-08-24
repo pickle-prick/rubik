@@ -45,18 +45,20 @@
   </Type>
 
   <Type Name="Vec2S32">
+    <DisplayString>{{ x={v[0]} y={v[1]} }}</DisplayString>
     <Expand>
-      <Item Name="x">x</Item>
-      <Item Name="y">y</Item>
-      <Item Name="[length squared]">x*x + y*y</Item>
+      <Item Name="x">v[0]</Item>
+      <Item Name="y">v[1]</Item>
+      <Item Name="[length squared]">v[0]*v[0] + v[1]*v[1]</Item>
     </Expand>
   </Type>
 
   <Type Name="Vec2S64">
+    <DisplayString>{{ x={v[0]} y={v[1]} }}</DisplayString>
     <Expand>
-      <Item Name="x">x</Item>
-      <Item Name="y">y</Item>
-      <Item Name="[length squared]">x*x + y*y</Item>
+      <Item Name="x">v[0]</Item>
+      <Item Name="y">v[1]</Item>
+      <Item Name="[length squared]">v[0]*v[0] + v[1]*v[1]</Item>
     </Expand>
   </Type>
 
@@ -71,11 +73,12 @@
   </Type>
 
   <Type Name="Vec3S32">
+    <DisplayString>{{ x={v[0]} y={v[1]} z={v[2]} }}</DisplayString>
     <Expand>
-      <Item Name="x">x</Item>
-      <Item Name="y">y</Item>
-      <Item Name="z">z</Item>
-      <Item Name="[length squared]">x*x + y*y + z*z</Item>
+      <Item Name="x">v[0]</Item>
+      <Item Name="y">v[1]</Item>
+      <Item Name="z">v[2]</Item>
+      <Item Name="[length squared]">v[0]*v[0] + v[1]*v[1] + v[2]*v[2]</Item>
     </Expand>
   </Type>
 
@@ -91,57 +94,74 @@
   </Type>
 
   <Type Name="Vec4S32">
+    <DisplayString>{{ x={v[0]} y={v[1]} z={v[2]} w={v[3]} }}</DisplayString>
     <Expand>
-      <Item Name="x">x</Item>
-      <Item Name="y">y</Item>
-      <Item Name="z">z</Item>
-      <Item Name="w">w</Item>
-      <Item Name="[length squared]">x*x + y*y + z*z + w*w</Item>
+      <Item Name="x">v[0]</Item>
+      <Item Name="y">v[1]</Item>
+      <Item Name="z">v[2]</Item>
+      <Item Name="w">v[3]</Item>
+      <Item Name="[length squared]">v[0]*v[0] + v[1]*v[1] + v[2]*v[2] + v[3]*v[3]</Item>
     </Expand>
   </Type>
 
   <Type Name="Rng1U32">
-    <DisplayString>{{ min={min} max={max} [dim]={max - min} }}</DisplayString>
+    <DisplayString>{{ min={v[0]} max={v[1]} [dim]={v[1] - v[0]} }}</DisplayString>
     <Expand>
-      <Item Name="min">min</Item>
-      <Item Name="max">max</Item>
-      <Item Name="[dim]">max - min</Item>
+      <Item Name="min">v[0]</Item>
+      <Item Name="max">v[1]</Item>
+      <Item Name="[dim]">v[1] - v[0]</Item>
     </Expand>
   </Type>
 
   <Type Name="Rng1S32">
-    <DisplayString>{{ min={min} max={max} [dim]={max - min} }}</DisplayString>
+    <DisplayString>{{ min={v[0]} max={v[1]} [dim]={v[1] - v[0]} }}</DisplayString>
     <Expand>
-      <Item Name="min">min</Item>
-      <Item Name="max">max</Item>
-      <Item Name="[dim]">max - min</Item>
+      <Item Name="min">v[0]</Item>
+      <Item Name="max">v[1]</Item>
+      <Item Name="[dim]">v[1] - v[0]</Item>
     </Expand>
   </Type>
 
   <Type Name="Rng1U64">
-    <DisplayString>{{ min={min} max={max} [dim]={max - min} }}</DisplayString>
+    <DisplayString>{{ min={v[0]} max={v[1]} [dim]={v[1] - v[0]} }}</DisplayString>
     <Expand>
-      <Item Name="min">min</Item>
-      <Item Name="max">max</Item>
-      <Item Name="[dim]">max - min</Item>
+      <Item Name="min">v[0]</Item>
+      <Item Name="max">v[1]</Item>
+      <Item Name="[dim]">v[1] - v[0]</Item>
     </Expand>
   </Type>
 
   <Type Name="Rng1S64">
-    <DisplayString>{{ min={min} max={max} [dim]={max - min} }}</DisplayString>
+    <DisplayString>{{ min={v[0]} max={v[1]} [dim]={v[1] - v[0]} }}</DisplayString>
     <Expand>
-      <Item Name="min">min</Item>
-      <Item Name="max">max</Item>
-      <Item Name="[dim]">max - min</Item>
+      <Item Name="min">v[0]</Item>
+      <Item Name="max">v[1]</Item>
+      <Item Name="[dim]">v[1] - v[0]</Item>
     </Expand>
   </Type>
 
   <Type Name="Rng1F32">
-    <DisplayString>{{ min={min} max={max} [dim]={max - min} }}</DisplayString>
+    <DisplayString>{{ min={v[0]} max={v[1]} [dim]={v[1] - v[0]} }}</DisplayString>
+    <Expand>
+      <Item Name="min">v[0]</Item>
+      <Item Name="max">v[1]</Item>
+      <Item Name="[dim]">v[1] - v[0]</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="TxtPt">
+    <DisplayString>{{ line={line} column={column} }}</DisplayString>
+    <Expand>
+      <Item Name="line">line</Item>
+      <Item Name="column">column</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="TxtRng">
+    <DisplayString>{{ min={min} max={max} }}</DisplayString>
     <Expand>
       <Item Name="min">min</Item>
       <Item Name="max">max</Item>
-      <Item Name="[dim]">max - min</Item>
     </Expand>
   </Type>
 

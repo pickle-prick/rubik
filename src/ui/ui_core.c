@@ -1324,7 +1324,6 @@ ui_box_equip_custom_draw(UI_Box *box, UI_BoxCustomDrawFunctionType *custom_draw,
   box->custom_draw_user_data = user_data;
 }
 
-
 internal U64
 ui_box_char_pos_from_xy(UI_Box *box, Vec2F32 xy)
 {
@@ -1346,7 +1345,7 @@ ui_box_display_string(UI_Box *box)
   return result;
 }
 
-internal B32 
+internal B32
 ui_is_key_auto_focus_hot(UI_Key key)
 {
   B32 result = 0;
@@ -1922,12 +1921,12 @@ ui_single_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, 
 
   // Build+fill
   UI_TxtOp op = {0};
-  op.flags   = flags;
+  op.flags = flags;
   op.replace = replace;
-  op.copy    = copy;
-  op.range   = range;
-  op.cursor  = next_cursor;
-  op.mark    = next_mark;
+  op.copy = copy;
+  op.range = range;
+  op.cursor = next_cursor;
+  op.mark = next_mark;
   return op;
 }
 

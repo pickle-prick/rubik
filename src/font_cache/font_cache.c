@@ -209,6 +209,8 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
   ret.pieces.count = string.size;
   ret.pieces.v     = push_array(arena, F_Piece, ret.pieces.count);
 
+  // TODO(k): we could cache the run here to save some computation
+
   float xpos = base_align_px;
   float ypos = 0;
   // TODO(k): we could get left bearing of this glphy, then add it to the offsetX
@@ -218,21 +220,29 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
     float y = ypos;
 
     F_Piece *piece = &ret.pieces.v[i];
+    // TODO(k): handle unicode later, assume ascii for now
+    String8 piece_substring = str8_substr(string, (Rng1U64){i, i+1});
+
+    B32 is_tab = (piece_substring.size == 1 && piece_substring.str[0] == '\t');
+    if(is_tab) piece_substring = str8_lit(" ");
+    // TODO(Next): what will happen if we have a '\n' here
+    // NOTE(k): don't pass \n here, jesus, font rendering is complex
+
     // TODO(k): we could query kerning here
-    AssertAlways(string.str[i] >= 32);
-    FP_PackedQuad quad = fp_get_packed_quad(hash2style_node->atlas.atlas_handle, string.str[i]-32, &x, &y);
+    AssertAlways(piece_substring.str[0] >= 32);
+    FP_PackedQuad quad = fp_get_packed_quad(hash2style_node->atlas.atlas_handle, piece_substring.str[0]-32, &x, &y);
 
     piece->texture     = hash2style_node->atlas.texture;
     piece->texture_dim = hash2style_node->atlas.dim;
     piece->rect        = r2s16p(quad.x0, quad.y0, quad.x1, quad.y1);
     piece->subrect     = r2f32p(quad.s0, quad.t0, quad.s1, quad.t1);
     piece->advance     = x - xpos;
-    // TODO: handle unicode later, assume ascii for now
     piece->decode_size = 1;
 
     xpos = x;
     ypos = y;
   }
+
   ret.dim.x = xpos;
   ret.dim.y = ret.ascent + ret.descent;
   ProfEnd();

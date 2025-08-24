@@ -4,8 +4,8 @@
 ////////////////////////////////
 //~ some limits/constants
 
-// support max 1 rect pass per frame
-#define MAX_RECT_PASS 1
+// support max 2 rect pass per frame
+#define MAX_RECT_PASS 2
 #define MAX_RECT_GROUPS 3000
 #define MAX_GEO2D_PASS 1
 // support max 3 geo3d pass per frame
@@ -269,6 +269,7 @@ struct R_BatchList
 typedef struct R_BatchGroupRectParams R_BatchGroupRectParams;
 struct R_BatchGroupRectParams
 {
+  Vec2F32 viewport;
   R_Handle tex;
   R_Tex2DSampleKind tex_sample_kind;
   Mat3x3F32 xform;
