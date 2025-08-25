@@ -1244,6 +1244,7 @@ ui_build_box_from_stringf(UI_BoxFlags flags, char *fmt, ...)
 internal inline void
 ui_box_equip_display_string(UI_Box *box, String8 string)
 {
+  ProfBeginFunction();
   box->string = push_str8_copy(ui_build_arena(), string);
   box->flags |= UI_BoxFlag_HasDisplayString;
   UI_ColorCode text_color_code = (box->flags & UI_BoxFlag_DrawTextWeak ? UI_ColorCode_TextWeak : UI_ColorCode_Text);
@@ -1266,6 +1267,7 @@ ui_box_equip_display_string(UI_Box *box, String8 string)
     fancy_strings.node_count = 1;
     box->display_string_runs = d_fancy_run_list_from_fancy_string_list(ui_build_arena(), box->tab_size, box->text_raster_flags, &fancy_strings);
   }
+  ProfEnd();
 }
 
 internal Vec2F32
@@ -1485,6 +1487,7 @@ ui_is_focus_active(void)
 internal UI_Signal
 ui_signal_from_box(UI_Box *box)
 {
+  ProfBeginFunction();
   UI_Signal sig = {0};
   sig.box = box;
   sig.event_flags |= os_get_modifiers();
@@ -1715,6 +1718,7 @@ ui_signal_from_box(UI_Box *box)
     }
   }
 
+  ProfEnd();
   return sig;
 }
 

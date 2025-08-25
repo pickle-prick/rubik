@@ -116,6 +116,7 @@ struct IK_SettingVal
 ////////////////////////////////
 //~ String Block
 
+typedef struct IK_Frame IK_Frame;
 typedef struct IK_StringBlock IK_StringBlock;
 struct IK_StringBlock
 {
@@ -123,6 +124,7 @@ struct IK_StringBlock
   IK_StringBlock *free_prev;
   U8 *p;
   U64 cap_bytes;
+  IK_Frame *frame;
 };
 
 ////////////////////////////////
@@ -238,18 +240,23 @@ struct IK_Signal
 //~ Box types
 
 typedef U64 IK_BoxFlags;
-# define IK_BoxFlag_MouseClickable   (IK_BoxFlags)(1ull<<0)
-# define IK_BoxFlag_ClickToFocus     (IK_BoxFlags)(1ull<<1)
-# define IK_BoxFlag_Scroll           (IK_BoxFlags)(1ull<<2)
-# define IK_BoxFlag_FixedRatio       (IK_BoxFlags)(1ull<<3)
-# define IK_BoxFlag_DrawRect         (IK_BoxFlags)(1ull<<4)
-# define IK_BoxFlag_DrawText         (IK_BoxFlags)(1ull<<5)
-# define IK_BoxFlag_DrawImage        (IK_BoxFlags)(1ull<<6)
-# define IK_BoxFlag_DrawBorder       (IK_BoxFlags)(1ull<<7)
-# define IK_BoxFlag_Disabled         (IK_BoxFlags)(1ull<<8)
-# define IK_BoxFlag_HasDisplayString (IK_BoxFlags)(1ull<<9)
-# define IK_BoxFlag_DrawTextWeak     (IK_BoxFlags)(1ull<<10)
-# define IK_BoxFlag_FitViewport      (IK_BoxFlags)(1ull<<11)
+# define IK_BoxFlag_MouseClickable      (IK_BoxFlags)(1ull<<0)
+# define IK_BoxFlag_ClickToFocus        (IK_BoxFlags)(1ull<<1)
+# define IK_BoxFlag_Scroll              (IK_BoxFlags)(1ull<<2)
+# define IK_BoxFlag_FixedRatio          (IK_BoxFlags)(1ull<<3)
+# define IK_BoxFlag_DrawBackground      (IK_BoxFlags)(1ull<<4)
+# define IK_BoxFlag_DrawText            (IK_BoxFlags)(1ull<<5)
+# define IK_BoxFlag_DrawImage           (IK_BoxFlags)(1ull<<6)
+# define IK_BoxFlag_DrawBorder          (IK_BoxFlags)(1ull<<7)
+# define IK_BoxFlag_DrawHotEffects      (IK_BoxFlags)(1ull<<8)
+# define IK_BoxFlag_DrawActiveEffects   (IK_BoxFlags)(1ull<<9)
+# define IK_BoxFlag_Disabled            (IK_BoxFlags)(1ull<<10)
+# define IK_BoxFlag_HasDisplayString    (IK_BoxFlags)(1ull<<11)
+# define IK_BoxFlag_DrawTextWeak        (IK_BoxFlags)(1ull<<12)
+# define IK_BoxFlag_FitViewport         (IK_BoxFlags)(1ull<<13)
+# define IK_BoxFlag_DragToScaleFontSize (IK_BoxFlags)(1ull<<14)
+# define IK_BoxFlag_DragToResize        (IK_BoxFlags)(1ull<<15)
+# define IK_BoxFlag_DragToPosition      (IK_BoxFlags)(1ull<<16)
 
 typedef struct IK_Box IK_Box;
 
@@ -281,16 +288,19 @@ struct IK_Box
 
   // Per-build equipment
   String8 string;
+  String8 name;
+  U8 _name[512];
   IK_BoxFlags flags;
   Vec2F32 position; // top left
   F32 rotation; // around center, turns
   Vec2F32 scale;
   Vec2F32 rect_size;
   Vec4F32 color;
+  F32 ratio; // width/height
+  // image
   R_Handle albedo_tex;
   Vec2F32 albedo_tex_size;
   OS_Cursor hover_cursor;
-  F32 ratio; // width/height
   // text
   F_Tag font;
   U64 font_size;
@@ -696,13 +706,14 @@ internal IK_Box* ik_build_box_from_stringf(IK_BoxFlags flags, char *fmt, ...);
 internal void ik_box_release(IK_Box *box);
 
 //- box node equipment
+internal void    ik_box_equip_name(IK_Box *box, String8 name);
 internal String8 ik_box_equip_display_string(IK_Box *box, String8 string);
 internal void    ik_box_equip_custom_draw(IK_Box *box, IK_BoxCustomDrawFunctionType *custom_draw, void *user_data);
 
 /////////////////////////////////
 //~ High Level Box Building
 
-internal IK_Box* ik_edit_box(String8 string);
+internal IK_Box* ik_text(String8 string);
 internal IK_Box* ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 size, R_Handle tex, Vec2F32 tex_size);
 
 /////////////////////////////////
@@ -720,9 +731,11 @@ internal void ik_fancy_run_list(Vec2F32 p, D_FancyRunList *list, F32 max_x);
 /////////////////////////////////
 //~ UI Widget
 
-internal void ik_ui_stats(void);
-internal void ik_ui_toolbar(void);
-internal void ik_ui_selection(void);
+internal void      ik_ui_stats(void);
+internal void      ik_ui_toolbar(void);
+internal void      ik_ui_selection(void);
+internal void      ik_ui_inspector(void);
+internal UI_Signal ik_ui_checkbox(B32 *b);
 
 /////////////////////////////////
 //~ Text Operation Functions
