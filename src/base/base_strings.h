@@ -160,6 +160,7 @@ internal B32 char_is_digit(U8 c, U32 base);
 internal U8 char_to_lower(U8 c);
 internal U8 char_to_upper(U8 c);
 internal U8 char_to_correct_slash(U8 c);
+internal U8 char_is_printable(U8 c);
 
 ////////////////////////////////
 //~ rjf: C-String Measurement

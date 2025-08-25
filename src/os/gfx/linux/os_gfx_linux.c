@@ -660,6 +660,8 @@ os_get_events(Arena *arena, B32 wait)
         KeySym keysym = 0;
         U8 text[256] = {0};
         U64 text_size = Xutf8LookupString(window->xic, &evt.xkey, (char *)text, sizeof(text), &keysym, 0);
+        // NOTE(k): Xutf8LookupString won't produce keysym on keyPress
+        if(keysym == 0) keysym = XLookupKeysym(&evt.xkey, 0);
         
         // rjf: map keysym -> OS_Key
         B32 is_right_sided = 0;
@@ -732,6 +734,30 @@ os_get_events(Arena *arena, B32 wait)
           case 'z':case 'Z':{key = OS_Key_Z;}break;
           case ' ':{key = OS_Key_Space;}break;
         }
+
+        // k: cache key down/up
+#if 0
+        B32 cache_key_press = 1;
+        if(evt.type == KeyRelease)
+        {
+          if(XEventsQueued(os_lnx_gfx_state->display, QueuedAfterReading))
+          {
+            XEvent nextev;
+            XPeekEvent(os_lnx_gfx_state->display, &nextev);
+            if(nextev.type == KeyPress &&
+               nextev.xkey.keycode == evt.xkey.keycode &&
+               nextev.xkey.time == evt.xkey.time)
+            {
+              cache_key_press = 0;
+            }
+          }
+        }
+        if(cache_key_press) os_lnx_gfx_state->keydown_cache[key] = evt.type == KeyPress;
+#else
+        // NOTE(k): we didn't need to peak the next one, key press would always override keyrelease
+        os_lnx_gfx_state->keydown_cache[key] = evt.type == KeyPress;
+#endif
+
         
         // rjf: push text event
         if(evt.type == KeyPress && text_size != 0)
@@ -801,6 +827,9 @@ os_get_events(Arena *arena, B32 wait)
           e->delta = v2f32(0, evt.xbutton.button == Button4 ? -1.f : +1.f);
           e->pos = v2f32((F32)evt.xbutton.x, (F32)evt.xbutton.y);
         }
+
+        // k: cache button down/up
+        os_lnx_gfx_state->keydown_cache[key] = evt.type == ButtonPress;
       }break;
 
       //- rjf: mouse motion
@@ -886,6 +915,7 @@ os_get_events(Arena *arena, B32 wait)
 internal OS_Modifiers
 os_get_modifiers(void)
 {
+  ProfBeginFunction();
   OS_Modifiers modifiers = 0;
   if(os_key_is_down(OS_Key_Shift))
   {
@@ -899,12 +929,18 @@ os_get_modifiers(void)
   {
     modifiers |= OS_Modifier_Alt;
   }
+  ProfEnd();
   return modifiers;
 }
 
 internal B32
 os_key_is_down(OS_Key key)
 {
+  ProfBeginFunction();
+#if 1
+  B32 ret = os_lnx_gfx_state->keydown_cache[key];
+#else
+  // NOTE(k): this is very slow
   char keys_return[32];
   XQueryKeymap(os_lnx_gfx_state->display, keys_return);
 
@@ -954,6 +990,8 @@ os_key_is_down(OS_Key key)
                   &root_x, &root_y, &win_x, &win_y, &mask_return);
     ret = (mask_return & Button1Mask) != 0;
   }
+#endif
+  ProfEnd();
   return ret;
 }
 
