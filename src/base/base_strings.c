@@ -113,6 +113,12 @@ char_to_correct_slash(U8 c){
   return(c);
 }
 
+internal U8
+char_is_printable(U8 c)
+{
+  return(c >= 32 && c <= 126);
+}
+
 ////////////////////////////////
 //~ rjf: C-String Measurement
 
@@ -876,36 +882,61 @@ str8_list_copy(Arena *arena, String8List *list){
 }
 
 internal String8List
-str8_split(Arena *arena, String8 string, U8 *split_chars, U64 split_char_count, StringSplitFlags flags){
+str8_split(Arena *arena, String8 string, U8 *split_chars, U64 split_char_count, StringSplitFlags flags)
+{
   String8List list = {0};
-  
   B32 keep_empties = (flags & StringSplitFlag_KeepEmpties);
-  
+
   U8 *ptr = string.str;
   U8 *opl = string.str + string.size;
-  for (;ptr < opl;){
+  for(;ptr < opl;)
+  {
     U8 *first = ptr;
-    for (;ptr < opl; ptr += 1){
+    for(;ptr < opl; ptr++)
+    {
       U8 c = *ptr;
       B32 is_split = 0;
-      for (U64 i = 0; i < split_char_count; i += 1){
-        if (split_chars[i] == c){
+      for(U64 i = 0; i < split_char_count; i++)
+      {
+        if(split_chars[i] == c)
+        {
           is_split = 1;
           break;
         }
       }
-      if (is_split){
+      if(is_split)
+      {
         break;
       }
     }
     
     String8 string = str8_range(first, ptr);
-    if (keep_empties || string.size > 0){
+    if(keep_empties || string.size > 0)
+    {
       str8_list_push(arena, &list, string);
     }
-    ptr += 1;
+    ptr++;
   }
-  
+
+  if(keep_empties)
+  {
+    U8 *last = ptr-1;
+    B32 last_char_is_split = 0;
+    for(U64 i = 0; i < split_char_count; i++)
+    {
+      if(split_chars[i] == *last)
+      {
+        last_char_is_split = 1;
+        break;
+      }
+    }
+
+    if(last_char_is_split)
+    {
+      str8_list_push(arena, &list, str8_lit(""));
+    }
+  }
+
   return(list);
 }
 
