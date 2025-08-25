@@ -257,6 +257,7 @@ typedef U64 IK_BoxFlags;
 # define IK_BoxFlag_DragToScaleFontSize (IK_BoxFlags)(1ull<<14)
 # define IK_BoxFlag_DragToResize        (IK_BoxFlags)(1ull<<15)
 # define IK_BoxFlag_DragToPosition      (IK_BoxFlags)(1ull<<16)
+# define IK_BoxFlag_PruneIfNoText       (IK_BoxFlags)(1ull<<17)
 
 typedef struct IK_Box IK_Box;
 
@@ -715,6 +716,7 @@ internal void    ik_box_equip_custom_draw(IK_Box *box, IK_BoxCustomDrawFunctionT
 
 internal IK_Box* ik_text(String8 string);
 internal IK_Box* ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 size, R_Handle tex, Vec2F32 tex_size);
+internal IK_Box* ik_stroke(Vec2F32 start_pos, F32 stroke_size);
 
 /////////////////////////////////
 //~ User interaction

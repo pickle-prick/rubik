@@ -1144,6 +1144,25 @@ ik_frame(void)
   }
 
   ////////////////////////////////
+  //- ik state begin build
+
+  // reset hot key every frame if not active key
+  {
+    B32 has_active = 0;
+    for EachEnumVal(IK_MouseButtonKind, k)
+    {
+      if(!ik_key_match(ik_state->active_box_key[k], ik_key_zero()))
+      {
+        has_active = 1;
+      }
+    }
+    if(!has_active)
+    {
+      ik_state->hot_box_key = ik_key_zero();
+    }
+  }
+
+  ////////////////////////////////
   //- box interaction
 
   typedef struct IK_BoxDrag IK_BoxDrag;
@@ -1250,8 +1269,7 @@ ik_frame(void)
         }
 
         // dragging
-        // TODO(Next): bug here for blank root, since it has key 0
-        if((sig.f&IK_SignalFlag_LeftDragging) && box->flags&IK_BoxFlag_DragToPosition && !ik_key_match(box->key, ik_key_zero()) && (!is_focus_active))
+        if((sig.f&IK_SignalFlag_LeftDragging) && box->flags&IK_BoxFlag_DragToPosition && (!is_focus_active))
         {
           if(sig.f & IK_SignalFlag_Pressed)
           {
@@ -1322,6 +1340,29 @@ ik_frame(void)
     }
 
     /////////////////////////////////
+    //~ Mouse dragging on blank -> select boxes
+
+    if(ik_dragging(blank->sig))
+    {
+      if(ik_pressed(blank->sig))
+      {
+      }
+      Vec2F32 p0 = ik_state->drag_start_mouse;
+      Vec2F32 p1 = ik_state->mouse;
+      if(p0.x > p1.x) Swap(F32, p0.x, p1.x);
+      if(p0.y > p1.y) Swap(F32, p0.y, p1.y);
+      Rng2F32 rect = {.p0 = p0, .p1 = p1};
+      UI_Rect(rect)
+        UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_Floating|UI_BoxFlag_DrawDropShadow)
+        UI_Transparency(0.6)
+        ui_build_box_from_key(0, ui_key_zero());
+    }
+
+    /////////////////////////////////
+    //~ Pruned box if no text and flag has IK_BoxFlag_PruneIfNoText
+    // TODO(Next): to be implemented
+
+    /////////////////////////////////
     //~ Pruned box is hot/active/focus_hot, reset it
 
     if(!ik_key_match(ik_state->hot_box_key, ik_key_zero()))
@@ -1358,7 +1399,6 @@ ik_frame(void)
     /////////////////////////////////
     //~ Hot keys
 
-    // TODO(Next): this one is competing with focus active text input
     if(os_window_is_focused(ik_state->os_wnd) && ik_key_match(ik_state->focus_active_box_key, ik_key_zero()))
     {
       if(ui_key_press(0, OS_Key_H))
@@ -2124,7 +2164,7 @@ ik_frame_alloc()
   ik_push_frame(ret);
   IK_Box *root = ik_build_box_from_stringf(0, "##root");
   // TODO(k): we want to use key zero to make it mouse passtive, not sure if it will work well
-  IK_Box *blank = ik_build_box_from_key(IK_BoxFlag_MouseClickable|IK_BoxFlag_FitViewport|IK_BoxFlag_Scroll, ik_key_zero());
+  IK_Box *blank = ik_build_box_from_stringf(IK_BoxFlag_MouseClickable|IK_BoxFlag_FitViewport|IK_BoxFlag_Scroll, "blank");
   ik_pop_frame();
   ret->root = root;
   ret->blank = blank;
@@ -2633,8 +2673,7 @@ ik_text(String8 string)
 internal IK_Box *
 ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, R_Handle tex, Vec2F32 tex_size)
 {
-  IK_Box *box;
-  box = ik_build_box_from_stringf(0, "##image_%I64u", os_now_microseconds());
+  IK_Box *box = ik_build_box_from_stringf(0, "##image_%I64u", os_now_microseconds());
   box->flags = flags|IK_BoxFlag_DrawImage|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToResize;
   box->position = pos;
   box->rect_size = rect_size;
@@ -2644,6 +2683,13 @@ ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, R_Handle tex, Vec2F3
   box->ratio = rect_size.x/rect_size.y;
   ik_box_equip_name(box, str8_lit("image"));
   return box;
+}
+
+internal IK_Box *
+ik_stroke(Vec2F32 start_pos, F32 stroke_size)
+{
+  // TODO(Next)
+  NotImplemented;
 }
 
 /////////////////////////////////
@@ -3297,8 +3343,9 @@ ik_ui_inspector(void)
     UI_Box *container;
     F32 width_px = ui_top_font_size() * 20;
     Rng2F32 rect = {0, 0, width_px, ik_state->window_dim.y};
-    rect.x1 = mix_1f32(rect.x0, rect.x1, open_t);
-    rect.y1 = mix_1f32(rect.y0, rect.y1, open_t);
+    Vec2F32 center = center_2f32(rect);
+    rect.p0 = mix_2f32(center, rect.p0, open_t);
+    rect.p1 = mix_2f32(center, rect.p1, open_t);
     UI_Rect(rect)
       UI_Flags(UI_BoxFlag_Floating)
       container = ui_build_box_from_stringf(0, "inspector_container");
