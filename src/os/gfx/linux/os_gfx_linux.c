@@ -375,7 +375,7 @@ os_set_clipboard_text(String8 string)
 internal String8
 os_get_clipboard_text(Arena *arena)
 {
-  String8 ret = os_lnx_get_selection_data(arena, os_lnx_gfx_state->atom.CLIPBOARD, "UTF8-STRING");
+  String8 ret = os_lnx_get_selection_data(arena, os_lnx_gfx_state->atom.CLIPBOARD, "UTF8_STRING");
   return ret;
 }
 

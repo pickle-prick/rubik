@@ -1174,6 +1174,13 @@ ik_frame(void)
 
   {
     IK_Box *roots[2] = {frame->root, frame->blank};
+
+    IK_ToolKind tool = ik_tool();
+    if(tool == IK_ToolKind_Rectangle || tool == IK_ToolKind_Draw)
+    {
+      Swap(IK_Box*, roots[0], roots[1]);
+    }
+
     for(U64 i = 0; i < ArrayCount(roots); i++)
     {
       IK_Box *root = roots[i];
@@ -1301,9 +1308,14 @@ ik_frame(void)
         box->disabled_t = abs_f32(is_hot-box->disabled_t) < epsilon ? (F32)is_hot : box->disabled_t;
 
         // custom update
-        if(box->custom_update)
+        if(box->flags & IK_BoxFlag_DrawText)
         {
-          box->custom_update(box);
+          ik_update_text(box);
+        }
+
+        if(box->flags & IK_BoxFlag_DrawPoints)
+        {
+          ik_update_points(box);
         }
 
         box = rec.next;
@@ -1428,19 +1440,31 @@ ik_frame(void)
     }
 
     /////////////////////////////////
+    //~ Pen tool
+
+    if(ik_tool() == IK_ToolKind_Draw && ik_pressed(blank->sig))
+    {
+      IK_Box *b = ik_stroke(ik_state->mouse_in_world);
+      ik_kill_action();
+      ik_state->focus_hot_box_key = b->key;
+      ik_state->focus_active_box_key = b->key;
+    }
+
+    /////////////////////////////////
     //~ Edit string (Double clicked on the blank)
 
-    if(blank->sig.f&IK_SignalFlag_LeftDoubleClicked)
+    if(ik_tool() == IK_ToolKind_Selection && blank->sig.f&IK_SignalFlag_LeftDoubleClicked)
     {
-      IK_Box *box = ik_text(str8_lit(""));
+      IK_Box *box = ik_text(str8_lit(""), ik_state->mouse_in_world);
       // TODO(Next): not ideal, fix it later
       box->draw_frame_index = ik_state->frame_index+1;
+      box->disabled_t = 1.0;
       ik_state->focus_hot_box_key = box->key;
       ik_state->focus_active_box_key = box->key;
     }
 
     /////////////////////////////////
-    //~ Paste image
+    //~ Paste text/image
 
     if(ui_key_press(OS_Modifier_Ctrl, OS_Key_V))
     {
@@ -1460,7 +1484,9 @@ ik_frame(void)
       // paste text
       if(content_is_text)
       {
-        // TODO(k): to be implemented
+        IK_Box *box = ik_text(content, ik_state->mouse_in_world);
+        box->draw_frame_index = ik_state->frame_index+1;
+        box->disabled_t = 1.0;
       }
 
       // paste image
@@ -1582,9 +1608,14 @@ ik_frame(void)
           d_img(dst, src, box->albedo_tex, v4f32(1,1,1,1), 0, 0, 0);
         }
 
-        if(box->custom_draw)
+        if(box->flags & IK_BoxFlag_DrawText)
         {
-          box->custom_draw(box, box->custom_draw_user_data);
+          ik_draw_text(box);
+        }
+
+        if(box->flags & IK_BoxFlag_DrawPoints)
+        {
+          ik_draw_points(box);
         }
       }
 
@@ -2246,6 +2277,7 @@ ik_build_box_from_key(IK_BoxFlags flags, IK_Key key)
   ret->font_size = ik_top_font_size();
   ret->tab_size = ik_top_tab_size();
   ret->text_raster_flags = ik_top_text_raster_flags();
+  ret->stroke_size = ik_top_stoke_size();
   ret->palette = ik_top_palette();
   ret->transparency = ik_top_transparency();
   ret->text_padding = ik_top_text_padding();
@@ -2367,13 +2399,6 @@ ik_box_equip_display_string(IK_Box *box, String8 display_string)
 #endif
 }
 
-internal void
-ik_box_equip_custom_draw(IK_Box *box, IK_BoxCustomDrawFunctionType *custom_draw, void *user_data)
-{
-  box->custom_draw = custom_draw;
-  box->custom_draw_user_data = user_data;
-}
-
 /////////////////////////////////
 //~ High Level Box Building
 
@@ -2396,14 +2421,14 @@ struct IK_EditBoxDrawData
   IK_EditBoxTextRect *text_rects;
 };
 
-IK_BOX_CUSTOM_UPDATE(ik_text_update)
+IK_BOX_UPDATE(text)
 { 
   B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key);
   B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
 
   // data buffer
   IK_EditBoxDrawData *draw_data = push_array(ik_frame_arena(), IK_EditBoxDrawData, 1);
-  box->custom_draw_user_data = draw_data;
+  box->draw_data = draw_data;
 
   TxtPt *cursor = &box->cursor;
   TxtPt *mark = &box->mark;
@@ -2452,9 +2477,10 @@ IK_BOX_CUSTOM_UPDATE(ik_text_update)
   // rendering
 
   TxtPt mouse_pt = {1, 1};
+  F32 font_size = mix_1f32(0, box->font_size, 1.0-box->disabled_t);
   Vec2F32 text_bounds = {0};
   {
-    F32 font_size_scale = box->font_size / (F32)M_1;
+    F32 font_size_scale = font_size / (F32)M_1;
     F32 best_mouse_offset = inf32();
     F32 advance_x = 0;
     F32 advance_y = 0;
@@ -2565,8 +2591,8 @@ IK_BOX_CUSTOM_UPDATE(ik_text_update)
 
   // TODO(Next): we shoudl query font ascent+descend+padding
   // TODO(Next): for acurracy, we should use a empty run
-  box->rect_size.x = Max(text_bounds.x, box->font_size+box->text_padding*2);
-  box->rect_size.y = Max(text_bounds.y, box->font_size*1.15);
+  box->rect_size.x = Max(text_bounds.x, font_size+box->text_padding*2);
+  box->rect_size.y = Max(text_bounds.y, font_size*1.15);
 
   ////////////////////////////////
   // interaction
@@ -2608,9 +2634,9 @@ IK_BOX_CUSTOM_UPDATE(ik_text_update)
   box->hover_cursor = is_focus_active ? OS_Cursor_IBar : OS_Cursor_Pointer;
 }
 
-IK_BOX_CUSTOM_DRAW(ik_text_draw)
+IK_BOX_DRAW(text)
 {
-  IK_EditBoxDrawData *draw_data = box->custom_draw_user_data;
+  IK_EditBoxDrawData *draw_data = box->draw_data;
 
   // draw text rects
   for(U64 i = 0; i < darray_size(draw_data->text_rects); i++)
@@ -2639,7 +2665,7 @@ IK_BOX_CUSTOM_DRAW(ik_text_draw)
 }
 
 internal IK_Box *
-ik_text(String8 string)
+ik_text(String8 string, Vec2F32 pos)
 {
   IK_Box *box;
 
@@ -2649,7 +2675,7 @@ ik_text(String8 string)
   IK_Key key = ik_key_new();
   box = ik_build_box_from_key(0, key);
   box->flags |= IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio|IK_BoxFlag_DrawText|IK_BoxFlag_DragToScaleFontSize|IK_BoxFlag_DragToPosition;
-  box->position = ik_state->mouse_in_world;
+  box->position = pos;
   box->rect_size = v2f32(font_size_in_world*3, font_size_in_world);
   box->color = v4f32(1,1,0,1.0);
   box->hover_cursor = OS_Cursor_UpDownLeftRight;
@@ -2657,8 +2683,6 @@ ik_text(String8 string)
   box->albedo_tex = r_handle_zero();
   box->ratio = 0;
   box->disabled_t = 1.0;
-  box->custom_draw = ik_text_draw;
-  box->custom_update = ik_text_update;
   box->cursor = txt_pt(1, string.size+1);
   box->mark = box->cursor;
   ik_box_equip_name(box, str8_lit("text"));
@@ -2685,11 +2709,135 @@ ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, R_Handle tex, Vec2F3
   return box;
 }
 
-internal IK_Box *
-ik_stroke(Vec2F32 start_pos, F32 stroke_size)
+IK_BOX_UPDATE(points)
 {
-  // TODO(Next)
-  NotImplemented;
+  IK_Signal sig = box->sig;
+  B32 is_focus_active = ik_key_match(ik_state->focus_active_box_key, box->key);
+  if(is_focus_active)
+  {
+    for(UI_EventNode *n = ik_state->events->first, *next = 0; n != 0; n = next)
+    {
+      B32 taken = 0;
+      next = n->next;
+      UI_Event *evt = &n->v;
+
+      if(evt->kind == UI_EventKind_Release && evt->key == OS_Key_LeftMouseButton)
+      {
+        is_focus_active = 0;
+        ik_state->focus_hot_box_key = ik_key_zero();
+        ik_state->focus_active_box_key = ik_key_zero();
+
+        // commited -> calculate bounds
+        {
+          F32 half_stroke_size = box->stroke_size/2.0;
+          Rng2F32 bounds = {inf32(), inf32(), neg_inf32(), neg_inf32()};
+          for(IK_Point *p = box->first_point; p != 0; p = p->next)
+          {
+            Vec2F32 pos = p->position;
+            Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
+
+            // update bounds
+            bounds.x0 = Min(rect.x0, bounds.x0);
+            bounds.x1 = Max(rect.x1, bounds.x1);
+            bounds.y0 = Min(rect.y0, bounds.y0);
+            bounds.y1 = Max(rect.y1, bounds.y1);
+          }
+          Vec2F32 bounds_dim = dim_2f32(bounds);
+          box->position = bounds.p0;
+          box->rect_size = bounds_dim;
+
+          // convert position to relative
+          for(IK_Point *p = box->first_point; p != 0; p = p->next)
+          {
+            p->position = sub_2f32(p->position, box->position);
+          }
+        }
+      }
+
+      if(taken)
+      {
+        ui_eat_event_node(ik_state->events, n);
+      }
+    }
+  }
+  if(is_focus_active)
+  {
+    // TODO(Next): alloc & release for Point
+    IK_Point *p = push_array(ik_state->arena, IK_Point, 1);
+    DLLPushBack(box->first_point, box->last_point, p);
+    p->position = ik_state->mouse_in_world;
+    box->point_count++;
+  }
+}
+
+IK_BOX_DRAW(points)
+{
+  // TODO(Next): we may want to fix stroke size after started
+  F32 half_stroke_size = box->stroke_size/2.0;
+  IK_Point *p0 = box->first_point;
+  IK_Point *p1 = p0 ? p0->next : 0;
+  IK_Point *p2 = p1 ? p1->next : 0;
+
+  while(p2)
+  {
+    // compute midpoints
+    Vec2F32 m1 = {(p0->position.x + p1->position.x) * 0.5f, (p0->position.y + p1->position.y) * 0.5f};
+    Vec2F32 m = p1->position;
+    Vec2F32 m2 = {(p1->position.x + p2->position.x) * 0.5f, (p1->position.y + p2->position.y) * 0.5f};
+
+    // draw quadratic curve: m1 -> m2 with p1 as control
+    {
+      Vec2F32 p0 = m1;
+      Vec2F32 p1 = m;
+      Vec2F32 p2 = m2;
+
+      U64 steps = 20;
+      Vec2F32 prev = p0;
+      for(U64 i = 1; i <= steps; i++)
+      {
+        F32 t = (F32)i / (F32)steps;
+        F32 u = 1.0f - t;
+
+        Vec2F32 pt = {
+          u*u*p0.x + 2*u*t*p1.x + t*t*p2.x,
+          u*u*p0.y + 2*u*t*p1.y + t*t*p2.y
+        };
+
+        // draw line segment (prev → pt) with thickness
+        // d_line(prev, pt, v4f32(0,0,1,1), radius);
+        // TODO(Next): we want to draw line instead
+        {
+          Vec2F32 pos = add_2f32(prev, box->position);
+          Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
+          d_rect(rect, v4f32(0,0,1,0.2), half_stroke_size, 0, 0);
+        }
+        {
+          Vec2F32 pos = add_2f32(pt, box->position);
+          Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
+          d_rect(rect, v4f32(0,0,1,0.2), half_stroke_size, 0, 0);
+        }
+
+        prev = pt;
+      }
+    }
+
+    p0 = p1;
+    p1 = p2;
+    p2 = p2->next;
+  }
+}
+
+// TODO(Next): we don't need specify position here
+internal IK_Box *
+ik_stroke(Vec2F32 pos)
+{
+  IK_Box *box = ik_build_box_from_stringf(0, "##stroke_%I64u", os_now_microseconds());
+  box->flags = IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_DragToPosition|IK_BoxFlag_DrawPoints;
+  // TODO(Next): we would want the center position
+  box->hover_cursor = OS_Cursor_UpDownLeftRight;
+  box->ratio = 1.0;
+  ik_box_equip_name(box, str8_lit("stroke"));
+  return box;
 }
 
 /////////////////////////////////

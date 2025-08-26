@@ -237,6 +237,17 @@ struct IK_Signal
 #define ik_committed(s)      !!((s).f&IK_SignalFlag_Commit)
 
 ////////////////////////////////
+//~ Equipment types
+
+typedef struct IK_Point IK_Point;
+struct IK_Point
+{
+  IK_Point *next;
+  IK_Point *prev;
+  Vec2F32 position;
+};
+
+////////////////////////////////
 //~ Box types
 
 typedef U64 IK_BoxFlags;
@@ -247,27 +258,30 @@ typedef U64 IK_BoxFlags;
 # define IK_BoxFlag_DrawBackground      (IK_BoxFlags)(1ull<<4)
 # define IK_BoxFlag_DrawText            (IK_BoxFlags)(1ull<<5)
 # define IK_BoxFlag_DrawImage           (IK_BoxFlags)(1ull<<6)
-# define IK_BoxFlag_DrawBorder          (IK_BoxFlags)(1ull<<7)
-# define IK_BoxFlag_DrawHotEffects      (IK_BoxFlags)(1ull<<8)
-# define IK_BoxFlag_DrawActiveEffects   (IK_BoxFlags)(1ull<<9)
-# define IK_BoxFlag_Disabled            (IK_BoxFlags)(1ull<<10)
-# define IK_BoxFlag_HasDisplayString    (IK_BoxFlags)(1ull<<11)
-# define IK_BoxFlag_DrawTextWeak        (IK_BoxFlags)(1ull<<12)
-# define IK_BoxFlag_FitViewport         (IK_BoxFlags)(1ull<<13)
-# define IK_BoxFlag_DragToScaleFontSize (IK_BoxFlags)(1ull<<14)
-# define IK_BoxFlag_DragToResize        (IK_BoxFlags)(1ull<<15)
-# define IK_BoxFlag_DragToPosition      (IK_BoxFlags)(1ull<<16)
-# define IK_BoxFlag_PruneIfNoText       (IK_BoxFlags)(1ull<<17)
+# define IK_BoxFlag_DrawPoints          (IK_BoxFlags)(1ull<<7)
+# define IK_BoxFlag_DrawBorder          (IK_BoxFlags)(1ull<<8)
+# define IK_BoxFlag_DrawHotEffects      (IK_BoxFlags)(1ull<<9)
+# define IK_BoxFlag_DrawActiveEffects   (IK_BoxFlags)(1ull<<10)
+# define IK_BoxFlag_Disabled            (IK_BoxFlags)(1ull<<11)
+# define IK_BoxFlag_HasDisplayString    (IK_BoxFlags)(1ull<<12)
+# define IK_BoxFlag_DrawTextWeak        (IK_BoxFlags)(1ull<<13)
+# define IK_BoxFlag_FitViewport         (IK_BoxFlags)(1ull<<14)
+# define IK_BoxFlag_DragToScaleFontSize (IK_BoxFlags)(1ull<<15)
+# define IK_BoxFlag_DragToResize        (IK_BoxFlags)(1ull<<16)
+# define IK_BoxFlag_DragToPosition      (IK_BoxFlags)(1ull<<17)
+# define IK_BoxFlag_PruneIfNoText       (IK_BoxFlags)(1ull<<18)
 
 typedef struct IK_Box IK_Box;
 
-//- custom draw
-#define IK_BOX_CUSTOM_DRAW(name) void name(IK_Box *box, void *user_data)
-typedef IK_BOX_CUSTOM_DRAW(IK_BoxCustomDrawFunctionType);
+//- draw functions
+#define IK_BOX_DRAW(name) void Glue(ik_draw_, name)(IK_Box *box)
+IK_BOX_DRAW(text);
+IK_BOX_DRAW(points);
 
-//- custom update
-#define IK_BOX_CUSTOM_UPDATE(name) void name(IK_Box *box)
-typedef IK_BOX_CUSTOM_UPDATE(IK_BoxCustomUpdateFunctionType);
+//- update update
+#define IK_BOX_UPDATE(name) void Glue(ik_update_, name)(IK_Box *box)
+IK_BOX_UPDATE(text);
+IK_BOX_UPDATE(points);
 
 typedef struct IK_Frame IK_Frame;
 struct IK_Box
@@ -307,19 +321,19 @@ struct IK_Box
   U64 font_size;
   U64 tab_size;
   F_RasterFlags text_raster_flags;
+  F32 text_padding;
   TxtPt cursor;
   TxtPt mark;
   // TODO(k): make it effective
   F32 transparency;
-  F32 text_padding;
   // F32 squish;
-  // F32 text_padding;
+  // point
+  IK_Point *first_point;
+  IK_Point *last_point;
+  U64 point_count;
   IK_Palette *palette;
-  // TODO(k): add a name or indentifier for better debugging
-  IK_BoxCustomDrawFunctionType *custom_draw;
-  void *custom_draw_user_data;
-  IK_BoxCustomUpdateFunctionType *custom_update;
-  U64 draw_frame_index;
+  // stroke
+  F32 stroke_size;
 
   // Per-frmae artifacts
   String8List display_lines;
@@ -329,6 +343,9 @@ struct IK_Box
   Mat4x4F32 fixed_xform;
   Vec2F32 fixed_size;
   IK_Signal sig;
+  U64 draw_frame_index;
+  // TODO(Next): we may remove this
+  void *draw_data;
 
   // Animation
   F32 hot_t;
@@ -709,14 +726,13 @@ internal void ik_box_release(IK_Box *box);
 //- box node equipment
 internal void    ik_box_equip_name(IK_Box *box, String8 name);
 internal String8 ik_box_equip_display_string(IK_Box *box, String8 string);
-internal void    ik_box_equip_custom_draw(IK_Box *box, IK_BoxCustomDrawFunctionType *custom_draw, void *user_data);
 
 /////////////////////////////////
 //~ High Level Box Building
 
-internal IK_Box* ik_text(String8 string);
+internal IK_Box* ik_text(String8 string, Vec2F32 pos);
 internal IK_Box* ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 size, R_Handle tex, Vec2F32 tex_size);
-internal IK_Box* ik_stroke(Vec2F32 start_pos, F32 stroke_size);
+internal IK_Box* ik_stroke(Vec2F32 start_pos);
 
 /////////////////////////////////
 //~ User interaction

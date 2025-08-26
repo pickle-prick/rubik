@@ -15,6 +15,9 @@ IK_StackTable:
   { TextRasterFlags                    text_raster_flags             F_RasterFlags         F_RasterFlag_Hinted                }
   { TabSize                            tab_size                      F32                   `24.f*4.f`                         }
 
+  //- k: stroke
+  { StokeSize                          stoke_size                    F32                   `16`                               }
+
   //- k: colors
   { Transparency                       transparency                  F32                   0                                  }
   { Palette                            palette                      `IK_Palette*    `     `0`                                 }
