@@ -49,6 +49,12 @@ struct OS_LNX_GfxState
   Atom wm_delete_window_atom;
   Atom wm_sync_request_atom;
   Atom wm_sync_request_counter_atom;
+  Atom selection_data_atom;
+  struct
+  {
+    Atom INCR;
+    Atom CLIPBOARD;
+  } atom;
   Cursor cursors[OS_Cursor_COUNT];
   OS_Cursor last_set_cursor;
   OS_GfxInfo gfx_info;
@@ -69,6 +75,6 @@ internal OS_LNX_Window *os_lnx_window_from_handle(OS_Handle window);
 internal Window        os_lnx_x11window_from_handle(OS_Handle window);
 
 // clipboard
-internal String8 os_lnx_get_clipboard_content(Arena *arena, char *bufname, char *fmtname);
+internal String8 os_lnx_get_selection_data(Arena *arena, Atom selectionid, char *mime_type);
 
 #endif // OS_GFX_LINUX_H

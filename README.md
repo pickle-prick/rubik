@@ -11,7 +11,7 @@
 
 ## Development Setup Instructions
 
-**Note: Currently, only x64 linux and Windows development are supported.**Currently, only x64 linux and Windows development are supported
+**Note: Currently, only x64 linux and Windows development are supported.
 
 ### Linux Setup
 
