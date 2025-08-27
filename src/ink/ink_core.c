@@ -2206,7 +2206,7 @@ ik_frame_alloc()
 
   // create root box
   ik_push_frame(frame);
-  IK_Box *root = ik_build_box_from_stringf(0, "##root");
+  IK_Box *root = ik_build_box_from_stringf(0, "root");
   // TODO(k): we want to use key zero to make it mouse passtive, not sure if it will work well
   IK_Box *blank = ik_build_box_from_stringf(IK_BoxFlag_MouseClickable|IK_BoxFlag_FitViewport|IK_BoxFlag_Scroll, "blank");
   ik_pop_frame();
@@ -2288,7 +2288,7 @@ ik_build_box_from_key(IK_BoxFlags flags, IK_Key key)
   ret->font_size = ik_top_font_size();
   ret->tab_size = ik_top_tab_size();
   ret->text_raster_flags = ik_top_text_raster_flags();
-  ret->stroke_size = ik_top_stoke_size();
+  ret->stroke_size = ik_top_stroke_size();
   ret->palette = ik_top_palette();
   ret->transparency = ik_top_transparency();
   ret->text_padding = ik_top_text_padding();
@@ -2324,8 +2324,10 @@ ik_build_box_from_string(IK_BoxFlags flags, String8 string)
   ProfBeginFunction();
   IK_Key key = ik_key_from_string(ik_active_seed_key(), string);
   IK_Box *box = ik_build_box_from_key(flags, key);
-  // TODO(Next): capture only display name
-  ik_box_equip_name(box, string);
+
+  String8 name = ik_display_part_from_key_string(string);
+  ik_box_equip_name(box, name);
+
   ProfEnd();
   return box;
 }
@@ -2695,8 +2697,7 @@ ik_text(String8 string, Vec2F32 pos)
   F32 font_size = ik_top_font_size();
   F32 font_size_in_world = font_size * ik_state->world_to_screen_ratio.x * 2;
 
-  IK_Key key = ik_key_new();
-  box = ik_build_box_from_key(0, key);
+  box = ik_build_box_from_stringf(0, "text###%I64u", os_now_microseconds());
   box->flags |= IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio|IK_BoxFlag_DrawText|IK_BoxFlag_DragToScaleFontSize|IK_BoxFlag_DragToPosition;
   box->position = pos;
   box->rect_size = v2f32(font_size_in_world*3, font_size_in_world);
@@ -2707,7 +2708,6 @@ ik_text(String8 string, Vec2F32 pos)
   box->disabled_t = 1.0;
   box->cursor = txt_pt(1, string.size+1);
   box->mark = box->cursor;
-  ik_box_equip_name(box, str8_lit("text"));
 
   if(string.size > 0)
   {
@@ -2719,7 +2719,7 @@ ik_text(String8 string, Vec2F32 pos)
 internal IK_Box *
 ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, IK_Image *image)
 {
-  IK_Box *box = ik_build_box_from_stringf(0, "##image_%I64u", os_now_microseconds());
+  IK_Box *box = ik_build_box_from_stringf(0, "image###%I64u", os_now_microseconds());
   box->flags = flags|IK_BoxFlag_DrawImage|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToResize;
   box->position = pos;
   box->rect_size = rect_size;
@@ -2727,7 +2727,6 @@ ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, IK_Image *image)
   // TODO: we should use IK_Image here 
   box->image = image;
   box->ratio = (F32)image->x/image->y;
-  ik_box_equip_name(box, str8_lit("image"));
 
   image->rc++;
   return box;
@@ -2787,11 +2786,21 @@ IK_BOX_UPDATE(points)
   }
   if(is_focus_active)
   {
-    // TODO(Next): don't sample points constantly, compute the minium distance
-    IK_Point *p = ik_point_alloc();
-    DLLPushBack(box->first_point, box->last_point, p);
-    p->position = ik_state->mouse_in_world;
-    box->point_count++;
+    Vec2F32 last_position = {0,0};
+    if(box->last_point)
+    {
+      last_position = box->last_point->position;
+    }
+    F32 dist = length_2f32(sub_2f32(last_position, ik_state->mouse_in_world));
+    // TODO(Next): not sure which one is better
+    if(dist/ik_state->world_to_screen_ratio.x > 3)
+    // if(dist > (box->stroke_size*0.25))
+    {
+      IK_Point *p = ik_point_alloc();
+      DLLPushBack(box->first_point, box->last_point, p);
+      p->position = ik_state->mouse_in_world;
+      box->point_count++;
+    }
   }
 }
 
@@ -2829,17 +2838,36 @@ IK_BOX_DRAW(points)
 
         // draw line segment (prev → pt) with thickness
         // d_line(prev, pt, v4f32(0,0,1,1), radius);
-        // TODO(Next): we want to draw line instead
+#if 0
+        // TODO(Next): don't work, this only produce axis-aligned rect, either we use xform2d
+        //             but since we could have many line, the rect gpu-distancing will be disabled
+        {
+          Vec2F32 prev = {300,300};
+          Vec2F32 pt = {600,600};
+          Vec2F32 a_to_b = sub_2f32(pt, prev);
+          Vec3F32 dir3 = cross_3f32(v3f32(a_to_b.x, a_to_b.y, 0), v3f32(0,0,1));
+          Vec2F32 dir2 = normalize_2f32(v2f32(dir3.x, dir3.y));
+          Vec2F32 p0 = add_2f32(prev, scale_2f32(dir2, half_stroke_size));
+          Vec2F32 p1 = sub_2f32(pt, scale_2f32(dir2, half_stroke_size));
+          // p1 = add_2f32(p1, box->position);
+          // p2 = add_2f32(p2, box->position);
+          Rng2F32 rect = {.p0 = p0, .p1 = p1};
+          d_rect(rect, v4f32(0,0,1,0.1), 0, 0, 0);
+        }
+#else
         {
           Vec2F32 pos = add_2f32(prev, box->position);
           Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
-          d_rect(rect, v4f32(0,0,1,0.2), half_stroke_size, 0, 0);
+          // d_rect(rect, v4f32(0,0,1,1), half_stroke_size, 0, 0);
+          d_rect(rect, v4f32(0,0,1,1), half_stroke_size, 0, half_stroke_size*0.05);
         }
         {
           Vec2F32 pos = add_2f32(pt, box->position);
           Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
-          d_rect(rect, v4f32(0,0,1,0.2), half_stroke_size, 0, 0);
+          // d_rect(rect, v4f32(0,0,1,1), half_stroke_size, 0, 0);
+          d_rect(rect, v4f32(0,0,1,1), half_stroke_size, 0, half_stroke_size*0.05);
         }
+#endif
 
         prev = pt;
       }
@@ -2855,12 +2883,11 @@ IK_BOX_DRAW(points)
 internal IK_Box *
 ik_stroke(Vec2F32 pos)
 {
-  IK_Box *box = ik_build_box_from_stringf(0, "##stroke_%I64u", os_now_microseconds());
+  IK_Box *box = ik_build_box_from_stringf(0, "stroke###%I64u", os_now_microseconds());
   box->flags = IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_DragToPosition|IK_BoxFlag_DrawPoints|IK_BoxFlag_FixedRatio|IK_BoxFlag_DragToResize|IK_BoxFlag_DragToScaleStroke;
   // TODO(Next): we would want the center position
   box->hover_cursor = OS_Cursor_UpDownLeftRight;
   box->ratio = 1.0;
-  ik_box_equip_name(box, str8_lit("stroke"));
   return box;
 }
 
@@ -3369,7 +3396,7 @@ ik_ui_toolbar(void)
     UI_PrefWidth(ui_px(cell_width*IK_ToolKind_COUNT, 1.0))
     UI_PrefHeight(ui_px(cell_width, 1.0))
     UI_ChildLayoutAxis(Axis2_X)
-    inner = ui_build_box_from_stringf(0, "##inner");
+    inner = ui_build_box_from_stringf(0, "###inner");
 
   UI_Parent(inner)
     UI_Font(ik_font_from_slot(IK_FontSlot_ToolbarIcons))
@@ -3443,7 +3470,7 @@ ik_ui_selection(void)
     UI_Rect(rect)
       // UI_Transparency(0.1)
       // UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground)
-      container = ui_build_box_from_stringf(0, "##selection_box");
+      container = ui_build_box_from_stringf(0, "###selection_box");
 
     // TODO: dragging won't trigger this
     B32 is_hot = contains_2f32(rect, ui_state->mouse);
@@ -3480,7 +3507,7 @@ ik_ui_selection(void)
         UI_Rect(r2f32p(0,0, padding_px, padding_px))
           UI_Flags(flags|UI_BoxFlag_DrawSideTop|UI_BoxFlag_DrawSideLeft)
           UI_HoverCursor(OS_Cursor_UpLeft)
-          anchor = ui_build_box_from_stringf(0, "##top_left -> anchor");
+          anchor = ui_build_box_from_stringf(0, "###top_left -> anchor");
         UI_Signal sig1 = ui_signal_from_box(anchor);
 
         // => right
@@ -3488,7 +3515,7 @@ ik_ui_selection(void)
         UI_Rect(r2f32p(padding_px,0, padding_px+corner_size, padding_px))
           UI_Flags(flags|UI_BoxFlag_DrawSideTop|UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideRight)
           UI_HoverCursor(OS_Cursor_UpLeft)
-          right = ui_build_box_from_stringf(0, "##top_left -> right");
+          right = ui_build_box_from_stringf(0, "###top_left -> right");
         UI_Signal sig2 = ui_signal_from_box(right);
 
         // => down
@@ -4173,6 +4200,7 @@ ik_frame_from_tyml(String8 path)
   // Camera
 
   SE_Node *camera_node = se_struct_from_tag(se_node, str8_lit("camera"));
+  if(camera_node)
   {
     Vec4F32 rect = se_v4f32_from_tag(camera_node, str8_lit("rect"));
     frame->camera.target_rect = r2f32p(rect.x, rect.y, rect.z, rect.w);

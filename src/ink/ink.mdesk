@@ -16,7 +16,7 @@ IK_StackTable:
   { TabSize                            tab_size                      F32                   `24.f*4.f`                         }
 
   //- k: stroke
-  { StokeSize                          stoke_size                    F32                   `16`                               }
+  { StrokeSize                         stroke_size                   F32                   `16`                               }
 
   //- k: colors
   { Transparency                       transparency                  F32                   0                                  }
