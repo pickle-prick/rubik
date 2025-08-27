@@ -84,6 +84,7 @@ struct F_Atlas
 
 ////////////////////////////////
 //~ rjf: Rasterization Cache Types
+
 typedef struct F_Hash2StyleRasterCacheNode F_Hash2StyleRasterCacheNode;
 struct F_Hash2StyleRasterCacheNode
 {

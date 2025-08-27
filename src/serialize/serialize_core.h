@@ -114,6 +114,7 @@ internal void     se_build_end();
 internal SE_Node* se_push_node(SE_NodeKind kind, String8 tag, B32 has_value, void *value, U64 value_size);
 // NOTE(XXX): we have to copy the v, macro won't cut it
 internal SE_Node* se_str_with_tag(String8 tag, String8 v);
+internal SE_Node* se_multiline_str_with_tag(String8 tag, String8 v);
 
 #define se_s64_with_tag(tag,v)    se_push_node(SE_NodeKind_S64, tag, 1, &v, sizeof(S64))
 #define se_u64_with_tag(tag,v)    se_push_node(SE_NodeKind_U64, tag, 1, &v, sizeof(U64))

@@ -124,7 +124,35 @@ struct IK_StringBlock
   IK_StringBlock *free_prev;
   U8 *p;
   U64 cap_bytes;
-  IK_Frame *frame;
+};
+
+////////////////////////////////
+//~ Image
+
+typedef struct IK_Image IK_Image;
+struct IK_Image
+{
+  IK_Key key;
+  R_Handle handle;
+  String8 bytes;
+  U64 x;
+  U64 y;
+  U64 rc;
+};
+
+typedef struct IK_ImageCacheNode IK_ImageCacheNode;
+struct IK_ImageCacheNode
+{
+  IK_ImageCacheNode *next;
+  IK_ImageCacheNode *prev;
+  IK_Image v;
+};
+
+typedef struct IK_ImageCacheSlot IK_ImageCacheSlot;
+struct IK_ImageCacheSlot
+{
+  IK_ImageCacheNode *first;
+  IK_ImageCacheNode *last;
 };
 
 ////////////////////////////////
@@ -267,9 +295,10 @@ typedef U64 IK_BoxFlags;
 # define IK_BoxFlag_DrawTextWeak        (IK_BoxFlags)(1ull<<13)
 # define IK_BoxFlag_FitViewport         (IK_BoxFlags)(1ull<<14)
 # define IK_BoxFlag_DragToScaleFontSize (IK_BoxFlags)(1ull<<15)
-# define IK_BoxFlag_DragToResize        (IK_BoxFlags)(1ull<<16)
-# define IK_BoxFlag_DragToPosition      (IK_BoxFlags)(1ull<<17)
-# define IK_BoxFlag_PruneIfNoText       (IK_BoxFlags)(1ull<<18)
+# define IK_BoxFlag_DragToScaleStroke   (IK_BoxFlags)(1ull<<16)
+# define IK_BoxFlag_DragToResize        (IK_BoxFlags)(1ull<<17)
+# define IK_BoxFlag_DragToPosition      (IK_BoxFlags)(1ull<<18)
+# define IK_BoxFlag_PruneIfNoText       (IK_BoxFlags)(1ull<<19)
 
 typedef struct IK_Box IK_Box;
 
@@ -302,7 +331,6 @@ struct IK_Box
   U64 children_count;
 
   // Per-build equipment
-  String8 string;
   String8 name;
   U8 _name[512];
   IK_BoxFlags flags;
@@ -312,11 +340,15 @@ struct IK_Box
   Vec2F32 rect_size;
   Vec4F32 color;
   F32 ratio; // width/height
-  // image
-  R_Handle albedo_tex;
-  Vec2F32 albedo_tex_size;
   OS_Cursor hover_cursor;
+  // TODO(k): make it effective
+  F32 transparency;
+  // F32 squish;
+  F32 stroke_size;
+  // image
+  IK_Image *image;
   // text
+  String8 string;
   F_Tag font;
   U64 font_size;
   U64 tab_size;
@@ -324,16 +356,12 @@ struct IK_Box
   F32 text_padding;
   TxtPt cursor;
   TxtPt mark;
-  // TODO(k): make it effective
-  F32 transparency;
-  // F32 squish;
   // point
   IK_Point *first_point;
   IK_Point *last_point;
   U64 point_count;
+  // TODO(Next): do we need this, not serializable?
   IK_Palette *palette;
-  // stroke
-  F32 stroke_size;
 
   // Per-frmae artifacts
   String8List display_lines;
@@ -383,14 +411,21 @@ struct IK_Frame
   IK_Box *blank;
   IK_Camera camera;
 
-  // lookup table
-  U64 box_table_size;
-  IK_BoxHashSlot *box_table;
+  String8 save_path;
+  U8 _save_path[512];
 
-  // free links
+  // lookup table
+  IK_BoxHashSlot box_table[1024];
+
+  // image cache
+  IK_ImageCacheSlot image_cache_table[1024];
+
+  // free stack
   IK_Box *first_free_box;
   IK_StringBlock *first_free_string_block;
   IK_StringBlock *last_free_string_block;
+  IK_ImageCacheNode *first_free_image_cache_node;
+  IK_Point *first_free_point;
 };
 
 /////////////////////////////////
@@ -731,8 +766,20 @@ internal String8 ik_box_equip_display_string(IK_Box *box, String8 string);
 //~ High Level Box Building
 
 internal IK_Box* ik_text(String8 string, Vec2F32 pos);
-internal IK_Box* ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 size, R_Handle tex, Vec2F32 tex_size);
+internal IK_Box* ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, IK_Image *image);
 internal IK_Box* ik_stroke(Vec2F32 start_pos);
+
+/////////////////////////////////
+//~ Point Function
+
+internal IK_Point* ik_point_alloc();
+internal void      ik_point_release(IK_Point *point);
+
+/////////////////////////////////
+//~ Image Function
+
+internal IK_Image* ik_image_from_bytes(U8 *bytes, U64 byte_count, IK_Key key_override);
+internal IK_Image* ik_image_from_key(IK_Key key);
 
 /////////////////////////////////
 //~ User interaction
@@ -762,10 +809,21 @@ internal UI_TxtOp ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event,
 internal Rng1U64  ik_replace_range_from_txtrng(String8 string, TxtRng txt_rng);
 
 /////////////////////////////////
+//~ Scene serialization/deserialization
+
+internal String8   ik_frame_to_tyml(IK_Frame *frame);
+internal IK_Frame* ik_frame_from_tyml(String8 path);
+
+/////////////////////////////////
 //~ Helpers
 
+// projection
 internal Vec2F32 ik_screen_pos_in_world(Mat4x4F32 proj_view_mat_inv, Vec2F32 pos);
 #define ik_mouse_in_world(pvmi) ik_screen_pos_in_world(pvmi, ik_state->mouse)
+
+// encode
+internal String8 ik_b64string_from_bytes(Arena *arena, String8 src);
+internal String8 ik_bytes_from_b64string(Arena *arena, String8 src);
 
 ////////////////////////////////
 //~ Macro Loop Wrappers

@@ -55,6 +55,23 @@ se_str_with_tag(String8 tag, String8 v)
   return ret;
 }
 
+internal SE_Node *
+se_multiline_str_with_tag(String8 tag, String8 v)
+{
+  SE_Node *ret = se_array_with_tag(tag);
+  se_push_parent(ret);
+  
+  char *by = "\n";
+  String8List lines = str8_split(se_g_top_arena, v, (U8*)by, 1, StringSplitFlag_KeepEmpties);
+  for(String8Node *n = lines.first; n != 0; n = n->next)
+  {
+    se_str(n->string);
+  }
+
+  se_pop_parent();
+  return ret;
+}
+
 ////////////////////////////////
 //~ k: Helper functions
 

@@ -958,10 +958,7 @@ ik_frame(void)
   }
 
   ////////////////////////////////
-  //~ Begin build ink
-  //  TODO(k): we may want to move on top
-
-  IK_Frame *frame = ik_state->active_frame;
+  //~ Push frame boundary context
 
   // font
   F_Tag main_font = ik_font_from_slot(IK_FontSlot_Main);
@@ -977,12 +974,28 @@ ik_frame(void)
   }
   ik_state->widget_palette_info = widget_palette_info;
 
-  ik_push_frame(frame);
-  ik_push_parent(frame->root);
   ik_push_font(main_font);
   ik_push_font_size(main_font_size);
   ik_push_text_padding(main_font_size*0.6f);
   ik_push_palette(ik_palette_from_code(IK_PaletteCode_Base));
+
+  ////////////////////////////////
+  //~ Load frame
+
+  IK_Frame *frame = ik_state->active_frame;
+  if(frame == 0)
+  {
+    // TODO(Next): we should check if default tyml is there and can be loaded, otherwise we create a new frame
+    // testing
+    String8 binary_path = os_get_process_info()->binary_path; // only directory
+    String8 default_path = push_str8f(ik_state->arena, "%S/default.tyml", binary_path);
+    frame = ik_frame_from_tyml(default_path);
+    ik_state->active_frame = frame;
+    // ik_state->active_frame = ik_frame_alloc();
+  }
+
+  ik_push_frame(frame);
+  ik_push_parent(frame->root);
 
   ////////////////////////////////
   //~ Unpack camera
@@ -1464,6 +1477,14 @@ ik_frame(void)
     }
 
     /////////////////////////////////
+    //~ Save
+
+    if(ui_key_press(OS_Modifier_Ctrl, OS_Key_S))
+    {
+      ik_frame_to_tyml(frame);
+    }
+
+    /////////////////////////////////
     //~ Paste text/image
 
     if(ui_key_press(OS_Modifier_Ctrl, OS_Key_V))
@@ -1492,26 +1513,18 @@ ik_frame(void)
       // paste image
       if(content_is_image)
       {
-        int x = 0;
-        int y = 0;
-        int z = 0;
-        U8 *data = stbi_load_from_memory(content.str, content.size, &x, &y, &z, 4);
-        if(data)
+        IK_Image *image = ik_image_from_bytes(content.str, content.size, ik_key_zero());
+        if(image)
         {
-          // TODO: cache tex2d
-          R_Handle tex_handle = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Linear, v2s32(x, y), R_Tex2DFormat_RGBA8, data);
-
-          F32 default_screen_width = Min(ik_state->window_dim.x * 0.35, x);
-          F32 ratio = (F32)x/y;
-          F32 width_in_world = default_screen_width * ik_state->world_to_screen_ratio.x;
-          F32 height_in_world = width_in_world / ratio;
-
-          IK_Box *box = ik_image(IK_BoxFlag_DrawBorder, ik_state->mouse_in_world, v2f32(width_in_world, height_in_world), tex_handle, v2f32((F32)x, (F32)y));
+          F32 default_screen_width = Min(ik_state->window_dim.x * 0.35, image->x);
+          F32 ratio = (F32)image->x/image->y;
+          F32 width = default_screen_width * ik_state->world_to_screen_ratio.x;
+          F32 height = width / ratio;
+          IK_Box *box = ik_image(IK_BoxFlag_DrawBorder, ik_state->mouse_in_world, v2f32(width, height), image);
           box->disabled_t = 1.0;
           // TODO(Next): not ideal, fix it later
           box->draw_frame_index = ik_state->frame_index+1;
         }
-        stbi_image_free(data);
       }
 
       scratch_end(scratch);
@@ -1601,11 +1614,10 @@ ik_frame(void)
         }
         
         // draw image
-        if(box->flags & IK_BoxFlag_DrawImage)
+        if((box->flags&IK_BoxFlag_DrawImage) && box->image)
         {
-          Rng2F32 src = {0,0, box->albedo_tex_size.x, box->albedo_tex_size.y};
-          // TODO(Next): why there is a white edge
-          d_img(dst, src, box->albedo_tex, v4f32(1,1,1,1), 0, 0, 0);
+          Rng2F32 src = {0,0, box->image->x, box->image->y};
+          d_img(dst, src, box->image->handle, v4f32(1,1,1,1), 0, 0, 0);
         }
 
         if(box->flags & IK_BoxFlag_DrawText)
@@ -1760,12 +1772,13 @@ ik_frame(void)
   ////////////////////////////////
   //~ Pop frame ctx
 
-  ik_pop_frame();
-  ik_pop_parent();
   ik_pop_font();
   ik_pop_font_size();
   ik_pop_text_padding();
   ik_pop_palette();
+
+  ik_pop_frame();
+  ik_pop_parent();
 
   /////////////////////////////////
   //~ End
@@ -1797,8 +1810,6 @@ ik_tool(void)
   if(space_is_down && ik_key_match(ik_state->focus_active_box_key, ik_key_zero())) ret = IK_ToolKind_Hand;
   return ret;
 }
-
-internal IK_ToolKind ik_tool();
 
 //- colors
 internal Vec4F32
@@ -1877,8 +1888,8 @@ ik_box_from_key(IK_Key key)
   if(!ik_key_match(key, ik_key_zero()))
   {
     IK_Frame *frame = ik_top_frame();
-    U64 slot = key.u64[0]%frame->box_table_size;
-    for(IK_Box *b = frame->box_table[slot].hash_first; b != 0; b = b->hash_next)
+    U64 slot_index = key.u64[0]%ArrayCount(frame->box_table);
+    for(IK_Box *b = frame->box_table[slot_index].hash_first; b != 0; b = b->hash_next)
     {
       if(ik_key_match(b->key, key))
       {
@@ -2081,7 +2092,6 @@ ik_push_str8_copy(String8 src)
 #define MIN_CAP 512
   String8 ret = {0};
   IK_Frame *frame = ik_top_frame();
-  Arena *arena = frame->arena;
 
   U64 required_bytes = Max(MIN_CAP, src.size+1); // add one for null terminator
   IK_StringBlock *block = 0;
@@ -2101,11 +2111,10 @@ ik_push_str8_copy(String8 src)
   // didn't find a block -> alloc a new block
   if(block == 0)
   {
-    block = push_array(arena, IK_StringBlock, 1);
+    block = push_array(frame->arena, IK_StringBlock, 1);
     // TODO: we can get away with no-zero
-    block->p = push_array_fat_sized(arena, required_bytes, block);
+    block->p = push_array_fat_sized(frame->arena, required_bytes, block);
     block->cap_bytes = required_bytes;
-    block->frame = frame;
   }
 
   ret.str = block->p;
@@ -2120,8 +2129,8 @@ ik_push_str8_copy(String8 src)
 internal void
 ik_string_block_release(String8 string)
 {
+  IK_Frame *frame = ik_top_frame();
   IK_StringBlock *block = ptr_from_fat(string.str);
-  IK_Frame *frame = block->frame;
   DLLPushFront_NP(frame->first_free_string_block, frame->last_free_string_block, block, free_next, free_prev);
 }
 
@@ -2157,73 +2166,78 @@ ik_box_rec_df(IK_Box *box, IK_Box *root, U64 sib_member_off, U64 child_member_of
 internal IK_Frame *
 ik_frame_alloc()
 {
-  IK_Frame *ret = ik_state->first_free_frame;
-  if(ret)
+  IK_Frame *frame = ik_state->first_free_frame;
+  Temp scratch = scratch_begin(0,0);
+  if(frame)
   {
     SLLStackPop(ik_state->first_free_frame);
-    Arena *arena = ret->arena;
-    U64 arena_clear_pos = ret->arena_clear_pos;
+    Arena *arena = frame->arena;
+    U64 arena_clear_pos = frame->arena_clear_pos;
     arena_pop_to(arena, arena_clear_pos);
-    MemoryZeroStruct(ret);
-    ret->arena = arena;
-    ret->arena_clear_pos = arena_clear_pos;
+    MemoryZeroStruct(frame);
+    frame->arena = arena;
+    frame->arena_clear_pos = arena_clear_pos;
   }
   else
   {
     Arena *arena = arena_alloc();
-    ret = push_array(arena, IK_Frame, 1);
-    ret->arena = arena;
-    ret->arena_clear_pos = arena_pos(arena);
+    frame = push_array(arena, IK_Frame, 1);
+    frame->arena = arena;
+    frame->arena_clear_pos = arena_pos(arena);
   }
 
-  Arena *arena = ret->arena;
-  ret->box_table_size = 1024;
-  ret->box_table = push_array(arena, IK_BoxHashSlot, ret->box_table_size);
+  Arena *arena = frame->arena;
 
   /////////////////////////////////
   //~ Fill default settings
 
+  String8 binary_path = os_get_process_info()->binary_path; // only directory
+  // TODO(Next): may use proper filepath join
+  String8 save_path = push_str8f(scratch.arena, "%S/default.tyml", binary_path);
+  frame->save_path = push_str8_copy_static(save_path, frame->_save_path);
+
   // camera
-  ret->camera.rect = ik_state->window_rect;
-  ret->camera.target_rect = ret->camera.rect;
-  ret->camera.zn = -0.1;
-  ret->camera.zf = 1000000.0;
-  ret->camera.min_zoom_step = 0.05;
-  ret->camera.max_zoom_step = 0.35;
+  frame->camera.rect = ik_state->window_rect;
+  frame->camera.target_rect = frame->camera.rect;
+  frame->camera.zn = -0.1;
+  frame->camera.zf = 1000000.0;
+  frame->camera.min_zoom_step = 0.05;
+  frame->camera.max_zoom_step = 0.35;
 
   // create root box
-  ik_push_frame(ret);
+  ik_push_frame(frame);
   IK_Box *root = ik_build_box_from_stringf(0, "##root");
   // TODO(k): we want to use key zero to make it mouse passtive, not sure if it will work well
   IK_Box *blank = ik_build_box_from_stringf(IK_BoxFlag_MouseClickable|IK_BoxFlag_FitViewport|IK_BoxFlag_Scroll, "blank");
   ik_pop_frame();
-  ret->root = root;
-  ret->blank = blank;
+  frame->root = root;
+  frame->blank = blank;
 
-  // TODO: testing
-  IK_Frame(ret) IK_Parent(root)
-  {
-    {
-      IK_Box *box = ik_build_box_from_stringf(0, "##demo_rect_1");
-      box->flags |= IK_BoxFlag_DrawBackground|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToResize;
-      box->position = v2f32(0,0);
-      box->rect_size = v2f32(300, 300);
-      box->ratio = 1.f;
-      box->color = v4f32(1,1,0,1.0);
-      box->hover_cursor = OS_Cursor_UpDownLeftRight;
-    }
-    {
-      IK_Box *box = ik_build_box_from_stringf(0, "##demo_rect_2");
-      box->flags |= IK_BoxFlag_DrawBackground|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToResize;
-      box->position = v2f32(600,600);
-      box->rect_size = v2f32(300, 300);
-      box->ratio = 1.f;
-      box->color = v4f32(0,1,0,1.0);
-      box->hover_cursor = OS_Cursor_UpDownLeftRight;
-    }
-  }
+  // TODO(Next): to be deleted
+  // IK_Frame(ret) IK_Parent(root)
+  // {
+  //   {
+  //     IK_Box *box = ik_build_box_from_stringf(0, "##demo_rect_1");
+  //     box->flags |= IK_BoxFlag_DrawBackground|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToResize;
+  //     box->position = v2f32(0,0);
+  //     box->rect_size = v2f32(300, 300);
+  //     box->ratio = 1.f;
+  //     box->color = v4f32(1,1,0,1.0);
+  //     box->hover_cursor = OS_Cursor_UpDownLeftRight;
+  //   }
+  //   {
+  //     IK_Box *box = ik_build_box_from_stringf(0, "##demo_rect_2");
+  //     box->flags |= IK_BoxFlag_DrawBackground|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToResize;
+  //     box->position = v2f32(600,600);
+  //     box->rect_size = v2f32(300, 300);
+  //     box->ratio = 1.f;
+  //     box->color = v4f32(0,1,0,1.0);
+  //     box->hover_cursor = OS_Cursor_UpDownLeftRight;
+  //   }
+  // }
 
-  return ret;
+  scratch_end(scratch);
+  return frame;
 }
 
 internal void
@@ -2243,18 +2257,15 @@ ik_build_box_from_key(IK_BoxFlags flags, IK_Key key)
 {
   ProfBeginFunction();
 
-  IK_Frame *top_frame = ik_top_frame();
-  AssertAlways(top_frame);
-  Arena *arena = top_frame->arena;
-
-  IK_Box *ret = top_frame->first_free_box;
+  IK_Frame *frame = ik_top_frame();
+  IK_Box *ret = frame->first_free_box;
   if(ret != 0)
   {
-    SLLStackPop(top_frame->first_free_box);
+    SLLStackPop(frame->first_free_box);
   }
   else
   {
-    ret = push_array_no_zero(arena, IK_Box, 1);
+    ret = push_array_no_zero(frame->arena, IK_Box, 1);
   }
   MemoryZeroStruct(ret);
 
@@ -2271,7 +2282,7 @@ ik_build_box_from_key(IK_BoxFlags flags, IK_Key key)
   ret->key = key;
   ret->flags = flags;
   ret->parent = parent;
-  ret->frame = top_frame;
+  ret->frame = frame;
   ret->scale = v2f32(1.0, 1.0);
   ret->font = ik_top_font();
   ret->font_size = ik_top_font_size();
@@ -2284,8 +2295,8 @@ ik_build_box_from_key(IK_BoxFlags flags, IK_Key key)
   ret->hover_cursor = ik_top_hover_cursor();
 
   // hook into lookup table
-  U64 slot_index = key.u64[0]%top_frame->box_table_size;
-  IK_BoxHashSlot *slot = &top_frame->box_table[slot_index];
+  U64 slot_index = key.u64[0]%ArrayCount(frame->box_table);
+  IK_BoxHashSlot *slot = &frame->box_table[slot_index];
   DLLInsert_NPZ(0, slot->hash_first, slot->hash_last, slot->hash_last, ret, hash_next, hash_prev);
 
   ProfEnd();
@@ -2311,16 +2322,10 @@ internal IK_Box *
 ik_build_box_from_string(IK_BoxFlags flags, String8 string)
 {
   ProfBeginFunction();
-  // grab active parent
-  IK_Box *parent = ik_top_parent();
-
   IK_Key key = ik_key_from_string(ik_active_seed_key(), string);
-
   IK_Box *box = ik_build_box_from_key(flags, key);
-  if(box->flags & IK_BoxFlag_DrawText)
-  {
-    ik_box_equip_display_string(box, string);
-  }
+  // TODO(Next): capture only display name
+  ik_box_equip_name(box, string);
   ProfEnd();
   return box;
 }
@@ -2358,8 +2363,34 @@ ik_box_release(IK_Box *box)
     parent->children_count--;
   }
 
+  /////////////////////////////////
+  //~ Remove equipment buffers
+
+  //- string block
+  if(box->string.size > 0)
+  {
+    ik_string_block_release(box->string);
+  }
+
+  //- image
+  if(box->image)
+  {
+    box->image->rc--;
+    // TODO(Next): if image rc is 0, we may want to release it
+  }
+
+  //- points
+  if(box->first_point)
+  {
+    for(IK_Point *p = box->first_point, *next = 0; p != 0; p = next)
+    {
+      next = p->next;
+      ik_point_release(p);
+    }
+  }
+
   // remove from lookup table
-  U64 slot_index = box->key.u64[0]%frame->box_table_size;
+  U64 slot_index = box->key.u64[0]%ArrayCount(frame->box_table);
   IK_BoxHashSlot *slot = &frame->box_table[slot_index];
   DLLRemove_NP(slot->hash_first, slot->hash_last, box, hash_next, hash_prev);
 
@@ -2381,7 +2412,6 @@ ik_box_equip_name(IK_Box *box, String8 name)
 internal String8
 ik_box_equip_display_string(IK_Box *box, String8 display_string)
 {
-#if 1
   String8 ret = {0};
   if(box->string.size != 0)
   {
@@ -2390,13 +2420,6 @@ ik_box_equip_display_string(IK_Box *box, String8 display_string)
   box->string = ik_push_str8_copy(display_string);
   box->flags |= IK_BoxFlag_HasDisplayString;
   return ret;
-#else
-  // Testing, don't use this, will causing memory leak
-  String8 ret = {0};
-  box->string = push_str8_copy(ik_state->arena, display_string);
-  box->flags |= IK_BoxFlag_HasDisplayString;
-  return ret;
-#endif
 }
 
 /////////////////////////////////
@@ -2680,7 +2703,6 @@ ik_text(String8 string, Vec2F32 pos)
   box->color = v4f32(1,1,0,1.0);
   box->hover_cursor = OS_Cursor_UpDownLeftRight;
   box->font_size = font_size_in_world;
-  box->albedo_tex = r_handle_zero();
   box->ratio = 0;
   box->disabled_t = 1.0;
   box->cursor = txt_pt(1, string.size+1);
@@ -2695,17 +2717,19 @@ ik_text(String8 string, Vec2F32 pos)
 }
 
 internal IK_Box *
-ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, R_Handle tex, Vec2F32 tex_size)
+ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, IK_Image *image)
 {
   IK_Box *box = ik_build_box_from_stringf(0, "##image_%I64u", os_now_microseconds());
   box->flags = flags|IK_BoxFlag_DrawImage|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToResize;
   box->position = pos;
   box->rect_size = rect_size;
   box->hover_cursor = OS_Cursor_UpDownLeftRight;
-  box->albedo_tex = tex;
-  box->albedo_tex_size = tex_size;
-  box->ratio = rect_size.x/rect_size.y;
+  // TODO: we should use IK_Image here 
+  box->image = image;
+  box->ratio = (F32)image->x/image->y;
   ik_box_equip_name(box, str8_lit("image"));
+
+  image->rc++;
   return box;
 }
 
@@ -2745,6 +2769,7 @@ IK_BOX_UPDATE(points)
           Vec2F32 bounds_dim = dim_2f32(bounds);
           box->position = bounds.p0;
           box->rect_size = bounds_dim;
+          box->ratio = bounds_dim.x/bounds_dim.y;
 
           // convert position to relative
           for(IK_Point *p = box->first_point; p != 0; p = p->next)
@@ -2762,8 +2787,8 @@ IK_BOX_UPDATE(points)
   }
   if(is_focus_active)
   {
-    // TODO(Next): alloc & release for Point
-    IK_Point *p = push_array(ik_state->arena, IK_Point, 1);
+    // TODO(Next): don't sample points constantly, compute the minium distance
+    IK_Point *p = ik_point_alloc();
     DLLPushBack(box->first_point, box->last_point, p);
     p->position = ik_state->mouse_in_world;
     box->point_count++;
@@ -2772,7 +2797,6 @@ IK_BOX_UPDATE(points)
 
 IK_BOX_DRAW(points)
 {
-  // TODO(Next): we may want to fix stroke size after started
   F32 half_stroke_size = box->stroke_size/2.0;
   IK_Point *p0 = box->first_point;
   IK_Point *p1 = p0 ? p0->next : 0;
@@ -2791,7 +2815,7 @@ IK_BOX_DRAW(points)
       Vec2F32 p1 = m;
       Vec2F32 p2 = m2;
 
-      U64 steps = 20;
+      U64 steps = 10;
       Vec2F32 prev = p0;
       for(U64 i = 1; i <= steps; i++)
       {
@@ -2832,12 +2856,137 @@ internal IK_Box *
 ik_stroke(Vec2F32 pos)
 {
   IK_Box *box = ik_build_box_from_stringf(0, "##stroke_%I64u", os_now_microseconds());
-  box->flags = IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_DragToPosition|IK_BoxFlag_DrawPoints;
+  box->flags = IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_DragToPosition|IK_BoxFlag_DrawPoints|IK_BoxFlag_FixedRatio|IK_BoxFlag_DragToResize|IK_BoxFlag_DragToScaleStroke;
   // TODO(Next): we would want the center position
   box->hover_cursor = OS_Cursor_UpDownLeftRight;
   box->ratio = 1.0;
   ik_box_equip_name(box, str8_lit("stroke"));
   return box;
+}
+
+/////////////////////////////////
+//~ Point Function
+
+internal IK_Point *
+ik_point_alloc()
+{
+  IK_Frame *frame = ik_top_frame();
+  IK_Point *point = frame->first_free_point;
+
+  if(point)
+  {
+    SLLStackPop(frame->first_free_point);
+  }
+  else
+  {
+    point = push_array_no_zero(frame->arena, IK_Point, 1);
+  }
+  MemoryZeroStruct(point);
+  return point;
+}
+
+internal void
+ik_point_release(IK_Point *point)
+{
+  IK_Frame *frame = ik_top_frame();
+  SLLStackPush(frame->first_free_point, point);
+}
+
+/////////////////////////////////
+//~ Image Function
+
+internal IK_Image *
+ik_image_from_bytes(U8 *bytes, U64 byte_count, IK_Key key_override)
+{
+  IK_Image *ret = 0;
+  IK_Frame *frame = ik_top_frame();
+  // NOTE(k): read from source, could be png, jpeg or whatever
+  String8 src = str8(bytes, byte_count);
+  IK_Key key = key_override;
+
+  // TODO(Next): don't know if this is pratical if image bytes is too large
+  // hashing
+  if(ik_key_match(key, ik_key_zero()))
+  {
+    key = ik_key_make(ui_hash_from_string(0, str8(bytes, byte_count)), 0);
+  }
+  U64 slot_index = key.u64[0]%ArrayCount(frame->image_cache_table);
+  IK_ImageCacheSlot *slot = &frame->image_cache_table[slot_index];
+
+  IK_ImageCacheNode *node = 0;
+  for(IK_ImageCacheNode *n = slot->first; n != 0; n = n->next)
+  {
+    if(ik_key_match(n->v.key, key))
+    {
+      node = n;
+      break;
+    }
+  }
+
+  // no cache -> alloc new one
+  if(node == 0)
+  {
+    int x = 0;
+    int y = 0;
+    int z = 0;
+    U8 *data = stbi_load_from_memory(src.str, src.size, &x, &y, &z, 4); // this is image data (U32 -> RBGA)
+
+    // valid data? -> upload to gpu & create cache node
+    if(data)
+    {
+      R_Handle handle = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Linear, v2s32(x, y), R_Tex2DFormat_RGBA8, (void*)data);
+
+      node = push_array(frame->arena, IK_ImageCacheNode, 1);
+      DLLPushBack(slot->first, slot->last, node);
+
+      // fill node
+      node->v.key = key;
+      node->v.x = x;
+      node->v.y = y;
+      node->v.bytes = ik_push_str8_copy(str8(bytes, byte_count));
+      node->v.handle = handle;
+    }
+    stbi_image_free(data);
+
+    // cache node
+    if(node)
+    {
+      DLLPushBack(slot->first, slot->last, node);
+    }
+  }
+
+  if(node) ret = &node->v;
+  return ret;
+}
+
+internal IK_Image *
+ik_image_from_key(IK_Key key)
+{
+  IK_Image *ret = 0;
+  IK_Frame *frame = ik_top_frame();
+
+  if(!ik_key_match(key, ik_key_zero()))
+  {
+    U64 slot_index = key.u64[0]%ArrayCount(frame->image_cache_table);
+    IK_ImageCacheSlot *slot = &frame->image_cache_table[slot_index];
+
+    IK_ImageCacheNode *node = 0;
+    for(IK_ImageCacheNode *n = slot->first; n != 0; n = n->next)
+    {
+      if(ik_key_match(n->v.key, key))
+      {
+        node = n;
+        break;
+      }
+    }
+
+    if(node)
+    {
+      ret = &node->v;
+    }
+  }
+
+  return ret;
 }
 
 /////////////////////////////////
@@ -3387,7 +3536,16 @@ ik_ui_selection(void)
               if(box->flags & IK_BoxFlag_DragToScaleFontSize)
               {
                 box->font_size *= (new_rect_size.x/box->rect_size.x);
-                box->position = add_2f32(drag.drag_start_position, delta);
+              }
+              // TODO(Next): not working
+              if(box->flags & IK_BoxFlag_DragToScaleStroke)
+              {
+                box->stroke_size *= (new_rect_size.x/box->rect_size.x);
+                for(IK_Point *p = box->first_point; p != 0; p = p->next)
+                {
+                  p->position.x *= (new_rect_size.x/box->rect_size.x);
+                  p->position.y *= (new_rect_size.y/box->rect_size.y);
+                }
               }
             }
             break;
@@ -3456,6 +3614,16 @@ ik_ui_selection(void)
               if(box->flags & IK_BoxFlag_DragToScaleFontSize)
               {
                 box->font_size *= (new_rect_size.x/box->rect_size.x);
+              }
+              // TODO(Next): not working
+              if(box->flags & IK_BoxFlag_DragToScaleStroke)
+              {
+                box->stroke_size *= ((new_rect_size.x*new_rect_size.x)/(box->rect_size.x*box->rect_size.x));
+                for(IK_Point *p = box->first_point; p != 0; p = p->next)
+                {
+                  p->position.x *= (new_rect_size.x/box->rect_size.x);
+                  p->position.y *= (new_rect_size.y/box->rect_size.y);
+                }
               }
             }
             break;
@@ -3874,8 +4042,235 @@ ik_replace_range_from_txtrng(String8 string, TxtRng txt_rng)
 }
 
 /////////////////////////////////
+//~ Scene serialization/deserialization
+
+internal String8
+ik_frame_to_tyml(IK_Frame *frame)
+{
+  String8 ret = frame->save_path;
+  Temp scratch = scratch_begin(0, 0);
+
+  se_build_begin(scratch.arena);
+  SE_Node *root = se_struct();
+
+  SE_Parent(root)
+  {
+    /////////////////////////////////
+    // Image cache
+
+    // TODO(Next): only create if cache table has at least one, otherwise will causing parsing issue
+    SE_Array_WithTag(str8_lit("images"))
+    {
+      for(U64 i = 0; i < ArrayCount(frame->image_cache_table); i++)
+      {
+        IK_ImageCacheSlot *slot = &frame->image_cache_table[i];
+        for(IK_ImageCacheNode *n = slot->first; n != 0; n = n->next)
+        {
+          IK_Image *image = &n->v;
+          if(image->rc > 0) SE_Struct()
+          {
+            se_v2u64_with_tag(str8_lit("key"), v2u64(image->key.u64[0], image->key.u64[1]));
+            se_u64_with_tag(str8_lit("x"), image->x);
+            se_u64_with_tag(str8_lit("y"), image->y);
+            se_str_with_tag(str8_lit("data"), ik_b64string_from_bytes(scratch.arena, image->bytes));
+          }
+        }
+      }
+    }
+
+    /////////////////////////////////
+    // Frame info
+
+    // camera
+    SE_Struct_WithTag(str8_lit("camera"))
+    {
+      IK_Camera camera = frame->camera;
+      Vec4F32 rect = v4f32(camera.target_rect.x0, camera.target_rect.y0, camera.target_rect.x1, camera.target_rect.y1);
+      se_v4f32_with_tag(str8_lit("rect"), rect);
+    }
+
+    /////////////////////////////////
+    // Box
+
+    SE_Array_WithTag(str8_lit("boxes"))
+    {
+      IK_Box *box = frame->root;
+      while(box != 0)
+      {
+        // DFS order
+        IK_BoxRec rec = ik_box_rec_df_pre(box, frame->root);
+        IK_Box *parent = box->parent;
+
+        // NOTE(k): skip the root
+        if(box != frame->root) SE_Struct()
+        {
+          /////////////////////////////////
+          // Basic
+
+          se_v2u64_with_tag(str8_lit("key"), v2u64(box->key.u64[0], box->key.u64[1]));
+          if(parent) se_v2u64_with_tag(str8_lit("parent"), v2u64(parent->key.u64[0], parent->key.u64[1]));
+          se_str_with_tag(str8_lit("name"), box->name);
+          se_u64_with_tag(str8_lit("flags"), box->flags);
+          se_v2f32_with_tag(str8_lit("position"), box->position);
+          se_f32_with_tag(str8_lit("rotation"), box->rotation);
+          se_v2f32_with_tag(str8_lit("scale"), box->scale);
+          se_v2f32_with_tag(str8_lit("rect_size"), box->rect_size);
+          se_v4f32_with_tag(str8_lit("color"), box->color);
+          se_f32_with_tag(str8_lit("ratio"), box->ratio);
+          se_u64_with_tag(str8_lit("hover_cursor"), box->hover_cursor);
+          se_f32_with_tag(str8_lit("transparency"), box->transparency);
+          se_f32_with_tag(str8_lit("stroke_size"), box->stroke_size);
+
+          /////////////////////////////////
+          // Image
+
+          if(box->image)
+          {
+            se_v2u64_with_tag(str8_lit("image"), v2u64(box->image->key.u64[0], box->image->key.u64[1]));
+          }
+
+          /////////////////////////////////
+          // Text
+
+          // TODO(Next): won't work well with multiline string
+          if(box->string.size > 0) se_multiline_str_with_tag(str8_lit("string"), box->string);
+          se_u64_with_tag(str8_lit("font_size"), box->font_size);
+          se_u64_with_tag(str8_lit("tab_size"), box->tab_size);
+          se_u64_with_tag(str8_lit("text_raster_flags"), box->text_raster_flags);
+          se_f32_with_tag(str8_lit("text_padding"), box->text_padding);
+
+          /////////////////////////////////
+          // Points
+          // TODO(Next)
+        }
+
+        box = rec.next;
+      }
+    }
+  }
+
+  se_build_end();
+  se_yml_node_to_file(root, frame->save_path);
+  scratch_end(scratch);
+  return ret;
+}
+
+internal IK_Frame *
+ik_frame_from_tyml(String8 path)
+{
+  IK_Frame *frame = ik_frame_alloc();
+  Arena *arena = frame->arena;
+  Temp scratch = scratch_begin(0,0);
+  ik_push_frame(frame);
+  ik_push_parent(frame->root);
+
+  /////////////////////////////////
+  // Load se node
+
+  SE_Node *se_node = se_yml_node_from_file(scratch.arena, path);
+
+  /////////////////////////////////
+  // Camera
+
+  SE_Node *camera_node = se_struct_from_tag(se_node, str8_lit("camera"));
+  {
+    Vec4F32 rect = se_v4f32_from_tag(camera_node, str8_lit("rect"));
+    frame->camera.target_rect = r2f32p(rect.x, rect.y, rect.z, rect.w);
+  }
+
+  /////////////////////////////////
+  // Load images
+
+  SE_Node *first_image_node = se_arr_from_tag(se_node, str8_lit("images"));
+  for(SE_Node *n = first_image_node; n != 0; n = n->next)
+  {
+    Vec2U64 key_src = se_v2u64_from_tag(n, str8_lit("key"));
+    IK_Key key = ik_key_make(key_src.x, key_src.y);
+    String8 b64content = se_str_from_tag(n, str8_lit("data"));
+    // TODO(Next): we should add a keyoverride
+    String8 bytes = ik_bytes_from_b64string(scratch.arena, b64content);
+    ik_image_from_bytes(bytes.str, bytes.size, key);
+  }
+
+  /////////////////////////////////
+  // Build box
+
+  {
+    SE_Node *first = se_arr_from_tag(se_node, str8_lit("boxes"));
+    for(SE_Node *n = first; n != 0; n = n->next)
+    {
+      // basic
+      Vec2U64 key_src = se_v2u64_from_tag(n, str8_lit("key"));
+      Vec2U64 parent_key_src = se_v2u64_from_tag(n, str8_lit("parent"));
+      IK_Key key = ik_key_make(key_src.x, key_src.y);
+      IK_Key parent_key = ik_key_make(parent_key_src.x, parent_key_src.y);
+      IK_Box *parent = ik_box_from_key(parent_key);
+      U64 flags = se_u64_from_tag(n, str8_lit("flags"));
+
+      ik_push_parent(parent);
+      IK_Box *box = ik_build_box_from_key(flags, key);
+      ik_pop_parent();
+
+      String8 name = se_str_from_tag(n, str8_lit("name"));
+      ik_box_equip_name(box, name);
+
+      // no info
+      box->position = se_v2f32_from_tag(n, str8_lit("position"));
+      box->rotation = se_f32_from_tag(n, str8_lit("rotation"));
+      box->scale = se_v2f32_from_tag(n, str8_lit("scale"));
+      box->rect_size = se_v2f32_from_tag(n, str8_lit("rect_size"));
+      box->color = se_v4f32_from_tag(n, str8_lit("color"));
+      box->ratio = se_f32_from_tag(n, str8_lit("ratio"));
+      box->hover_cursor = se_u64_from_tag(n, str8_lit("hover_cursor"));
+      box->transparency = se_f32_from_tag(n, str8_lit("transparency"));
+      box->stroke_size = se_f32_from_tag(n, str8_lit("stroke_size"));
+
+      // image
+      Vec2U64 image_key = se_v2u64_from_tag(n, str8_lit("image"));
+      if(image_key.x != 0)
+      {
+        IK_Key key = ik_key_make(image_key.x, image_key.y);
+        IK_Image *image = ik_image_from_key(key);
+        if(image)
+        {
+          box->image = image;
+          image->rc++;
+        }
+      }
+
+      // text
+      SE_Node *first_string_node = se_arr_from_tag(n, str8_lit("string"));
+      if(first_string_node)
+      {
+        String8List list = {0};
+        for(SE_Node *n = first_string_node; n != 0; n = n->next)
+        {
+          if(n->kind == SE_NodeKind_String)
+          {
+            str8_list_push(scratch.arena, &list, n->v.se_str);
+          }
+        }
+        StringJoin join = {str8_lit(""), str8_lit("\n"), str8_lit("")};
+        String8 string_joined = str8_list_join(scratch.arena, &list, &join);
+        box->string = ik_push_str8_copy(string_joined);
+      }
+      box->font_size = se_u64_from_tag(n, str8_lit("font_size"));
+      box->tab_size = se_u64_from_tag(n, str8_lit("tab_size"));
+      box->text_raster_flags = se_u64_from_tag(n, str8_lit("text_raster_flags"));
+      box->text_padding = se_f32_from_tag(n, str8_lit("text_padding"));
+    }
+  }
+
+  ik_pop_parent();
+  ik_pop_frame();
+  scratch_end(scratch);
+  return frame;
+}
+
+/////////////////////////////////
 //~ Helpers
 
+// projection
 internal Vec2F32
 ik_screen_pos_in_world(Mat4x4F32 proj_view_mat_inv, Vec2F32 pos)
 {
@@ -3884,5 +4279,63 @@ ik_screen_pos_in_world(Mat4x4F32 proj_view_mat_inv, Vec2F32 pos)
   F32 moy_ndc = (ik_state->mouse.y / ik_state->window_dim.y) * 2.f - 1.f;
   Vec4F32 mouse_in_world_4 = transform_4x4f32(proj_view_mat_inv, v4f32(mox_ndc, moy_ndc, 1., 1.));
   Vec2F32 ret = v2f32(mouse_in_world_4.x, mouse_in_world_4.y);
+  return ret;
+}
+
+// encode/decode
+internal String8
+ik_b64string_from_bytes(Arena *arena, String8 src)
+{
+  // 3 bytes -> 4 chars, round up
+  U64 enc_len = ((src.size+2)/3 * 4);
+  U8 *out = push_array(arena, U8, enc_len+1); // +1 for null terminator
+
+  U64 i = 0;
+  U64 j = 0;
+  while(i < src.size)
+  {
+    U32 octet_a = (i++) < src.size ? src.str[i-1] : 0;
+    U32 octet_b = (i++) < src.size ? src.str[i-1] : 0;
+    U32 octet_c = (i++) < src.size ? src.str[i-1] : 0;
+    U32 triple = (octet_a<<16) | (octet_b<<8) | octet_c;
+
+    out[j++] = base64[(triple>>18) & 0x3F];
+    out[j++] = base64[(triple>>12) & 0x3F];
+    out[j++] = (i - 1 > src.size) ? '=' : base64[(triple >> 6) & 0x3F];
+    out[j++] = (i > src.size)     ? '=' : base64[triple & 0x3F];
+  }
+  out[j] = '\0';
+  String8 ret = str8(out, enc_len);
+  return ret;
+}
+
+internal String8
+ik_bytes_from_b64string(Arena *arena, String8 src)
+{
+  String8 ret = {0};
+  U64 dec_size = (src.size/4)*3;
+  U8 *out = push_array(arena, U8, dec_size);
+  if(src.size > 0)
+  {
+    U64 i = 0;
+    U64 j = 0;
+
+    while(i < src.size)
+    {
+      U32 a = base64_reverse[src.str[i++]];
+      U32 b = base64_reverse[src.str[i++]];
+      U32 c = base64_reverse[src.str[i++]];
+      U32 d = base64_reverse[src.str[i++]];
+
+      U32 quadruple = (a<<18) | (b<<12) | (c<<6) | d;
+      out[j++] = quadruple>>16;
+      out[j++] = quadruple>>8;
+      out[j++] = quadruple>>0;
+    }
+    // TODO(Next): size is not accurate, we should consider =
+    if(src.str[src.size-1] == '=') j--;
+    if(src.str[src.size-2] == '=') j--;
+    ret = str8(out, j);
+  }
   return ret;
 }

@@ -34,6 +34,7 @@
 #include "draw/draw.h"
 #include "ui/ui_inc.h"
 #include "synth/synth.h"
+#include "serialize/serialize_inc.h"
 #include "ink_core.h"
 
 // [c]
@@ -45,6 +46,7 @@
 #include "draw/draw.c"
 #include "ui/ui_inc.c"
 #include "synth/synth.c"
+#include "serialize/serialize_inc.c"
 #include "ink_core.c"
 
 internal void
@@ -91,7 +93,6 @@ entry_point(CmdLine *cmd_line)
 
   // init game state
   ik_init(os_wnd, r_wnd);
-  ik_state->active_frame = ik_frame_alloc();
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // main loop

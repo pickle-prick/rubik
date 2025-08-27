@@ -918,7 +918,7 @@ str8_split(Arena *arena, String8 string, U8 *split_chars, U64 split_char_count, 
     ptr++;
   }
 
-  if(keep_empties)
+  if(keep_empties && ptr)
   {
     U8 *last = ptr-1;
     B32 last_char_is_split = 0;
