@@ -279,38 +279,44 @@ struct IK_Point
 //~ Box types
 
 typedef U64 IK_BoxFlags;
-# define IK_BoxFlag_MouseClickable      (IK_BoxFlags)(1ull<<0)
-# define IK_BoxFlag_ClickToFocus        (IK_BoxFlags)(1ull<<1)
-# define IK_BoxFlag_Scroll              (IK_BoxFlags)(1ull<<2)
-# define IK_BoxFlag_FixedRatio          (IK_BoxFlags)(1ull<<3)
-# define IK_BoxFlag_DrawBackground      (IK_BoxFlags)(1ull<<4)
-# define IK_BoxFlag_DrawText            (IK_BoxFlags)(1ull<<5)
-# define IK_BoxFlag_DrawImage           (IK_BoxFlags)(1ull<<6)
-# define IK_BoxFlag_DrawPoints          (IK_BoxFlags)(1ull<<7)
-# define IK_BoxFlag_DrawBorder          (IK_BoxFlags)(1ull<<8)
-# define IK_BoxFlag_DrawHotEffects      (IK_BoxFlags)(1ull<<9)
-# define IK_BoxFlag_DrawActiveEffects   (IK_BoxFlags)(1ull<<10)
-# define IK_BoxFlag_Disabled            (IK_BoxFlags)(1ull<<11)
-# define IK_BoxFlag_HasDisplayString    (IK_BoxFlags)(1ull<<12)
-# define IK_BoxFlag_DrawTextWeak        (IK_BoxFlags)(1ull<<13)
-# define IK_BoxFlag_FitViewport         (IK_BoxFlags)(1ull<<14)
-# define IK_BoxFlag_DragToScaleFontSize (IK_BoxFlags)(1ull<<15)
-# define IK_BoxFlag_DragToScaleStroke   (IK_BoxFlags)(1ull<<16)
-# define IK_BoxFlag_DragToResize        (IK_BoxFlags)(1ull<<17)
-# define IK_BoxFlag_DragToPosition      (IK_BoxFlags)(1ull<<18)
-# define IK_BoxFlag_PruneIfNoText       (IK_BoxFlags)(1ull<<19)
+// interaction
+# define IK_BoxFlag_MouseClickable        (IK_BoxFlags)(1ull<<0)
+# define IK_BoxFlag_ClickToFocus          (IK_BoxFlags)(1ull<<1)
+# define IK_BoxFlag_Scroll                (IK_BoxFlags)(1ull<<2)
+# define IK_BoxFlag_Disabled              (IK_BoxFlags)(1ull<<3)
+// size
+# define IK_BoxFlag_FixedRatio            (IK_BoxFlags)(1ull<<4)
+# define IK_BoxFlag_FitViewport           (IK_BoxFlags)(1ull<<5)
+# define IK_BoxFlag_FitText               (IK_BoxFlags)(1ull<<6)
+# define IK_BoxFlag_FitChildren           (IK_BoxFlags)(1ull<<7)
+// draw
+# define IK_BoxFlag_DrawBackground        (IK_BoxFlags)(1ull<<8)
+# define IK_BoxFlag_DrawBorder            (IK_BoxFlags)(1ull<<9)
+# define IK_BoxFlag_DrawDropShadow        (IK_BoxFlags)(1ull<<10)
+# define IK_BoxFlag_DrawText              (IK_BoxFlags)(1ull<<11)
+# define IK_BoxFlag_DrawImage             (IK_BoxFlags)(1ull<<12)
+# define IK_BoxFlag_DrawStroke            (IK_BoxFlags)(1ull<<13)
+# define IK_BoxFlag_DrawHotEffects        (IK_BoxFlags)(1ull<<14)
+# define IK_BoxFlag_DrawActiveEffects     (IK_BoxFlags)(1ull<<15)
+// text
+# define IK_BoxFlag_HasDisplayString      (IK_BoxFlags)(1ull<<16)
+# define IK_BoxFlag_DrawTextWeak          (IK_BoxFlags)(1ull<<17)
+// drag
+# define IK_BoxFlag_DragToScaleFontSize   (IK_BoxFlags)(1ull<<18)
+# define IK_BoxFlag_DragToScaleStrokeSize (IK_BoxFlags)(1ull<<19)
+# define IK_BoxFlag_DragToScaleRectSize   (IK_BoxFlags)(1ull<<20)
+# define IK_BoxFlag_DragToPosition        (IK_BoxFlags)(1ull<<21)
 
 typedef struct IK_Box IK_Box;
-
 //- draw functions
 #define IK_BOX_DRAW(name) void Glue(ik_draw_, name)(IK_Box *box)
 IK_BOX_DRAW(text);
-IK_BOX_DRAW(points);
+IK_BOX_DRAW(stroke);
 
 //- update update
 #define IK_BOX_UPDATE(name) void Glue(ik_update_, name)(IK_Box *box)
 IK_BOX_UPDATE(text);
-IK_BOX_UPDATE(points);
+IK_BOX_UPDATE(stroke);
 
 typedef struct IK_Frame IK_Frame;
 struct IK_Box
@@ -360,7 +366,7 @@ struct IK_Box
   IK_Point *first_point;
   IK_Point *last_point;
   U64 point_count;
-  // TODO(Next): do we need this, not serializable?
+  // TODO(Next): do we need this, this is not serializable?
   IK_Palette *palette;
 
   // Per-frmae artifacts
@@ -372,6 +378,7 @@ struct IK_Box
   Vec2F32 fixed_size;
   IK_Signal sig;
   U64 draw_frame_index;
+  Vec2F32 text_bounds;
   // TODO(Next): we may remove this
   void *draw_data;
 
@@ -534,8 +541,8 @@ struct IK_State
   IK_Frame              *active_frame;
 
   // drawing buckets
-  D_Bucket              *bucket_rect;
-  D_Bucket              *bucket_geo2d;
+  D_Bucket              *bucket_ui;
+  D_Bucket              *bucket_main;
 
   // drawlists
   IK_DrawList           *drawlists[2];
@@ -571,6 +578,7 @@ struct IK_State
   Vec2F32               mouse_in_world;
   Vec2F32               last_mouse;
   Vec2F32               mouse_delta; // frame delta
+  Vec2F32               mouse_delta_in_world;
   B32                   cursor_hidden;
 
   // palette

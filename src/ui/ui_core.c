@@ -932,7 +932,6 @@ ui_layout_enforce_constraints__in_place_rec(UI_Box *root, Axis2 axis)
         }
       }
     }
-
   }
 
   //- rjf: fixup upwards-relative sizes
