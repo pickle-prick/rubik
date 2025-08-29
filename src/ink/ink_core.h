@@ -379,6 +379,7 @@ struct IK_Box
   String8List display_lines;
   // D_FancyStringList *display_line_fstrs; // TODO: support fancy string
   D_FancyRunList *display_line_fruns;
+  D_FancyRunList empty_fruns;
   Rng2F32 rect;
   IK_Signal sig;
   U64 draw_frame_index;

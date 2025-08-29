@@ -1226,10 +1226,11 @@ ik_frame(void)
         ////////////////////////////////
         // push line runs
 
-        if((box->flags&IK_BoxFlag_DrawText) && (box->flags&IK_BoxFlag_HasDisplayString))
+        if(box->flags&IK_BoxFlag_DrawText)
         {
           Temp scratch = scratch_begin(0,0);
           IK_ColorCode text_color_code = (box->flags & IK_BoxFlag_DrawTextWeak ? IK_ColorCode_TextWeak : IK_ColorCode_Text);
+
           // push line runs
           char *by = "\n";
           String8List lines = str8_split(ik_frame_arena(), box->string, (U8*)by, 1, StringSplitFlag_KeepEmpties);
@@ -1252,12 +1253,27 @@ ik_frame(void)
             d_fancy_string_list_push(scratch.arena, &fancy_strings, &fstr);
 
             line_fruns[line_index] = d_fancy_run_list_from_fancy_string_list(ik_frame_arena(), box->tab_size, box->text_raster_flags, &fancy_strings);
-            scratch_end(scratch);
+          }
+
+          // push a empty run
+          {
+            D_FancyStringList fancy_strings = {0};
+
+            D_FancyString fstr = {0};
+            fstr.font = box->font;
+            fstr.string = str8_lit("    ");
+            fstr.color = box->palette->colors[text_color_code];
+            fstr.size = M_1;
+            fstr.underline_thickness = 0;
+            fstr.strikethrough_thickness = 0;
+            d_fancy_string_list_push(scratch.arena, &fancy_strings, &fstr);
+            box->empty_fruns = d_fancy_run_list_from_fancy_string_list(ik_frame_arena(), box->tab_size, box->text_raster_flags, &fancy_strings);
           }
 
           // fill
           box->display_lines = lines;
           box->display_line_fruns = line_fruns;
+          scratch_end(scratch);
         }
 
         ////////////////////////////////
@@ -2460,10 +2476,12 @@ IK_BOX_UPDATE(text)
     TxtRng selection_rng = is_focus_active ? txt_rng(*cursor, *mark) : (TxtRng){0};
 
     U64 c_index = 0;
-    for(U64 line_index = 0; line_index < box->display_lines.node_count; line_index++)
+    U64 line_count = box->string.size > 0 ? box->display_lines.node_count : 1;
+    D_FancyRunList *line_fruns = box->string.size > 0 ? box->display_line_fruns : &box->empty_fruns;
+    for(U64 line_index = 0; line_index < line_count; line_index++)
     {
       // one line
-      D_FancyRunList *fruns = &box->display_line_fruns[line_index];
+      D_FancyRunList *fruns = &line_fruns[line_index];
       for(D_FancyRunNode *n = fruns->first; n != 0; n = n->next)
       {
         D_FancyRun run = n->v;
@@ -2542,7 +2560,7 @@ IK_BOX_UPDATE(text)
       }
 
       // has next line => inc c_index for \n
-      if(line_index < (box->display_lines.node_count-1)) c_index++;
+      if(line_index < (line_count-1)) c_index++;
     }
 
     // TODO(Next): fix it
