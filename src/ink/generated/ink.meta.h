@@ -189,7 +189,6 @@ IK_SettingCode_CodeFontSize,
 IK_SettingCode_COUNT,
 } IK_SettingCode;
 
-typedef struct IK_ParentNode IK_ParentNode; struct IK_ParentNode{IK_ParentNode *next; IK_Box * v;};
 typedef struct IK_FrameNode IK_FrameNode; struct IK_FrameNode{IK_FrameNode *next; IK_Frame * v;};
 typedef struct IK_FontNode IK_FontNode; struct IK_FontNode{IK_FontNode *next; F_Tag v;};
 typedef struct IK_FontSizeNode IK_FontSizeNode; struct IK_FontSizeNode{IK_FontSizeNode *next; F32 v;};
@@ -205,7 +204,6 @@ typedef struct IK_TextAlignmentNode IK_TextAlignmentNode; struct IK_TextAlignmen
 #define IK_DeclStackNils \
 struct\
 {\
-IK_ParentNode parent_nil_stack_top;\
 IK_FrameNode frame_nil_stack_top;\
 IK_FontNode font_nil_stack_top;\
 IK_FontSizeNode font_size_nil_stack_top;\
@@ -220,7 +218,6 @@ IK_TextPaddingNode text_padding_nil_stack_top;\
 IK_TextAlignmentNode text_alignment_nil_stack_top;\
 }
 #define IK_InitStackNils(state) \
-state->parent_nil_stack_top.v = 0;\
 state->frame_nil_stack_top.v = 0;\
 state->font_nil_stack_top.v = f_tag_zero();\
 state->font_size_nil_stack_top.v = 24.f;\
@@ -237,7 +234,6 @@ state->text_alignment_nil_stack_top.v = IK_TextAlign_Left;\
 #define IK_DeclStacks \
 struct\
 {\
-struct { IK_ParentNode *top; IK_Box * bottom_val; IK_ParentNode *free; B32 auto_pop; } parent_stack;\
 struct { IK_FrameNode *top; IK_Frame * bottom_val; IK_FrameNode *free; B32 auto_pop; } frame_stack;\
 struct { IK_FontNode *top; F_Tag bottom_val; IK_FontNode *free; B32 auto_pop; } font_stack;\
 struct { IK_FontSizeNode *top; F32 bottom_val; IK_FontSizeNode *free; B32 auto_pop; } font_size_stack;\
@@ -252,7 +248,6 @@ struct { IK_TextPaddingNode *top; F32 bottom_val; IK_TextPaddingNode *free; B32 
 struct { IK_TextAlignmentNode *top; IK_TextAlign bottom_val; IK_TextAlignmentNode *free; B32 auto_pop; } text_alignment_stack;\
 }
 #define IK_InitStacks(state) \
-state->parent_stack.top = &state->parent_nil_stack_top; state->parent_stack.bottom_val = 0; state->parent_stack.free = 0; state->parent_stack.auto_pop = 0;\
 state->frame_stack.top = &state->frame_nil_stack_top; state->frame_stack.bottom_val = 0; state->frame_stack.free = 0; state->frame_stack.auto_pop = 0;\
 state->font_stack.top = &state->font_nil_stack_top; state->font_stack.bottom_val = f_tag_zero(); state->font_stack.free = 0; state->font_stack.auto_pop = 0;\
 state->font_size_stack.top = &state->font_size_nil_stack_top; state->font_size_stack.bottom_val = 24.f; state->font_size_stack.free = 0; state->font_size_stack.auto_pop = 0;\
@@ -267,7 +262,6 @@ state->text_padding_stack.top = &state->text_padding_nil_stack_top; state->text_
 state->text_alignment_stack.top = &state->text_alignment_nil_stack_top; state->text_alignment_stack.bottom_val = IK_TextAlign_Left; state->text_alignment_stack.free = 0; state->text_alignment_stack.auto_pop = 0;\
 
 #define IK_AutoPopStacks(state) \
-if(state->parent_stack.auto_pop) { ik_pop_parent(); state->parent_stack.auto_pop = 0; }\
 if(state->frame_stack.auto_pop) { ik_pop_frame(); state->frame_stack.auto_pop = 0; }\
 if(state->font_stack.auto_pop) { ik_pop_font(); state->font_stack.auto_pop = 0; }\
 if(state->font_size_stack.auto_pop) { ik_pop_font_size(); state->font_size_stack.auto_pop = 0; }\
@@ -281,7 +275,6 @@ if(state->hover_cursor_stack.auto_pop) { ik_pop_hover_cursor(); state->hover_cur
 if(state->text_padding_stack.auto_pop) { ik_pop_text_padding(); state->text_padding_stack.auto_pop = 0; }\
 if(state->text_alignment_stack.auto_pop) { ik_pop_text_alignment(); state->text_alignment_stack.auto_pop = 0; }\
 
-internal IK_Box *                   ik_top_parent(void);
 internal IK_Frame *                 ik_top_frame(void);
 internal F_Tag                      ik_top_font(void);
 internal F32                        ik_top_font_size(void);
@@ -294,7 +287,6 @@ internal IK_BoxFlags                ik_top_flags(void);
 internal OS_Cursor                  ik_top_hover_cursor(void);
 internal F32                        ik_top_text_padding(void);
 internal IK_TextAlign               ik_top_text_alignment(void);
-internal IK_Box *                   ik_bottom_parent(void);
 internal IK_Frame *                 ik_bottom_frame(void);
 internal F_Tag                      ik_bottom_font(void);
 internal F32                        ik_bottom_font_size(void);
@@ -307,7 +299,6 @@ internal IK_BoxFlags                ik_bottom_flags(void);
 internal OS_Cursor                  ik_bottom_hover_cursor(void);
 internal F32                        ik_bottom_text_padding(void);
 internal IK_TextAlign               ik_bottom_text_alignment(void);
-internal IK_Box *                   ik_push_parent(IK_Box * v);
 internal IK_Frame *                 ik_push_frame(IK_Frame * v);
 internal F_Tag                      ik_push_font(F_Tag v);
 internal F32                        ik_push_font_size(F32 v);
@@ -320,7 +311,6 @@ internal IK_BoxFlags                ik_push_flags(IK_BoxFlags v);
 internal OS_Cursor                  ik_push_hover_cursor(OS_Cursor v);
 internal F32                        ik_push_text_padding(F32 v);
 internal IK_TextAlign               ik_push_text_alignment(IK_TextAlign v);
-internal IK_Box *                   ik_pop_parent(void);
 internal IK_Frame *                 ik_pop_frame(void);
 internal F_Tag                      ik_pop_font(void);
 internal F32                        ik_pop_font_size(void);
@@ -333,7 +323,6 @@ internal IK_BoxFlags                ik_pop_flags(void);
 internal OS_Cursor                  ik_pop_hover_cursor(void);
 internal F32                        ik_pop_text_padding(void);
 internal IK_TextAlign               ik_pop_text_alignment(void);
-internal IK_Box *                   ik_set_next_parent(IK_Box * v);
 internal IK_Frame *                 ik_set_next_frame(IK_Frame * v);
 internal F_Tag                      ik_set_next_font(F_Tag v);
 internal F32                        ik_set_next_font_size(F32 v);

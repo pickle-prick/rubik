@@ -306,6 +306,8 @@ typedef U64 IK_BoxFlags;
 # define IK_BoxFlag_DragToScaleStrokeSize (IK_BoxFlags)(1ull<<19)
 # define IK_BoxFlag_DragToScaleRectSize   (IK_BoxFlags)(1ull<<20)
 # define IK_BoxFlag_DragToPosition        (IK_BoxFlags)(1ull<<21)
+// misc
+# define IK_BoxFlag_Orphan                (IK_BoxFlags)(1ull<<22) // won't push to the frame's box list 
 
 typedef struct IK_Box IK_Box;
 //- draw functions
@@ -328,13 +330,17 @@ struct IK_Box
   IK_Box *hash_next;
   IK_Box *hash_prev;
 
-  // Tree links
+  // list links
   IK_Box *next;
   IK_Box *prev;
-  IK_Box *first;
-  IK_Box *last;
-  IK_Box *parent;
-  U64 children_count;
+
+  // Group links
+  IK_Box *group;
+  IK_Box *group_first;
+  IK_Box *group_last;
+  IK_Box *group_next;
+  IK_Box *group_prev;
+  U64 group_children_count;
 
   // Per-build equipment
   String8 name;
@@ -342,7 +348,6 @@ struct IK_Box
   IK_BoxFlags flags;
   Vec2F32 position; // top left
   F32 rotation; // around center, turns
-  Vec2F32 scale;
   Vec2F32 rect_size;
   Vec4F32 color;
   F32 ratio; // width/height
@@ -351,6 +356,7 @@ struct IK_Box
   F32 transparency;
   // F32 squish;
   F32 stroke_size;
+  Vec2F32 point_scale;
   // image
   IK_Image *image;
   // text
@@ -373,9 +379,7 @@ struct IK_Box
   String8List display_lines;
   // D_FancyStringList *display_line_fstrs; // TODO: support fancy string
   D_FancyRunList *display_line_fruns;
-  Rng2F32 fixed_rect;
-  Mat4x4F32 fixed_xform;
-  Vec2F32 fixed_size;
+  Rng2F32 rect;
   IK_Signal sig;
   U64 draw_frame_index;
   Vec2F32 text_bounds;
@@ -398,6 +402,14 @@ struct IK_BoxRec
   S32 pop_count;
 };
 
+typedef struct IK_BoxList IK_BoxList;
+struct IK_BoxList
+{
+  IK_Box *first;
+  IK_Box *last;
+  U64 count;
+};
+
 ////////////////////////////////
 //- Frame
 
@@ -414,7 +426,7 @@ struct IK_Frame
   Arena *arena;
   U64 arena_clear_pos;
   IK_Frame *next;
-  IK_Box *root;
+  IK_BoxList box_list;
   IK_Box *blank;
   IK_Camera camera;
 
@@ -758,7 +770,8 @@ internal void ik_frame_release(IK_Frame *frame);
 //~ Box Tree Building API
 
 //- box node construction
-internal IK_Box* ik_build_box_from_key(UI_BoxFlags flags, IK_Key key);
+internal IK_Box* ik_build_box_from_key_(UI_BoxFlags flags, IK_Key key, B32 pre_order);
+#define ik_build_box_from_key(f,k) ik_build_box_from_key_((f), (k), 1)
 internal IK_Key  ik_active_seed_key(void);
 internal IK_Box* ik_build_box_from_string(IK_BoxFlags flags, String8 string);
 internal IK_Box* ik_build_box_from_stringf(IK_BoxFlags flags, char *fmt, ...);

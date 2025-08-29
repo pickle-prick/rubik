@@ -4,7 +4,6 @@
 //- GENERATED CODE
 
 #if 1
-#define IK_Parent_Scope(v) DeferLoop(ik_push_parent(v), ik_pop_parent())
 #define IK_Frame_Scope(v) DeferLoop(ik_push_frame(v), ik_pop_frame())
 #define IK_Font_Scope(v) DeferLoop(ik_push_font(v), ik_pop_font())
 #define IK_FontSize_Scope(v) DeferLoop(ik_push_font_size(v), ik_pop_font_size())
@@ -18,7 +17,6 @@
 #define IK_TextPadding_Scope(v) DeferLoop(ik_push_text_padding(v), ik_pop_text_padding())
 #define IK_TextAlignment_Scope(v) DeferLoop(ik_push_text_alignment(v), ik_pop_text_alignment())
 #endif
-internal IK_Box * ik_top_parent(void) { IK_StackTopImpl(ik_state, Parent, parent) }
 internal IK_Frame * ik_top_frame(void) { IK_StackTopImpl(ik_state, Frame, frame) }
 internal F_Tag ik_top_font(void) { IK_StackTopImpl(ik_state, Font, font) }
 internal F32 ik_top_font_size(void) { IK_StackTopImpl(ik_state, FontSize, font_size) }
@@ -31,7 +29,6 @@ internal IK_BoxFlags ik_top_flags(void) { IK_StackTopImpl(ik_state, Flags, flags
 internal OS_Cursor ik_top_hover_cursor(void) { IK_StackTopImpl(ik_state, HoverCursor, hover_cursor) }
 internal F32 ik_top_text_padding(void) { IK_StackTopImpl(ik_state, TextPadding, text_padding) }
 internal IK_TextAlign ik_top_text_alignment(void) { IK_StackTopImpl(ik_state, TextAlignment, text_alignment) }
-internal IK_Box * ik_bottom_parent(void) { IK_StackBottomImpl(ik_state, Parent, parent) }
 internal IK_Frame * ik_bottom_frame(void) { IK_StackBottomImpl(ik_state, Frame, frame) }
 internal F_Tag ik_bottom_font(void) { IK_StackBottomImpl(ik_state, Font, font) }
 internal F32 ik_bottom_font_size(void) { IK_StackBottomImpl(ik_state, FontSize, font_size) }
@@ -44,7 +41,6 @@ internal IK_BoxFlags ik_bottom_flags(void) { IK_StackBottomImpl(ik_state, Flags,
 internal OS_Cursor ik_bottom_hover_cursor(void) { IK_StackBottomImpl(ik_state, HoverCursor, hover_cursor) }
 internal F32 ik_bottom_text_padding(void) { IK_StackBottomImpl(ik_state, TextPadding, text_padding) }
 internal IK_TextAlign ik_bottom_text_alignment(void) { IK_StackBottomImpl(ik_state, TextAlignment, text_alignment) }
-internal IK_Box * ik_push_parent(IK_Box * v) { IK_StackPushImpl(ik_state, Parent, parent, IK_Box *, v) }
 internal IK_Frame * ik_push_frame(IK_Frame * v) { IK_StackPushImpl(ik_state, Frame, frame, IK_Frame *, v) }
 internal F_Tag ik_push_font(F_Tag v) { IK_StackPushImpl(ik_state, Font, font, F_Tag, v) }
 internal F32 ik_push_font_size(F32 v) { IK_StackPushImpl(ik_state, FontSize, font_size, F32, v) }
@@ -57,7 +53,6 @@ internal IK_BoxFlags ik_push_flags(IK_BoxFlags v) { IK_StackPushImpl(ik_state, F
 internal OS_Cursor ik_push_hover_cursor(OS_Cursor v) { IK_StackPushImpl(ik_state, HoverCursor, hover_cursor, OS_Cursor, v) }
 internal F32 ik_push_text_padding(F32 v) { IK_StackPushImpl(ik_state, TextPadding, text_padding, F32, v) }
 internal IK_TextAlign ik_push_text_alignment(IK_TextAlign v) { IK_StackPushImpl(ik_state, TextAlignment, text_alignment, IK_TextAlign, v) }
-internal IK_Box * ik_pop_parent(void) { IK_StackPopImpl(ik_state, Parent, parent) }
 internal IK_Frame * ik_pop_frame(void) { IK_StackPopImpl(ik_state, Frame, frame) }
 internal F_Tag ik_pop_font(void) { IK_StackPopImpl(ik_state, Font, font) }
 internal F32 ik_pop_font_size(void) { IK_StackPopImpl(ik_state, FontSize, font_size) }
@@ -70,7 +65,6 @@ internal IK_BoxFlags ik_pop_flags(void) { IK_StackPopImpl(ik_state, Flags, flags
 internal OS_Cursor ik_pop_hover_cursor(void) { IK_StackPopImpl(ik_state, HoverCursor, hover_cursor) }
 internal F32 ik_pop_text_padding(void) { IK_StackPopImpl(ik_state, TextPadding, text_padding) }
 internal IK_TextAlign ik_pop_text_alignment(void) { IK_StackPopImpl(ik_state, TextAlignment, text_alignment) }
-internal IK_Box * ik_set_next_parent(IK_Box * v) { IK_StackSetNextImpl(ik_state, Parent, parent, IK_Box *, v) }
 internal IK_Frame * ik_set_next_frame(IK_Frame * v) { IK_StackSetNextImpl(ik_state, Frame, frame, IK_Frame *, v) }
 internal F_Tag ik_set_next_font(F_Tag v) { IK_StackSetNextImpl(ik_state, Font, font, F_Tag, v) }
 internal F32 ik_set_next_font_size(F32 v) { IK_StackSetNextImpl(ik_state, FontSize, font_size, F32, v) }

@@ -287,8 +287,7 @@ se_arr_from_tag(SE_Node *struct_node, String8 tag)
   SE_Node *node = se_child_from_tag(struct_node, tag);
   if(node)
   {
-    Assert(node->kind == SE_NodeKind_Array);
-    ret = node->first;
+    if(node->kind == SE_NodeKind_Array) ret = node->first;
   }
   return ret;
 }

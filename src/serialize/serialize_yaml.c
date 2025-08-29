@@ -303,10 +303,9 @@ se_yml_node_from_file(Arena *arena, String8 path)
         if(tag.size > 0)
         {
           // no value left this line, array or struct
-          if(first == opl)
+          if(first == opl && has_child && next_line_node)
           {
             // could only be array or struct
-            AssertAlways(next_line_node != 0);
             U8* first = next_line_node->string.str;
             U8* opl = first + next_line_node->string.size;
             for(;first < opl; first++)
@@ -553,7 +552,7 @@ se_yml_node_from_file(Arena *arena, String8 path)
             values = v;
             value_size = sizeof(*v)*6;
           }break;
-          default:{InvalidPath;}break;
+          default:{}break;
         }
 
         SE_Node *node = se_push_node(kind, tag, has_value, values, value_size);
