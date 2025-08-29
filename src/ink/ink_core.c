@@ -722,12 +722,12 @@ ik_frame(void)
   
   OS_EventList os_events = os_get_events(ik_frame_arena(), 0);
   {
-    ik_state->last_window_rect   = ik_state->window_rect;
-    ik_state->last_window_dim    = dim_2f32(ik_state->last_window_rect);
-    ik_state->window_rect        = os_client_rect_from_window(ik_state->os_wnd, 0);
+    ik_state->last_window_rect = ik_state->window_rect;
+    ik_state->last_window_dim = dim_2f32(ik_state->last_window_rect);
+    ik_state->window_rect = os_client_rect_from_window(ik_state->os_wnd, 0);
     ik_state->window_res_changed = ik_state->window_rect.x0 != ik_state->last_window_rect.x0 || ik_state->window_rect.x1 != ik_state->last_window_rect.x1 || ik_state->window_rect.y0 != ik_state->last_window_rect.y0 || ik_state->window_rect.y1 != ik_state->last_window_rect.y1;
-    ik_state->window_dim         = dim_2f32(ik_state->window_rect);
-    ik_state->last_mouse         = ik_state->mouse;
+    ik_state->window_dim = dim_2f32(ik_state->window_rect);
+    ik_state->last_mouse = ik_state->mouse;
     {
       Vec2F32 mouse = os_window_is_focused(ik_state->os_wnd) ? os_mouse_from_window(ik_state->os_wnd) : v2f32(-100,-100);
       if(mouse.x >= 0 && mouse.x <= ik_state->window_dim.x &&
@@ -736,9 +736,9 @@ ik_frame(void)
         ik_state->mouse = mouse;
       }
     }
-    ik_state->mouse_delta       = sub_2f32(ik_state->mouse, ik_state->last_mouse);
-    ik_state->last_dpi           = ik_state->dpi;
-    ik_state->dpi                = os_dpi_from_window(ik_state->os_wnd);
+    ik_state->mouse_delta = sub_2f32(ik_state->mouse, ik_state->last_mouse);
+    ik_state->last_dpi = ik_state->dpi;
+    ik_state->dpi = os_dpi_from_window(ik_state->os_wnd);
 
     // animation
     ik_state->animation.vast_rate = 1 - pow_f32(2, (-60.f * ui_state->animation_dt));
@@ -3308,6 +3308,12 @@ ik_ui_stats(void)
     }
     UI_Row
     {
+      ui_labelf("ik_world_to_screen_ratio");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%f %f", ik_state->world_to_screen_ratio.x, ik_state->world_to_screen_ratio.y);
+    }
+    UI_Row
+    {
       ui_labelf("window");
       ui_spacer(ui_pct(1.0, 0.0));
       ui_labelf("%.2f, %.2f", ik_state->window_dim.x, ik_state->window_dim.y);
@@ -4287,8 +4293,12 @@ ik_frame_from_tyml(String8 path)
   SE_Node *camera_node = se_struct_from_tag(se_node, str8_lit("camera"));
   if(camera_node)
   {
-    Vec4F32 rect = se_v4f32_from_tag(camera_node, str8_lit("rect"));
-    frame->camera.target_rect = r2f32p(rect.x, rect.y, rect.z, rect.w);
+    Vec4F32 src = se_v4f32_from_tag(camera_node, str8_lit("rect"));
+    Rng2F32 rect = {src.x, src.y, src.z, src.w};
+    Vec2F32 dim = dim_2f32(rect);
+    dim.x = dim.y * (ik_state->window_dim.x/ik_state->window_dim.y);
+    rect.x1 = rect.x0 + dim.x;
+    frame->camera.target_rect = rect;
   }
 
   /////////////////////////////////
