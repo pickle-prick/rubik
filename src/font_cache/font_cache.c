@@ -85,14 +85,61 @@ f_tag_from_path(String8 path)
   if(existing_node == 0)
   {
     F_FontHashSlot *slot = &f_state->font_hash_table[slot_idx];
-    new_node          = push_array(f_state->arena, F_FontHashNode, 1);
-    new_node->tag     = result;
-    new_node->handle  = fp_font_open(path);
+    new_node = push_array(f_state->arena, F_FontHashNode, 1);
+    new_node->tag = result;
+    new_node->handle = fp_font_open(path);
     new_node->metrics = fp_metrics_from_font(new_node->handle);
 
     new_node->path = push_str8_copy(f_state->arena, path);
     SLLQueuePush_N(slot->first, slot->last, new_node, hash_next);
   }
+  return result;
+}
+
+internal F_Tag
+f_tag_from_static_data_string(String8 *data_ptr)
+{
+  ProfBeginFunction();
+  
+  //- rjf: produce tag hash of ptr
+  F_Tag result = {0};
+  {
+    U128 hash = f_hash_from_string(str8((U8 *)&data_ptr, sizeof(String8 *)));
+    MemoryCopy(&result, &hash, sizeof(result));
+    result.u64[1] &= ~bit64;
+  }
+  
+  //- rjf: tag -> slot index
+  U64 slot_idx = result.u64[1] % f_state->font_hash_table_size;
+  
+  //- rjf: slot * tag -> existing node
+  F_FontHashNode *existing_node = 0;
+  {
+    for(F_FontHashNode *n = f_state->font_hash_table[slot_idx].first; n != 0 ; n = n->hash_next)
+    {
+      if(MemoryMatchStruct(&result, &n->tag))
+      {
+        existing_node = n;
+        break;
+      }
+    }
+  }
+  
+  //- rjf: allocate & push new node if we don't have an existing one
+  F_FontHashNode *new_node = 0;
+  if(existing_node == 0)
+  {
+    F_FontHashSlot *slot = &f_state->font_hash_table[slot_idx];
+    new_node = push_array(f_state->arena, F_FontHashNode, 1);
+    new_node->tag = result;
+    new_node->handle = fp_font_open_from_static_data_string((char*)data_ptr->str);
+    new_node->metrics = fp_metrics_from_font(new_node->handle);
+    new_node->path = str8_lit("");
+    SLLQueuePush_N(slot->first, slot->last, new_node, hash_next);
+  }
+  
+  //- rjf: return
+  ProfEnd();
   return result;
 }
 

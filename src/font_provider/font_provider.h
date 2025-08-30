@@ -55,7 +55,7 @@ internal B32 fp_handle_match(FP_Handle a, FP_Handle b);
 
 fp_hook void fp_init(void);
 fp_hook FP_Handle fp_font_open(String8 path);
-// fp_hook FP_Handle fp_font_open_from_static_data_string(char *data_ptr);
+fp_hook FP_Handle fp_font_open_from_static_data_string(char *data_ptr);
 fp_hook void fp_font_close(FP_Handle handle);
 fp_hook FP_Metrics fp_metrics_from_font(FP_Handle font);
 fp_hook FP_RasterResult fp_raster(Arena *arena, FP_Handle font, F32 size, FP_RasterFlags flags, Rng1U64 range);

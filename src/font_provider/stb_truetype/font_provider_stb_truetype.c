@@ -23,7 +23,7 @@ fp_font_open(String8 path)
     SLLStackPop(fp_stbtt_state->first_free_font);
     if(font->buffer_cap < props.size)
     {
-      free(font->buffer);
+      if(font->buffer_cap > 0) free(font->buffer);
       font->buffer = malloc(props.size);
       font->buffer_cap = props.size;
     }
@@ -36,12 +36,46 @@ fp_font_open(String8 path)
     font->idx = -1;
     font->buffer = malloc(props.size);
   }
+  // TODO(k): what is this? we set -1, then set back to 0, wtf?
   font->idx = 0;
 
   int read_ret = 0;
   // TODO(@k): do we need to append \0 here?
   read_ret = os_file_read(file, rng_1u64(0,props.size), font->buffer);
   AssertAlways(read_ret > 0);
+
+  // Init the font info
+  AssertAlways(stbtt_InitFont(&font->info, font->buffer, 0) != 0);
+
+  FP_Handle ret = {0};
+  ret.u64[0] = (U64)font;
+  ret.u64[1] = font->generation;
+  return ret;
+}
+
+fp_hook FP_Handle
+fp_font_open_from_static_data_string(char *data_ptr)
+{ 
+  Arena *arena = fp_stbtt_state->arena;
+
+  FP_STBTT_Font *font = fp_stbtt_state->first_free_font;
+  if(font != 0)
+  {
+    SLLStackPop(fp_stbtt_state->first_free_font);
+    if(font->buffer_cap > 0) free(font->buffer);
+    font->buffer = data_ptr;
+    font->buffer_cap = 0;
+    font->generation = font->generation + 1;
+    font->idx = -1;
+  }
+  else
+  {
+    font = push_array(arena, FP_STBTT_Font, 1);
+    font->buffer = data_ptr;
+    font->idx = -1;
+  }
+  // TODO(k): what is this? we set -1, then set back to 0, wtf?
+  font->idx = 0;
 
   // Init the font info
   AssertAlways(stbtt_InitFont(&font->info, font->buffer, 0) != 0);

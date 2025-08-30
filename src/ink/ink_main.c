@@ -36,6 +36,10 @@
 #include "synth/synth.h"
 #include "serialize/serialize_inc.h"
 #include "ink_core.h"
+// fonts
+#include "font_icons.h"
+#include "font_mplus1code_medium.h"
+#include "font_toolbar_icons.h"
 
 // [c]
 #include "base/base_inc.c"

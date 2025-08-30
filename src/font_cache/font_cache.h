@@ -157,7 +157,7 @@ internal B32 f_tag_match(F_Tag a, F_Tag b);
 internal FP_Handle f_handle_from_tag(F_Tag tag);
 internal FP_Metrics f_fp_metrics_from_tag(F_Tag tag);
 internal F_Tag f_tag_from_path(String8 path);
-// internal F_Tag f_tag_from_static_data_string(String8 *data_ptr);
+internal F_Tag f_tag_from_static_data_string(String8 *data_ptr);
 // internal String8 f_path_from_tag(F_Tag tag);
 
 ////////////////////////////////
