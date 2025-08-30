@@ -1042,9 +1042,29 @@ os_get_clipboard_text(Arena *arena)
 internal String8
 os_get_clipboard_image(Arena *arena)
 {
-  // TODO(k)
-  String8 ret = {0};
-  return ret;
+  String8 result = {0};
+  if(OpenClipboard(0))
+  {
+    UINT png_format = RegisterClipboardFormatA("PNG");
+    if(png_format != 0)
+    {
+      HANDLE data_handle = GetClipboardData(png_format);
+      if(data_handle)
+      {
+        U8 *buffer = (U8*)GlobalLock(data_handle);
+        if(buffer)
+        {
+          U64 size = GlobalSize(data_handle);
+          result.str = push_array(arena, U8, size);
+          result.size = size;
+          MemoryCopy(result.str, buffer, size);
+          GlobalUnlock(data_handle);
+        }
+      }
+      CloseClipboard();
+    }
+  }
+  return result;
 }
 
 ////////////////////////////////
