@@ -516,11 +516,11 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
       ik_state->frame_arenas[i] = arena_alloc(.reserve_size = MB(128), .commit_size = MB(64));
     }
     // frame drawlists
-    for(U64 i = 0; i < ArrayCount(ik_state->drawlists); i++)
-    {
-      // TODO(k): some device offers 256MB memory which is both cpu visiable and device local
-      ik_state->drawlists[i] = ik_drawlist_alloc(arena, MB(16), MB(16));
-    }
+    // for(U64 i = 0; i < ArrayCount(ik_state->drawlists); i++)
+    // {
+    //   // TODO(k): some device offers 256MB memory which is both cpu visiable and device local
+    //   ik_state->drawlists[i] = ik_drawlist_alloc(arena, MB(16), MB(16));
+    // }
   }
 
   // Settings
@@ -707,7 +707,7 @@ ik_frame(void)
   /////////////////////////////////
   // do per-frame resets
 
-  ik_drawlist_reset(ik_frame_drawlist());
+  // ik_drawlist_reset(ik_frame_drawlist());
   arena_clear(ik_frame_arena());
 
   /////////////////////////////////
@@ -986,7 +986,7 @@ ik_frame(void)
   IK_Frame *frame = ik_state->active_frame;
   if(frame == 0)
   {
-    // TODO(Next): we should check if default tyml is there and can be loaded, otherwise we create a new frame
+    // NOTE(Next): check if default tyml is there and can be loaded, otherwise we create a new frame
     String8 binary_path = os_get_process_info()->binary_path; // only directory
     String8 default_path = push_str8f(ik_frame_arena(), "%S/default.tyml", binary_path);
     if(os_file_path_exists(default_path))
@@ -1023,6 +1023,7 @@ ik_frame(void)
   ik_ui_stats();
   ik_ui_toolbar();
   ik_ui_inspector();
+  ik_ui_bottom_bar();
   ik_ui_selection();
 
   ////////////////////////////////
@@ -1176,7 +1177,6 @@ ik_frame(void)
   ////////////////////////////////
   //- box interaction
 
-  // TODO(Next): we may not need this
   typedef struct IK_BoxDrag IK_BoxDrag;
   struct IK_BoxDrag
   {
@@ -1327,8 +1327,6 @@ ik_frame(void)
 
         if(box->flags & IK_BoxFlag_FitText)
         {
-          // TODO(Next): clamp using a mimium width and height
-          // we may want to a empty text run
           box->rect_size = box->text_bounds;
           box->ratio = box->rect_size.x / box->rect_size.y;
         }
@@ -1434,9 +1432,9 @@ ik_frame(void)
     }
 
     /////////////////////////////////
-    //~ Pen tool
+    //~ Pen Tool
 
-    if(ik_tool() == IK_ToolKind_Draw && ik_pressed(blank->sig))
+    if(tool == IK_ToolKind_Draw && ik_pressed(blank->sig))
     {
       IK_Box *b = ik_stroke(ik_state->mouse_in_world);
       ik_kill_action();
@@ -1445,9 +1443,37 @@ ik_frame(void)
     }
 
     /////////////////////////////////
+    //~ Rectangle Tool
+    // TODO(Next): not finished, we want to drag to resize it
+
+    if(tool == IK_ToolKind_Rectangle && ik_pressed(blank->sig))
+    {
+      IK_Box *box = ik_build_box_from_stringf(0, "rect###%I64u", os_now_microseconds());
+      box->flags |= IK_BoxFlag_DrawBackground|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToScaleRectSize;
+      box->position = ik_state->mouse_in_world;
+      box->rect_size = v2f32(300, 300);
+      box->ratio = 1.f;
+      box->color = v4f32(1,1,0,1.0);
+      box->hover_cursor = OS_Cursor_UpDownLeftRight;
+
+      ik_kill_action();
+      ik_state->focus_hot_box_key = box->key;
+      ik_state->active_box_key[IK_MouseButtonKind_Left] = ik_key_zero();
+
+      // UI_Key key = ui_key_from_stringf(ui_key_from_stringf(ui_key_zero(), "###selection_box"), "###top_left -> anchor");
+      // TODO(Next): won't work, since the selection box isn't created yet
+      // UI_Key key = ui_key_make(3813955761697056973);
+      // ui_state->active_box_key[UI_MouseButtonKind_Left] = key;
+
+      tool = IK_ToolKind_Selection;
+      ik_state->tool = tool;
+      blank->sig.f = 0;
+    }
+
+    /////////////////////////////////
     //~ Edit string (Double clicked on the blank)
 
-    if(ik_tool() == IK_ToolKind_Selection && blank->sig.f&IK_SignalFlag_LeftDoubleClicked)
+    if(tool == IK_ToolKind_Selection && blank->sig.f&IK_SignalFlag_LeftDoubleClicked)
     {
       IK_Box *box = ik_text(str8_lit(""), ik_state->mouse_in_world);
       // TODO(Next): not ideal, fix it later
@@ -1460,7 +1486,7 @@ ik_frame(void)
     /////////////////////////////////
     //~ Mouse dragging on blank -> select boxes
 
-    if(ik_dragging(blank->sig))
+    if(tool == IK_ToolKind_Selection && ik_dragging(blank->sig))
     {
       if(ik_pressed(blank->sig))
       {
@@ -1533,7 +1559,7 @@ ik_frame(void)
     /////////////////////////////////
     //~ Hover cursor
 
-    if(ik_tool() == IK_ToolKind_Selection)
+    if(tool == IK_ToolKind_Selection)
     {
       IK_Box *hot = ik_box_from_key(ik_state->hot_box_key);
       IK_Box *active = ik_box_from_key(ik_state->active_box_key[IK_MouseButtonKind_Left]);
@@ -2752,9 +2778,7 @@ IK_BOX_UPDATE(stroke)
       last_position = box->last_point->position;
     }
     F32 dist = length_2f32(sub_2f32(last_position, ik_state->mouse_in_world));
-    // TODO(Next): not sure which one is better
-    // if(dist/ik_state->world_to_screen_ratio.x > 3)
-    if(dist > (box->stroke_size*0.25))
+    if(dist/ik_state->world_to_screen_ratio.x > (ik_state->dpi/96.0)*1)
     {
       IK_Point *p = ik_point_alloc();
       DLLPushBack(box->first_point, box->last_point, p);
@@ -2766,7 +2790,10 @@ IK_BOX_UPDATE(stroke)
 
 IK_BOX_DRAW(stroke)
 {
-  F32 half_stroke_size = box->stroke_size/2.0;
+  F32 stroke_size = box->stroke_size;
+  F32 stroke_size_px = stroke_size/ik_state->world_to_screen_ratio.x;
+  F32 half_stroke_size = stroke_size/2.0;
+
   IK_Point *p0 = box->first_point;
   IK_Point *p1 = p0 ? p0->next : 0;
   IK_Point *p2 = p1 ? p1->next : 0;
@@ -2784,8 +2811,21 @@ IK_BOX_DRAW(stroke)
       Vec2F32 p1 = m;
       Vec2F32 p2 = m2;
 
-      // TODO(Next): not sure if this work
-      U64 steps = 30.0/ik_state->world_to_screen_ratio.x;
+      // scale and translate
+      p0.x = p0.x*box->point_scale.x + box->position.x;
+      p0.y = p0.y*box->point_scale.y + box->position.y;
+      p1.x = p1.x*box->point_scale.x + box->position.x;
+      p1.y = p1.y*box->point_scale.y + box->position.y;
+      p2.x = p2.x*box->point_scale.x + box->position.x;
+      p2.y = p2.y*box->point_scale.y + box->position.y;
+
+      // decide step size
+      F32 smoothness_inv = 2 * (ik_state->dpi/96.0);
+      F32 dist = length_2f32(sub_2f32(p0, p2));
+      F32 steps_f32 = (dist/stroke_size) * (stroke_size_px / (smoothness_inv));
+      U64 steps = round_f32(steps_f32);
+      steps = Min(steps, 15);
+
       Vec2F32 prev = p0;
       for(U64 i = 1; i <= steps; i++)
       {
@@ -2817,13 +2857,13 @@ IK_BOX_DRAW(stroke)
         }
 #else
         {
-          Vec2F32 pos = add_2f32(v2f32(prev.x*box->point_scale.x, prev.y*box->point_scale.y), box->position);
+          Vec2F32 pos = prev;
           Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
           // d_rect(rect, v4f32(0,0,1,1), half_stroke_size, 0, 0);
           d_rect(rect, v4f32(0,0,1,1), half_stroke_size, 0, half_stroke_size*0.05);
         }
         {
-          Vec2F32 pos = add_2f32(v2f32(pt.x*box->point_scale.x, pt.y*box->point_scale.y), box->position);
+          Vec2F32 pos = pt;
           Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
           // d_rect(rect, v4f32(0,0,1,1), half_stroke_size, 0, 0);
           d_rect(rect, v4f32(0,0,1,1), half_stroke_size, 0, half_stroke_size*0.05);
@@ -3191,8 +3231,8 @@ ik_ui_stats(void)
   IK_Camera *camera = &frame->camera;
 
   UI_Box *container = 0;
-  F32 width = 800;
-  Rng2F32 rect = {ik_state->window_dim.x-800, 0, ik_state->window_dim.x, ik_state->window_dim.y};
+  F32 width = ui_top_font_size()*30;
+  Rng2F32 rect = {ik_state->window_dim.x-width, 0, ik_state->window_dim.x, ik_state->window_dim.y};
   UI_Rect(rect)
     UI_ChildLayoutAxis(Axis2_Y)
     UI_Flags(UI_BoxFlag_Floating)
@@ -3292,25 +3332,25 @@ ik_ui_stats(void)
     {
       ui_labelf("ik_mouse");
       ui_spacer(ui_pct(1.0, 0.0));
-      ui_labelf("%f %f", ik_state->mouse.x, ik_state->mouse.y);
+      ui_labelf("%.0f %.0f", ik_state->mouse.x, ik_state->mouse.y);
     }
     UI_Row
     {
       ui_labelf("ik_drag_start_mouse");
       ui_spacer(ui_pct(1.0, 0.0));
-      ui_labelf("%f %f", ik_state->drag_start_mouse.x, ik_state->drag_start_mouse.y);
+      ui_labelf("%.0f %.0f", ik_state->drag_start_mouse.x, ik_state->drag_start_mouse.y);
     }
     UI_Row
     {
       ui_labelf("ik_camera_rect");
       ui_spacer(ui_pct(1.0, 0.0));
-      ui_labelf("%f %f %f %f", camera->rect.x0, camera->rect.y0, camera->rect.y0, camera->rect.y1);
+      ui_labelf("%.0f %.0f %.0f %.0f", camera->rect.x0, camera->rect.y0, camera->rect.y0, camera->rect.y1);
     }
     UI_Row
     {
       ui_labelf("ik_world_to_screen_ratio");
       ui_spacer(ui_pct(1.0, 0.0));
-      ui_labelf("%f %f", ik_state->world_to_screen_ratio.x, ik_state->world_to_screen_ratio.y);
+      ui_labelf("%.2f %.2f", ik_state->world_to_screen_ratio.x, ik_state->world_to_screen_ratio.y);
     }
     UI_Row
     {
@@ -3922,6 +3962,47 @@ ik_ui_inspector(void)
   ProfEnd();
 }
 
+internal void
+ik_ui_bottom_bar()
+{
+  IK_Frame *frame = ik_top_frame();
+  UI_Box *container;
+
+  F32 height = ui_top_font_size()*2.5;
+  Rng2F32 rect = {0, ik_state->window_dim.y-height, ik_state->window_dim.x, ik_state->window_dim.y};
+  rect = pad_2f32(rect, -ui_top_font_size()*0.5);
+  UI_Rect(rect)
+    UI_Flags(UI_BoxFlag_Floating)
+    container = ui_build_box_from_stringf(0, "bottom_bar_container");
+
+  UI_Parent(container)
+    UI_PrefHeight(ui_px(height, 0.0))
+    UI_FontSize(ui_top_font_size()*1.15)
+  {
+    F32 zoom_level = round_f32(ik_state->world_to_screen_ratio.x*100);
+    // camera zoom control
+    UI_PrefWidth(ui_text_dim(1.5, 1.0))
+      UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBackground)
+      UI_CornerRadius(2.0)
+      UI_Transparency(0.3)
+      if(ui_clicked(ui_buttonf(" %d %% ", (int)(zoom_level))))
+      {
+        Vec2F32 p0 = frame->camera.target_rect.p0;
+        frame->camera.target_rect.x1 = p0.x + ik_state->window_dim.x;
+        frame->camera.target_rect.y1 = p0.y + ik_state->window_dim.y;
+      }
+
+    ui_spacer(ui_pct(1.0, 0.0));
+
+    // frame filepath info
+    UI_PrefWidth(ui_text_dim(1.5, 1.0))
+      UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawTextWeak)
+      UI_CornerRadius(2.0)
+      UI_Transparency(0.3)
+      ui_label(frame->save_path);
+  }
+}
+
 internal UI_Signal
 ik_ui_checkbox(B32 *b)
 {
@@ -4460,7 +4541,7 @@ ik_bytes_from_b64string(Arena *arena, String8 src)
       out[j++] = quadruple>>8;
       out[j++] = quadruple>>0;
     }
-    // TODO(Next): size is not accurate, we should consider =
+
     if(src.str[src.size-1] == '=') j--;
     if(src.str[src.size-2] == '=') j--;
     ret = str8(out, j);

@@ -822,6 +822,7 @@ internal void      ik_ui_stats(void);
 internal void      ik_ui_toolbar(void);
 internal void      ik_ui_selection(void);
 internal void      ik_ui_inspector(void);
+internal void      ik_ui_bottom_bar(void);
 internal UI_Signal ik_ui_checkbox(B32 *b);
 
 /////////////////////////////////
