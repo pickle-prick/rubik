@@ -1436,7 +1436,7 @@ ik_frame(void)
 
     if(tool == IK_ToolKind_Draw && ik_pressed(blank->sig))
     {
-      IK_Box *b = ik_stroke(ik_state->mouse_in_world);
+      IK_Box *b = ik_stroke();
       ik_kill_action();
       ik_state->focus_hot_box_key = b->key;
       ik_state->focus_active_box_key = b->key;
@@ -1458,16 +1458,14 @@ ik_frame(void)
 
       ik_kill_action();
       ik_state->focus_hot_box_key = box->key;
-      ik_state->active_box_key[IK_MouseButtonKind_Left] = ik_key_zero();
 
+      // TODO(Next): won't work, we need a lot of hack to achive this, wtf?
       // UI_Key key = ui_key_from_stringf(ui_key_from_stringf(ui_key_zero(), "###selection_box"), "###top_left -> anchor");
-      // TODO(Next): won't work, since the selection box isn't created yet
-      // UI_Key key = ui_key_make(3813955761697056973);
+      // ui_build_box_from_key(0, key);
       // ui_state->active_box_key[UI_MouseButtonKind_Left] = key;
 
       tool = IK_ToolKind_Selection;
       ik_state->tool = tool;
-      blank->sig.f = 0;
     }
 
     /////////////////////////////////
@@ -2201,29 +2199,6 @@ ik_frame_alloc()
   IK_Box *blank = ik_build_box_from_stringf(IK_BoxFlag_MouseClickable|IK_BoxFlag_FitViewport|IK_BoxFlag_Scroll|IK_BoxFlag_Orphan, "blank");
   frame->blank = blank;
 
-  // TODO(Next): to be deleted
-  // IK_Frame(frame)
-  // {
-  //   {
-  //     IK_Box *box = ik_build_box_from_stringf(0, "demo_rect_1");
-  //     box->flags |= IK_BoxFlag_DrawBackground|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToScaleRectSize;
-  //     box->position = v2f32(0,0);
-  //     box->rect_size = v2f32(300, 300);
-  //     box->ratio = 1.f;
-  //     box->color = v4f32(1,1,0,1.0);
-  //     box->hover_cursor = OS_Cursor_UpDownLeftRight;
-  //   }
-  //   {
-  //     IK_Box *box = ik_build_box_from_stringf(0, "demo_rect_2");
-  //     box->flags |= IK_BoxFlag_DrawBackground|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToScaleRectSize;
-  //     box->position = v2f32(600,600);
-  //     box->rect_size = v2f32(300, 300);
-  //     box->ratio = 1.f;
-  //     box->color = v4f32(0,1,0,1.0);
-  //     box->hover_cursor = OS_Cursor_UpDownLeftRight;
-  //   }
-  // }
-
   ik_pop_frame();
   scratch_end(scratch);
   return frame;
@@ -2882,7 +2857,7 @@ IK_BOX_DRAW(stroke)
 
 // TODO(Next): we don't need specify position here
 internal IK_Box *
-ik_stroke(Vec2F32 pos)
+ik_stroke()
 {
   IK_Box *box = ik_build_box_from_stringf(0, "stroke###%I64u", os_now_microseconds());
   box->flags = IK_BoxFlag_MouseClickable|
@@ -3364,6 +3339,12 @@ ik_ui_stats(void)
       ui_labelf("ui_hot_key");
       ui_spacer(ui_pct(1.0, 0.0));
       ui_labelf("%lu", ui_state->hot_box_key.u64[0]);
+    }
+    UI_Row
+    {
+      ui_labelf("ui_active_key");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%lu", ui_state->active_box_key[UI_MouseButtonKind_Left].u64[0]);
     }
     UI_Row
     {

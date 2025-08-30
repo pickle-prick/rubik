@@ -789,7 +789,7 @@ internal String8 ik_box_equip_display_string(IK_Box *box, String8 string);
 
 internal IK_Box* ik_text(String8 string, Vec2F32 pos);
 internal IK_Box* ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, IK_Image *image);
-internal IK_Box* ik_stroke(Vec2F32 start_pos);
+internal IK_Box* ik_stroke(void);
 
 /////////////////////////////////
 //~ Point Function

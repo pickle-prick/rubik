@@ -365,16 +365,16 @@ internal String8
 ui_get_drag_data(U64 min_required_size)
 {
   // NOTE: if left size is 0 and it's causing assertion failed
-  //            check duplicated ui box keys
+  //       check duplicated ui box keys
   AssertAlways(ui_state->drag_state_data.size >= min_required_size);
 
   // TODO: don't get it
   // if(ui_state->drag_state_data.size < min_required_size)
   // {
-  //     Temp scratch = scratch_begin(0, 0);
-  //     String8 str = {push_array(scratch.arena, U8, min_required_size), min_required_size};
-  //     ui_store_drag_data(str);
-  //     scratch_end(scratch);
+  //   Temp scratch = scratch_begin(0, 0);
+  //   String8 str = {push_array(scratch.arena, U8, min_required_size), min_required_size};
+  //   ui_store_drag_data(str);
+  //   scratch_end(scratch);
   // }
   return ui_state->drag_state_data;
 }
@@ -1114,8 +1114,8 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
 
   // Fill box info
   {
-    box->key                      = key;
-    box->flags                    = flags|ui_state->flags_stack.top->v;
+    box->key = key;
+    box->flags = flags|ui_state->flags_stack.top->v;
     box->last_touched_build_index = ui_state->build_index;
     if(box_first_frame)
     {
