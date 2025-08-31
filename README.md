@@ -9,6 +9,8 @@
 
 ![Screenshot of a 2D scene](./screenshots/004.gif)
 
+![Screenshot of Ink](./screenshots/ink.png)
+
 ## Development Setup Instructions
 
 **Note: Currently, only x64 linux and Windows development are supported.
