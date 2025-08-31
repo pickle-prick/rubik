@@ -506,7 +506,7 @@ internal void d_truncated_fancy_run_list(Vec2F32 p, D_FancyRunList *list, F32 ma
 
       Rng2F32 dst = r2f32p(piece->rect.x0+off_x, piece->rect.y0+off_y, piece->rect.x1+off_x, piece->rect.y1+off_y);
       Rng2F32 src = r2f32p(piece->subrect.x0, piece->subrect.y0, piece->subrect.x1, piece->subrect.y1);
-      // TODO(k): src wil be all zeros in gcc release build but not with clang
+      // TODO(BUG): src wil be all zeros in gcc release build causing a crash but not with clang
       AssertAlways((src.x0 + src.x1 + src.y0 + src.y1) != 0);
       Vec2F32 size = dim_2f32(dst);
       AssertAlways(!r_handle_match(piece->texture, r_handle_zero()));

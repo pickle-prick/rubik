@@ -50,10 +50,12 @@ internal Arena *tctx_get_scratch(Arena **conflicts, U64 count)
   return (result);
 }
 
-internal void tctx_set_thread_name(char *name) 
+internal void tctx_set_thread_name(String8 string)
 {
   TCTX *tctx = tctx_get_equipped();
-  MemoryCopy(tctx->thread_name, name, 32);
+  U64 size = ClampTop(string.size, sizeof(tctx->thread_name));
+  MemoryCopy(tctx->thread_name, string.str, size);
+  tctx->thread_name_size = size;
 }
 
 internal char *tctx_get_thread_name(void) 

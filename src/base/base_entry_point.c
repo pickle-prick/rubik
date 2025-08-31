@@ -5,7 +5,7 @@ internal void
 main_thread_base_entry_point(int argc, char **argv)
 {
   Temp scratch = scratch_begin(0, 0);
-  tctx_set_thread_name("[main thread]");
+  tctx_set_thread_name(str8_lit("[main thread]"));
 
   //- rjf: set up spall
 #if PROFILE_SPALL
