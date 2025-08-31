@@ -870,7 +870,6 @@ os_get_events(Arena *arena, B32 wait)
         // NOTE(k): we didn't need to peak the next one, key press would always override keyrelease
         os_lnx_gfx_state->keydown_cache[key] = evt.type == KeyPress;
 #endif
-
         
         // rjf: push text event
         if(evt.type == KeyPress && text_size != 0)

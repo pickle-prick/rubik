@@ -1,11 +1,13 @@
 .PHONY: build_debug build_full run_full clean debug run r
 
 BUILD_TARGET := ink
+BUILD_COMPILER := gcc
+
 build_debug:
-	./build.sh $(BUILD_TARGET) clang no_shader no_meta profile
+	./build.sh $(BUILD_TARGET) $(BUILD_COMPILER) no_shader no_meta profile
 build_full:
 	make clean
-	./build.sh $(BUILD_TARGET) clang shader meta profile
+	./build.sh $(BUILD_TARGET) $(BUILD_COMPILER) shader meta profile
 run_full:
 	make build_full
 	./build/$(BUILD_TARGET)

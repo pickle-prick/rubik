@@ -515,6 +515,7 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
     {
       ik_state->frame_arenas[i] = arena_alloc(.reserve_size = MB(128), .commit_size = MB(64));
     }
+    // NOTE(k): not needed for now
     // frame drawlists
     // for(U64 i = 0; i < ArrayCount(ik_state->drawlists); i++)
     // {
@@ -542,9 +543,9 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
   ik_state->cfg_font_tags[IK_FontSlot_Icons] = f_tag_from_static_data_string(&font_icons);
   ik_state->cfg_font_tags[IK_FontSlot_ToolbarIcons] = f_tag_from_static_data_string(&font_toolbar_icons);
 
-  // ik_state->cfg_font_tags[IK_FontSlot_Main]         = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
-  // ik_state->cfg_font_tags[IK_FontSlot_Code]         = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
-  // ik_state->cfg_font_tags[IK_FontSlot_Icons]        = f_tag_from_path(str8_lit("./fonts/icons.ttf"));
+  // ik_state->cfg_font_tags[IK_FontSlot_Main] = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
+  // ik_state->cfg_font_tags[IK_FontSlot_Code] = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
+  // ik_state->cfg_font_tags[IK_FontSlot_Icons] = f_tag_from_path(str8_lit("./fonts/icons.ttf"));
   // ik_state->cfg_font_tags[IK_FontSlot_ToolbarIcons] = f_tag_from_path(str8_lit("./fonts/toolbar_icons.ttf"));
 
   // Theme 
@@ -1090,6 +1091,7 @@ ik_frame(void)
         Vec2F32 shift_inv = rect_center;
         rect = shift_2f32(rect, shift);
 
+        // TODO(Next): bug in window
         F32 zoom_step = mix_1f32(camera->min_zoom_step, camera->max_zoom_step, camera->zoom_t);
         F32 scale = 1 + delta*zoom_step;
         rect.x0 *= scale;
@@ -3011,6 +3013,8 @@ ik_image_from_key(IK_Key key)
 internal IK_Signal
 ik_signal_from_box(IK_Box *box)
 {
+  // TODO(Next): in release button, the button release won't trigger active reset
+
   IK_Signal sig = {0};
   sig.box = box;
   sig.event_flags |= os_get_modifiers();
@@ -3724,7 +3728,7 @@ ik_ui_inspector(void)
     rect.p1 = mix_2f32(center, rect.p1, open_t);
     UI_Rect(rect)
       UI_Flags(UI_BoxFlag_Floating)
-      container = ui_build_box_from_stringf(0, "inspector_container");
+      container = ui_build_box_from_stringf(0, "###inspector_container");
 
     UI_Box *body;
     UI_Parent(container)
@@ -3737,7 +3741,7 @@ ik_ui_inspector(void)
       UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBackground)
       UI_PrefHeight(ui_children_sum(1.0))
       UI_Transparency(0.2)
-      body = ui_build_box_from_stringf(0, "body");
+      body = ui_build_box_from_stringf(0, "###body");
 
     UI_Box *inner;
     UI_Parent(body)
@@ -3750,7 +3754,7 @@ ik_ui_inspector(void)
       UI_ChildLayoutAxis(Axis2_Y)
       UI_PrefHeight(ui_children_sum(1.0))
       // UI_Flags(UI_BoxFlag_Clip)
-      inner = ui_build_box_from_stringf(0, "inner");
+      inner = ui_build_box_from_stringf(0, "###inner");
 
     UI_Parent(inner)
     {
@@ -3826,7 +3830,7 @@ ik_ui_inspector(void)
         UI_PrefWidth(ui_text_dim(1, 1.0))
           ui_labelf("draw border");
         ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(&on)))
+        UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(str8_lit("draw_border"), on)))
         {
           b->flags ^= flag;
         }
@@ -3840,7 +3844,7 @@ ik_ui_inspector(void)
         UI_PrefWidth(ui_text_dim(1, 1.0))
           ui_labelf("draw background");
         ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(&on)))
+        UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(str8_lit("draw_background"), on)))
         {
           b->flags ^= flag;
         }
@@ -3854,7 +3858,7 @@ ik_ui_inspector(void)
         UI_PrefWidth(ui_text_dim(1, 1.0))
           ui_labelf("draw drop shadow");
         ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(&on)))
+        UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(str8_lit("draw_dropshadow"), on)))
         {
           b->flags ^= flag;
         }
@@ -3993,7 +3997,7 @@ ik_ui_bottom_bar()
 }
 
 internal UI_Signal
-ik_ui_checkbox(B32 *b)
+ik_ui_checkbox(String8 key_string, B32 b)
 {
   UI_Signal sig;
 
@@ -4011,10 +4015,10 @@ ik_ui_checkbox(B32 *b)
              UI_BoxFlag_MouseClickable|
              UI_BoxFlag_DrawHotEffects|
              UI_BoxFlag_DrawActiveEffects)
-    UI_Palette(*b ? ui_top_palette() : ui_state->widget_palette_info.scrollbar_palette)
-    container = ui_build_box_from_string(0, str8((U8*)&b, sizeof(b)));
+    UI_Palette(b ? ui_top_palette() : ui_state->widget_palette_info.scrollbar_palette)
+    container = ui_build_box_from_string(0, key_string);
 
-  if(*b)
+  if(b)
   {
     UI_Box *body;
     UI_Parent(container)
@@ -4252,6 +4256,7 @@ ik_frame_to_tyml(IK_Frame *frame)
     /////////////////////////////////
     // Image cache
 
+    // TODO(Next): parse error for images's data field in windows
     // TODO(Next): only create if cache table has at least one, otherwise will causing parsing issue
     SE_Array_WithTag(str8_lit("images"))
     {
@@ -4322,7 +4327,6 @@ ik_frame_to_tyml(IK_Frame *frame)
           /////////////////////////////////
           // Text
 
-          // TODO(Next): won't work well with multiline string
           if(box->string.size > 0) se_multiline_str_with_tag(str8_lit("string"), box->string);
           se_u64_with_tag(str8_lit("font_size"), box->font_size);
           se_u64_with_tag(str8_lit("tab_size"), box->tab_size);
@@ -4331,8 +4335,17 @@ ik_frame_to_tyml(IK_Frame *frame)
 
           /////////////////////////////////
           // Points
-          // TODO(Next)
 
+          if(box->first_point != 0)
+          {
+            SE_Array_WithTag(str8_lit("points"))
+            {
+              for(IK_Point *p = box->first_point; p != 0; p = p->next)
+              {
+                se_v2f32(p->position);
+              }
+            }
+          }
         }
       }
     }
@@ -4457,6 +4470,15 @@ ik_frame_from_tyml(String8 path)
       box->tab_size = se_u64_from_tag(n, str8_lit("tab_size"));
       box->text_raster_flags = se_u64_from_tag(n, str8_lit("text_raster_flags"));
       box->text_padding = se_f32_from_tag(n, str8_lit("text_padding"));
+
+      // points
+      for(SE_Node *p = se_arr_from_tag(n, str8_lit("points")); p != 0 && p->kind == SE_NodeKind_Vec2F32; p = p->next)
+      {
+        IK_Point *point = ik_point_alloc();
+        point->position = p->v.se_v2f32;
+        DLLPushBack(box->first_point, box->last_point, point);
+        box->point_count++;
+      }
     }
   }
 

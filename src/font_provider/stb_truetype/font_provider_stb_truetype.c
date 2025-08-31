@@ -74,6 +74,7 @@ fp_font_open_from_static_data_string(char *data_ptr)
     font->buffer = data_ptr;
     font->idx = -1;
   }
+
   // TODO(k): what is this? we set -1, then set back to 0, wtf?
   font->idx = 0;
 
