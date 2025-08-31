@@ -39,6 +39,30 @@ state->name_lower##_stack.auto_pop = 1;\
 return old_value;
 
 #include "generated/render_vulkan.meta.c"
+#include "shader/crt_frag.spv.h"
+#include "shader/crt_vert.spv.h"
+#include "shader/edge_frag.spv.h"
+#include "shader/edge_vert.spv.h"
+#include "shader/finalize_frag.spv.h"
+#include "shader/finalize_vert.spv.h"
+#include "shader/geo2d_composite_frag.spv.h"
+#include "shader/geo2d_composite_vert.spv.h"
+#include "shader/geo2d_forward_frag.spv.h"
+#include "shader/geo2d_forward_vert.spv.h"
+#include "shader/geo3d_composite_frag.spv.h"
+#include "shader/geo3d_composite_vert.spv.h"
+#include "shader/geo3d_debug_frag.spv.h"
+#include "shader/geo3d_debug_vert.spv.h"
+#include "shader/geo3d_forward_frag.spv.h"
+#include "shader/geo3d_forward_vert.spv.h"
+#include "shader/geo3d_light_culling_comp.spv.h"
+#include "shader/geo3d_tile_frustum_comp.spv.h"
+#include "shader/geo3d_zpre_frag.spv.h"
+#include "shader/geo3d_zpre_vert.spv.h"
+#include "shader/noise_frag.spv.h"
+#include "shader/noise_vert.spv.h"
+#include "shader/rect_frag.spv.h"
+#include "shader/rect_vert.spv.h"
 
 internal void
 r_init(const char* app_name, OS_Handle window, bool debug)
@@ -582,6 +606,80 @@ r_init(const char* app_name, OS_Handle window, bool debug)
   // That means that we're allowed to destroy the shader modules again as soon as pipeline creation is finished
   // The one catch here is that the size of the bytecode is specified in bytes, but the bytecode pointer is uint32_t pointer rather than a char pointer
   // You also need to ensure that the data satisfies the alignment requirements of uin32_t 
+#if 1
+  for(U64 kind = 0; kind < R_Vulkan_VShadKind_COUNT; kind++)
+  {
+    VkShaderModule *shad_mo = &r_vulkan_state->vshad_modules[kind];
+    String8 shad_code;
+    switch(kind)
+    {
+      case R_Vulkan_VShadKind_Rect:            {shad_code = str8(rect_vert_spv, rect_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Noise:           {shad_code = str8(noise_vert_spv, noise_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Edge:            {shad_code = str8(edge_vert_spv, edge_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Crt:             {shad_code = str8(crt_vert_spv, crt_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Geo2D_Forward:   {shad_code = str8(geo2d_forward_vert_spv, geo2d_forward_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Geo2D_Composite: {shad_code = str8(geo2d_composite_vert_spv, geo2d_composite_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Geo3D_ZPre:      {shad_code = str8(geo3d_zpre_vert_spv, geo3d_zpre_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Geo3D_Debug:     {shad_code = str8(geo3d_debug_vert_spv, geo3d_debug_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Geo3D_Forward:   {shad_code = str8(geo3d_forward_vert_spv, geo3d_forward_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Geo3D_Composite: {shad_code = str8(geo3d_composite_vert_spv, geo3d_composite_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Finalize:        {shad_code = str8(finalize_vert_spv, finalize_vert_spv_len);}break;
+      default:                                 {InvalidPath;}break;
+    }
+
+    VkShaderModuleCreateInfo create_info = {
+      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+      .codeSize = shad_code.size,
+      .pCode = (U32 *)shad_code.str,
+    };
+    VK_Assert(vkCreateShaderModule(r_vulkan_state->logical_device.h, &create_info, NULL, shad_mo));
+  }
+
+  for(U64 kind = 0; kind < R_Vulkan_FShadKind_COUNT; kind++)
+  {
+    VkShaderModule *shad_mo = &r_vulkan_state->fshad_modules[kind];
+    String8 shad_code;
+    switch(kind)
+    {
+      case R_Vulkan_FShadKind_Rect:            {shad_code = str8(rect_frag_spv, rect_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Noise:           {shad_code = str8(noise_frag_spv, noise_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Edge:            {shad_code = str8(edge_frag_spv, edge_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Crt:             {shad_code = str8(crt_frag_spv, crt_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Geo2D_Forward:   {shad_code = str8(geo2d_forward_frag_spv, geo2d_forward_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Geo2D_Composite: {shad_code = str8(geo2d_composite_frag_spv, geo2d_composite_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Geo3D_ZPre:      {shad_code = str8(geo3d_zpre_frag_spv, geo3d_zpre_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Geo3D_Debug:     {shad_code = str8(geo3d_debug_frag_spv, geo3d_debug_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Geo3D_Forward:   {shad_code = str8(geo3d_forward_frag_spv, geo3d_forward_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Geo3D_Composite: {shad_code = str8(geo3d_composite_frag_spv, geo3d_composite_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Finalize:        {shad_code = str8(finalize_frag_spv, finalize_frag_spv_len);}break;
+      default:                                 {InvalidPath;}break;
+    }
+    VkShaderModuleCreateInfo create_info = {
+      .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+      .codeSize = shad_code.size,
+      .pCode    = (U32 *)shad_code.str,
+    };
+    VK_Assert(vkCreateShaderModule(r_vulkan_state->logical_device.h, &create_info, NULL, shad_mo));
+  }
+
+  for(U64 kind = 0; kind < R_Vulkan_CShadKind_COUNT; kind++)
+  {
+    VkShaderModule *shad_mo = &r_vulkan_state->cshad_modules[kind];
+    String8 shad_code;
+    switch(kind)
+    {
+      case R_Vulkan_CShadKind_Geo3D_TileFrustum:  {shad_code = str8(geo3d_tile_frustum_comp_spv, geo3d_tile_frustum_comp_spv_len);}break;
+      case R_Vulkan_CShadKind_Geo3D_LightCulling: {shad_code = str8(geo3d_light_culling_comp_spv, geo3d_light_culling_comp_spv_len);}break;
+      default:                                    {InvalidPath;}break;
+    }
+    VkShaderModuleCreateInfo create_info = {
+      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+      .codeSize = shad_code.size,
+      .pCode = (U32 *)shad_code.str,
+    };
+    VK_Assert(vkCreateShaderModule(r_vulkan_state->logical_device.h, &create_info, NULL, shad_mo));
+  }
+#else
   for(U64 kind = 0; kind < R_Vulkan_VShadKind_COUNT; kind++)
   {
     VkShaderModule *shad_mo = &r_vulkan_state->vshad_modules[kind];
@@ -591,7 +689,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
       case R_Vulkan_VShadKind_Rect:            {shad_path = str8_lit("src/render/vulkan/shader/rect_vert.spv");}break;
       case R_Vulkan_VShadKind_Noise:           {shad_path = str8_lit("src/render/vulkan/shader/noise_vert.spv");}break;
       case R_Vulkan_VShadKind_Edge:            {shad_path = str8_lit("src/render/vulkan/shader/edge_vert.spv");}break;
-      case R_Vulkan_VShadKind_Crt:            {shad_path = str8_lit("src/render/vulkan/shader/crt_vert.spv");}break;
+      case R_Vulkan_VShadKind_Crt:             {shad_path = str8_lit("src/render/vulkan/shader/crt_vert.spv");}break;
       case R_Vulkan_VShadKind_Geo2D_Forward:   {shad_path = str8_lit("src/render/vulkan/shader/geo2d_forward_vert.spv");}break;
       case R_Vulkan_VShadKind_Geo2D_Composite: {shad_path = str8_lit("src/render/vulkan/shader/geo2d_composite_vert.spv");}break;
       case R_Vulkan_VShadKind_Geo3D_ZPre:      {shad_path = str8_lit("src/render/vulkan/shader/geo3d_zpre_vert.spv");}break;
@@ -623,7 +721,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
       case R_Vulkan_FShadKind_Rect:            {shad_path = str8_lit("src/render/vulkan/shader/rect_frag.spv");}break;
       case R_Vulkan_FShadKind_Noise:           {shad_path = str8_lit("src/render/vulkan/shader/noise_frag.spv");}break;
       case R_Vulkan_FShadKind_Edge:            {shad_path = str8_lit("src/render/vulkan/shader/edge_frag.spv");}break;
-      case R_Vulkan_FShadKind_Crt:            {shad_path = str8_lit("src/render/vulkan/shader/crt_frag.spv");}break;
+      case R_Vulkan_FShadKind_Crt:             {shad_path = str8_lit("src/render/vulkan/shader/crt_frag.spv");}break;
       case R_Vulkan_FShadKind_Geo2D_Forward:   {shad_path = str8_lit("src/render/vulkan/shader/geo2d_forward_frag.spv");}break;
       case R_Vulkan_FShadKind_Geo2D_Composite: {shad_path = str8_lit("src/render/vulkan/shader/geo2d_composite_frag.spv");}break;
       case R_Vulkan_FShadKind_Geo3D_ZPre:      {shad_path = str8_lit("src/render/vulkan/shader/geo3d_zpre_frag.spv");}break;
@@ -666,6 +764,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     };
     VK_Assert(vkCreateShaderModule(r_vulkan_state->logical_device.h, &create_info, NULL, shad_mo));
   }
+#endif
 
   // Create set layouts
   /////////////////////////////////////////////////////////////////////////////////

@@ -71,9 +71,15 @@ if [ ! -v no_shader ]; then
       extension="${filename##*.}"
       name="${filename%.*}"
 
+      spv_out="${shader_out_dir}/${name}_${extension}.spv"
+      header_out="${shader_out_dir}/${name}_${extension}.spv.h"
+
       # Compile the shader to the output directory with .spv extension
-      echo "Compiling ${shader} to ${shader_out_dir}/${name}_${extension}.spv"
-      glslc "$shader" -o "${shader_out_dir}/${name}_${extension}.spv"
+      echo "Compiling ${shader} -> ${spv_out}"
+      glslc "$shader" -o "$spv_out"
+
+      echo "Embedding ${spv_out} -> ${header_out}"
+      xxd -i -n "${name}_${extension}_spv" "$spv_out" > "$header_out"
     fi
   done
 fi
