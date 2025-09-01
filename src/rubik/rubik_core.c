@@ -45,6 +45,7 @@ rk_ui_draw()
 {
   Temp scratch = scratch_begin(0,0);
   F32 box_squish_epsilon = 0.001f;
+  d_push_viewport(rk_state->window_dim);
 
   // DEBUG mouse
   if(0)
@@ -391,6 +392,7 @@ rk_ui_draw()
     }
     box = rec.next;
   }
+  d_pop_viewport();
   scratch_end(scratch);
 }
 
@@ -845,10 +847,8 @@ rk_init(OS_Handle os_wnd, R_Handle r_wnd)
     view->arena = arena_alloc();
   }
 
-  if(BUILD_DEBUG)
-  {
-    rk_state->views_enabled[RK_ViewKind_Stats] = 1;
-  }
+  rk_state->views_enabled[RK_ViewKind_Stats] = 1;
+  rk_state->views_enabled[RK_ViewKind_SceneInspector] = 1;
 
   rk_state->function_registry_size = 1000;
   rk_state->function_registry = push_array(arena, RK_FunctionSlot, rk_state->function_registry_size);
@@ -1616,45 +1616,40 @@ internal void rk_ui_stats(void)
     view->custom_data = stats;
   }
 
-  // collect ui box cache count
-  // U64 ui_cache_count = 0;
-  // for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
-  // {
-  //   for(UI_Box *box = ui_state->box_table[slot_idx].hash_first; !ui_box_is_nil(box); box = box->hash_next)
-  //   {
-  //     AssertAlways(!ui_key_match(box->key, ui_key_zero()));
-  //     ui_cache_count++;
-  //   }
-  // }
-
   B32 enabled = rk_state->views_enabled[RK_ViewKind_Stats];
-  if(!enabled) return;
-
-  UI_Box *container = 0;
-  UI_Rect(rk_state->window_rect)
-    UI_ChildLayoutAxis(Axis2_X)
+  if(enabled)
   {
-    container = ui_build_box_from_stringf(0, "###stats_container");
-  }
+    UI_Box *container = 0;
+    F32 width = ui_top_font_size()*30;
+    Rng2F32 rect = {rk_state->window_dim.x-width, 0, rk_state->window_dim.x, rk_state->window_dim.y};
+    UI_Rect(rect)
+      UI_ChildLayoutAxis(Axis2_Y)
+      UI_Flags(UI_BoxFlag_Floating)
+      {
+        container = ui_build_box_from_stringf(0, "###stats_container");
+      }
 
-  UI_Parent(container)
-  {
-    ui_spacer(ui_pct(1.0, 0.0));
-
-    // stats, push to the right side of screen  
-    UI_Box *stats_container;
-    UI_ChildLayoutAxis(Axis2_Y)
-      UI_PrefWidth(ui_px(800, 1.0))
-      UI_PrefHeight(ui_children_sum(0.0))
-      UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow)
+    UI_Box *body;
+    UI_Parent(container)
     {
-      stats_container = ui_build_box_from_stringf(0, "###stats_body");
+      ui_spacer(ui_em(0.5, 0.0));
+      UI_WidthFill
+        UI_PrefHeight(ui_children_sum(0.0))
+        UI_Row
+        UI_Padding(ui_em(0.5, 0.0))
+        UI_PrefHeight(ui_pct(1.0, 0.0))
+        UI_PrefHeight(ui_children_sum(0.0))
+        UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBackground)
+        UI_Transparency(0.4)
+        UI_ChildLayoutAxis(Axis2_Y)
+        UI_CornerRadius(1.0)
+        body = ui_build_box_from_stringf(0, "###body");
     }
 
-    UI_Parent(stats_container)
-      UI_TextAlignment(UI_TextAlign_Left)
-      UI_TextPadding(9)
-      UI_Transparency(0.1)
+    UI_Parent(body)
+    UI_TextAlignment(UI_TextAlign_Left)
+    UI_TextPadding(9)
+    UI_PrefWidth(ui_pct(1.0, 0.0))
     {
       // collect some values
       U64 last_frame_index = rk_state->frame_index > 0 ? rk_state->frame_index-1 : 0;
@@ -1684,12 +1679,14 @@ internal void rk_ui_stats(void)
         ui_spacer(ui_pct(1.0, 0.0));
         ui_labelf("%.2f", 1.0 / (last_frame_us/1000000.0));
       }
+      ui_divider(ui_em(0.1, 0.0));
       UI_Row
       {
-        ui_labelf("node_count");
+        ui_labelf("window");
         ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%lu", rk_top_node_bucket()->node_count);
+        ui_labelf("%.2f, %.2f", rk_state->window_dim.x, rk_state->window_dim.y);
       }
+      ui_divider(ui_em(0.1, 0.0));
       UI_Row
       {
         ui_labelf("ui_hot_key");
@@ -1698,9 +1695,9 @@ internal void rk_ui_stats(void)
       }
       UI_Row
       {
-        ui_labelf("geo_hot_key");
+        ui_labelf("ui_active_key");
         ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%I64u", scene->hot_key.u64[0]);
+        ui_labelf("%lu", ui_state->active_box_key[UI_MouseButtonKind_Left].u64[0]);
       }
       UI_Row
       {
@@ -1714,12 +1711,6 @@ internal void rk_ui_stats(void)
         ui_spacer(ui_pct(1.0, 0.0));
         ui_labelf("%lu", ui_state->last_build_box_count);
       }
-      // UI_Row
-      // {
-      //   ui_labelf("ui_cache_count");
-      //   ui_spacer(ui_pct(1.0, 0.0));
-      //   ui_labelf("%lu", ui_cache_count);
-      // }
       UI_Row
       {
         ui_labelf("ui_build_box_count");
@@ -1728,27 +1719,9 @@ internal void rk_ui_stats(void)
       }
       UI_Row
       {
-        ui_labelf("mouse");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%.2f, %.2f", ui_state->mouse.x, ui_state->mouse.y);
-      }
-      UI_Row
-      {
-        ui_labelf("window");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%.2f, %.2f", rk_state->window_dim.x, rk_state->window_dim.y);
-      }
-      UI_Row
-      {
         ui_labelf("drag start mouse");
         ui_spacer(ui_pct(1.0, 0.0));
         ui_labelf("%.2f, %.2f", ui_state->drag_start_mouse.x, ui_state->drag_start_mouse.y);
-      }
-      UI_Row
-      {
-        ui_labelf("scene node count");
-        ui_spacer(ui_pct(1.0, 0.0));
-        ui_labelf("%lu", scene->node_bucket->node_count);
       }
     }
   }
@@ -1810,12 +1783,11 @@ internal void rk_ui_inspector(void)
     state->show_gizmo_cfg  = 1;
     state->show_light_cfg  = 1;
     state->show_node_cfg   = 1;
-
     state->last_active_row = -1;
 
-    state->txt_cursor           = (TxtPt){0};
-    state->txt_mark             = (TxtPt){0};
-    state->txt_has_draft        = 0;
+    state->txt_cursor = (TxtPt){0};
+    state->txt_mark = (TxtPt){0};
+    state->txt_has_draft = 0;
 
     state->rect = rk_state->window_rect;
     {
@@ -1828,8 +1800,6 @@ internal void rk_ui_inspector(void)
 
   B32 *open = &rk_state->views_enabled[RK_ViewKind_SceneInspector];
   if(!(*open)) return;
-
-  // TODO: move rect into screen
 
   // build top-level panel container
   UI_Box *pane;
@@ -1846,23 +1816,23 @@ internal void rk_ui_inspector(void)
   RK_UI_Tab(str8_lit("scene"), &state->show_scene_cfg, ui_em(0.1,0), ui_em(0.1,0))
   {
     // scene path
-    UI_Flags(UI_BoxFlag_ClickToFocus)
-    {
-      if(ui_committed(ui_line_edit(&state->txt_cursor,
-                                   &state->txt_mark,
-                                   state->scene_path_to_save.str,
-                                   ArrayCount(state->scene_path_to_save_buffer),
-                                   &state->txt_edit_string_size,
-                                   state->scene_path_to_save, str8_lit("###scene_path"))))
-      {
-        String8 string = str8(state->scene_path_to_save_buffer, state->txt_edit_string_size);
-        state->scene_path_to_save = push_str8_copy_static(string, state->scene_path_to_save_buffer);
-        state->scene_path_to_save.size = state->txt_edit_string_size;                        
-      }
-    }
+    // UI_Flags(UI_BoxFlag_ClickToFocus)
+    // {
+      // if(ui_committed(ui_line_edit(&state->txt_cursor,
+      //                              &state->txt_mark,
+      //                              state->scene_path_to_save.str,
+      //                              ArrayCount(state->scene_path_to_save_buffer),
+      //                              &state->txt_edit_string_size,
+      //                              state->scene_path_to_save, str8_lit("###scene_path"))))
+      // {
+      //   String8 string = str8(state->scene_path_to_save_buffer, state->txt_edit_string_size);
+      //   state->scene_path_to_save = push_str8_copy_static(string, state->scene_path_to_save_buffer);
+      //   state->scene_path_to_save.size = state->txt_edit_string_size;                        
+      // }
+    // }
 
-    UI_Row
-    {
+    // UI_Row
+    // {
       // templates selection
       // {
       //   rk_ui_dropdown_begin(str8_lit("load"));
@@ -1885,30 +1855,30 @@ internal void rk_ui_inspector(void)
       //   rk_ui_dropdown_end();
       // }
 
-      if(ui_clicked(ui_buttonf("save")))
-      {
-        rk_scene_to_tscn(scene);
-      }
+      // if(ui_clicked(ui_buttonf("save")))
+      // {
+      //   rk_scene_to_tscn(scene);
+      // }
 
-      if(ui_clicked(ui_buttonf("default")))
-      {
-        if(scene->default_fn)
-        {
-          RK_Scene *new = scene->default_fn();
-          SLLStackPush(rk_state->first_to_free_scene, scene);
-          rk_state->next_active_scene = new;
-        }
-      }
+      // if(ui_clicked(ui_buttonf("default")))
+      // {
+      //   if(scene->default_fn)
+      //   {
+      //     RK_Scene *new = scene->default_fn();
+      //     SLLStackPush(rk_state->first_to_free_scene, scene);
+      //     rk_state->next_active_scene = new;
+      //   }
+      // }
 
-      if(ui_clicked(ui_buttonf("reload")))
-      {
-        SLLStackPush(rk_state->first_to_free_scene, scene);
-        RK_Scene *new = rk_scene_from_tscn(scene->save_path);
-        rk_state->next_active_scene = new;
-      }
-    }
+      // if(ui_clicked(ui_buttonf("reload")))
+      // {
+      //   SLLStackPush(rk_state->first_to_free_scene, scene);
+      //   RK_Scene *new = rk_scene_from_tscn(scene->save_path);
+      //   rk_state->next_active_scene = new;
+      // }
+    // }
 
-    ui_divider(ui_em(0.5,0));
+    // ui_divider(ui_em(0.5,0));
 
     UI_Row
     {
@@ -2872,13 +2842,13 @@ rk_frame(void)
   
   ProfScope("update interaction info")
   {
-    rk_state->os_events          = os_get_events(rk_frame_arena(), 0);
-    rk_state->last_window_rect   = rk_state->window_rect;
-    rk_state->last_window_dim    = dim_2f32(rk_state->last_window_rect);
+    rk_state->os_events = os_get_events(rk_frame_arena(), 0);
+    rk_state->last_window_rect = rk_state->window_rect;
+    rk_state->last_window_dim = dim_2f32(rk_state->last_window_rect);
     rk_state->window_res_changed = rk_state->window_rect.x0 == rk_state->last_window_rect.x0 && rk_state->window_rect.x1 == rk_state->last_window_rect.x1 && rk_state->window_rect.y0 == rk_state->last_window_rect.y0 && rk_state->window_rect.y1 == rk_state->last_window_rect.y1;
-    rk_state->window_rect        = os_client_rect_from_window(rk_state->os_wnd, 0);
-    rk_state->window_dim         = dim_2f32(rk_state->window_rect);
-    rk_state->last_cursor        = rk_state->cursor;
+    rk_state->window_rect = os_client_rect_from_window(rk_state->os_wnd, 0);
+    rk_state->window_dim = dim_2f32(rk_state->window_rect);
+    rk_state->last_cursor = rk_state->cursor;
     {
       Vec2F32 cursor = os_window_is_focused(rk_state->os_wnd) ? os_mouse_from_window(rk_state->os_wnd) : v2f32(-100,-100);
       if(cursor.x >= 0 && cursor.x <= rk_state->window_dim.x &&
@@ -2887,9 +2857,9 @@ rk_frame(void)
         rk_state->cursor = cursor;
       }
     }
-    rk_state->cursor_delta       = sub_2f32(rk_state->cursor, rk_state->last_cursor);
-    rk_state->last_dpi           = rk_state->dpi;
-    rk_state->dpi                = os_dpi_from_window(rk_state->os_wnd);
+    rk_state->cursor_delta = sub_2f32(rk_state->cursor, rk_state->last_cursor);
+    rk_state->last_dpi = rk_state->dpi;
+    rk_state->dpi = os_dpi_from_window(rk_state->os_wnd);
 
     // animation
     rk_state->animation.vast_rate = 1 - pow_f32(2, (-60.f * ui_state->animation_dt));
@@ -2923,7 +2893,6 @@ rk_frame(void)
 
   // pick among a number of sensible targets to snap to, given how well we've been performing
   F32 target_hz = os_get_gfx_info()->default_refresh_rate;
-  // F32 target_hz = 30.0;
   ProfScope("pick target hz") if(rk_state->frame_index > 32)
   {
     F32 possible_alternate_hz_targets[] = {target_hz, 60.f, 120.f, 144.f, 240.f};
@@ -3009,8 +2978,7 @@ rk_frame(void)
     d_begin_frame();
 
     // rect
-    ProfScope("making rect bucket")
-      rk_state->bucket_rect = d_bucket_make();
+    ProfScope("making rect bucket") rk_state->bucket_rect = d_bucket_make();
 
     // geo2d
     ProfScope("making geo2d bucket")
@@ -3057,9 +3025,9 @@ rk_frame(void)
         pass_params->omit_light = 1;
         pass_params->omit_grid  = 1;
         ProfBegin("mem allocation");
-        pass_params->lights     = push_array(rk_frame_arena(), R_Light3D, MAX_LIGHTS_PER_PASS);
-        pass_params->materials  = push_array(rk_frame_arena(), R_Material3D, MAX_MATERIALS_PER_PASS);
-        pass_params->textures   = push_array(rk_frame_arena(), R_PackedTextures, MAX_MATERIALS_PER_PASS);
+        pass_params->lights = push_array(rk_frame_arena(), R_Light3D, MAX_LIGHTS_PER_PASS);
+        pass_params->materials = push_array(rk_frame_arena(), R_Material3D, MAX_MATERIALS_PER_PASS);
+        pass_params->textures = push_array(rk_frame_arena(), R_PackedTextures, MAX_MATERIALS_PER_PASS);
         ProfEnd();
 
         // load default material
@@ -3070,8 +3038,8 @@ rk_frame(void)
     }
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // build ui
+  /////////////////////////////////
+  //~ Build ui
 
   // build event list for ui
   UI_EventList ui_events = {0};
@@ -3206,11 +3174,9 @@ rk_frame(void)
     ui_push_palette(rk_palette_from_code(RK_PaletteCode_Base));
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // draw game view
+  /////////////////////////////////
+  //~ Draw game view
 
-  // TODO: change drawing order if cursor is clicked on one of the views
-  ProfScope("debug ui")
   {
     rk_ui_inspector();
     rk_ui_stats();
@@ -3218,10 +3184,11 @@ rk_frame(void)
     rk_ui_terminal();
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // process events for game logic
+  /////////////////////////////////
+  //~ Process events for game logic
 
-  ProfScope("handle os events")
+  // TODO(Next): we should just use ui events
+
   {
     for(OS_Event *event = rk_state->os_events.first, *next = 0;
         event != 0;
@@ -3877,8 +3844,8 @@ rk_frame(void)
   // NOTE(k): there could be ui elements within node update
   rk_state->sig = ui_signal_from_box(overlay);
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // Update hot/active key
+  /////////////////////////////////
+  //~ Update hot/active key
 
   scene->hot_key = rk_key_make(rk_state->hot_pixel_key, 0);
   if(rk_state->sig.f & UI_SignalFlag_LeftPressed)
@@ -3891,8 +3858,8 @@ rk_frame(void)
     scene->active_key = rk_key_zero();
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // handle cursor (hide/show/wrap)
+  /////////////////////////////////
+  //~ Handle cursor (hide/show/wrap)
 
   ProfScope("handle cursor")
   {
@@ -3914,8 +3881,8 @@ rk_frame(void)
     }
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // draw gizmo3d
+  /////////////////////////////////
+  //~ Draw gizmo3d
 
   ProfScope("gizmo3d drawing") if(!scene->omit_gizmo3d)
   {
@@ -4082,8 +4049,9 @@ rk_frame(void)
             rk_gizmo3d_sphere_filled(rk_key_zero(), gizmo_origin, axis_length*0.1, axis_length*0.2, 0, v4f32(0,0,0,0.9), 1);
             rk_gizmo3d_circle_lined(rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*0.11, v4f32(1,1,1,0.9), linew_scale*6, 1); // billboard fashion
 
+            // TODO(Next): bug here
             // draw a outer circle
-            rk_gizmo3d_circle_lined(rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*1.3, v4f32(1,1,1,1), linew_scale*6, 1);
+            // rk_gizmo3d_circle_lined(rk_key_zero(), gizmo_origin, normalize_3f32(sub_3f32(eye, gizmo_origin)), axis_length*1.3, v4f32(1,1,1,1), linew_scale*6, 1);
 
           }break;
           case RK_Gizmo3DMode_Rotation:
@@ -4092,7 +4060,6 @@ rk_frame(void)
             U64 ring_segments = 69;
             F32 ring_line_width = 9*linew_scale;
             F32 axis_length = 1.f*scale_t;
-
 
             for(U64 i = 0; i < 3; i++)
             {
@@ -4361,8 +4328,8 @@ rk_frame(void)
     }
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // draw ui
+  /////////////////////////////////
+  //~ Build ui
 
   ui_end_build();
   D_BucketScope(rk_state->bucket_rect)
@@ -4370,16 +4337,15 @@ rk_frame(void)
     rk_ui_draw();
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // do physics
+  /////////////////////////////////
+  //~ Do physics
 
   // particle system
-  // TODO(XXX): we could use fixed step to do physics
   // ph_step_ps(&scene->particle3d_system, rk_state->frame_dt);
   // ph_step_rs(&scene->rigidbody3d_system, rk_state->frame_dt);
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // end of frame
+  /////////////////////////////////
+  //~ End of frame
 
   rk_pop_node_bucket();
   rk_pop_res_bucket();
@@ -4392,8 +4358,8 @@ rk_frame(void)
     rk_state->drag_drop_state = RK_DragDropState_Null;
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // submit work
+  /////////////////////////////////
+  //~ Submit work
 
   // build frame drawlist before we submit draw bucket
   ProfScope("draw drawlist")
@@ -4403,7 +4369,7 @@ rk_frame(void)
 
   rk_state->pre_cpu_time_us = os_now_microseconds()-begin_time_us;
 
-  // submit
+  // submit drawing bucket
   ProfScope("submit")
   {
     r_begin_frame();
@@ -4431,13 +4397,9 @@ rk_frame(void)
     // d_noise(r2f32p(0,0,0,0), rk_state->time_in_seconds);
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // wait if we still have some cpu time left
+  /////////////////////////////////
+  //~ Wait if we still have some cpu time left
 
-  local_persist B32 frame_missed = 0;
-  local_persist U64 exiting_frame_index = 0;
-
-  // TODO: use cpu sleep instead of spinning cpu here
   U64 frame_time_target_cap_us = (U64)(1000000/target_hz);
   U64 work_us = os_now_microseconds()-begin_time_us;
   rk_state->cpu_time_us = work_us;
@@ -4460,7 +4422,6 @@ rk_frame(void)
   {
     // TODO(k): missed frame rate!
     // TODO(k): proper logging
-
     fprintf(stderr, "missed frame, over %06.2f ms from %06.2f ms\n", (work_us-frame_time_target_cap_us)/1000.0, frame_time_target_cap_us/1000.0);
 
     // TODO(k): not sure why spall why not flushing if we stopped to early, maybe there is a limit for flushing
@@ -4468,36 +4429,24 @@ rk_frame(void)
     // tag it
     ProfBegin("MISSED FRAME");
     ProfEnd();
-#if 0
-    if(rk_state->frame_index > 30 && !frame_missed)
-    {
-      frame_missed = 1;
-      exiting_frame_index = rk_state->frame_index+30;
-    }
-#endif
   }
 
-  if(frame_missed && rk_state->frame_index > exiting_frame_index)
-  {
-    rk_state->window_should_close = 1;
-  }
-
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // determine frame time, record it into history
+  /////////////////////////////////
+  //~ Determine frame time, record it into history
 
   U64 end_time_us = os_now_microseconds();
   U64 frame_time_us = end_time_us-begin_time_us;
   rk_state->frame_time_us_history[rk_state->frame_index%ArrayCount(rk_state->frame_time_us_history)] = frame_time_us;
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // bump frame time counters
+  /////////////////////////////////
+  //~ Bump frame time counters
 
   rk_state->frame_index++;
   rk_state->time_in_seconds += rk_state->frame_dt;
   rk_state->time_in_us += frame_time_us;
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // end
+  /////////////////////////////////
+  //~ End
 
   scratch_end(scratch);
   ProfEnd();
@@ -4778,11 +4727,11 @@ rk_sprite2d_equip_string(Arena *arena,
 
   D_FancyStringNode fancy_string_n = {0};
   fancy_string_n.next = 0;
-  fancy_string_n.v.font                    = font;
-  fancy_string_n.v.string                  = string_copied;
-  fancy_string_n.v.color                   = font_color;
-  fancy_string_n.v.size                    = font_size;
-  fancy_string_n.v.underline_thickness     = 0;
+  fancy_string_n.v.font = font;
+  fancy_string_n.v.string = string_copied;
+  fancy_string_n.v.color = font_color;
+  fancy_string_n.v.size = font_size;
+  fancy_string_n.v.underline_thickness = 0;
   fancy_string_n.v.strikethrough_thickness = 0;
 
   D_FancyStringList fancy_strings = {0};
@@ -4790,12 +4739,12 @@ rk_sprite2d_equip_string(Arena *arena,
   fancy_strings.last = &fancy_string_n;
   fancy_strings.node_count = 1;
 
-  sprite2d->string            = string_copied;
-  sprite2d->font              = font;
-  sprite2d->font_size         = font_size;
-  sprite2d->font_color        = font_color;
+  sprite2d->string = string_copied;
+  sprite2d->font = font;
+  sprite2d->font_size = font_size;
+  sprite2d->font_color = font_color;
   sprite2d->text_raster_flags = text_raster_flags;
-  sprite2d->fancy_run_list    = d_fancy_run_list_from_fancy_string_list(arena, tab_size, text_raster_flags, &fancy_strings);
+  sprite2d->fancy_run_list = d_fancy_run_list_from_fancy_string_list(arena, tab_size, text_raster_flags, &fancy_strings);
 }
 
 internal int
@@ -5323,7 +5272,6 @@ rk_eat_event(OS_EventList *list, OS_Event *evt)
 internal B32
 rk_key_press(OS_Modifiers mods, OS_Key key)
 {
-  ProfBeginFunction();
   B32 result = 0;
   for(OS_Event *evt = rk_state->os_events.first; evt != 0; evt = evt->next)
   {
@@ -5334,13 +5282,12 @@ rk_key_press(OS_Modifiers mods, OS_Key key)
       break;
     }
   }
-  ProfEnd();
   return result;
 }
+
 internal B32
 rk_key_release(OS_Modifiers mods, OS_Key key)
 {
-  ProfBeginFunction();
   B32 result = 0;
   for(OS_Event *evt = rk_state->os_events.first; evt != 0; evt = evt->next)
   {
@@ -5351,6 +5298,5 @@ rk_key_release(OS_Modifiers mods, OS_Key key)
       break;
     }
   }
-  ProfEnd();
   return result;
 }

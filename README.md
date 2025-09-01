@@ -13,15 +13,16 @@
 
 ## Development Setup Instructions
 
-**Note: Currently, only x64 linux and Windows development are supported.
+**Note**: Currently, only x64 linux and Windows development are supported.
 
 ### Linux Setup
 
 #### 1. Installing the Required Tools
 
 * linux
-* gcc
+* gcc or clang
 * glslc
+* xxd
 * vulkan-headers
 * vulkan-validation-layers
 
@@ -30,7 +31,13 @@
 Within this terminal, `cd` to the root directory of the codebase, and just run the `build.sh` script:
 
 ```
-./build.sh game
+./build.sh rubik clang
+```
+
+or (for ink whiteboard app)
+
+```
+./build.sh ink clang
 ```
 
 ### Windows Setup
@@ -39,7 +46,7 @@ Within this terminal, `cd` to the root directory of the codebase, and just run t
 
 In order to work with the codebase, you'll need the [Microsoft C/C++ Build Tools
 v15 (2017) or later](https://aka.ms/vs/17/release/vs_BuildTools.exe), for both
-the Windows SDK and the MSVC/Clang compiler and linker. (**Note: Currently only clang can be used)
+the Windows SDK and the MSVC/Clang compiler and linker. (**Note**: Currently only clang can be used)
 
 Install [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/) for windows
 
@@ -61,6 +68,12 @@ the `build.bat` script:
 
 ```
 build rubik clang
+```
+
+or (for ink whiteboard app)
+
+```
+build ink clang
 ```
 
 If everything worked correctly, there will be a `build` folder in the root

@@ -1697,7 +1697,7 @@ ik_frame(void)
 
   ik_state->pre_cpu_time_us = os_now_microseconds()-begin_time_us;
 
-  // Submit drawing bucket
+  // submit drawing bucket
   ProfScope("submit")
   {
     r_begin_frame();
@@ -1717,10 +1717,6 @@ ik_frame(void)
   /////////////////////////////////
   //~ Wait if we still have some cpu time left
 
-  local_persist B32 frame_missed = 0;
-  local_persist U64 exiting_frame_index = 0;
-
-  // TODO: use cpu sleep instead of spinning cpu here
   U64 frame_time_target_cap_us = (U64)(1000000/target_hz);
   U64 woik_us = os_now_microseconds()-begin_time_us;
   ik_state->cpu_time_us = woik_us;
@@ -1749,11 +1745,6 @@ ik_frame(void)
     // tag it
     ProfBegin("MISSED FRAME");
     ProfEnd();
-  }
-
-  if(frame_missed && ik_state->frame_index > exiting_frame_index)
-  {
-    ik_state->window_should_close = 1;
   }
 
   /////////////////////////////////
