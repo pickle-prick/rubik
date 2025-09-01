@@ -9,8 +9,7 @@
 
 #define BUILD_TITLE          "Ink"
 #define OS_FEATURE_GRAPHICAL 1
-// TODO: required for linkage for now
-#define OS_FEATURE_AUDIO     1
+#define OS_FEATURE_AUDIO     0
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // external includes
@@ -19,8 +18,6 @@
 #include "external/stb/stb_image.h"
 #include "external/xxHash/xxhash.c"
 #include "external/xxHash/xxhash.h"
-#define DR_WAV_IMPLEMENTATION
-#include "external/dr_wav.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // single unit includes
@@ -33,7 +30,6 @@
 #include "font_cache/font_cache.h"
 #include "draw/draw.h"
 #include "ui/ui_inc.h"
-#include "synth/synth.h"
 #include "serialize/serialize_inc.h"
 #include "ink_core.h"
 // fonts
@@ -49,7 +45,6 @@
 #include "font_cache/font_cache.c"
 #include "draw/draw.c"
 #include "ui/ui_inc.c"
-#include "synth/synth.c"
 #include "serialize/serialize_inc.c"
 #include "ink_core.c"
 
@@ -82,10 +77,12 @@ entry_point(CmdLine *cmd_line)
   os_window_first_paint(os_wnd);
 
   // init main audio device
+#if OS_FEATURE_AUDIO
   OS_Handle main_audio_device = os_audio_device_open();
   os_set_main_audio_device(main_audio_device);
   os_audio_device_start(main_audio_device);
   os_audio_set_master_volume(0.9);
+#endif
 
   // render initialization
   r_init((char *)window_title.str, os_wnd, BUILD_DEBUG);

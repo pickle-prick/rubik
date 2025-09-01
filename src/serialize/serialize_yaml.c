@@ -192,7 +192,7 @@ internal SE_Node *
 se_yml_node_from_file(Arena *arena, String8 path)
 {
   SE_Node *ret = 0;
-  Temp scratch = scratch_begin(&arena,1);
+  Temp scratch = scratch_begin(&arena, 1);
 
   // Read file
   OS_Handle f = os_file_open(OS_AccessFlag_Read, (path));
@@ -418,7 +418,7 @@ se_yml_node_from_file(Arena *arena, String8 path)
             // skip trailling ')'
             values_src.size--;
             String8 *v = push_array(scratch.arena, String8, 1);
-            *v = push_str8_copy(scratch.arena, values_src);
+            *v = push_str8_copy(arena, values_src);
             values = v;
             value_size = sizeof(*v);
           }break;

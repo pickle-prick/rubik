@@ -17,11 +17,15 @@ main_thread_base_entry_point(int argc, char **argv)
   CmdLine cmdline = cmd_line_from_string_list(scratch.arena, command_line_argument_strings);
 
   // NOTE: preload modules/systems
+#if OS_FEATURE_GRAPHICAL
   os_gfx_init();
+#endif
+#if OS_FEATURE_AUDIO
   os_audio_init();
+  sy_init();
+#endif
   fp_init();
   f_init();
-  sy_init();
 
   ProfBeginCapture();
   global_time_start_us = os_now_microseconds();

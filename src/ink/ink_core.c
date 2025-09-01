@@ -714,20 +714,20 @@ ik_frame(void)
   Temp scratch = scratch_begin(0,0);
 
   /////////////////////////////////
-  // do per-frame resets
+  //~ Do per-frame resets
 
   // ik_drawlist_reset(ik_frame_drawlist());
   arena_clear(ik_frame_arena());
 
   /////////////////////////////////
-  // remake drawing buckets every frame
+  //~ Remake drawing buckets every frame
 
   d_begin_frame();
   ik_state->bucket_ui = d_bucket_make();
   ik_state->bucket_main = d_bucket_make();
 
   /////////////////////////////////
-  // get events from os
+  //~ Get events from os
   
   OS_EventList os_events = os_get_events(ik_frame_arena(), 0);
   {
@@ -759,7 +759,7 @@ ik_frame(void)
   }
 
   /////////////////////////////////
-  // calculate avg length in us of last many frames
+  //~ Calculate avg length in us of last many frames
 
   U64 frame_time_history_avg_us = 0;
   ProfScope("calculate avg length in us of last many frames")
@@ -777,7 +777,7 @@ ik_frame(void)
   }
 
   /////////////////////////////////
-  // pick target hz
+  //~ Pick target hz
 
   // pick among a number of sensible targets to snap to, given how well we've been performing
   F32 target_hz = os_get_gfx_info()->default_refresh_rate;
@@ -908,7 +908,6 @@ ik_frame(void)
 
     UI_EventNode *evt_node = ui_event_list_push(ui_build_arena(), &ui_events, &ui_evt);
 
-    // TODO(k): we may want to handle this somewhere else
     if(os_evt->kind == OS_EventKind_WindowClose) {ik_state->window_should_close = 1;}
   }
 
@@ -1091,7 +1090,7 @@ ik_frame(void)
         Vec2F32 shift_inv = rect_center;
         rect = shift_2f32(rect, shift);
 
-        // TODO(Next): bug in window
+        // TODO(Next): bug in win32
         F32 zoom_step = mix_1f32(camera->min_zoom_step, camera->max_zoom_step, camera->zoom_t);
         F32 scale = 1 + delta*zoom_step;
         rect.x0 *= scale;
@@ -1220,7 +1219,6 @@ ik_frame(void)
         if(box->flags & IK_BoxFlag_FitViewport)
         {
           // TODO(Next): maybe reset scale, rotation?
-          // TODO(Next): this won't work if we do recursive transforming
           box->position = camera->rect.p0;
           box->rect_size = dim_2f32(camera->rect);
         }
@@ -4385,7 +4383,6 @@ ik_frame_from_tyml(String8 path)
     Vec2U64 key_src = se_v2u64_from_tag(n, str8_lit("key"));
     IK_Key key = ik_key_make(key_src.x, key_src.y);
     String8 b64content = se_str_from_tag(n, str8_lit("data"));
-    // TODO(Next): we should add a keyoverride
     String8 bytes = ik_bytes_from_b64string(scratch.arena, b64content);
     ik_image_from_bytes(bytes.str, bytes.size, key);
   }

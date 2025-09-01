@@ -1,7 +1,7 @@
 .PHONY: build_debug build_full run_full clean debug run r
 
 BUILD_TARGET := ink
-BUILD_COMPILER := gcc
+BUILD_COMPILER := clang
 
 build_debug:
 	./build.sh $(BUILD_TARGET) $(BUILD_COMPILER) no_shader no_meta profile
