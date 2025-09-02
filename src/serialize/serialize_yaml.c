@@ -191,18 +191,23 @@ se_yml_node_to_file(SE_Node *_root, String8 path)
 internal SE_Node *
 se_yml_node_from_file(Arena *arena, String8 path)
 {
+  ProfBeginFunction();
   SE_Node *ret = 0;
   Temp scratch = scratch_begin(&arena, 1);
 
-  // Read file
+  // read file
+  ProfBegin("read file");
   OS_Handle f = os_file_open(OS_AccessFlag_Read, (path));
   FileProperties f_props = os_properties_from_file(f);
   U64 size = f_props.size;
   U8 *data = push_array(scratch.arena, U8, f_props.size);
   os_file_read(f, rng_1u64(0,size), data);
+  ProfEnd();
   String8 str = str8(data, size);
-
-  String8List lines = wrapped_lines_from_string(scratch.arena, str, 300, 300, 2);
+  // TODO(Next): this is slow (~110ms)
+  ProfBegin("split lines");
+  String8List lines = str8_split_by_string_chars(scratch.arena, str, str8_lit("\n"), StringSplitFlag_KeepEmpties);
+  ProfEnd();
 
   se_build_begin(arena);
 
@@ -567,5 +572,6 @@ se_yml_node_from_file(Arena *arena, String8 path)
   se_build_end();
   scratch_end(scratch);
   ret = root;
+  ProfEnd();
   return ret;
 }

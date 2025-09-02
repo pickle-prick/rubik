@@ -1,5 +1,3 @@
-// Licensed under the MIT license (https://opensource.org/license/mit/)
-
 #ifndef OS_CORE_LINUX_H
 #define OS_CORE_LINUX_H
 
@@ -18,6 +16,7 @@
 #include <time.h>
 #include <dirent.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <sys/syscall.h>
 #include <signal.h>
 #include <errno.h>

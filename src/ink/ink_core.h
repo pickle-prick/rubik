@@ -134,7 +134,8 @@ struct IK_Image
 {
   IK_Key key;
   R_Handle handle;
-  String8 bytes;
+  String8 encoded; // png or whatever
+  void *decoded; // pixel data
   U64 x;
   U64 y;
   U64 rc;
@@ -156,6 +157,19 @@ struct IK_ImageCacheSlot
 };
 
 ////////////////////////////////
+//~ Image Decode Job Queue
+
+typedef struct IK_ImageDecodeQueue IK_ImageDecodeQueue;
+struct IK_ImageDecodeQueue
+{
+  Semaphore semaphore;
+  IK_Image *queue[256]; // cicular buffer
+  U64 queue_count;
+  U64 cursor; // next to process
+  U64 mark; // next to push to queue
+};
+
+////////////////////////////////
 //~ Camera
 
 typedef struct IK_Camera IK_Camera;
@@ -166,7 +180,6 @@ struct IK_Camera
   F32 zn;
   F32 zf;
 
-  // TODO: we may need to store zoom level
   F32 min_zoom_step;
   F32 max_zoom_step;
   F32 zoom_t;
@@ -594,6 +607,10 @@ struct IK_State
   Vec2F32               mouse_delta_in_world;
   B32                   cursor_hidden;
 
+  // image decode queue & threads
+  IK_ImageDecodeQueue   decode_queue;
+  OS_Handle             decode_threads[3];
+
   // palette
   // IK_IconInfo           icon_info;
   IK_WidgetPaletteInfo  widget_palette_info;
@@ -800,8 +817,15 @@ internal void      ik_point_release(IK_Point *point);
 /////////////////////////////////
 //~ Image Function
 
-internal IK_Image* ik_image_from_bytes(U8 *bytes, U64 byte_count, IK_Key key_override);
+internal String8   ik_decoded_from_bytes(Arena *arena, String8 bytes, Vec3F32 *return_size);
 internal IK_Image* ik_image_from_key(IK_Key key);
+internal IK_Image* ik_image_push(IK_Key key);
+
+/////////////////////////////////
+//~ Image Decode
+
+internal void ik_image_decode_thread__entry_point(void *ptr);
+internal void ik_image_decode_queue_push(IK_Image *image);
 
 /////////////////////////////////
 //~ User interaction

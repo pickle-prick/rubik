@@ -71,6 +71,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
   r_vulkan_state = push_array(arena, R_Vulkan_State, 1);
   r_vulkan_state->arena = arena;
   r_vulkan_state->debug = debug;
+  r_vulkan_state->device_rw_mutex = rw_mutex_alloc();
   Temp scratch = scratch_begin(0,0);
 
   // api version
@@ -1339,17 +1340,20 @@ internal R_Handle
 r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, R_Tex2DFormat format, void *data)
 {
   ProfBeginFunction();
-  R_Vulkan_Tex2D *texture = r_vulkan_state->first_free_tex2d;
-  if(texture == 0)
+  R_Vulkan_Tex2D *texture = 0;
   {
-    texture = push_array(r_vulkan_state->arena, R_Vulkan_Tex2D, 1);
-  }
-  else
-  {
-    U64 gen = texture->generation;
-    SLLStackPop(r_vulkan_state->first_free_tex2d);
-    MemoryZeroStruct(texture);
-    texture->generation = gen;
+    texture = r_vulkan_state->first_free_tex2d;
+    if(texture == 0)
+    {
+      texture = push_array(r_vulkan_state->arena, R_Vulkan_Tex2D, 1);
+    }
+    else
+    {
+      U64 gen = texture->generation;
+      SLLStackPop(r_vulkan_state->first_free_tex2d);
+      MemoryZeroStruct(texture);
+      texture->generation = gen;
+    }
   }
   texture->image.extent.width  = size.x;
   texture->image.extent.height = size.y;
@@ -1587,7 +1591,6 @@ r_vulkan_handle_from_tex2d(R_Vulkan_Tex2D *texture)
 internal R_Handle
 r_buffer_alloc(R_ResourceKind kind, U64 size, void *data, U64 data_size)
 {
-  AssertAlways(data_size <= size);
   R_Vulkan_Buffer *ret = 0;
   ret = r_vulkan_state->first_free_buffer;
   if(ret == 0)
@@ -1778,9 +1781,7 @@ r_buffer_alloc(R_ResourceKind kind, U64 size, void *data, U64 data_size)
               .offset = 0,
               .size = data_size,
             };
-            vkCmdPipelineBarrier(cmd,
-                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
-                0,0, NULL, 1, &barrier, 0, 0);
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0,0, NULL, 1, &barrier, 0, 0);
           }
         }
       }
@@ -3175,7 +3176,8 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
   R_Vulkan_DescriptorSetLayout set_layout = r_vulkan_state->set_layouts[kind];
 
   U64 remaining = set_count;
-  R_Vulkan_DescriptorSetPool *pool;
+  R_Vulkan_DescriptorSetPool *pool = 0;
+
   while(remaining > 0)
   {
     pool = r_vulkan_state->first_avail_ds_pool[kind];
@@ -3189,21 +3191,21 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
       VkDescriptorPoolSize pool_sizes[set_layout.binding_count];
       for(U64 i = 0; i < set_layout.binding_count; i++)
       {
-        pool_sizes[i].type            = set_layout.bindings[i].descriptorType;
+        pool_sizes[i].type = set_layout.bindings[i].descriptorType;
         pool_sizes[i].descriptorCount = set_layout.bindings[i].descriptorCount * pool->cap;
       }
 
       VkDescriptorPoolCreateInfo pool_create_info = {
-        .sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .poolSizeCount = 1,
-        .pPoolSizes    = pool_sizes,
+        .pPoolSizes = pool_sizes,
         // Aside from the maxium number of individual descriptors that are available, we also need to specify the maxium number of descriptor sets that may be allcoated
-        .maxSets       = pool->cap,
+        .maxSets = pool->cap,
         // The structure has an optional flag similar to command pools that determines if individual descriptor sets can be freed or not
         // VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT
         // We're not going to touch the descriptor set after creating it, so we don't nedd this flag 
         // You can leave flags to 0
-        .flags         = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
       };
       VK_Assert(vkCreateDescriptorPool(r_vulkan_state->logical_device.h, &pool_create_info, NULL, &pool->h));
 

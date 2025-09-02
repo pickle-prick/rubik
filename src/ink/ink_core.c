@@ -509,6 +509,12 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
     ik_state->drag_state_arena = arena_alloc();
     ik_state->box_scratch_arena = arena_alloc();
     ik_state->tool = IK_ToolKind_Selection;
+    // decode queue & threads
+    ik_state->decode_queue.semaphore = semaphore_alloc(0, ArrayCount(ik_state->decode_queue.queue), str8_lit(""));
+    for(U64 i = 0; i < ArrayCount(ik_state->decode_threads); i++)
+    {
+      ik_state->decode_threads[i] = os_thread_launch(ik_image_decode_thread__entry_point, &ik_state->decode_queue, 0);
+    }
 
     // frame arena
     for(U64 i = 0; i < ArrayCount(ik_state->frame_arenas); i++)
@@ -1545,14 +1551,20 @@ ik_frame(void)
       // paste image
       if(content_is_image)
       {
-        IK_Image *image = ik_image_from_bytes(content.str, content.size, ik_key_zero());
-        if(image)
+        IK_Key key = ik_key_make(ui_hash_from_string(0, content), 0);
+        IK_Image *image = ik_image_from_key(key);
+        if(!image)
         {
-          F32 default_screen_width = Min(ik_state->window_dim.x * 0.35, image->x);
-          F32 ratio = (F32)image->x/image->y;
+          image = ik_image_push(key);
+          image->encoded = ik_push_str8_copy(content);
+          ik_image_decode_queue_push(image);
+        }
+
+        {
+          F32 default_screen_width = ik_state->window_dim.x * 0.25;
           F32 width = default_screen_width * ik_state->world_to_screen_ratio.x;
-          F32 height = width / ratio;
-          IK_Box *box = ik_image(IK_BoxFlag_DrawBorder, ik_state->mouse_in_world, v2f32(width, height), image);
+          IK_Box *box = ik_image(IK_BoxFlag_DrawBorder, ik_state->mouse_in_world, v2f32(width, width), image);
+          box->ratio = 1.0;
           box->disabled_t = 1.0;
           // TODO(Next): not ideal, fix it later
           box->draw_frame_index = ik_state->frame_index+1;
@@ -1644,6 +1656,16 @@ ik_frame(void)
         // draw image
         if((box->flags&IK_BoxFlag_DrawImage) && box->image)
         {
+          IK_Image *image = box->image;
+          if(r_handle_match(image->handle, r_handle_zero()) && image->decoded)
+          {
+            image->handle = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Linear, v2s32(image->x, image->y), R_Tex2DFormat_RGBA8, (void*)image->decoded);
+            stbi_image_free(image->decoded);
+            image->decoded = 0;
+            box->ratio = (F32)image->x/image->y;
+            box->rect_size.y = box->rect_size.x/box->ratio;
+          }
+
           Rng2F32 src = {0,0, box->image->x, box->image->y};
           d_img(dst, src, box->image->handle, v4f32(1,1,1,1), 0, 0, 0);
         }
@@ -2685,10 +2707,7 @@ ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, IK_Image *image)
   box->position = pos;
   box->rect_size = rect_size;
   box->hover_cursor = OS_Cursor_UpDownLeftRight;
-  // TODO: we should use IK_Image here 
   box->image = image;
-  box->ratio = (F32)image->x/image->y;
-
   image->rc++;
   return box;
 }
@@ -2903,67 +2922,52 @@ ik_point_release(IK_Point *point)
 /////////////////////////////////
 //~ Image Function
 
-internal IK_Image *
-ik_image_from_bytes(U8 *bytes, U64 byte_count, IK_Key key_override)
+internal String8
+ik_decoded_from_bytes(Arena *arena, String8 bytes, Vec3F32 *return_size)
 {
-  IK_Image *ret = 0;
-  IK_Frame *frame = ik_top_frame();
-  // NOTE(k): read from source, could be png, jpeg or whatever
-  String8 src = str8(bytes, byte_count);
-  IK_Key key = key_override;
-
-  // TODO(Next): don't know if this is pratical if image bytes is too large
-  // hashing
-  if(ik_key_match(key, ik_key_zero()))
+  ProfBeginFunction();
+  String8 ret = {0};
+  int x = 0;
+  int y = 0;
+  int z = 0;
+  U8 *data = stbi_load_from_memory(bytes.str, bytes.size, &x, &y, &z, 4); // this is image data (U32 -> RBGA)
+  if(data)
   {
-    key = ik_key_make(ui_hash_from_string(0, str8(bytes, byte_count)), 0);
+    U64 size = x*y*4;
+    ret.str = push_array(arena, U8, size);
+    ret.size = size;
+    MemoryCopy(ret.str, data, size);
+    return_size->x = x;
+    return_size->y = y;
+    return_size->z = 4;
   }
+  stbi_image_free(data);
+  ProfEnd();
+  return ret;
+}
+
+internal IK_Image *
+ik_image_push(IK_Key key)
+{
+  IK_Frame *frame = ik_top_frame();
+  IK_ImageCacheNode *cache_node = frame->first_free_image_cache_node;
+  if(cache_node)
+  {
+    SLLStackPop(frame->first_free_image_cache_node);
+  }
+  else
+  {
+    cache_node = push_array_no_zero(frame->arena, IK_ImageCacheNode, 1);
+  }
+  MemoryZeroStruct(cache_node);
+
+  // hook into cache table
   U64 slot_index = key.u64[0]%ArrayCount(frame->image_cache_table);
   IK_ImageCacheSlot *slot = &frame->image_cache_table[slot_index];
+  DLLPushBack(slot->first, slot->last, cache_node);
 
-  IK_ImageCacheNode *node = 0;
-  for(IK_ImageCacheNode *n = slot->first; n != 0; n = n->next)
-  {
-    if(ik_key_match(n->v.key, key))
-    {
-      node = n;
-      break;
-    }
-  }
-
-  // no cache -> alloc new one
-  if(node == 0)
-  {
-    int x = 0;
-    int y = 0;
-    int z = 0;
-    U8 *data = stbi_load_from_memory(src.str, src.size, &x, &y, &z, 4); // this is image data (U32 -> RBGA)
-
-    // valid data? -> upload to gpu & create cache node
-    if(data)
-    {
-      R_Handle handle = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Linear, v2s32(x, y), R_Tex2DFormat_RGBA8, (void*)data);
-
-      node = push_array(frame->arena, IK_ImageCacheNode, 1);
-      DLLPushBack(slot->first, slot->last, node);
-
-      // fill node
-      node->v.key = key;
-      node->v.x = x;
-      node->v.y = y;
-      node->v.bytes = ik_push_str8_copy(str8(bytes, byte_count));
-      node->v.handle = handle;
-    }
-    stbi_image_free(data);
-
-    // cache node
-    if(node)
-    {
-      DLLPushBack(slot->first, slot->last, node);
-    }
-  }
-
-  if(node) ret = &node->v;
+  IK_Image *ret = &cache_node->v;
+  ret->key = key;
   return ret;
 }
 
@@ -2993,8 +2997,44 @@ ik_image_from_key(IK_Key key)
       ret = &node->v;
     }
   }
-
   return ret;
+}
+
+/////////////////////////////////
+//~ Image Decode Threads
+
+internal void
+ik_image_decode_thread__entry_point(void *ptr)
+{
+  ThreadNameF("[ik] image decode thread");
+
+  IK_ImageDecodeQueue *queue = (IK_ImageDecodeQueue*)ptr;
+  for(;;)
+  {
+    semaphore_take(queue->semaphore, max_U64);
+    // TODO(Next): mod with queue size
+    U64 index = ins_atomic_u64_inc_eval(&queue->cursor)-1;
+    IK_Image *image = queue->queue[index];
+
+    int x = 0;
+    int y = 0;
+    int z = 0;
+    U8 *data = stbi_load_from_memory(image->encoded.str, image->encoded.size, &x, &y, &z, 4); // this is image data (U32 -> RBGA)
+    if(data)
+    {
+      image->x = x;
+      image->y = y;
+      image->decoded = data;
+    }
+  }
+}
+
+internal void
+ik_image_decode_queue_push(IK_Image *image)
+{
+  IK_ImageDecodeQueue *queue = &ik_state->decode_queue;
+  queue->queue[queue->mark++] = image;
+  semaphore_drop(ik_state->decode_queue.semaphore);
 }
 
 /////////////////////////////////
@@ -3917,7 +3957,7 @@ ik_ui_inspector(void)
             ui_labelf("kb");
           ui_spacer(ui_pct(1.0, 0.0));
           UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("%.2f", (F32)b->image->bytes.size/(1024.f));
+            ui_labelf("%.2f", (F32)b->image->encoded.size/(1024.f));
         }
 
         ui_divider(ui_em(0.5, 0.0));
@@ -4261,7 +4301,7 @@ ik_frame_to_tyml(IK_Frame *frame)
             se_v2u64_with_tag(str8_lit("key"), v2u64(image->key.u64[0], image->key.u64[1]));
             se_u64_with_tag(str8_lit("x"), image->x);
             se_u64_with_tag(str8_lit("y"), image->y);
-            se_str_with_tag(str8_lit("data"), ik_b64string_from_bytes(scratch.arena, image->bytes));
+            se_str_with_tag(str8_lit("data"), ik_b64string_from_bytes(scratch.arena, image->encoded));
           }
         }
       }
@@ -4378,13 +4418,17 @@ ik_frame_from_tyml(String8 path)
   // Load images
 
   SE_Node *first_image_node = se_arr_from_tag(se_node, str8_lit("images"));
-  for(SE_Node *n = first_image_node; n != 0; n = n->next)
+  ProfScope("load images") for(SE_Node *n = first_image_node; n != 0; n = n->next)
   {
     Vec2U64 key_src = se_v2u64_from_tag(n, str8_lit("key"));
     IK_Key key = ik_key_make(key_src.x, key_src.y);
     String8 b64content = se_str_from_tag(n, str8_lit("data"));
     String8 bytes = ik_bytes_from_b64string(scratch.arena, b64content);
-    ik_image_from_bytes(bytes.str, bytes.size, key);
+    IK_Image *image = ik_image_push(key);
+    image->encoded = ik_push_str8_copy(bytes);
+
+    ik_state->decode_queue.queue[ik_state->decode_queue.mark++] = image;
+    semaphore_drop(ik_state->decode_queue.semaphore);
   }
 
   /////////////////////////////////
@@ -4495,6 +4539,7 @@ ik_screen_pos_in_world(Mat4x4F32 proj_view_mat_inv, Vec2F32 pos)
 internal String8
 ik_b64string_from_bytes(Arena *arena, String8 src)
 {
+  ProfBeginFunction();
   // 3 bytes -> 4 chars, round up
   U64 enc_len = ((src.size+2)/3 * 4);
   U8 *out = push_array(arena, U8, enc_len+1); // +1 for null terminator
@@ -4515,12 +4560,14 @@ ik_b64string_from_bytes(Arena *arena, String8 src)
   }
   out[j] = '\0';
   String8 ret = str8(out, enc_len);
+  ProfEnd();
   return ret;
 }
 
 internal String8
 ik_bytes_from_b64string(Arena *arena, String8 src)
 {
+  ProfBeginFunction();
   String8 ret = {0};
   U64 dec_size = (src.size/4)*3;
   U8 *out = push_array(arena, U8, dec_size);
@@ -4546,5 +4593,6 @@ ik_bytes_from_b64string(Arena *arena, String8 src)
     if(src.str[src.size-2] == '=') j--;
     ret = str8(out, j);
   }
+  ProfEnd();
   return ret;
 }

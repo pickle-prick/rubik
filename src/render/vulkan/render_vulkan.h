@@ -562,6 +562,7 @@ struct R_Vulkan_State
   R_Vulkan_Tex2D                      *first_free_tex2d;
   R_Vulkan_Buffer                     *first_free_buffer;
   R_Vulkan_RenderTargets              *first_free_render_targets;
+  RWMutex                             device_rw_mutex;
 
   R_Vulkan_RenderTargets              *first_to_free_render_targets;
   R_Vulkan_RenderTargets              *last_to_free_render_targets;

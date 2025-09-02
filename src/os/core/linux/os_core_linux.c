@@ -1,6 +1,3 @@
-// Copyright (c) 2024 Epic Games Tools
-// Licensed under the MIT license (https://opensource.org/license/mit/)
-
 ////////////////////////////////
 //~ rjf: Helpers
 
@@ -535,7 +532,7 @@ os_file_iter_next(Arena *arena, OS_FileIter *iter, OS_FileInfo *info_out)
 {
   B32 good = 0;
   OS_LNX_FileIter *lnx_iter = (OS_LNX_FileIter *)iter->memory;
-  for(;;)
+  for(;lnx_iter->dir != 0;)
   {
     // rjf: get next entry
     lnx_iter->dp = readdir(lnx_iter->dir);
@@ -791,7 +788,7 @@ os_thread_detach(OS_Handle handle)
 
 //- rjf: mutexes
 
-internal OS_Handle
+internal Mutex
 os_mutex_alloc(void)
 {
   OS_LNX_Entity *entity = os_lnx_entity_alloc(OS_LNX_EntityKind_Mutex);
@@ -805,38 +802,35 @@ os_mutex_alloc(void)
     os_lnx_entity_release(entity);
     entity = 0;
   }
-  OS_Handle handle = {(U64)entity};
-  return handle;
+  Mutex result = {IntFromPtr(entity)};
+  return result;
 }
 
 internal void
-os_mutex_release(OS_Handle mutex)
+os_mutex_release(Mutex mutex)
 {
-  if(os_handle_match(mutex, os_handle_zero())) { return; }
-  OS_LNX_Entity *entity = (OS_LNX_Entity *)mutex.u64[0];
+  OS_LNX_Entity *entity = (OS_LNX_Entity *)PtrFromInt(mutex.u64[0]);
   pthread_mutex_destroy(&entity->mutex_handle);
   os_lnx_entity_release(entity);
 }
 
 internal void
-os_mutex_take(OS_Handle mutex)
+os_mutex_take(Mutex mutex)
 {
-  if(os_handle_match(mutex, os_handle_zero())) { return; }
-  OS_LNX_Entity *entity = (OS_LNX_Entity *)mutex.u64[0];
+  OS_LNX_Entity *entity = (OS_LNX_Entity *)PtrFromInt(mutex.u64[0]);
   pthread_mutex_lock(&entity->mutex_handle);
 }
 
 internal void
-os_mutex_drop(OS_Handle mutex)
+os_mutex_drop(Mutex mutex)
 {
-  if(os_handle_match(mutex, os_handle_zero())) { return; }
-  OS_LNX_Entity *entity = (OS_LNX_Entity *)mutex.u64[0];
+  OS_LNX_Entity *entity = (OS_LNX_Entity *)PtrFromInt(mutex.u64[0]);
   pthread_mutex_unlock(&entity->mutex_handle);
 }
 
 //- rjf: reader/writer mutexes
 
-internal OS_Handle
+internal RWMutex
 os_rw_mutex_alloc(void)
 {
   OS_LNX_Entity *entity = os_lnx_entity_alloc(OS_LNX_EntityKind_RWMutex);
@@ -846,55 +840,50 @@ os_rw_mutex_alloc(void)
     os_lnx_entity_release(entity);
     entity = 0;
   }
-  OS_Handle handle = {(U64)entity};
-  return handle;
+  RWMutex result = {IntFromPtr(entity)};
+  return result;
 }
 
 internal void
-os_rw_mutex_release(OS_Handle rw_mutex)
+os_rw_mutex_release(RWMutex rw_mutex)
 {
-  if(os_handle_match(rw_mutex, os_handle_zero())) { return; }
-  OS_LNX_Entity *entity = (OS_LNX_Entity *)rw_mutex.u64[0];
+  OS_LNX_Entity *entity = (OS_LNX_Entity *)PtrFromInt(rw_mutex.u64[0]);
   pthread_rwlock_destroy(&entity->rwmutex_handle);
   os_lnx_entity_release(entity);
 }
 
 internal void
-os_rw_mutex_take_r(OS_Handle rw_mutex)
+os_rw_mutex_take_r(RWMutex rw_mutex)
 {
-  if(os_handle_match(rw_mutex, os_handle_zero())) { return; }
-  OS_LNX_Entity *entity = (OS_LNX_Entity *)rw_mutex.u64[0];
+  OS_LNX_Entity *entity = (OS_LNX_Entity *)PtrFromInt(rw_mutex.u64[0]);
   pthread_rwlock_rdlock(&entity->rwmutex_handle);
 }
 
 internal void
-os_rw_mutex_drop_r(OS_Handle rw_mutex)
+os_rw_mutex_drop_r(RWMutex rw_mutex)
 {
-  if(os_handle_match(rw_mutex, os_handle_zero())) { return; }
-  OS_LNX_Entity *entity = (OS_LNX_Entity *)rw_mutex.u64[0];
+  OS_LNX_Entity *entity = (OS_LNX_Entity *)PtrFromInt(rw_mutex.u64[0]);
   pthread_rwlock_unlock(&entity->rwmutex_handle);
 }
 
 internal void
-os_rw_mutex_take_w(OS_Handle rw_mutex)
+os_rw_mutex_take_w(RWMutex rw_mutex)
 {
-  if(os_handle_match(rw_mutex, os_handle_zero())) { return; }
-  OS_LNX_Entity *entity = (OS_LNX_Entity *)rw_mutex.u64[0];
+  OS_LNX_Entity *entity = (OS_LNX_Entity *)PtrFromInt(rw_mutex.u64[0]);
   pthread_rwlock_wrlock(&entity->rwmutex_handle);
 }
 
 internal void
-os_rw_mutex_drop_w(OS_Handle rw_mutex)
+os_rw_mutex_drop_w(RWMutex rw_mutex)
 {
-  if(os_handle_match(rw_mutex, os_handle_zero())) { return; }
-  OS_LNX_Entity *entity = (OS_LNX_Entity *)rw_mutex.u64[0];
+  OS_LNX_Entity *entity = (OS_LNX_Entity *)PtrFromInt(rw_mutex.u64[0]);
   pthread_rwlock_unlock(&entity->rwmutex_handle);
 }
 
 //- rjf: condition variables
 
-internal OS_Handle
-os_condition_variable_alloc(void)
+internal CondVar
+os_cond_var_alloc(void)
 {
   OS_LNX_Entity *entity = os_lnx_entity_alloc(OS_LNX_EntityKind_ConditionVariable);
   int init_result = pthread_cond_init(&entity->cv.cond_handle, 0);
@@ -914,14 +903,13 @@ os_condition_variable_alloc(void)
     os_lnx_entity_release(entity);
     entity = 0;
   }
-  OS_Handle handle = {(U64)entity};
-  return handle;
+  CondVar result = {(U64)entity};
+  return result;
 }
 
 internal void
-os_condition_variable_release(OS_Handle cv)
+os_cond_var_release(CondVar cv)
 {
-  if(os_handle_match(cv, os_handle_zero())) { return; }
   OS_LNX_Entity *entity = (OS_LNX_Entity *)cv.u64[0];
   pthread_cond_destroy(&entity->cv.cond_handle);
   pthread_mutex_destroy(&entity->cv.rwlock_mutex_handle);
@@ -929,10 +917,8 @@ os_condition_variable_release(OS_Handle cv)
 }
 
 internal B32
-os_condition_variable_wait(OS_Handle cv, OS_Handle mutex, U64 endt_us)
+os_cond_var_wait(CondVar cv, Mutex mutex, U64 endt_us)
 {
-  if(os_handle_match(cv, os_handle_zero())) { return 0; }
-  if(os_handle_match(mutex, os_handle_zero())) { return 0; }
   OS_LNX_Entity *cv_entity = (OS_LNX_Entity *)cv.u64[0];
   OS_LNX_Entity *mutex_entity = (OS_LNX_Entity *)mutex.u64[0];
   struct timespec endt_timespec;
@@ -944,127 +930,171 @@ os_condition_variable_wait(OS_Handle cv, OS_Handle mutex, U64 endt_us)
 }
 
 internal B32
-os_condition_variable_wait_rw_r(OS_Handle cv, OS_Handle mutex_rw, U64 endt_us)
+os_cond_var_wait_rw_r(CondVar cv, RWMutex mutex_rw, U64 endt_us)
 {
   // TODO(rjf): because pthread does not supply cv/rw natively, I had to hack
   // this together, but this would probably just be a lot better if we just
   // implemented the primitives ourselves with e.g. futexes
   //
-  if(os_handle_match(cv, os_handle_zero())) { return 0; }
-  if(os_handle_match(mutex_rw, os_handle_zero())) { return 0; }
   OS_LNX_Entity *cv_entity = (OS_LNX_Entity *)cv.u64[0];
   OS_LNX_Entity *rw_mutex_entity = (OS_LNX_Entity *)mutex_rw.u64[0];
   struct timespec endt_timespec;
   endt_timespec.tv_sec = endt_us/Million(1);
   endt_timespec.tv_nsec = Thousand(1) * (endt_us - (endt_us/Million(1))*Million(1));
   B32 result = 0;
+  pthread_mutex_lock(&cv_entity->cv.rwlock_mutex_handle);
+  pthread_rwlock_unlock(&rw_mutex_entity->rwmutex_handle);
   for(;;)
   {
-    pthread_mutex_lock(&cv_entity->cv.rwlock_mutex_handle);
     int wait_result = pthread_cond_timedwait(&cv_entity->cv.cond_handle, &cv_entity->cv.rwlock_mutex_handle, &endt_timespec);
     if(wait_result != ETIMEDOUT)
     {
       pthread_rwlock_rdlock(&rw_mutex_entity->rwmutex_handle);
-      pthread_mutex_unlock(&cv_entity->cv.rwlock_mutex_handle);
       result = 1;
       break;
     }
-    pthread_mutex_unlock(&cv_entity->cv.rwlock_mutex_handle);
     if(wait_result == ETIMEDOUT)
     {
+      pthread_rwlock_rdlock(&rw_mutex_entity->rwmutex_handle);
       break;
     }
   }
+  pthread_mutex_unlock(&cv_entity->cv.rwlock_mutex_handle);
   return result;
 }
 
 internal B32
-os_condition_variable_wait_rw_w(OS_Handle cv, OS_Handle mutex_rw, U64 endt_us)
+os_cond_var_wait_rw_w(CondVar cv, RWMutex mutex_rw, U64 endt_us)
 {
   // TODO(rjf): because pthread does not supply cv/rw natively, I had to hack
   // this together, but this would probably just be a lot better if we just
   // implemented the primitives ourselves with e.g. futexes
   //
-  if(os_handle_match(cv, os_handle_zero())) { return 0; }
-  if(os_handle_match(mutex_rw, os_handle_zero())) { return 0; }
   OS_LNX_Entity *cv_entity = (OS_LNX_Entity *)cv.u64[0];
   OS_LNX_Entity *rw_mutex_entity = (OS_LNX_Entity *)mutex_rw.u64[0];
   struct timespec endt_timespec;
   endt_timespec.tv_sec = endt_us/Million(1);
   endt_timespec.tv_nsec = Thousand(1) * (endt_us - (endt_us/Million(1))*Million(1));
   B32 result = 0;
+  pthread_mutex_lock(&cv_entity->cv.rwlock_mutex_handle);
+  pthread_rwlock_unlock(&rw_mutex_entity->rwmutex_handle);
   for(;;)
   {
-    pthread_mutex_lock(&cv_entity->cv.rwlock_mutex_handle);
     int wait_result = pthread_cond_timedwait(&cv_entity->cv.cond_handle, &cv_entity->cv.rwlock_mutex_handle, &endt_timespec);
     if(wait_result != ETIMEDOUT)
     {
       pthread_rwlock_wrlock(&rw_mutex_entity->rwmutex_handle);
-      pthread_mutex_unlock(&cv_entity->cv.rwlock_mutex_handle);
       result = 1;
       break;
     }
-    pthread_mutex_unlock(&cv_entity->cv.rwlock_mutex_handle);
     if(wait_result == ETIMEDOUT)
     {
+      pthread_rwlock_wrlock(&rw_mutex_entity->rwmutex_handle);
       break;
     }
   }
+  pthread_mutex_unlock(&cv_entity->cv.rwlock_mutex_handle);
   return result;
 }
 
 internal void
-os_condition_variable_signal(OS_Handle cv)
+os_cond_var_signal(CondVar cv)
 {
-  if(os_handle_match(cv, os_handle_zero())) { return; }
   OS_LNX_Entity *cv_entity = (OS_LNX_Entity *)cv.u64[0];
   pthread_cond_signal(&cv_entity->cv.cond_handle);
 }
 
 internal void
-os_condition_variable_broadcast(OS_Handle cv)
+os_cond_var_broadcast(CondVar cv)
 {
-  if(os_handle_match(cv, os_handle_zero())) { return; }
   OS_LNX_Entity *cv_entity = (OS_LNX_Entity *)cv.u64[0];
   pthread_cond_broadcast(&cv_entity->cv.cond_handle);
 }
 
 //- rjf: cross-process semaphores
 
-internal OS_Handle
+internal Semaphore
 os_semaphore_alloc(U32 initial_count, U32 max_count, String8 name)
 {
-  NotImplemented;
+  Semaphore result = {0};
+  if (name.size > 0)
+  {
+    // TODO: we need to allocate shared memory to store sem_t
+    // NotImplemented;
+  }
+  else
+  {
+    sem_t *s = mmap(0, sizeof(*s), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    AssertAlways(s != MAP_FAILED);
+    int err = sem_init(s, 0, initial_count);
+    if(err == 0)
+    {
+      result.u64[0] = (U64)s;
+    }
+  }
+  return result;
 }
 
 internal void
-os_semaphore_release(OS_Handle semaphore)
+os_semaphore_release(Semaphore semaphore)
 {
-  NotImplemented;
+  int err = munmap((void*)semaphore.u64[0], sizeof(sem_t));
+  AssertAlways(err == 0);
 }
 
-internal OS_Handle
+internal Semaphore
 os_semaphore_open(String8 name)
 {
   NotImplemented;
 }
 
 internal void
-os_semaphore_close(OS_Handle semaphore)
+os_semaphore_close(Semaphore semaphore)
 {
   NotImplemented;
 }
 
 internal B32
-os_semaphore_take(OS_Handle semaphore, U64 endt_us)
+os_semaphore_take(Semaphore semaphore, U64 endt_us)
 {
-  NotImplemented;
+  // TODO(rjf): we need to use `sem_timedwait` here.
+  AssertAlways(endt_us == max_U64);
+  for(;;)
+  {
+    int err = sem_wait((sem_t*)semaphore.u64[0]);
+    if(err == 0)
+    {
+      break;
+    }
+    else if(errno == EAGAIN)
+    {
+      continue;
+    }
+    break;
+  }
+  return 1;
+
 }
 
 internal void
-os_semaphore_drop(OS_Handle semaphore)
+os_semaphore_drop(Semaphore semaphore)
 {
-  NotImplemented;
+  for(;;)
+  {
+    int err = sem_post((sem_t*)semaphore.u64[0]);
+    if(err == 0)
+    {
+      break;
+    }
+    else
+    {
+      if(errno == EAGAIN)
+      {
+        continue;
+      }
+    }
+    break;
+  }
 }
 
 ////////////////////////////////
