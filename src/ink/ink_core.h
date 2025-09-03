@@ -135,10 +135,13 @@ struct IK_Image
   IK_Key key;
   R_Handle handle;
   String8 encoded; // png or whatever
-  void *decoded; // pixel data
   U64 x;
   U64 y;
   U64 rc;
+
+  void *decoded; // pixel data
+  B32 loading; // initial set by main thread, later set by worker thread
+  B32 loaded; // set by main thread
 };
 
 typedef struct IK_ImageCacheNode IK_ImageCacheNode;
@@ -164,7 +167,7 @@ struct IK_ImageDecodeQueue
 {
   Semaphore semaphore;
   IK_Image *queue[256]; // cicular buffer
-  U64 queue_count;
+  volatile U64 queue_count;
   U64 cursor; // next to process
   U64 mark; // next to push to queue
 };

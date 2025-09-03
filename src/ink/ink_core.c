@@ -1657,17 +1657,35 @@ ik_frame(void)
         if((box->flags&IK_BoxFlag_DrawImage) && box->image)
         {
           IK_Image *image = box->image;
-          if(r_handle_match(image->handle, r_handle_zero()) && image->decoded)
+          if(!image->loaded)
           {
-            image->handle = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Linear, v2s32(image->x, image->y), R_Tex2DFormat_RGBA8, (void*)image->decoded);
-            stbi_image_free(image->decoded);
-            image->decoded = 0;
-            box->ratio = (F32)image->x/image->y;
-            box->rect_size.y = box->rect_size.x/box->ratio;
+            AssertAlways(r_handle_match(image->handle, r_handle_zero()));
+            // work done by decode thread
+            if(!ins_atomic_u64_eval(&image->loading))
+            {
+              image->loaded = 1;
+
+              // decode succeed
+              if(image->decoded)
+              {
+                image->handle = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Linear, v2s32(image->x, image->y), R_Tex2DFormat_RGBA8, (void*)image->decoded);
+                image->decoded = 0;
+
+                // resize box based on image dim
+                box->ratio = (F32)image->x/image->y;
+                box->rect_size.y = box->rect_size.x/box->ratio;
+              }
+
+              // free stb artifacts
+              stbi_image_free(image->decoded);
+            }
           }
 
-          Rng2F32 src = {0,0, box->image->x, box->image->y};
-          d_img(dst, src, box->image->handle, v4f32(1,1,1,1), 0, 0, 0);
+          if(image->loaded)
+          {
+            Rng2F32 src = {0,0, box->image->x, box->image->y};
+            d_img(dst, src, box->image->handle, v4f32(1,1,1,1), 0, 0, 0);
+          }
         }
 
         // draw text
@@ -3012,9 +3030,11 @@ ik_image_decode_thread__entry_point(void *ptr)
   for(;;)
   {
     semaphore_take(queue->semaphore, max_U64);
-    // TODO(Next): mod with queue size
-    U64 index = ins_atomic_u64_inc_eval(&queue->cursor)-1;
+    // TODO(Next): wrap cursor too, otherwise cursor could max out max_U64
+    U64 index = (ins_atomic_u64_inc_eval(&queue->cursor)-1)%ArrayCount(queue->queue);
     IK_Image *image = queue->queue[index];
+
+    AssertAlways(!image->loaded);
 
     int x = 0;
     int y = 0;
@@ -3026,6 +3046,13 @@ ik_image_decode_thread__entry_point(void *ptr)
       image->y = y;
       image->decoded = data;
     }
+
+    // NOTE(Next): we might need a write barrier here (cpu+compiler) to ensure all therads can see the writes above
+    // or we could just use atom_store
+    // #include <stdatomic.h>
+    // atomic_thread_fence(memory_order_release);
+    ins_atomic_u64_eval_assign(&image->loading, 0);
+    ins_atomic_u64_dec_eval(&queue->queue_count);
   }
 }
 
@@ -3033,7 +3060,14 @@ internal void
 ik_image_decode_queue_push(IK_Image *image)
 {
   IK_ImageDecodeQueue *queue = &ik_state->decode_queue;
-  queue->queue[queue->mark++] = image;
+  for(;queue->queue_count >= ArrayCount(queue->queue);) {}
+
+  image->loading = 1;
+  U64 next_mark = (queue->mark+1)%ArrayCount(queue->queue);
+  queue->queue[queue->mark] = image;
+  ins_atomic_u64_inc_eval(&queue->queue_count);
+  queue->mark = next_mark;
+  // NOTE(Next): we might not need a write barrier(compiler+cpu), since semaphore could have fence itself
   semaphore_drop(ik_state->decode_queue.semaphore);
 }
 
@@ -4426,9 +4460,7 @@ ik_frame_from_tyml(String8 path)
     String8 bytes = ik_bytes_from_b64string(scratch.arena, b64content);
     IK_Image *image = ik_image_push(key);
     image->encoded = ik_push_str8_copy(bytes);
-
-    ik_state->decode_queue.queue[ik_state->decode_queue.mark++] = image;
-    semaphore_drop(ik_state->decode_queue.semaphore);
+    ik_image_decode_queue_push(image);
   }
 
   /////////////////////////////////
