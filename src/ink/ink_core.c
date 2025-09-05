@@ -2118,6 +2118,7 @@ ik_drawlist_push_rect(Arena *arena, IK_DrawList *drawlist, Rng2F32 dst, Rng2F32 
 internal String8
 ik_push_str8_copy(String8 src)
 {
+  ProfBeginFunction();
 #define MIN_CAP 512
   String8 ret = {0};
   IK_Frame *frame = ik_top_frame();
@@ -2150,6 +2151,7 @@ ik_push_str8_copy(String8 src)
   ret.size = src.size;
   MemoryCopy(ret.str, src.str, src.size);
   ret.str[ret.size] = 0;
+  ProfEnd();
   return ret;
 #undef MIN_CAP
 }
@@ -4315,6 +4317,10 @@ ik_frame_to_tyml(IK_Frame *frame)
   se_build_begin(scratch.arena);
   SE_Node *root = se_struct();
 
+  U8 *blob = 0;
+  U64 blob_size = 0;
+  U64 blob_cap = 0;
+
   SE_Parent(root)
   {
     /////////////////////////////////
@@ -4335,7 +4341,25 @@ ik_frame_to_tyml(IK_Frame *frame)
             se_v2u64_with_tag(str8_lit("key"), v2u64(image->key.u64[0], image->key.u64[1]));
             se_u64_with_tag(str8_lit("x"), image->x);
             se_u64_with_tag(str8_lit("y"), image->y);
-            se_str_with_tag(str8_lit("data"), ik_b64string_from_bytes(scratch.arena, image->encoded));
+
+            U64 head = blob_size;
+            U64 tail = head+image->encoded.size;
+            se_u64_with_tag(str8_lit("head"), head);
+            se_u64_with_tag(str8_lit("tail"), tail);
+
+            U64 size_required = blob_size+image->encoded.size;
+            if(size_required > blob_cap)
+            {
+              U64 new_cap = size_required*2;
+              U8 *next_blob = push_array(scratch.arena, U8, new_cap);
+              MemoryCopy(next_blob, blob, blob_size);
+
+              blob_cap = new_cap;
+              blob = next_blob;
+            }
+
+            MemoryCopy(blob+blob_size, image->encoded.str, image->encoded.size);
+            blob_size += image->encoded.size;
           }
         }
       }
@@ -4414,9 +4438,27 @@ ik_frame_to_tyml(IK_Frame *frame)
       }
     }
   }
-
   se_build_end();
-  se_yml_node_to_file(root, frame->save_path);
+  String8List strs = se_yml_node_to_strlist(scratch.arena, root);
+
+  /////////////////////////////////
+  // Write to file
+
+  FILE *file = fopen((char*)frame->save_path.str, "w");
+  // write header
+  String8 header = push_str8f(scratch.arena, "%I64u\n", blob_size);
+  fwrite(header.str, header.size, 1, file);
+  // write blob
+  fwrite(blob, blob_size, 1, file);
+  // write a new line
+  fwrite("\n", 1, 1, file);
+  // write yml
+  for(String8Node *n = strs.first; n != 0; n = n->next)
+  {
+    fwrite(n->string.str, n->string.size, 1, file);
+  }
+  fclose(file);
+
   scratch_end(scratch);
   return ret;
 }
@@ -4430,9 +4472,33 @@ ik_frame_from_tyml(String8 path)
   ik_push_frame(frame);
 
   /////////////////////////////////
+  // Read file
+  //
+  OS_Handle f = os_file_open(OS_AccessFlag_Read, (path));
+  FileProperties f_props = os_properties_from_file(f);
+  U64 size = f_props.size;
+  U8 *data = push_array(scratch.arena, U8, f_props.size);
+  os_file_read(f, rng_1u64(0,size), data);
+
+  /////////////////////////////////
+  // Load blob
+
+  U8 *c = data;
+  U8 *opl = c+size;
+  // read header
+  for(; c < opl && *c != '\n'; c++);
+  String8 header = str8_range(data, c);
+  U64 blob_size = u64_from_str8(header, 10);
+  c++;
+
+  String8 blob = str8_range(c, c+blob_size);
+  c+=blob_size;
+
+  /////////////////////////////////
   // Load se node
 
-  SE_Node *se_node = se_yml_node_from_file(scratch.arena, path);
+  String8 yml_string = str8_range(c++, opl);
+  SE_Node *se_node = se_yml_node_from_string(scratch.arena, yml_string);
 
   /////////////////////////////////
   // Camera
@@ -4452,15 +4518,21 @@ ik_frame_from_tyml(String8 path)
   // Load images
 
   SE_Node *first_image_node = se_arr_from_tag(se_node, str8_lit("images"));
-  ProfScope("load images") for(SE_Node *n = first_image_node; n != 0; n = n->next)
+  ProfScope("load images")
   {
-    Vec2U64 key_src = se_v2u64_from_tag(n, str8_lit("key"));
-    IK_Key key = ik_key_make(key_src.x, key_src.y);
-    String8 b64content = se_str_from_tag(n, str8_lit("data"));
-    String8 bytes = ik_bytes_from_b64string(scratch.arena, b64content);
-    IK_Image *image = ik_image_push(key);
-    image->encoded = ik_push_str8_copy(bytes);
-    ik_image_decode_queue_push(image);
+    for(SE_Node *n = first_image_node; n != 0; n = n->next)
+    {
+      Vec2U64 key_src = se_v2u64_from_tag(n, str8_lit("key"));
+      IK_Key key = ik_key_make(key_src.x, key_src.y);
+      U64 head = se_u64_from_tag(n, str8_lit("head"));
+      U64 tail = se_u64_from_tag(n, str8_lit("tail"));
+      String8 image_blob = str8_range(blob.str+head, blob.str+tail);
+      // String8 b64content = se_str_from_tag(n, str8_lit("data"));
+      // String8 bytes = ik_bytes_from_b64string(scratch.arena, b64content);
+      IK_Image *image = ik_image_push(key);
+      image->encoded = ik_push_str8_copy(image_blob);
+      ik_image_decode_queue_push(image);
+    }
   }
 
   /////////////////////////////////

@@ -42,128 +42,126 @@ se_yml_indent_str(Arena *arena)
   return ret;
 }
 
-internal void
-se_yml_node_to_file(SE_Node *_root, String8 path)
+internal String8List
+se_yml_node_to_strlist(Arena *arena, SE_Node *root_)
 {
-  Temp scratch = scratch_begin(0,0);
-
+  Temp scratch = scratch_begin(&arena, 1);
   String8List strs = {0};
-
   se_yml_push_indent(scratch.arena, -1);
   U64 push_count = 1;
   U64 pop_count = 0;
-  SE_Node *root = _root;
-  while(root != 0)
+  SE_Node *n = root_;
+  while(n != 0)
   {
-    SE_NodeRec rec = se_node_rec_df_pre(root, _root);
+    SE_NodeRec rec = se_node_rec_df_pre(n, root_);
 
     // push indent first
-    String8 indent_str = se_yml_indent_str(scratch.arena);
-    str8_list_push(scratch.arena, &strs, indent_str);
+    String8 indent_str = se_yml_indent_str(arena);
+    str8_list_push(arena, &strs, indent_str);
 
-    B32 tagged = root->parent ? root->parent->kind == SE_NodeKind_Struct : 0;
-    B32 is_arr_item = root->parent ? root->parent->kind == SE_NodeKind_Array : 0;
+    B32 tagged = n->parent ? n->parent->kind == SE_NodeKind_Struct : 0;
+    B32 is_arr_item = n->parent ? n->parent->kind == SE_NodeKind_Array : 0;
     if(tagged)
     {
-      str8_list_pushf(scratch.arena, &strs, "%S: ", root->tag);
+      str8_list_pushf(arena, &strs, "%S: ", n->tag);
     }
     if(is_arr_item)
     {
-      str8_list_pushf(scratch.arena, &strs, "- ");
+      str8_list_pushf(arena, &strs, "- ");
     }
 
-    switch(root->kind)
+    switch(n->kind)
     {
       case SE_NodeKind_S64:
       {
-        str8_list_pushf(scratch.arena, &strs, "s64(%I64d)\n", root->v.se_s64);
+        str8_list_pushf(arena, &strs, "s64(%I64d)\n", n->v.se_s64);
       }break;
       case SE_NodeKind_U64:
       {
-        str8_list_pushf(scratch.arena, &strs, "u64(%I64u)\n", root->v.se_u64);
+        str8_list_pushf(arena, &strs, "u64(%I64u)\n", n->v.se_u64);
       }break;
       case SE_NodeKind_F32:
       {
-        str8_list_pushf(scratch.arena, &strs, "f32(%.4f)\n", root->v.se_f32);
+        str8_list_pushf(arena, &strs, "f32(%.4f)\n", n->v.se_f32);
       }break;
       case SE_NodeKind_B32:
       {
-        str8_list_pushf(scratch.arena, &strs, "b32(%d)\n", root->v.se_b32);
+        str8_list_pushf(arena, &strs, "b32(%d)\n", n->v.se_b32);
       }break;
       case SE_NodeKind_String:
       {
-        str8_list_pushf(scratch.arena, &strs, "str(%S)\n", root->v.se_str);
+        str8_list_pushf(arena, &strs, "str(%S)\n", n->v.se_str);
       }break;
       case SE_NodeKind_Vec2U64:
       {
-        str8_list_pushf(scratch.arena, &strs, "v2u64(%I64u, %I64u)\n", root->v.se_v2u64.x, root->v.se_v2u64.y);
+        str8_list_pushf(arena, &strs, "v2u64(%I64u, %I64u)\n", n->v.se_v2u64.x, n->v.se_v2u64.y);
       }break;
       case SE_NodeKind_Vec2F32:
       {
-        str8_list_pushf(scratch.arena, &strs, "v2f32(%.4f, %.4f)\n", root->v.se_v2f32.x, root->v.se_v2f32.y);
+        str8_list_pushf(arena, &strs, "v2f32(%.4f, %.4f)\n", n->v.se_v2f32.x, n->v.se_v2f32.y);
       }break;
       case SE_NodeKind_Vec3F32:
       {
-        str8_list_pushf(scratch.arena, &strs, "v3f32(%.4f, %.4f, %.4f)\n", root->v.se_v3f32.x, root->v.se_v3f32.y, root->v.se_v3f32.z);
+        str8_list_pushf(arena, &strs, "v3f32(%.4f, %.4f, %.4f)\n", n->v.se_v3f32.x, n->v.se_v3f32.y, n->v.se_v3f32.z);
       }break;
       case SE_NodeKind_Vec4F32:
       {
-        str8_list_pushf(scratch.arena, &strs, "v4f32(%.4f, %.4f, %.4f, %.4f)\n", root->v.se_v4f32.x, root->v.se_v4f32.y, root->v.se_v4f32.z, root->v.se_v4f32.w);
+        str8_list_pushf(arena, &strs, "v4f32(%.4f, %.4f, %.4f, %.4f)\n", n->v.se_v4f32.x, n->v.se_v4f32.y, n->v.se_v4f32.z, n->v.se_v4f32.w);
       }break;
       case SE_NodeKind_Mat2x2F32:
       {
-        str8_list_pushf(scratch.arena, &strs, "2x2f32(%.4f, %.4f, %.4f, %.4f)\n", root->v.se_2x2f32.v[0][0], root->v.se_2x2f32.v[0][1], root->v.se_2x2f32.v[1][0], root->v.se_2x2f32.v[1][1]);
+        str8_list_pushf(arena, &strs, "2x2f32(%.4f, %.4f, %.4f, %.4f)\n", n->v.se_2x2f32.v[0][0], n->v.se_2x2f32.v[0][1], n->v.se_2x2f32.v[1][0], n->v.se_2x2f32.v[1][1]);
       }break;
       case SE_NodeKind_Mat3x3F32:
       {
-        str8_list_pushf(scratch.arena, &strs, "3x3f32(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f)\n",
-                                              root->v.se_3x3f32.v[0][0],
-                                              root->v.se_3x3f32.v[0][1],
-                                              root->v.se_3x3f32.v[0][2],
-                                              root->v.se_3x3f32.v[1][0],
-                                              root->v.se_3x3f32.v[1][1],
-                                              root->v.se_3x3f32.v[1][2],
-                                              root->v.se_3x3f32.v[2][0],
-                                              root->v.se_3x3f32.v[2][1],
-                                              root->v.se_3x3f32.v[2][2]);
+        str8_list_pushf(arena, &strs, "3x3f32(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f)\n",
+                                              n->v.se_3x3f32.v[0][0],
+                                              n->v.se_3x3f32.v[0][1],
+                                              n->v.se_3x3f32.v[0][2],
+                                              n->v.se_3x3f32.v[1][0],
+                                              n->v.se_3x3f32.v[1][1],
+                                              n->v.se_3x3f32.v[1][2],
+                                              n->v.se_3x3f32.v[2][0],
+                                              n->v.se_3x3f32.v[2][1],
+                                              n->v.se_3x3f32.v[2][2]);
       }break;
       case SE_NodeKind_Mat4x4F32:
       {
-        str8_list_pushf(scratch.arena, &strs, "4x4f32(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f)\n",
-                                              root->v.se_4x4f32.v[0][0],
-                                              root->v.se_4x4f32.v[0][1],
-                                              root->v.se_4x4f32.v[0][2],
-                                              root->v.se_4x4f32.v[0][3],
-                                              root->v.se_4x4f32.v[1][0],
-                                              root->v.se_4x4f32.v[1][1],
-                                              root->v.se_4x4f32.v[1][2],
-                                              root->v.se_4x4f32.v[1][3],
-                                              root->v.se_4x4f32.v[2][0],
-                                              root->v.se_4x4f32.v[2][1],
-                                              root->v.se_4x4f32.v[2][2],
-                                              root->v.se_4x4f32.v[2][3],
-                                              root->v.se_4x4f32.v[3][0],
-                                              root->v.se_4x4f32.v[3][1],
-                                              root->v.se_4x4f32.v[3][2],
-                                              root->v.se_4x4f32.v[3][3]);
+        str8_list_pushf(arena, &strs, "4x4f32(%.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f)\n",
+                                              n->v.se_4x4f32.v[0][0],
+                                              n->v.se_4x4f32.v[0][1],
+                                              n->v.se_4x4f32.v[0][2],
+                                              n->v.se_4x4f32.v[0][3],
+                                              n->v.se_4x4f32.v[1][0],
+                                              n->v.se_4x4f32.v[1][1],
+                                              n->v.se_4x4f32.v[1][2],
+                                              n->v.se_4x4f32.v[1][3],
+                                              n->v.se_4x4f32.v[2][0],
+                                              n->v.se_4x4f32.v[2][1],
+                                              n->v.se_4x4f32.v[2][2],
+                                              n->v.se_4x4f32.v[2][3],
+                                              n->v.se_4x4f32.v[3][0],
+                                              n->v.se_4x4f32.v[3][1],
+                                              n->v.se_4x4f32.v[3][2],
+                                              n->v.se_4x4f32.v[3][3]);
       }break;
       case SE_NodeKind_Array:
       {
-        str8_list_pushf(scratch.arena, &strs, "\n");
+        str8_list_pushf(arena, &strs, "\n");
       }break;
       case SE_NodeKind_Struct:
       {
-        if(root != _root) str8_list_pushf(scratch.arena, &strs, "\n");
+        if(n != root_) str8_list_pushf(arena, &strs, "\n");
       }break;
       case SE_NodeKind_Handle:
       {
-        str8_list_pushf(scratch.arena, &strs, "handle(%I64u, %I64u, %I64u, %I64u, %I64u, %I64u)\n",
-                                              root->v.se_handle.u64[0],
-                                              root->v.se_handle.u64[1],
-                                              root->v.se_handle.u64[2],
-                                              root->v.se_handle.u64[3],
-                                              root->v.se_handle.u64[4],
-                                              root->v.se_handle.u64[5]);
+        str8_list_pushf(arena, &strs, "handle(%I64u, %I64u, %I64u, %I64u, %I64u, %I64u)\n",
+                                              n->v.se_handle.u64[0],
+                                              n->v.se_handle.u64[1],
+                                              n->v.se_handle.u64[2],
+                                              n->v.se_handle.u64[3],
+                                              n->v.se_handle.u64[4],
+                                              n->v.se_handle.u64[5]);
       }break;
       default:{InvalidPath;}break;
     }
@@ -174,10 +172,19 @@ se_yml_node_to_file(SE_Node *_root, String8 path)
 
     for(U64 i = 0; i < rec.pop_count; i++) se_yml_pop_indent();
     if(rec.push_count > 0) se_yml_push_indent(scratch.arena, (S64)rec.push_count);
-    root = rec.next;
+    n = rec.next;
   }
   se_yml_pop_indent();
+  scratch_end(scratch);
+  return strs;
+}
 
+internal void
+se_yml_node_to_file(SE_Node *root, String8 path)
+{
+  Temp scratch = scratch_begin(0,0);
+
+  String8List strs = se_yml_node_to_strlist(scratch.arena, root);
   // write to file
   FILE *file = fopen((char*)path.str, "w");
   for(String8Node *n = strs.first; n != 0; n = n->next)
@@ -189,28 +196,16 @@ se_yml_node_to_file(SE_Node *_root, String8 path)
 }
 
 internal SE_Node *
-se_yml_node_from_file(Arena *arena, String8 path)
+se_yml_node_from_string(Arena *arena, String8 string)
 {
-  ProfBeginFunction();
   SE_Node *ret = 0;
   Temp scratch = scratch_begin(&arena, 1);
 
-  // read file
-  ProfBegin("read file");
-  OS_Handle f = os_file_open(OS_AccessFlag_Read, (path));
-  FileProperties f_props = os_properties_from_file(f);
-  U64 size = f_props.size;
-  U8 *data = push_array(scratch.arena, U8, f_props.size);
-  os_file_read(f, rng_1u64(0,size), data);
-  ProfEnd();
-  String8 str = str8(data, size);
-  // TODO(Next): this is slow (~110ms)
   ProfBegin("split lines");
-  String8List lines = str8_split_by_string_chars(scratch.arena, str, str8_lit("\n"), StringSplitFlag_KeepEmpties);
+  String8List lines = str8_split_by_string_chars(scratch.arena, string, str8_lit("\n"), StringSplitFlag_KeepEmpties);
   ProfEnd();
 
   se_build_begin(arena);
-
   SE_Node *root = se_struct();
   SE_Parent(root)
   {
@@ -573,5 +568,24 @@ se_yml_node_from_file(Arena *arena, String8 path)
   scratch_end(scratch);
   ret = root;
   ProfEnd();
+  return ret;
+}
+
+internal SE_Node *
+se_yml_node_from_file(Arena *arena, String8 path)
+{
+  ProfBeginFunction();
+  Temp scratch = scratch_begin(&arena, 1);
+
+  // read file
+  ProfBegin("read file");
+  OS_Handle f = os_file_open(OS_AccessFlag_Read, (path));
+  FileProperties f_props = os_properties_from_file(f);
+  U64 size = f_props.size;
+  U8 *data = push_array(scratch.arena, U8, f_props.size);
+  os_file_read(f, rng_1u64(0,size), data);
+  ProfEnd();
+  SE_Node *ret = se_yml_node_from_string(arena, str8(data,size));
+  scratch_end(scratch);
   return ret;
 }
