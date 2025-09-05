@@ -438,37 +438,43 @@ r_init(const char* app_name, OS_Handle window, bool debug)
   // 5. Submit any transfer commands like vkCmdCopyBuffer to the transfer queue instead of the graphcis queue
 
   {
-    // NOTE(k): don't need to use dedicated compute family for now
-    bool has_graphic_and_compute_queue_family = false;
-
     // Since the presentation is a queue-specific feature, we would need to find a queue
     //      family that supports presenting to the surface we created
     // It's actually possible that the queue families supporting drawing commands 
     //      (aka graphic queue family) and the ones supporting presentation do not overlap
     // Therefore we have to take into account that there could be a distinct presentation queue
-    bool has_present_queue_family = false;
+    B32 has_graphic_and_compute_queue_family = 0;
+    B32 has_present_queue_family = 0;
 
     U32 queue_family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(r_vulkan_pdevice()->h, &queue_family_count, NULL);
-    VkQueueFamilyProperties queue_family_properties[queue_family_count];
+    VkQueueFamilyProperties *queue_family_properties = push_array(scratch.arena, VkQueueFamilyProperties, queue_family_count);
     vkGetPhysicalDeviceQueueFamilyProperties(r_vulkan_pdevice()->h, &queue_family_count, queue_family_properties);
 
     for(U64 i = 0; i < queue_family_count; i++)
     {
-      if(queue_family_properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT &&
-          queue_family_properties[i].queueFlags & VK_QUEUE_COMPUTE_BIT)
+      VkQueueFamilyProperties prop = queue_family_properties[i];
+      VkQueueFlags flags = prop.queueFlags;
+
+      if((flags&VK_QUEUE_GRAPHICS_BIT) && (flags&VK_QUEUE_COMPUTE_BIT))
       {
         r_vulkan_pdevice()->gfx_queue_family_index = i;
         r_vulkan_pdevice()->cmp_queue_family_index = i;
-        has_graphic_and_compute_queue_family = true;
+        has_graphic_and_compute_queue_family = 1;
       }
+
+      // if((flags&VK_QUEUE_TRANSFER_BIT) && !(flags&VK_QUEUE_GRAPHICS_BIT) && !(flags&VK_QUEUE_COMPUTE_BIT))
+      // {
+      //   has_dedicated_transfer_queue_family = 1;
+      //   r_vulkan_pdevice()->xfer_queue_family_index = i;
+      // }
 
       VkBool32 present_supported = VK_FALSE;
       vkGetPhysicalDeviceSurfaceSupportKHR(r_vulkan_pdevice()->h, i, surface.h, &present_supported);
       if(present_supported == VK_TRUE)
       {
         r_vulkan_pdevice()->prest_queue_family_index = i;
-        has_present_queue_family = true;
+        has_present_queue_family = 1;
       }
 
       // Note that it's very likely that these end up being the same queue family after all
@@ -477,12 +483,12 @@ r_init(const char* app_name, OS_Handle window, bool debug)
       if(has_graphic_and_compute_queue_family && has_present_queue_family) break;
 
     }
-    Assert(has_graphic_and_compute_queue_family == true);
-    Assert(has_present_queue_family == true);
+    AssertAlways(has_graphic_and_compute_queue_family);
+    AssertAlways(has_present_queue_family);
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////
-  // Logical device and queus
+  // Logical device and queues
 
   // After selecting a physical device to use we need to set up a logical device to interface with it.
   // The logical device creation process is similar to the instance creation process and describes the features we want to use
@@ -492,25 +498,25 @@ r_init(const char* app_name, OS_Handle window, bool debug)
   // The currently available drivers will only allow you to create a small number of queues for each queue family
   // And you don't really need more than one. That's because you can create all of the commands buffers on multiple threads and then submit them all at once on the main thread with a single low-overhead call
   {
-    const F32 graphic_queue_priority = 1.0f;
-    const F32 present_queue_priority = 1.0f;
+    const F32 gfx_queue_priority = 1.0f;
+    const F32 prest_queue_priority = 1.0f;
 
     // If a queue family both support drawing and presentation, could we just create one queue
     U32 num_queues_to_create = r_vulkan_pdevice()->gfx_queue_family_index == r_vulkan_pdevice()->prest_queue_family_index ? 1 : 2;
-    VkDeviceQueueCreateInfo queue_create_infos[2] = {
+    VkDeviceQueueCreateInfo queue_create_infos[3] = {
       // graphic queue
       {
         .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
         .queueFamilyIndex = r_vulkan_pdevice()->gfx_queue_family_index,
         .queueCount       = 1,
-        .pQueuePriorities = &graphic_queue_priority,
+        .pQueuePriorities = &gfx_queue_priority,
       },
       // present queue, this second create info will be ignored if num_queues_to_create is 1
       {
         .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
         .queueFamilyIndex = r_vulkan_pdevice()->prest_queue_family_index,
         .queueCount       = 1,
-        .pQueuePriorities = &present_queue_priority,
+        .pQueuePriorities = &prest_queue_priority,
       },
     };
 
@@ -545,7 +551,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     // Previous implementations of Vulkan made a distinction between instance and device specific validation layers, but this is no longer the case
     // That means that the enabledLayerCount and ppEnabledLayerNames fields of VkDeviceCreateInfo are ignored by up-to-date implementations. 
     // However, it is still a good idea to set them anyway to be compatible with older implementations
-    create_info.enabledLayerCount   = enabled_layer_count;
+    create_info.enabledLayerCount = enabled_layer_count;
     create_info.ppEnabledLayerNames = enabled_layers;
     VK_Assert(vkCreateDevice(r_vulkan_pdevice()->h, &create_info, NULL, &r_vulkan_state->logical_device.h));
 
@@ -999,12 +1005,10 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
   }
 
-  // Create backup/default texture
-  // U32 backup_texture_data[] = {
-  //         0xff00ffff, 0x330033ff,
-  //         0x330033ff, 0xff00ffff,
-  // };
+  // init stage state
+  r_vulkan_stage_init();
 
+  // create backup/default texture
   U32 backup_texture_data[] = {
     0xFFFF00FF, 0xFF330033,
     0xFF330033, 0xFFFF00FF,
@@ -1069,7 +1073,7 @@ r_window_equip(OS_Handle os_wnd)
       // Another one to signal that rendering has finished and presentation can happen
       // One fence to make sure only one frame is rendering at a time
       ret->frames[i].img_acq_sem = r_vulkan_semaphore(r_vulkan_state->logical_device.h);
-      ret->frames[i].inflt_fence = r_vulkan_fence(r_vulkan_state->logical_device.h);
+      ret->frames[i].inflt_fence = r_vulkan_fence();
 
       // Create all uniform buffers
       for(U64 kind = 0; kind < R_Vulkan_UBOTypeKind_COUNT; kind++)
@@ -1317,7 +1321,7 @@ void r_vulkan_window_resize(R_Vulkan_Window *window)
 
   // we need to recreate the render targets if either size or format of swapchain is chagned
   SLLStackPush(r_vulkan_state->first_to_free_render_targets, render_targets);
-  render_targets->deprecated_at_frame = r_vulkan_state->frame_count;
+  render_targets->deprecated_at_frame = r_vulkan_state->frame_index;
   window->render_targets = r_vulkan_render_targets_alloc(window->os_wnd, &window->surface, window->render_targets);
 
   // TODO(XXX): NotImplemented 
@@ -1333,11 +1337,8 @@ void r_vulkan_window_resize(R_Vulkan_Window *window)
   ProfEnd();
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
-// Tex2D
-
 internal R_Handle
-r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, R_Tex2DFormat format, void *data)
+r_tex2d_alloc_old(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, R_Tex2DFormat format, void *data)
 {
   ProfBeginFunction();
   R_Vulkan_Tex2D *texture = 0;
@@ -1536,6 +1537,267 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
     vkDestroyBuffer(r_vulkan_state->logical_device.h, staging_buffer, 0);
     vkUnmapMemory(r_vulkan_state->logical_device.h, staging_memory);
     vkFreeMemory(r_vulkan_state->logical_device.h, staging_memory, 0);
+  }
+
+  // TODO(k): All of the helper functions that submit commands so far have been set up to execute synchronously by waiting for the queue to become idle
+  // For practical applications it is recommended to combine these operations in a single command buffer and execute them asynchronously for higher throughput
+  //     especially the transitions and copy in the create_texture_image function
+  // We could experiment with this by creating a setup_command_buffer that the helper functions record commands into, and add a finish_setup_commands to execute the 
+  //     the commands that have been recorded so far
+
+  // TODO(k): we could create two descriptor set for two types of sampler
+  VkSampler *sampler = &r_vulkan_state->samplers[sample_kind];
+  r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind_Tex2D, 1, 64, NULL, &texture->image.view, sampler, &texture->desc_set);
+
+  R_Handle ret = r_vulkan_handle_from_tex2d(texture);
+  ProfEnd();
+  return ret;
+}
+
+internal R_Handle
+r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, R_Tex2DFormat format, void *data)
+{
+  ProfBeginFunction();
+  R_Vulkan_Tex2D *texture = 0;
+  {
+    texture = r_vulkan_state->first_free_tex2d;
+    if(texture == 0)
+    {
+      texture = push_array(r_vulkan_state->arena, R_Vulkan_Tex2D, 1);
+    }
+    else
+    {
+      U64 gen = texture->generation;
+      SLLStackPop(r_vulkan_state->first_free_tex2d);
+      MemoryZeroStruct(texture);
+      texture->generation = gen;
+    }
+  }
+  texture->image.extent.width  = size.x;
+  texture->image.extent.height = size.y;
+  texture->format = format;
+
+  VkDeviceSize vk_image_size = size.x * size.y;
+  VkFormat vk_image_format = 0;
+
+  switch(format)
+  {
+    case R_Tex2DFormat_R8:    {vk_image_format = VK_FORMAT_R8_UNORM;}break;
+    case R_Tex2DFormat_RGBA8: {vk_image_format = VK_FORMAT_R8G8B8A8_SRGB; vk_image_size *= 4;}break;
+    default:                  {InvalidPath;}break;
+  }
+  texture->image.format = vk_image_format;
+
+  AssertAlways(kind == R_ResourceKind_Static && "Only static texture is supoorted for now");
+  AssertAlways(data != 0);
+
+  R_Vulkan_Stage *stage = &r_vulkan_state->stage;
+  VkCommandBuffer cmd = stage->cmds[stage->idx];
+  VkFence fence = stage->fences[stage->idx];
+  ProfScope("wait fence") VK_Assert(vkWaitForFences(r_vulkan_ldevice()->h, 1, &fence, VK_TRUE, UINT64_MAX));
+
+  ////////////////////////////////
+  //~ Unpack staging batch
+
+  R_Vulkan_StagingBatch *batch = &stage->batches[stage->idx];
+
+  B32 first_upload_this_frame = 0;
+  // start stage command buffer recording if not already
+  if(stage->last_touch_frame_index != r_vulkan_state->frame_index || batch->size == 0) ProfScope("begin record & pump tail")
+  {
+    first_upload_this_frame = 1;
+    stage->last_touch_frame_index = r_vulkan_state->frame_index;
+    cmd = stage->cmds[stage->idx];
+
+    // begin recording
+    VkCommandBufferBeginInfo begin_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+    begin_info.pInheritanceInfo = 0;
+    // if the command buffer was already recorded once, then a call to vkBeginCommandBuffer will implicity reset it
+    VK_Assert(vkBeginCommandBuffer(cmd, &begin_info));
+
+    // pump head or tail
+    R_Vulkan_StagingBatch *batches[STAGING_IN_FLIGHT_COUNT] = {0};
+    for(U64 i = 0; i < STAGING_IN_FLIGHT_COUNT; i++)
+    {
+      batches[i] = &stage->batches[i];
+    }
+    // intersection sort
+    for(U64 i = 0; i < STAGING_IN_FLIGHT_COUNT; i++)
+    {
+      R_Vulkan_StagingBatch *batch = batches[i];
+      int j = i-1;
+      while(j >= 0 && batches[j]->size != 0 && batches[j]->start > batch->start)
+      {
+        batches[j+1] = batches[j];
+        j--;
+      }
+      batches[j+1] = batch;
+    }
+
+    // TODO(Next): move pump to the beginning of frame
+    // TODO(Next): if we want to be percise, we want to wait on fence from 2 frames ago to ensure image uploaded 2 frames ago can be used in this frame
+    for(U64 i = 0; i < STAGING_IN_FLIGHT_COUNT; i++)
+    {
+      R_Vulkan_StagingBatch *batch = batches[i];
+      // if-flight? -> check fence
+      if(batch->size != 0)
+      {
+        VkFence fence = stage->fences[batch->fence_idx];
+        VkResult r = vkGetFenceStatus(r_vulkan_ldevice()->h, fence);
+        // done? -> move tail & reset status
+        if(r == VK_SUCCESS)
+        {
+          stage->ring.tail = batch->end;
+          batch->size = 0;
+        }
+        else
+        {
+          break;
+        }
+      }
+    }
+  }
+
+  ////////////////////////////////
+  //~ Alloc a ring slice
+
+  R_Vulkan_StagingSlice slice = r_vulkan_staging_slice_from_size(vk_image_size, 4);
+  Assert(slice.size == vk_image_size);
+  // copy data
+  ProfScope("copy data")
+  MemoryCopy(slice.ptr, data, vk_image_size);
+  VkBuffer staging_buffer = r_vulkan_state->stage.ring.buffer;
+
+  // fill batch
+  batch->size += slice.size;
+  if(first_upload_this_frame) batch->start = slice.offset;
+  batch->end = slice.offset+slice.size;
+  batch->fence_idx = stage->idx;
+
+  // Create the gpu device local buffer
+  ProfScope("create gpu local buffer")
+  {
+
+    // Although we could set up the shader to access the pixel values in the buffer, it's better to use image objects in Vulkan for this purpose
+    // Image objects will make it easier and faster to retrieve colors by allowing us to use 2D coordinates, for one
+    // Pixels within an image object are known as texels and we'll use that name from this point on
+    VkImageCreateInfo create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    // Tells Vulkan with what kind of coordinate system the texels in the image are going to be addressed
+    // It's possbiel to create 1D, 2D and 3D images
+    // One dimensional images can be used to store an array of data or gradient
+    // Two dimensional images are mainly used for textures, and three dimensional images can be used to store voxel volumes, for example
+    // The extent field specifies the dimensions of the image, basically how many texels there are on each axis
+    // That's why depth must be 1 instead of 0
+    create_info.imageType     = VK_IMAGE_TYPE_2D;
+    create_info.extent.width  = size.x;
+    create_info.extent.height = size.y;
+    create_info.extent.depth  = 1;
+    create_info.mipLevels     = 1;
+    create_info.arrayLayers   = 1;
+    // Vulkan supports many possible image formats, but we should use the same format for the texels as the pixels in the buffer, otherwise the copy operations will fail
+    // It is possible that the VK_FORMAT_R8G8B8A8_SRGB is not supported by the graphics hardware
+    // You should have a list of acceptable alternatives and go with the best one that is supported
+    // However, support for this particular for this particular format is so widespread that we'll skip this step
+    // Using different formats would also require annoying conversions
+    // .format = VK_FORMAT_R8G8B8A8_SRGB,
+    create_info.format = vk_image_format;
+    // The tiling field can have one of two values:
+    // 1.  VK_IMAGE_TILING_LINEAR: texels are laid out in row-major order like our pixels array
+    // 2. VK_IMAGE_TILING_OPTIMAL: texels are laid out in an implementation defined order for optimal access 
+    // Unlike the layout of an image, the tiling mode cannot be changed at a later time 
+    // If you want to be able to directly access texels in the memory of the image, then you must use VK_IMAGE_TILING_LINEAR layout
+    // We will be using a staging buffer instead of staging image, so this won't be necessary, we will be using VK_IMAGE_TILING_OPTIMAL for efficient access from the shader
+    create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    // There are only two possbile values for the initialLayout of an image
+    // 1.      VK_IMAGE_LAYOUT_UNDEFINED: not usable by the GPU and the very first transition will discard the texels
+    // 2. VK_IMAGE_LAYOUT_PREINITIALIZED: not usable by the GPU, but the first transition will preserve the texels
+    // There are few situations where it is necessary for the texels to be preserved during the first transition
+    // One example, however, would be if you wanted to use an image as staging image in combination with VK_IMAGE_TILING_LINEAR layout
+    // In that case, you'd want to upload the texel data to it and then transition the image to be transfer source without losing the data
+    // In out case, however, we're first going to transition the image to be transfer destination and then copy texel data to it from a buffer object
+    // So we don't need this property and can safely use VK_IMAGE_LAYOUT_UNDEFINED
+    create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    // The image is going to be used as destination for the buffer copy
+    // We also want to be able to access the image from the shader to color our mesh
+    create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    // The image will only be used by one queue family: the one that supports graphics (and therefor also) transfer operations
+    create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    // The samples flag is related to multisampling
+    // This is only relevant for images that will be used as attachments, so stick to one sample
+    create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    // There are some optional flags for images that are related to sparse images
+    // Sparse images are images where only certain regions are actually backed by memory
+    // If you were using a 3D texture for a voxel terrain, for example, then you could use this avoid allocating memory to storage large volumes of "air" values
+    create_info.flags = 0;
+    VK_Assert(vkCreateImage(r_vulkan_state->logical_device.h, &create_info, NULL, &texture->image.h));
+
+    VkMemoryRequirements mem_requirements;
+    vkGetImageMemoryRequirements(r_vulkan_state->logical_device.h, texture->image.h, &mem_requirements);
+
+    VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    alloc_info.allocationSize = mem_requirements.size;
+    alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+    VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &texture->image.memory));
+    VK_Assert(vkBindImageMemory(r_vulkan_state->logical_device.h, texture->image.h, texture->image.memory, 0));
+  }
+
+  // Create image view
+  VkImageViewCreateInfo ivci = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+  ivci.image                           = texture->image.h;
+  ivci.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+  ivci.format                          = vk_image_format;
+  ivci.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+  ivci.subresourceRange.baseMipLevel   = 0;
+  ivci.subresourceRange.levelCount     = 1;
+  ivci.subresourceRange.baseArrayLayer = 0;
+  ivci.subresourceRange.layerCount     = 1;
+  VK_Assert(vkCreateImageView(r_vulkan_state->logical_device.h, &ivci, NULL, &texture->image.view));
+
+  ////////////////////////////////
+  //~ Recording
+
+  {
+    // Transition image layout 
+    // We don't care about its contents before performing the copy creation
+    // There is actually a special type of image layout that supports all operations, VK_IMAGE_LAYOUT_GENERAL
+    // The problem with it, of course, is that it doesn't necessarily offer the best performance for any operation
+    // It is required for some special cases, like using an image as both input and output, or for reading an image after it has left the preinitialized layout
+    r_vulkan_image_transition(cmd, texture->image.h,
+                              VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                              VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                              VK_IMAGE_ASPECT_COLOR_BIT);
+
+    // Copy buffer to image
+    VkBufferImageCopy region =
+    {
+      .bufferOffset = slice.offset,
+      // These two fields specify how the pixels are laid out in memory
+      // For example, you could have some padding bytes between rows of the image
+      // Specifying 0 for both indicates that the pixels are simply tightly packed like they are in our case
+      // The imageSubresource, imageOffset and imageExtent fields indicate to which part of the image we want to copy the pixels
+      .bufferRowLength = 0,
+      .bufferImageHeight = 0,
+      .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+      .imageSubresource.mipLevel = 0,
+      .imageSubresource.baseArrayLayer = 0,
+      .imageSubresource.layerCount = 1,
+      // These two fields indicate to which part of the image we want to copy the pixels
+      .imageOffset = {0, 0, 0},
+      .imageExtent = {size.x, size.y, 1},
+    };
+
+    // it's possible to specify an array of VkBufferImageCopy to perform many different copies from this buffer to the image in on operation 
+    vkCmdCopyBufferToImage(cmd, staging_buffer, texture->image.h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    r_vulkan_image_transition(cmd, texture->image.h,
+                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
+                              VK_IMAGE_ASPECT_COLOR_BIT);
   }
 
   // TODO(k): All of the helper functions that submit commands so far have been set up to execute synchronously by waiting for the queue to become idle
@@ -2497,6 +2759,121 @@ r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
   }
 
   r_vulkan_descriptor_set_alloc(ds_type, 1, 3, &ret.buffer.h, NULL, NULL, &ret.set);
+  return ret;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Stage
+
+internal void
+r_vulkan_stage_init()
+{
+  R_Vulkan_Stage *stage = &r_vulkan_state->stage;
+  R_Vulkan_PhysicalDevice *pdevice = r_vulkan_pdevice();
+  R_Vulkan_LogicalDevice *ldevice = r_vulkan_ldevice();
+  VkDevice device = ldevice->h;
+
+  // command pool & buffer
+  VkCommandPool cp;
+  VkCommandPoolCreateInfo cpci = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
+  cpci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+  cpci.queueFamilyIndex = pdevice->gfx_queue_family_index;
+  VK_Assert(vkCreateCommandPool(device, &cpci, NULL, &cp));
+
+  // commands
+  for(U64 i = 0; i < STAGING_IN_FLIGHT_COUNT; i++)
+  {
+    VkCommandBuffer cmd;
+    VkCommandBufferAllocateInfo cbai = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+    cbai.commandPool = cp;
+    cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cbai.commandBufferCount = 1;
+    VK_Assert(vkAllocateCommandBuffers(device, &cbai, &cmd));
+    stage->cmds[i] = cmd;
+  }
+
+  // fences
+  for(U64 i = 0; i < STAGING_IN_FLIGHT_COUNT; i++)
+  {
+    stage->fences[i] = r_vulkan_fence();
+  }
+
+  // init staging ring buffer
+  {
+    U64 size = MB(512);
+    R_Vulkan_StagingRing *ring = &stage->ring;
+
+    VkBuffer buffer;
+    VkBufferCreateInfo bci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    bci.size = size;
+    bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    VK_Assert(vkCreateBuffer(device, &bci, NULL, &buffer));
+
+    VkMemoryRequirements mem_requirements;
+    vkGetBufferMemoryRequirements(device, buffer, &mem_requirements);
+
+    VkMemoryAllocateInfo mai = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    mai.allocationSize = mem_requirements.size;
+    mai.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+    VkDeviceMemory memory;
+    VK_Assert(vkAllocateMemory(device, &mai, NULL, &memory));
+    VK_Assert(vkBindBufferMemory(device, buffer, memory, 0));
+
+    void *mapped;
+    VK_Assert(vkMapMemory(device, memory, 0, mem_requirements.size, 0, &mapped));
+
+    ring->buffer = buffer; 
+    ring->memory = memory; 
+    ring->mapped = mapped;
+    ring->cap = size;
+    ring->head = 0;
+    ring->tail = 0;
+  }
+}
+
+internal R_Vulkan_StagingSlice
+r_vulkan_staging_slice_from_size(U64 size, U64 alignment)
+{
+  R_Vulkan_StagingSlice ret = {0};
+  R_Vulkan_StagingRing *ring = &r_vulkan_state->stage.ring;
+  U64 aligned_head = AlignPow2(ring->head, alignment);
+  if(ring->tail <= aligned_head)
+  {
+    // two free segments: [algined_head, cap] and [0, tail]
+    if((ring->cap-aligned_head) >= size)
+    {
+      ret.offset = aligned_head;
+      ret.size = size;
+      ret.ptr = (U8*)(ring->mapped) + aligned_head;
+
+      // update head
+      ring->head = aligned_head+size;
+      if(ring->head == ring->cap) ring->head = 0; // wrap if exact end
+    }
+    else if(ring->tail >= size)
+    {
+      // wrap
+      ret.offset = 0;
+      ret.size = size;
+      ret.ptr = ring->mapped;
+      ring->head = size;
+    }
+  }
+  else
+  {
+    // single free segments: [aligned_head, tail]
+    if(size <= (ring->tail-aligned_head))
+    {
+      ret.offset = aligned_head;
+      ret.size = size;
+      ret.ptr = (U8*)(ring->mapped)+aligned_head;
+      ring->head = aligned_head+size;
+    }
+  }
+
   return ret;
 }
 
@@ -3497,8 +3874,9 @@ void r_vulkan_descriptor_set_destroy(R_Vulkan_DescriptorSet *set)
 // Sync
 
 internal VkFence
-r_vulkan_fence(VkDevice device)
+r_vulkan_fence()
 {
+  VkDevice device = r_vulkan_ldevice()->h;
   VkFence ret;
   VkFenceCreateInfo create_info =
   {
@@ -4861,7 +5239,6 @@ r_vulkan_cmd_begin(VkCommandBuffer cmd_buf)
   // 1. VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT: this command buffer will be re-recoreded right after executing it once
   // 2. VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT: this is a secondary command buffer that will be entirely within a single render pass
   // 3. VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT: the command buffer can be resubmitted while it is also already pending execution
-  // TODO(k): don't have other usage for now
   begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
   // The pInheritanceInfo parameter is only relevant for secondary command buffers
   // It specifies which state to inherit from the calling primary command buffers
@@ -4892,13 +5269,30 @@ r_vulkan_cmd_end(VkCommandBuffer cmd_buf)
 internal void
 r_begin_frame(void)
 {
-  // TODO
+  // submit any stage works to gfx queue
+  {
+    R_Vulkan_Stage *stage = &r_vulkan_state->stage;
+    R_Vulkan_StagingBatch *batch = &stage->batches[stage->idx%STAGING_IN_FLIGHT_COUNT];
+    // submit if we have any stage works to do
+    if(stage->last_touch_frame_index == r_vulkan_state->frame_index)
+    {
+      VkCommandBuffer cmd = stage->cmds[stage->idx%STAGING_IN_FLIGHT_COUNT];
+      VkFence fence = stage->fences[stage->idx%STAGING_IN_FLIGHT_COUNT];
+      VkSubmitInfo si = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+      si.commandBufferCount = 1;
+      si.pCommandBuffers = &cmd;
+      VK_Assert(vkEndCommandBuffer(cmd));
+      VK_Assert(vkResetFences(r_vulkan_ldevice()->h, 1, &fence));
+      VK_Assert(vkQueueSubmit(r_vulkan_state->logical_device.gfx_queue, 1, &si, fence));
+      stage->idx = stage->idx%STAGING_IN_FLIGHT_COUNT;
+    }
+  }
 }
 
 internal void
 r_end_frame(void)
 {
-  // TODO(k): some cleanup jobs here, maybe?
+  r_vulkan_state->frame_index++;
 }
 
 internal void
@@ -4952,7 +5346,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
   for(R_Vulkan_RenderTargets *t = r_vulkan_state->first_to_free_render_targets; t != 0;)
   {
     R_Vulkan_RenderTargets *next = t->next;
-    if(t->rc == 0 && (r_vulkan_state->frame_count-t->deprecated_at_frame) > MAX_FRAMES_IN_FLIGHT)
+    if(t->rc == 0 && (r_vulkan_state->frame_index-t->deprecated_at_frame) > MAX_FRAMES_IN_FLIGHT)
     {
       SLLQueuePop(r_vulkan_state->first_to_free_render_targets, r_vulkan_state->last_to_free_render_targets);
       r_vulkan_render_targets_destroy(t);
@@ -5196,7 +5590,6 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
 
   // Update curr_frame_idx
   wnd->curr_frame_idx = (wnd->curr_frame_idx + 1) % MAX_FRAMES_IN_FLIGHT;
-  r_vulkan_state->frame_count++;
   r_vulkan_pop_cmd();
   ProfEnd();
   return id;

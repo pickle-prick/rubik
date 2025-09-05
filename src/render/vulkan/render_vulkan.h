@@ -24,6 +24,7 @@
 // of the GPU could be too larger for it to handle, so the CPU would end up
 // waiting a lot, adding frames of latency Generally extra latency isn't desired
 #define MAX_FRAMES_IN_FLIGHT 1
+#define STAGING_IN_FLIGHT_COUNT 2
 // support max 4K with 32x32 sized tile
 #define TILE_SIZE 32
 #define MAX_TILES_PER_PASS ((3840*2160)/(TILE_SIZE*TILE_SIZE))
@@ -349,6 +350,7 @@ typedef struct
   U32                              gfx_queue_family_index;
   U32                              cmp_queue_family_index;
   U32                              prest_queue_family_index;
+  // U32                              xfer_queue_family_index;
   VkFormat                         depth_image_format;
 } R_Vulkan_PhysicalDevice;
 
@@ -357,6 +359,7 @@ typedef struct
   VkDevice h;
   VkQueue  gfx_queue;
   VkQueue  prest_queue;
+  // VkQueue  xfer_queue;
 } R_Vulkan_LogicalDevice;
 
 typedef struct R_Vulkan_Pipeline R_Vulkan_Pipeline;
@@ -549,6 +552,46 @@ struct R_Vulkan_Window
   U64 geo3d_pass_index; // ubo and inst buffer is per geo3d pass
 };
 
+typedef struct R_Vulkan_StagingRing R_Vulkan_StagingRing;
+struct R_Vulkan_StagingRing
+{
+  VkBuffer buffer;
+  VkDeviceMemory memory;
+  void *mapped;
+
+  U64 cap;
+  U64 head; // next write offset
+  U64 tail; // oldest in-flight offset (safe to reuse before this) 
+};
+
+typedef struct R_Vulkan_StagingSlice R_Vulkan_StagingSlice;
+struct R_Vulkan_StagingSlice
+{
+  U64 offset;
+  U64 size;
+  void *ptr; // mapped + offset
+};
+
+typedef struct R_Vulkan_StagingBatch R_Vulkan_StagingBatch;
+struct R_Vulkan_StagingBatch
+{
+  U64 fence_idx;
+  U64 size;
+  U64 start;
+  U64 end;
+};
+
+typedef struct R_Vulkan_Stage R_Vulkan_Stage;
+struct R_Vulkan_Stage
+{
+  R_Vulkan_StagingRing ring;
+  VkCommandBuffer cmds[STAGING_IN_FLIGHT_COUNT];
+  VkFence fences[STAGING_IN_FLIGHT_COUNT];
+  R_Vulkan_StagingBatch batches[STAGING_IN_FLIGHT_COUNT];
+  U64 idx; // in-flight index
+  U64 last_touch_frame_index;
+};
+
 typedef struct R_Vulkan_State R_Vulkan_State;
 struct R_Vulkan_State
 {
@@ -589,8 +632,11 @@ struct R_Vulkan_State
   VkShaderModule                      cshad_modules[R_Vulkan_CShadKind_COUNT];
 
   VkCommandPool                       cmd_pool;
+  // TODO(Next): deprecated, remove this ASAP
   // For copying staging buffer or transition image layout
   VkCommandBuffer                     oneshot_cmd_buf;
+
+  R_Vulkan_Stage                      stage;
 
   // resource free list
   ///////////////////////////////////////////////////////////////////////////////////////
@@ -600,7 +646,7 @@ struct R_Vulkan_State
   // TODO(k): we may want to keep track of filled ds_pool
 
   R_Handle                            backup_texture;
-  U64                                 frame_count;
+  U64                                 frame_index;
 
   R_Vulkan_DeclStackNils;
   R_Vulkan_DeclStacks;
@@ -640,8 +686,8 @@ internal R_Handle         r_vulkan_handle_from_buffer(R_Vulkan_Buffer *buffer);
 /////////////////////////////////////////////////////////////////////////////////////////
 // State getter
 
-internal R_Vulkan_PhysicalDevice* r_vulkan_pdevice();
 #define r_vulkan_pdevice(void) (&r_vulkan_state->physical_devices[r_vulkan_state->physical_device_idx])
+#define r_vulkan_ldevice(void) (&r_vulkan_state->logical_device)
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Swapchain&Surface
@@ -658,6 +704,12 @@ internal R_Vulkan_UBOBuffer r_vulkan_ubo_buffer_alloc(R_Vulkan_UBOTypeKind kind,
 internal R_Vulkan_SBOBuffer r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count);
 
 /////////////////////////////////////////////////////////////////////////////////////////
+// Stage
+
+internal void r_vulkan_stage_init();
+internal R_Vulkan_StagingSlice r_vulkan_staging_slice_from_size(U64 size, U64 alignment);
+
+/////////////////////////////////////////////////////////////////////////////////////////
 // RenderTargets
 
 internal R_Vulkan_RenderTargets* r_vulkan_render_targets_alloc(OS_Handle os_wnd, R_Vulkan_Surface *surface, R_Vulkan_RenderTargets *old);
@@ -672,7 +724,7 @@ internal void r_vulkan_descriptor_set_destroy(R_Vulkan_DescriptorSet *set);
 /////////////////////////////////////////////////////////////////////////////////////////
 // Sync
 
-internal VkFence     r_vulkan_fence(VkDevice device);
+internal VkFence     r_vulkan_fence();
 internal VkSemaphore r_vulkan_semaphore(VkDevice device);
 internal void        r_vulkan_image_transition(VkCommandBuffer cmd_buf, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout, VkPipelineStageFlags src_stage, VkAccessFlags src_access_flag, VkPipelineStageFlags dst_stage, VkAccessFlags dst_access_flag, VkImageAspectFlags aspect_mask);
 
@@ -700,11 +752,11 @@ internal void r_vulkan_cmd_end(VkCommandBuffer cmd_buf);
 /////////////////////////////////////////////////////////////////////////////////////////
 // Misc
 
-internal VKAPI_ATTR              VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity, VkDebugUtilsMessageTypeFlagsEXT message_type, const VkDebugUtilsMessengerCallbackDataEXT *p_callback_data, void *p_userdata);
-internal VkSampler               r_vulkan_sampler2d(R_Tex2DSampleKind kind);
-internal S32                     r_vulkan_memory_index_from_type_filer(U32 type_bits, VkMemoryPropertyFlags properties);
-// internal                      ID3D11Buffer *r_vulkan_instance_buffer_from_size(U64 size);
-// internal                      void r_usage_access_flags_from_resource_kind(R_ResourceKind kind, D3D11_USAGE *out_vulkan_usage, UINT *out_cpu_access_flags);
+internal VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity, VkDebugUtilsMessageTypeFlagsEXT message_type, const VkDebugUtilsMessengerCallbackDataEXT *p_callback_data, void *p_userdata);
+internal VkSampler  r_vulkan_sampler2d(R_Tex2DSampleKind kind);
+internal S32        r_vulkan_memory_index_from_type_filer(U32 type_bits, VkMemoryPropertyFlags properties);
+// internal         ID3D11Buffer *r_vulkan_instance_buffer_from_size(U64 size);
+// internal         void r_usage_access_flags_from_resource_kind(R_ResourceKind kind, D3D11_USAGE *out_vulkan_usage, UINT *out_cpu_access_flags);
 
 #define CmdScope(c) DeferLoop((r_vulkan_cmd_begin((c))), r_vulkan_cmd_end((c)))
 #define FileReadAll(arena, fp, return_data, return_size)                                 \

@@ -1704,8 +1704,8 @@ ik_frame(void)
         if(box->flags & IK_BoxFlag_DrawBorder)
         {
           Vec4F32 border_clr = box->palette->colors[IK_ColorCode_Border];
-          F32 border_thickness = 3.0 * ik_state->world_to_screen_ratio.x;
-          R_Rect2DInst *inst = d_rect(pad_2f32(dst, 3*border_thickness), border_clr, 0, border_thickness, border_thickness/2.0);
+          F32 border_thickness = 1.5 * ik_state->world_to_screen_ratio.x;
+          R_Rect2DInst *inst = d_rect(pad_2f32(dst, 2*border_thickness), border_clr, 0, border_thickness, border_thickness/2.0);
         }
       }
     }
