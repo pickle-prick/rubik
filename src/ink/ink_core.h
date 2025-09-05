@@ -249,6 +249,12 @@ enum
   // committing state changes via user interaction
   IK_SignalFlag_Commit              = (1<<27),
 
+  // k: selection
+  IK_SignalFlag_Select              = (1<<28),
+
+  // k: delete
+  IK_SignalFlag_Delete              = (1<<29),
+
   // high-level combos
   IK_SignalFlag_Pressed       = IK_SignalFlag_LeftPressed|IK_SignalFlag_KeyboardPressed,
   IK_SignalFlag_Released      = IK_SignalFlag_LeftReleased,
@@ -324,6 +330,8 @@ typedef U64 IK_BoxFlags;
 # define IK_BoxFlag_DragToPosition        (IK_BoxFlags)(1ull<<21)
 // misc
 # define IK_BoxFlag_Orphan                (IK_BoxFlags)(1ull<<22) // won't push to the frame's box list 
+# define IK_BoxFlag_OmitGroupSelection    (IK_BoxFlags)(1ull<<23)
+# define IK_BoxFlag_OmitDeletion          (IK_BoxFlags)(1ull<<24)
 
 typedef struct IK_Box IK_Box;
 //- draw functions
@@ -357,6 +365,10 @@ struct IK_Box
   IK_Box *group_next;
   IK_Box *group_prev;
   U64 group_children_count;
+
+  // Selection link
+  IK_Box *select_next;
+  IK_Box *select_prev;
 
   // Per-build equipment
   String8 name;
@@ -445,6 +457,7 @@ struct IK_Frame
   IK_Frame *next;
   IK_BoxList box_list;
   IK_Box *blank;
+  IK_Box *select;
   IK_Camera camera;
 
   String8 save_path;
@@ -630,6 +643,11 @@ struct IK_State
   Arena                 *drag_state_arena;
   String8               drag_state_data;
   Arena                 *box_scratch_arena; // e.g. edit buffer
+  Rng2F32               selection_rect;
+  IK_Box                *first_box_selected;
+  IK_Box                *last_box_selected;
+  Rng2F32               selection_bounds;
+  U64                   selected_box_count;
 
   // toolbar
   IK_ToolKind           tool;
@@ -869,11 +887,15 @@ internal IK_Frame* ik_frame_from_tyml(String8 path);
 
 // projection
 internal Vec2F32 ik_screen_pos_in_world(Mat4x4F32 proj_view_mat_inv, Vec2F32 pos);
+internal Vec2F32 ik_screen_pos_from_world(Vec2F32 pos);
 #define ik_mouse_in_world(pvmi) ik_screen_pos_in_world(pvmi, ik_state->mouse)
 
 // encode
 internal String8 ik_b64string_from_bytes(Arena *arena, String8 src);
 internal String8 ik_bytes_from_b64string(Arena *arena, String8 src);
+
+#define ik_is_selecting() (ik_tool() == IK_ToolKind_Selection&&ik_dragging(ik_state->active_frame->blank->sig))
+#define ik_selection_rect() (ik_state->selection_rect)
 
 ////////////////////////////////
 //~ Macro Loop Wrappers

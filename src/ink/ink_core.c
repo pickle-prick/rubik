@@ -1189,23 +1189,29 @@ ik_frame(void)
     }
   }
 
+  // clear per-frame state
+  ik_state->first_box_selected = 0;
+  ik_state->last_box_selected = 0;
+  ik_state->selected_box_count = 0;
+  ik_state->selection_bounds = r2f32p(inf32(), inf32(), neg_inf32(), neg_inf32());
+
   ////////////////////////////////
   //- box interaction
 
   typedef struct IK_BoxDrag IK_BoxDrag;
   struct IK_BoxDrag
   {
-    Vec2F32 drag_start_position; 
-    Vec2F32 drag_start_mouse_in_world; 
+    Vec2F32 drag_start_position;
+    Vec2F32 drag_start_mouse_in_world;
   };
 
   {
-    IK_Box *roots[2] = {frame->box_list.last, frame->blank};
+    IK_Box *roots[3] = {frame->select, frame->box_list.last, frame->blank};
 
     IK_ToolKind tool = ik_tool();
     if(tool != IK_ToolKind_Selection)
     {
-      Swap(IK_Box*, roots[0], roots[1]);
+      Swap(IK_Box*, roots[1], roots[2]);
     }
 
     for(U64 i = 0; i < ArrayCount(roots); i++)
@@ -1222,20 +1228,39 @@ ik_frame(void)
         B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
         B32 is_disabled = box->flags&IK_BoxFlag_Disabled;
 
-        if(box->flags & IK_BoxFlag_FitViewport)
+        if((sig.f&IK_SignalFlag_Delete) && !(box->flags&IK_BoxFlag_OmitDeletion))
         {
-          // TODO(Next): maybe reset scale, rotation?
+          ik_box_release(box);
+          continue;
+        }
+
+        if(box->flags&IK_BoxFlag_FitViewport)
+        {
           box->position = camera->rect.p0;
           box->rect_size = dim_2f32(camera->rect);
+          box->ratio = box->rect_size.x/box->rect_size.y;
         }
 
         // update fixed rect
-        // TODO(Next): r2f32 can't represent a non-axis-aligned rect, we need to push a xform if we need to rotate
+        // NOTE(Next): r2f32 can't represent a non-axis-aligned rect, we need to push a xform if we need to rotate
         Rng2F32 rect = {.p0 = box->position, .p1 = {box->position.x + box->rect_size.x, box->position.y + box->rect_size.y}};
 
         // update artifacts
         box->rect = rect;
         box->sig = sig;
+
+        ////////////////////////////////
+        // push to global selection list if box is selected
+
+        if(box->sig.f&IK_SignalFlag_Select && box != frame->blank)
+        {
+          DLLPushFront_NP(ik_state->first_box_selected, ik_state->last_box_selected, box, select_next, select_prev);
+          ik_state->selected_box_count++;
+          ik_state->selection_bounds.x0 = Min(ik_state->selection_bounds.x0, box->rect.x0);
+          ik_state->selection_bounds.x1 = Max(ik_state->selection_bounds.x1, box->rect.x1);
+          ik_state->selection_bounds.y0 = Min(ik_state->selection_bounds.y0, box->rect.y0);
+          ik_state->selection_bounds.y1 = Max(ik_state->selection_bounds.y1, box->rect.y1);
+        }
 
         ////////////////////////////////
         // push line runs
@@ -1305,7 +1330,12 @@ ik_frame(void)
             IK_BoxDrag drag = *ik_get_drag_struct(IK_BoxDrag);
             Vec2F32 delta = sub_2f32(ik_state->mouse_in_world, drag.drag_start_mouse_in_world);
             Vec2F32 position = add_2f32(drag.drag_start_position, delta);
+            Vec2F32 position_delta = sub_2f32(position, box->position);
             box->position = position;
+            for(IK_Box *child = box->group_first; child != 0; child = child->group_next)
+            {
+              child->position = add_2f32(child->position, position_delta);
+            }
           }
         }
 
@@ -1348,9 +1378,54 @@ ik_frame(void)
     }
 
     /////////////////////////////////
-    //~ Blank box update and interaction
+    //~ Reset active if active box is disabled
+
+    for EachEnumVal(IK_MouseButtonKind, k)
+    {
+      if(!ik_key_match(ik_state->active_box_key[k], ik_key_zero()))
+      {
+        IK_Box *box = ik_box_from_key(ik_state->active_box_key[k]);
+        if(box && box->flags&IK_BoxFlag_Disabled)
+        {
+          ik_state->active_box_key[k] = ik_key_zero();
+        }
+      }
+    }
+
+    /////////////////////////////////
+    //~ Reset focus-hot key if focus-hot box is disabled
+
+    if(!ik_key_match(ik_state->focus_hot_box_key, ik_key_zero()))
+    {
+      IK_Box *box = ik_box_from_key(ik_state->focus_hot_box_key);
+      if(box && box->flags&IK_BoxFlag_Disabled)
+      {
+        ik_state->focus_hot_box_key = ik_key_zero();
+      }
+    }
+
+    /////////////////////////////////
+    //~ Pruned box active/focus_hot, reset it
+
+    for(U64 i = 0; i < IK_MouseButtonKind_COUNT; i++)
+    {
+      if(!ik_key_match(ik_state->active_box_key[i], ik_key_zero()))
+      {
+        IK_Box *box = ik_box_from_key(ik_state->active_box_key[i]);
+        if(!box) ik_state->active_box_key[i] = ik_key_zero();
+      }
+    }
+    if(!ik_key_match(ik_state->focus_hot_box_key, ik_key_zero()))
+    {
+      IK_Box *box = ik_box_from_key(ik_state->focus_hot_box_key);
+      if(!box) ik_state->focus_hot_box_key = ik_key_zero();
+    }
+
+    /////////////////////////////////
+    //~ Blank/Select box update and interaction
 
     IK_Box *blank = frame->blank;
+    IK_Box *select = frame->select;
 
     /////////////////////////////////
     //~ Scrolled on blank -> mouve viewport up or down
@@ -1379,40 +1454,6 @@ ik_frame(void)
     /////////////////////////////////
     //~ Pruned box if no text and flag has IK_BoxFlag_PruneIfNoText
     // TODO(Next): to be implemented
-
-    /////////////////////////////////
-    //~ Pruned box is hot/active/focus_hot, reset it
-
-    if(!ik_key_match(ik_state->hot_box_key, ik_key_zero()))
-    {
-      IK_Box *box = ik_box_from_key(ik_state->hot_box_key);
-      if(!box) ik_state->hot_box_key = ik_key_zero();
-    }
-    for(U64 i = 0; i < IK_MouseButtonKind_COUNT; i++)
-    {
-      if(!ik_key_match(ik_state->active_box_key[i], ik_key_zero()))
-      {
-        IK_Box *box = ik_box_from_key(ik_state->active_box_key[i]);
-        if(!box) ik_state->active_box_key[i] = ik_key_zero();
-      }
-    }
-    if(!ik_key_match(ik_state->focus_hot_box_key, ik_key_zero()))
-    {
-      IK_Box *box = ik_box_from_key(ik_state->focus_hot_box_key);
-      if(!box) ik_state->focus_hot_box_key = ik_key_zero();
-    }
-
-    /////////////////////////////////
-    //~ Deletion
-
-    if(!ik_key_match(ik_state->focus_hot_box_key, ik_key_zero()) && ui_key_press(0, OS_Key_Delete))
-    {
-      IK_Box *box = ik_box_from_key(ik_state->focus_hot_box_key);
-      if(box)
-      {
-        ik_box_release(box);
-      }
-    }
 
     /////////////////////////////////
     //~ Hot keys
@@ -1446,8 +1487,116 @@ ik_frame(void)
     }
 
     /////////////////////////////////
-    //~ Pen Tool
+    //~ Selection
 
+    //- mouse dragging on blank -> selecting boxes
+    if(tool == IK_ToolKind_Selection && ik_dragging(blank->sig))
+    {
+      typedef struct IK_SelectionDrag IK_SelectionDrag;
+      struct IK_SelectionDrag
+      {
+        Vec2F32 anchor;
+      };
+
+      if(ik_pressed(blank->sig))
+      {
+        IK_SelectionDrag drag = {.anchor = ik_state->mouse_in_world };
+        ui_store_drag_struct(&drag);
+      }
+      IK_SelectionDrag drag = *ui_get_drag_struct(IK_SelectionDrag);
+
+      Vec2F32 p0 = drag.anchor;
+      Vec2F32 p1 = ik_state->mouse_in_world;
+      if(p0.x > p1.x) Swap(F32, p0.x, p1.x);
+      if(p0.y > p1.y) Swap(F32, p0.y, p1.y);
+
+      // in world position
+      ik_state->selection_rect.p0 = p0;
+      ik_state->selection_rect.p1 = p1;
+
+      Rng2F32 rect = {.p0 = ik_screen_pos_from_world(p0), .p1 = ik_screen_pos_from_world(p1)};
+      UI_Rect(rect)
+        UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_Floating|UI_BoxFlag_DrawDropShadow)
+        UI_Transparency(0.6)
+        ui_build_box_from_key(0, ui_key_zero());
+    }
+
+    //- selecting and mouse release -> commit state to select box
+    if(tool == IK_ToolKind_Selection && ik_released(blank->sig))
+    {
+      if(ik_state->selected_box_count > 0)
+      {
+        select->position = ik_state->selection_bounds.p0;
+        select->rect_size = dim_2f32(ik_state->selection_bounds);
+        ik_state->focus_hot_box_key = select->key;
+        select->flags ^= IK_BoxFlag_Disabled;
+        select->group_first = 0;
+        select->group_last = 0;
+        select->group_children_count = 0;
+
+        for(IK_Box *child = ik_state->first_box_selected; child != 0; child = child->select_next)
+        {
+          // TODO(Next): bug here, if child is already within a group, it can't be selected, it's parent should be selected
+          DLLPushFront_NP(select->group_first, select->group_last, child, group_next, group_prev);
+          select->group_children_count++;
+          child->group = select;
+        }
+      }
+    }
+
+    //- mode is not selection and select is on? -> disable select
+    if(tool != IK_ToolKind_Selection && !(select->flags&IK_BoxFlag_Disabled))
+    {
+      select->flags |= IK_BoxFlag_Disabled;
+    }
+
+    //- delete sig on select box? -> delete all grouped children
+    if(select->sig.f&IK_SignalFlag_Delete)
+    {
+      for(IK_Box *child = select->group_first, *next = 0; child != 0; child = next)
+      {
+        next = child->group_next;
+        ik_box_release(child);
+      }
+      select->flags |= IK_BoxFlag_Disabled;
+    }
+
+    //- select box is not focused -> disable it
+    if(!ik_key_match(ik_state->focus_hot_box_key, select->key))
+    {
+      select->flags |= IK_BoxFlag_Disabled;
+    }
+
+    //- select box is disabled? -> rest its state
+    if(select->flags&IK_BoxFlag_Disabled)
+    {
+      for(IK_Box *child = select->group_first, *next = 0; child != 0; child = next)
+      {
+        next = child->group_next;
+        child->group = 0;
+        child->group_next = 0;
+        child->group_prev = 0;
+      }
+
+      select->rect_size = v2f32(0,0);
+      select->group_first = 0;
+      select->group_last = 0;
+      select->group_children_count = 0;
+    }
+
+    //- select box is focused -> flag every selected box 
+    if(ik_key_match(ik_state->focus_hot_box_key, select->key))
+    {
+      for(IK_Box *child = select->group_first; child != 0; child = child->group_next)
+      {
+        child->sig.f |= IK_SignalFlag_Select;
+      }
+    }
+
+    /////////////////////////////////
+    //~ Tool panel
+
+    //- pen
     if(tool == IK_ToolKind_Draw && ik_pressed(blank->sig))
     {
       IK_Box *b = ik_stroke();
@@ -1456,10 +1605,8 @@ ik_frame(void)
       ik_state->focus_active_box_key = b->key;
     }
 
-    /////////////////////////////////
-    //~ Rectangle Tool
+    //- rectangle Tool
     // TODO(Next): not finished, we want to drag to resize it
-
     if(tool == IK_ToolKind_Rectangle && ik_pressed(blank->sig))
     {
       IK_Box *box = ik_build_box_from_stringf(0, "rect###%I64u", os_now_microseconds());
@@ -1482,9 +1629,7 @@ ik_frame(void)
       ik_state->tool = tool;
     }
 
-    /////////////////////////////////
-    //~ Edit string (Double clicked on the blank)
-
+    //- edit string (double clicked on the blank)
     if(tool == IK_ToolKind_Selection && blank->sig.f&IK_SignalFlag_LeftDoubleClicked)
     {
       IK_Box *box = ik_text(str8_lit(""), ik_state->mouse_in_world);
@@ -1495,36 +1640,7 @@ ik_frame(void)
       ik_state->focus_active_box_key = box->key;
     }
 
-    /////////////////////////////////
-    //~ Mouse dragging on blank -> select boxes
-
-    if(tool == IK_ToolKind_Selection && ik_dragging(blank->sig))
-    {
-      if(ik_pressed(blank->sig))
-      {
-      }
-      Vec2F32 p0 = ik_state->drag_start_mouse;
-      Vec2F32 p1 = ik_state->mouse;
-      if(p0.x > p1.x) Swap(F32, p0.x, p1.x);
-      if(p0.y > p1.y) Swap(F32, p0.y, p1.y);
-      Rng2F32 rect = {.p0 = p0, .p1 = p1};
-      UI_Rect(rect)
-        UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_Floating|UI_BoxFlag_DrawDropShadow)
-        UI_Transparency(0.6)
-        ui_build_box_from_key(0, ui_key_zero());
-    }
-
-    /////////////////////////////////
-    //~ Save
-
-    if(ui_key_press(OS_Modifier_Ctrl, OS_Key_S))
-    {
-      ik_frame_to_tyml(frame);
-    }
-
-    /////////////////////////////////
-    //~ Paste text/image
-
+    //- paste text/image
     if(ui_key_press(OS_Modifier_Ctrl, OS_Key_V))
     {
       Temp scratch = scratch_begin(0,0);
@@ -1572,6 +1688,14 @@ ik_frame(void)
       }
 
       scratch_end(scratch);
+    }
+
+    /////////////////////////////////
+    //~ Save
+
+    if(ui_key_press(OS_Modifier_Ctrl, OS_Key_S))
+    {
+      ik_frame_to_tyml(frame);
     }
 
     /////////////////////////////////
@@ -1631,81 +1755,96 @@ ik_frame(void)
     // TODO(Next): what heck? should it be column major?
     d_push_xform2d(transpose_3x3f32(xform2d));
 
-    for(IK_Box *box = frame->box_list.first, *next = 0; box != 0; box = next)
+    IK_Box *roots[2] = {frame->select, frame->box_list.first};
+    for(U64 i = 0; i < ArrayCount(roots); i++)
     {
-      next = box->next;
-      if(ik_state->frame_index >= box->draw_frame_index)
+      IK_Box *root = roots[i];
+      for(IK_Box *box = root, *next = 0; box != 0; box = next)
       {
-        Rng2F32 dst = box->rect;
-        dst.p1 = mix_2f32(v2f32(0,0), dst.p1, 1.0-box->disabled_t);
+        next = box->next;
+        if(ik_state->frame_index >= box->draw_frame_index)
+        {
+          Rng2F32 dst = box->rect;
+          Vec2F32 center = center_2f32(dst);
+          dst.p0 = mix_2f32(center, dst.p0, 1.0-box->disabled_t);
+          dst.p1 = mix_2f32(center, dst.p1, 1.0-box->disabled_t);
 
-        // draw drop_shadow
-        if(box->flags & IK_BoxFlag_DrawDropShadow)
-        {
-          Rng2F32 drop_shadow_rect = shift_2f32(pad_2f32(box->rect, 8), v2f32(4, 4));
-          Vec4F32 drop_shadow_color = ik_rgba_from_theme_color(IK_ThemeColor_DropShadow);
-          d_rect(drop_shadow_rect, drop_shadow_color, 0.8f, 0, 8.f);
-        }
-
-        // draw rect
-        if(box->flags & IK_BoxFlag_DrawBackground)
-        {
-          d_rect(dst, box->color, 0, 0, 0);
-        }
-        
-        // draw image
-        if((box->flags&IK_BoxFlag_DrawImage) && box->image)
-        {
-          IK_Image *image = box->image;
-          if(!image->loaded)
+          // draw drop_shadow
+          if(box->flags & IK_BoxFlag_DrawDropShadow)
           {
-            AssertAlways(r_handle_match(image->handle, r_handle_zero()));
-            // work done by decode thread
-            if(!ins_atomic_u64_eval(&image->loading))
+            Rng2F32 drop_shadow_rect = shift_2f32(pad_2f32(box->rect, 8), v2f32(4, 4));
+            Vec4F32 drop_shadow_color = ik_rgba_from_theme_color(IK_ThemeColor_DropShadow);
+            d_rect(drop_shadow_rect, drop_shadow_color, 0.8f, 0, 8.f);
+          }
+
+          // draw rect
+          if(box->flags & IK_BoxFlag_DrawBackground)
+          {
+            d_rect(dst, box->color, 0, 0, 0);
+          }
+          
+          // draw image
+          if((box->flags&IK_BoxFlag_DrawImage) && box->image)
+          {
+            IK_Image *image = box->image;
+            if(!image->loaded)
             {
-              image->loaded = 1;
-
-              // decode succeed
-              if(image->decoded)
+              AssertAlways(r_handle_match(image->handle, r_handle_zero()));
+              // work done by decode thread
+              if(!ins_atomic_u64_eval(&image->loading))
               {
-                image->handle = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Linear, v2s32(image->x, image->y), R_Tex2DFormat_RGBA8, (void*)image->decoded);
-                image->decoded = 0;
+                image->loaded = 1;
 
-                // resize box based on image dim
-                box->ratio = (F32)image->x/image->y;
-                box->rect_size.y = box->rect_size.x/box->ratio;
+                // decode succeed
+                if(image->decoded)
+                {
+                  image->handle = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Linear, v2s32(image->x, image->y), R_Tex2DFormat_RGBA8, (void*)image->decoded);
+                  image->decoded = 0;
+
+                  // resize box based on image dim
+                  box->ratio = (F32)image->x/image->y;
+                  box->rect_size.y = box->rect_size.x/box->ratio;
+                }
+
+                // free stb artifacts
+                stbi_image_free(image->decoded);
               }
+            }
 
-              // free stb artifacts
-              stbi_image_free(image->decoded);
+            if(image->loaded)
+            {
+              Rng2F32 src = {0,0, box->image->x, box->image->y};
+              d_img(dst, src, box->image->handle, v4f32(1,1,1,1), 0, 0, 0);
             }
           }
 
-          if(image->loaded)
+          // draw text
+          if(box->flags & IK_BoxFlag_DrawText)
           {
-            Rng2F32 src = {0,0, box->image->x, box->image->y};
-            d_img(dst, src, box->image->handle, v4f32(1,1,1,1), 0, 0, 0);
+            ik_draw_text(box);
           }
-        }
 
-        // draw text
-        if(box->flags & IK_BoxFlag_DrawText)
-        {
-          ik_draw_text(box);
-        }
+          // draw stroke
+          if(box->flags & IK_BoxFlag_DrawStroke)
+          {
+            ik_draw_stroke(box);
+          }
 
-        // draw stroke
-        if(box->flags & IK_BoxFlag_DrawStroke)
-        {
-          ik_draw_stroke(box);
-        }
+          // draw border
+          if(box->flags & IK_BoxFlag_DrawBorder)
+          {
+            Vec4F32 border_clr = box->palette->colors[IK_ColorCode_Border];
+            F32 border_thickness = 1.5 * ik_state->world_to_screen_ratio.x;
+            R_Rect2DInst *inst = d_rect(pad_2f32(dst, 2*border_thickness), border_clr, 0, border_thickness, border_thickness/2.0);
+          }
 
-        // draw border
-        if(box->flags & IK_BoxFlag_DrawBorder)
-        {
-          Vec4F32 border_clr = box->palette->colors[IK_ColorCode_Border];
-          F32 border_thickness = 1.5 * ik_state->world_to_screen_ratio.x;
-          R_Rect2DInst *inst = d_rect(pad_2f32(dst, 2*border_thickness), border_clr, 0, border_thickness, border_thickness/2.0);
+          // draw selection highlight
+          if(box->sig.f & IK_SignalFlag_Select)
+          {
+            d_rect(pad_2f32(dst, 0*ik_state->world_to_screen_ratio.x), v4f32(1,1,0,0.1), 0, 0, 0);
+            F32 border_thickness = 3*ik_state->world_to_screen_ratio.x;
+            d_rect(pad_2f32(dst, border_thickness*2), v4f32(0.1,0,1,1), 0, border_thickness, 0);
+          }
         }
       }
     }
@@ -2237,8 +2376,9 @@ ik_frame_alloc()
 
   // create blank box
   ik_push_frame(frame);
-  IK_Box *blank = ik_build_box_from_stringf(IK_BoxFlag_MouseClickable|IK_BoxFlag_FitViewport|IK_BoxFlag_Scroll|IK_BoxFlag_Orphan, "blank");
-  frame->blank = blank;
+  frame->blank = ik_build_box_from_stringf(IK_BoxFlag_MouseClickable|IK_BoxFlag_FitViewport|IK_BoxFlag_Scroll|IK_BoxFlag_Orphan|IK_BoxFlag_OmitGroupSelection|IK_BoxFlag_OmitDeletion, "blank");
+  frame->select = ik_build_box_from_stringf(IK_BoxFlag_MouseClickable|IK_BoxFlag_Orphan|IK_BoxFlag_DrawBorder|IK_BoxFlag_DragToPosition|IK_BoxFlag_OmitGroupSelection|IK_BoxFlag_OmitDeletion, "select");
+  frame->select->hover_cursor = OS_Cursor_UpDownLeftRight;
 
   ik_pop_frame();
   scratch_end(scratch);
@@ -3187,6 +3327,14 @@ ik_signal_from_box(IK_Box *box)
       taken = 1;
     }
 
+    if(ik_key_match(ik_state->focus_hot_box_key, box->key) &&
+       evt->kind == UI_EventKind_Press &&
+       evt->key == OS_Key_Delete)
+    {
+      sig.f |= IK_SignalFlag_Delete;
+      taken = 1;
+    }
+
     if(taken)
     {
       ui_eat_event_node(ik_state->events, n);
@@ -3269,6 +3417,17 @@ ik_signal_from_box(IK_Box *box)
   if(box->flags & IK_BoxFlag_ClickToFocus && sig.f&IK_SignalFlag_Pressed)
   {
     ik_state->focus_hot_box_key = box->key;
+  }
+
+  ////////////////////////////////
+  //~ Box overlap with selection rect? -> add to selection list
+
+  if(ik_is_selecting() && !(box->flags&IK_BoxFlag_OmitGroupSelection))
+  {
+    if(overlaps_2f32(ik_state->selection_rect, box->rect))
+    {
+      sig.f |= IK_SignalFlag_Select;
+    }
   }
 
   return sig;
@@ -3538,6 +3697,9 @@ ik_ui_selection(void)
     p0.y = ((p0.y+1.0)/2.0) * ik_state->window_dim.y;
     p1.y = ((p1.y+1.0)/2.0) * ik_state->window_dim.y;
     Rng2F32 rect = r2f32p(p0.x, p0.y, p1.x, p1.y);
+    Vec2F32 center = center_2f32(rect);
+    rect.p0 = mix_2f32(center, rect.p0, 1.0-box->disabled_t);
+    rect.p1 = mix_2f32(center, rect.p1, 1.0-box->disabled_t);
     F32 padding_px = mix_1f32(0, ui_top_font_size()*0.5, box->focus_hot_t);
     rect = pad_2f32(rect, padding_px);
     Vec2F32 rect_dim = dim_2f32(rect);
@@ -4636,6 +4798,16 @@ ik_screen_pos_in_world(Mat4x4F32 proj_view_mat_inv, Vec2F32 pos)
   F32 moy_ndc = (ik_state->mouse.y / ik_state->window_dim.y) * 2.f - 1.f;
   Vec4F32 mouse_in_world_4 = transform_4x4f32(proj_view_mat_inv, v4f32(mox_ndc, moy_ndc, 1., 1.));
   Vec2F32 ret = v2f32(mouse_in_world_4.x, mouse_in_world_4.y);
+  return ret;
+}
+
+internal Vec2F32
+ik_screen_pos_from_world(Vec2F32 pos)
+{
+  Vec4F32 projected = transform_4x4f32(ik_state->proj_mat, v4f32(pos.x, pos.y, 0, 1.0));
+  Vec2F32 ret = {(projected.x+1.f)/2.f, (projected.y+1.f)/2.f};
+  ret.x *= ik_state->window_dim.x;
+  ret.y *= ik_state->window_dim.y;
   return ret;
 }
 
