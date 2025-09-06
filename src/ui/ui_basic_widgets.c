@@ -485,6 +485,399 @@ ui_expanderf(B32 is_expanded, char *fmt, ...)
 }
 
 ////////////////////////////////
+//~ rjf: Color Pickers
+
+//- rjf: tooltips
+
+internal void
+ui_do_color_tooltip_hsv(Vec3F32 hsv)
+{
+  Vec3F32 rgb = rgb_from_hsv(hsv);
+  UI_Tooltip UI_Padding(ui_em(2.f, 1.f))
+  {
+    UI_PrefWidth(ui_em(22.f, 1.f)) UI_PrefHeight(ui_em(6.f, 1.f)) UI_Row UI_Padding(ui_pct(1, 0))
+    {
+      // UI_BackgroundColor(linear_from_srgba(v4f32(rgb.x, rgb.y, rgb.z, 1.f)))
+      UI_Palette(ui_build_palette(ui_top_palette(), .background = linear_from_srgba(v4f32(rgb.x, rgb.y, rgb.z, 1.f))))
+        UI_CornerRadius(4.f)
+        UI_PrefWidth(ui_em(6.f, 1.f)) UI_PrefHeight(ui_em(6.f, 1.f))
+        ui_build_box_from_string(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground, str8_lit(""));
+    }
+    ui_spacer(ui_em(0.3f, 1.f));
+    UI_PrefWidth(ui_em(22.f, 1.f)) UI_TextAlignment(UI_TextAlign_Center)
+    {
+      ui_labelf("Hex: #%02x%02x%02x", (U8)(rgb.x*255.f), (U8)(rgb.y*255.f), (U8)(rgb.z*255.f));
+    }
+    ui_spacer(ui_em(0.3f, 1.f));
+    UI_PrefWidth(ui_em(22.f, 1.f)) UI_PrefHeight(ui_children_sum(1)) UI_Row
+    {
+      UI_WidthFill UI_Column UI_PrefHeight(ui_em(1.8f, 1.f))
+      {
+        ui_labelf("Red: %.2f", rgb.x);
+        ui_labelf("Green: %.2f", rgb.y);
+        ui_labelf("Blue: %.2f", rgb.z);
+      }
+      UI_WidthFill UI_Column UI_PrefHeight(ui_em(1.8f, 1.f))
+      {
+        ui_labelf("Hue: %.2f", hsv.x);
+        ui_labelf("Sat: %.2f", hsv.y);
+        ui_labelf("Val: %.2f", hsv.z);
+      }
+    }
+  }
+}
+
+internal void
+ui_do_color_tooltip_hsva(Vec4F32 hsva)
+{
+  Vec3F32 hsv = v3f32(hsva.x, hsva.y, hsva.z);
+  Vec3F32 rgb = rgb_from_hsv(hsv);
+  Vec4F32 rgba = v4f32(rgb.x, rgb.y, rgb.z, hsva.w);
+  UI_Tooltip UI_Padding(ui_em(2.f, 1.f))
+  {
+    UI_PrefWidth(ui_em(22.f, 1.f)) UI_PrefHeight(ui_em(6.f, 1.f)) UI_Row UI_Padding(ui_pct(1, 0))
+    {
+      // UI_BackgroundColor(linear_from_srgba(rgba))
+      UI_Palette(ui_build_palette(ui_top_palette(), .background = linear_from_srgba(rgba)))
+        UI_CornerRadius(4.f)
+        UI_PrefWidth(ui_em(6.f, 1.f)) UI_PrefHeight(ui_em(6.f, 1.f))
+        ui_build_box_from_string(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground, str8_lit(""));
+    }
+    ui_spacer(ui_em(0.3f, 1.f));
+    UI_PrefWidth(ui_em(22.f, 1.f)) UI_TextAlignment(UI_TextAlign_Center)
+    {
+      ui_labelf("Hex: #%02x%02x%02x%02x", (U8)(rgba.x*255.f), (U8)(rgba.y*255.f), (U8)(rgba.z*255.f), (U8)(rgba.w*255.f));
+    }
+    ui_spacer(ui_em(0.3f, 1.f));
+    UI_PrefWidth(ui_em(22.f, 1.f)) UI_PrefHeight(ui_children_sum(1)) UI_Row
+    {
+      UI_WidthFill UI_Column UI_PrefHeight(ui_em(1.8f, 1.f))
+      {
+        ui_labelf("Red: %.2f", rgba.x);
+        ui_labelf("Green: %.2f", rgba.y);
+        ui_labelf("Blue: %.2f", rgba.z);
+        ui_labelf("Alpha: %.2f", rgba.w);
+      }
+      UI_WidthFill UI_Column UI_PrefHeight(ui_em(1.8f, 1.f))
+      {
+        ui_labelf("Hue: %.2f", hsva.x);
+        ui_labelf("Sat: %.2f", hsva.y);
+        ui_labelf("Val: %.2f", hsva.z);
+        ui_labelf("Alpha: %.2f", hsva.w);
+      }
+    }
+  }
+}
+
+//- rjf: saturation/value picker
+
+typedef struct UI_SatValDrawData UI_SatValDrawData;
+struct UI_SatValDrawData
+{
+  F32 hue;
+  F32 sat;
+  F32 val;
+};
+
+internal UI_BOX_CUSTOM_DRAW(ui_sat_val_picker_draw)
+{
+  UI_SatValDrawData *data = (UI_SatValDrawData *)user_data;
+  
+  // rjf: hue => rgb
+  Vec3F32 hue_rgb = rgb_from_hsv(v3f32(data->hue, 1, 1));
+  Vec3F32 hue_rgb_linear = linear_from_srgb(hue_rgb);
+  
+  // rjf: rgb background
+  {
+    d_rect(pad_2f32(box->rect, -1.f), v4f32(hue_rgb_linear.x, hue_rgb_linear.y, hue_rgb_linear.z, 1), 4.f, 0, 1.f);
+  }
+  
+  // rjf: white gradient overlay
+  {
+    R_Rect2DInst *inst = d_rect(pad_2f32(box->rect, -1.f), v4f32(hue_rgb_linear.x, hue_rgb_linear.y, hue_rgb_linear.z, 0), 4.f, 0, 1.f);
+    inst->colors[Corner_00] = inst->colors[Corner_01] = v4f32(1, 1, 1, 1);
+  }
+  
+  // rjf: black gradient overlay pt. 1
+  {
+    R_Rect2DInst *inst = d_rect(pad_2f32(box->rect, -1.f), v4f32(0, 0, 0, 0), 4.f, 0, 1.f);
+    inst->colors[Corner_01] = v4f32(0, 0, 0, 1.f);
+    inst->colors[Corner_11] = v4f32(0, 0, 0, 1.f);
+  }
+  
+  // rjf: black gradient overlay pt. 2
+  {
+    R_Rect2DInst *inst = d_rect(pad_2f32(box->rect, -1.f), v4f32(0, 0, 0, 0), 4.f, 0, 1.f);
+    inst->colors[Corner_01] = v4f32(0, 0, 0, 1);
+    inst->colors[Corner_11] = v4f32(0, 0, 0, 1);
+  }
+  
+  // rjf: black gradient overlay pt. 3
+  {
+    R_Rect2DInst *inst = d_rect(pad_2f32(box->rect, -1.f), v4f32(0, 0, 0, 0), 4.f, 0, 1.f);
+    inst->colors[Corner_01] = v4f32(0, 0, 0, 0.2f);
+    inst->colors[Corner_11] = v4f32(0, 0, 0, 0.2f);
+  }
+  
+  // rjf: indicator
+  {
+    Vec2F32 box_rect_dim = dim_2f32(box->rect);
+    Vec2F32 center = v2f32(box->rect.x0 + data->sat*box_rect_dim.x, box->rect.y0 + (1-data->val)*box_rect_dim.y);
+    F32 half_size = box->font_size * (0.5f + box->active_t*0.2f);
+    Rng2F32 rect = r2f32p(center.x - half_size,
+                          center.y - half_size,
+                          center.x + half_size,
+                          center.y + half_size);
+    d_rect(rect, v4f32(1, 1, 1, 1), half_size/2.f, 2.f, 1.f);
+  }
+}
+
+internal UI_Signal
+ui_sat_val_picker(F32 hue, F32 *out_sat, F32 *out_val, String8 string)
+{
+  // rjf: build & interact
+  ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+  UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable, string);
+  UI_SatValDrawData *user = push_array(ui_build_arena(), UI_SatValDrawData, 1);
+  ui_box_equip_custom_draw(box, ui_sat_val_picker_draw, user);
+  UI_Signal sig = ui_signal_from_box(box);
+  
+  // rjf: click+draw behavior
+  if(ui_dragging(sig))
+  {
+    Vec2F32 dim = dim_2f32(box->rect);
+    *out_sat = (ui_mouse().x - box->rect.x0) / dim.x;
+    *out_val = 1 - (ui_mouse().y - box->rect.y0) / dim.y;
+    *out_sat = Clamp(0, *out_sat, 1);
+    *out_val = Clamp(0, *out_val, 1);
+    ui_do_color_tooltip_hsv(v3f32(hue, *out_sat, *out_val));
+    if(ui_pressed(sig))
+    {
+      Vec2F32 data = v2f32(*out_sat, *out_val);
+      ui_store_drag_struct(&data);
+    }
+    if(ui_slot_press(UI_EventActionSlot_Cancel))
+    {
+      Vec2F32 data = *ui_get_drag_struct(Vec2F32);
+      *out_sat = data.x;
+      *out_val = data.y;
+      ui_kill_action();
+    }
+  }
+  
+  // rjf: fill draw data
+  {
+    user->hue = hue;
+    user->sat = *out_sat;
+    user->val = *out_val;
+  }
+  
+  return sig;
+}
+
+internal UI_Signal
+ui_sat_val_pickerf(F32 hue, F32 *out_sat, F32 *out_val, char *fmt, ...)
+{
+  Temp scratch = scratch_begin(0, 0);
+  va_list args;
+  va_start(args, fmt);
+  String8 string = push_str8fv(scratch.arena, fmt, args);
+  va_end(args);
+  UI_Signal sig = ui_sat_val_picker(hue, out_sat, out_val, string);
+  scratch_end(scratch);
+  return sig;
+}
+
+//- rjf: hue picker
+
+typedef struct UI_HueDrawData UI_HueDrawData;
+struct UI_HueDrawData
+{
+  F32 hue;
+  F32 sat;
+  F32 val;
+};
+
+internal UI_BOX_CUSTOM_DRAW(ui_hue_picker_draw)
+{
+  UI_HueDrawData *data = (UI_HueDrawData *)user_data;
+  Vec2F32 dim = dim_2f32(box->rect);
+  F32 segment_dim = floor_f32(dim.y/6.f);
+  Rng2F32 hue_cycle_rect = box->rect;
+  Vec2F32 hue_cycle_center = center_2f32(hue_cycle_rect);
+  hue_cycle_rect.x0 += (hue_cycle_center.x - hue_cycle_rect.x0) * 0.3f;
+  hue_cycle_rect.x1 += (hue_cycle_center.x - hue_cycle_rect.x1) * 0.3f;
+  Rng2F32 rect = r2f32p(hue_cycle_rect.x0,
+                        hue_cycle_rect.y0,
+                        hue_cycle_rect.x1,
+                        hue_cycle_rect.y0 + segment_dim);
+  for(int seg = 0; seg < 6; seg += 1)
+  {
+    F32 hue0 = (F32)(seg)/6;
+    F32 hue1 = (F32)(seg+1)/6;
+    Vec3F32 rgb0 = rgb_from_hsv(v3f32(hue0, 1, 1));
+    Vec3F32 rgb1 = rgb_from_hsv(v3f32(hue1, 1, 1));
+    Vec4F32 rgba0_linear = linear_from_srgba(v4f32(rgb0.x, rgb0.y, rgb0.z, 1));
+    Vec4F32 rgba1_linear = linear_from_srgba(v4f32(rgb1.x, rgb1.y, rgb1.z, 1));
+    R_Rect2DInst *inst = d_rect(rect, v4f32(0, 0, 0, 0), 0, 0, 0.f);
+    inst->colors[Corner_00] = rgba0_linear;
+    inst->colors[Corner_01] = rgba1_linear;
+    inst->colors[Corner_10] = rgba0_linear;
+    inst->colors[Corner_11] = rgba1_linear;
+    rect.y0 += segment_dim;
+    rect.y1 += segment_dim;
+  }
+  
+  // rjf: indicator
+  {
+    Vec2F32 box_rect_dim = dim_2f32(box->rect);
+    Vec2F32 center = v2f32((box->rect.x0+box->rect.x1)/2, box->rect.y0 + (data->hue)*box_rect_dim.y);
+    F32 half_size = box_rect_dim.x * (0.52f + 0.02f * box->active_t);
+    Rng2F32 rect = r2f32p(center.x - half_size,
+                          center.y - box->font_size * (0.5f + 0.1f * box->active_t),
+                          center.x + half_size,
+                          center.y + box->font_size * (0.5f + 0.1f * box->active_t));
+    d_rect(rect, v4f32(1, 1, 1, 1), 1.f, 2.f, 1.f);
+  }
+}
+
+internal UI_Signal
+ui_hue_picker(F32 *out_hue, F32 sat, F32 val, String8 string)
+{
+  // rjf: build & interact
+  ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+  UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable, string);
+  UI_HueDrawData *user = push_array(ui_build_arena(), UI_HueDrawData, 1);
+  ui_box_equip_custom_draw(box, ui_hue_picker_draw, user);
+  UI_Signal sig = ui_signal_from_box(box);
+  
+  // rjf: click+draw behavior
+  if(ui_dragging(sig))
+  {
+    Vec2F32 dim = dim_2f32(box->rect);
+    *out_hue = (ui_mouse().y - box->rect.y0) / dim.y;
+    *out_hue = Clamp(0, *out_hue, 1);
+    ui_do_color_tooltip_hsv(v3f32(*out_hue, sat, val));
+    if(ui_pressed(sig))
+    {
+      ui_store_drag_struct(out_hue);
+    }
+    if(ui_slot_press(UI_EventActionSlot_Cancel))
+    {
+      *out_hue = *ui_get_drag_struct(F32);
+      ui_kill_action();
+    }
+  }
+  
+  // rjf: fill draw data
+  {
+    user->hue = *out_hue;
+    user->sat = sat;
+    user->val = val;
+  }
+  
+  return sig;
+}
+
+internal UI_Signal
+ui_hue_pickerf(F32 *out_hue, F32 sat, F32 val, char *fmt, ...)
+{
+  Temp scratch = scratch_begin(0, 0);
+  va_list args;
+  va_start(args, fmt);
+  String8 string = push_str8fv(scratch.arena, fmt, args);
+  va_end(args);
+  UI_Signal sig = ui_hue_picker(out_hue, sat, val, string);
+  scratch_end(scratch);
+  return sig;
+}
+
+//- rjf: alpha picker
+
+typedef struct UI_AlphaDrawData UI_AlphaDrawData;
+struct UI_AlphaDrawData
+{
+  F32 alpha;
+};
+
+internal UI_BOX_CUSTOM_DRAW(ui_alpha_picker_draw)
+{
+  UI_AlphaDrawData *data = (UI_AlphaDrawData *)user_data;
+  Vec2F32 dim = dim_2f32(box->rect);
+  
+  // rjf: build gradient
+  {
+    Rng2F32 rect = box->rect;
+    Vec2F32 center = center_2f32(rect);
+    rect.x0 += (center.x - rect.x0) * 0.3f;
+    rect.x1 += (center.x - rect.x1) * 0.3f;
+    R_Rect2DInst *inst = d_rect(rect, v4f32(0, 0, 0, 0), 0, 0, 0);
+    inst->colors[Corner_00] = inst->colors[Corner_10] = v4f32(1, 1, 1, 1);
+  }
+  
+  // rjf: indicator
+  {
+    Vec2F32 box_rect_dim = dim_2f32(box->rect);
+    Vec2F32 center = v2f32((box->rect.x0+box->rect.x1)/2, box->rect.y0 + (1-data->alpha)*box_rect_dim.y);
+    F32 half_size = box_rect_dim.x * (0.52f + 0.02f * box->active_t);
+    Rng2F32 rect = r2f32p(center.x - half_size,
+                          center.y - box->font_size * (0.5f + 0.1f * box->active_t),
+                          center.x + half_size,
+                          center.y + box->font_size * (0.5f + 0.1f * box->active_t));
+    d_rect(rect, v4f32(1, 1, 1, 1), 1.f, 2.f, 1.f);
+  }
+}
+
+internal UI_Signal
+ui_alpha_picker(F32 *out_alpha, String8 string)
+{
+  // rjf: build & interact
+  ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+  UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable, string);
+  UI_AlphaDrawData *user = push_array(ui_build_arena(), UI_AlphaDrawData, 1);
+  ui_box_equip_custom_draw(box, ui_alpha_picker_draw, user);
+  UI_Signal sig = ui_signal_from_box(box);
+  
+  // rjf: click+draw behavior
+  if(ui_dragging(sig))
+  {
+    Vec2F32 dim = dim_2f32(box->rect);
+    F32 drag_pct = (ui_mouse().y - box->rect.y0) / dim.y; 
+    drag_pct = Clamp(0, drag_pct, 1);
+    *out_alpha = 1-drag_pct;
+    if(ui_pressed(sig))
+    {
+      ui_store_drag_struct(out_alpha);
+    }
+    if(ui_slot_press(UI_EventActionSlot_Cancel))
+    {
+      *out_alpha = *ui_get_drag_struct(F32);
+      ui_kill_action();
+    }
+  }
+  
+  // rjf: fill draw data
+  {
+    user->alpha = *out_alpha;
+  }
+  
+  return sig;
+}
+
+internal UI_Signal
+ui_alpha_pickerf(F32 *out_alpha, char *fmt, ...)
+{
+  Temp scratch = scratch_begin(0, 0);
+  va_list args;
+  va_start(args, fmt);
+  String8 string = push_str8fv(scratch.arena, fmt, args);
+  va_end(args);
+  UI_Signal sig = ui_alpha_picker(out_alpha, string);
+  scratch_end(scratch);
+  return sig;
+}
+
+////////////////////////////////
 //~ k: Scroll Regions
 
 internal UI_ScrollPt

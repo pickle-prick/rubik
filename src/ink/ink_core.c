@@ -3688,14 +3688,20 @@ ik_ui_selection(void)
   if(box && ik_tool() == IK_ToolKind_Selection)
   {
     Rng2F32 camera_rect = camera->rect;
+
+    /////////////////////////////////
+    // world pos to screen
+
     Vec4F32 p0 = {box->rect.x0, box->rect.y0, 0, 1.0};
     Vec4F32 p1 = {box->rect.x1, box->rect.y1, 0, 1.0};
     p0 = transform_4x4f32(ik_state->proj_mat, p0);
     p1 = transform_4x4f32(ik_state->proj_mat, p1);
-    p0.x = ((p0.x+1.0)/2.0) * ik_state->window_dim.x;
-    p1.x = ((p1.x+1.0)/2.0) * ik_state->window_dim.x;
-    p0.y = ((p0.y+1.0)/2.0) * ik_state->window_dim.y;
-    p1.y = ((p1.y+1.0)/2.0) * ik_state->window_dim.y;
+    // NOTE(k): ui position is floored, so we add it by 1, otherwise it will sometimes be off by 1 pixel
+    p0.x = (p0.x*0.5+0.5) * ik_state->window_dim.x + 1;
+    p0.y = (p0.y*0.5+0.5) * ik_state->window_dim.y + 1;
+    p1.x = (p1.x*0.5+0.5) * ik_state->window_dim.x + 1;
+    p1.y = (p1.y*0.5+0.5) * ik_state->window_dim.y + 1;
+
     Rng2F32 rect = r2f32p(p0.x, p0.y, p1.x, p1.y);
     Vec2F32 center = center_2f32(rect);
     rect.p0 = mix_2f32(center, rect.p0, 1.0-box->disabled_t);
@@ -3945,6 +3951,7 @@ ik_ui_inspector(void)
   IK_Box *b = ik_box_from_key(ik_state->focus_hot_box_key);
   B32 open = b != 0;
   F32 open_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "inspector_open_t"), open, .reset = 0, .rate = ik_state->animation.fast_rate);
+  IK_Frame *frame = ik_top_frame();
 
   if(b)
   {
@@ -3986,6 +3993,9 @@ ik_ui_inspector(void)
 
     UI_Parent(inner)
     {
+      ////////////////////////////////
+      //~ Basic
+
       UI_WidthFill
       UI_Row
       {
@@ -4048,7 +4058,64 @@ ik_ui_inspector(void)
           ui_labelf("%.2f", b->stroke_size);
       }
 
+      // ui_set_next_flags(UI_BoxFlag_DrawBorder);
+      // UI_WidthFill
+      // UI_Row
+      // {
+      //   UI_PrefWidth(ui_text_dim(1, 1.0))
+      //     ui_labelf("background");
+      //   ui_spacer(ui_pct(1.0, 0.0));
+      //   ui_alpha_pickerf(&b->color.x, "x");
+      //   ui_alpha_pickerf(&b->color.y, "y");
+      //   ui_alpha_pickerf(&b->color.z, "z");
+      //   ui_alpha_pickerf(&b->color.w, "w");
+      // }
+
+      if(!(b->flags&IK_BoxFlag_Orphan))
+      UI_WidthFill
+      UI_Row
+      {
+        UI_PrefWidth(ui_text_dim(1, 1.0))
+          ui_labelf("layer");
+        ui_spacer(ui_pct(1.0, 0.0));
+        UI_Row
+        {
+          ui_spacer(ui_pct(1.0, 0.0));
+          // UI_PrefWidth(ui_text_dim(1, 1.0))
+          //   ik_ui_buttonf("%I64u", 100);
+          // ui_spacer(ui_em(0.1, 0.0));
+          UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+          if(ui_clicked(ik_ui_buttonf("+")))
+          {
+            IK_Box *next = b->next;
+            if(next)
+            {
+              DLLRemove(frame->box_list.first, frame->box_list.last, b);
+              DLLInsert(frame->box_list.first, frame->box_list.last, next, b);
+            }
+          }
+
+          ui_spacer(ui_em(0.1, 0.0));
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+          UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+          if(ui_clicked(ik_ui_buttonf("-")))
+          {
+            IK_Box *prev = b;
+            for(U64 i = 0; i < 2 && prev != 0; i++, prev = prev->prev);
+            if(prev)
+            {
+              DLLRemove(frame->box_list.first, frame->box_list.last, b);
+              DLLInsert(frame->box_list.first, frame->box_list.last, prev, b);
+            }
+          }
+        }
+      }
+
       ui_divider(ui_em(0.5, 0.0));
+
+      ////////////////////////////////
+      //~ Drawing
 
       UI_WidthFill
       UI_Row
@@ -4193,25 +4260,21 @@ ik_ui_bottom_bar()
   Rng2F32 rect = {0, ik_state->window_dim.y-height, ik_state->window_dim.x, ik_state->window_dim.y};
   rect = pad_2f32(rect, -ui_top_font_size()*0.5);
   UI_Rect(rect)
-    UI_Flags(UI_BoxFlag_Floating)
+    UI_Flags(UI_BoxFlag_Floating | UI_BoxFlag_AllowOverflowY)
     container = ui_build_box_from_stringf(0, "bottom_bar_container");
 
   UI_Parent(container)
-    UI_PrefHeight(ui_px(height, 0.0))
-    UI_FontSize(ui_top_font_size()*1.15)
   {
     F32 zoom_level = round_f32(ik_state->world_to_screen_ratio.x*100);
     // camera zoom control
-    UI_PrefWidth(ui_text_dim(1.5, 1.0))
-      UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBackground)
-      UI_CornerRadius(2.0)
-      UI_Transparency(0.3)
-      if(ui_clicked(ui_buttonf(" %d %% ", (int)(zoom_level))))
-      {
-        Vec2F32 p0 = frame->camera.target_rect.p0;
-        frame->camera.target_rect.x1 = p0.x + ik_state->window_dim.x;
-        frame->camera.target_rect.y1 = p0.y + ik_state->window_dim.y;
-      }
+    UI_Transparency(0.3)
+    UI_FontSize(ui_top_font_size()*1.35f)
+    if(ui_clicked(ik_ui_buttonf("%d%%", (int)(zoom_level))))
+    {
+      Vec2F32 p0 = frame->camera.target_rect.p0;
+      frame->camera.target_rect.x1 = p0.x + ik_state->window_dim.x;
+      frame->camera.target_rect.y1 = p0.y + ik_state->window_dim.y;
+    }
 
     ui_spacer(ui_pct(1.0, 0.0));
 
@@ -4220,6 +4283,7 @@ ik_ui_bottom_bar()
       UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawTextWeak)
       UI_CornerRadius(2.0)
       UI_Transparency(0.3)
+      UI_FontSize(ui_top_font_size()*1.1f)
       ui_label(frame->save_path);
   }
 }
@@ -4272,6 +4336,61 @@ ik_ui_checkbox(String8 key_string, B32 b)
     sig = ui_signal_from_box(container);
   }
 
+  return sig;
+}
+
+internal UI_Signal
+ik_ui_button(String8 string)
+{ 
+  UI_Signal sig;
+
+  F32 padding_em = 0.15f;
+  // F32 font_size = ui_top_font_size() * (1.f-padding_em*2);
+  F32 font_size = ui_top_font_size() * (1.f-padding_em);
+  F32 corner_radius = font_size/16.0f;
+
+  UI_Box *container;
+  UI_CornerRadius(corner_radius)
+    UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
+    UI_PrefWidth(ui_children_sum(1.0))
+    container = ui_build_box_from_string(0, string);
+
+  UI_Box *body;
+  UI_Parent(container)
+    UI_PrefWidth(ui_children_sum(1.0))
+    UI_HeightFill
+    UI_Column
+    UI_Padding(ui_em(padding_em,1.0))
+    UI_Row
+    UI_Padding(ui_em(padding_em,1.0))
+    UI_CornerRadius(corner_radius)
+    UI_Flags(UI_BoxFlag_MouseClickable|
+             UI_BoxFlag_DrawBorder|
+             UI_BoxFlag_DrawBackground|
+             UI_BoxFlag_DrawHotEffects|
+             UI_BoxFlag_DrawText|
+             UI_BoxFlag_DrawActiveEffects|
+             UI_BoxFlag_DrawDropShadow)
+    UI_Palette(ui_state->widget_palette_info.scrollbar_palette)
+    UI_PrefWidth(ui_text_dim(0.5, 1.0))
+    UI_PrefHeight(ui_text_dim(0.5, 1.0))
+    UI_FontSize(font_size)
+    body = ui_build_box_from_string(0, string);
+
+  sig = ui_signal_from_box(body);
+  return sig;
+}
+
+internal UI_Signal
+ik_ui_buttonf(char *fmt, ...)
+{
+  Temp scratch = scratch_begin(0,0);
+  va_list args;
+  va_start(args, fmt);
+  String8 string = push_str8fv(scratch.arena, fmt, args);
+  va_end(args);
+  UI_Signal sig = ik_ui_button(string);
+  scratch_end(scratch);
   return sig;
 }
 
@@ -4806,8 +4925,8 @@ ik_screen_pos_from_world(Vec2F32 pos)
 {
   Vec4F32 projected = transform_4x4f32(ik_state->proj_mat, v4f32(pos.x, pos.y, 0, 1.0));
   Vec2F32 ret = {(projected.x+1.f)/2.f, (projected.y+1.f)/2.f};
-  ret.x *= ik_state->window_dim.x;
-  ret.y *= ik_state->window_dim.y;
+  ret.x = ret.x*ik_state->window_dim.x;
+  ret.y = ret.y*ik_state->window_dim.y;
   return ret;
 }
 

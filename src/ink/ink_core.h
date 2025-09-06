@@ -134,6 +134,7 @@ struct IK_Image
 {
   IK_Key key;
   R_Handle handle;
+  // TODO(Next): this could consumes alot memory, we should page it out to file, we only need it when doing saving
   String8 encoded; // png or whatever
   U64 x;
   U64 y;
@@ -869,6 +870,8 @@ internal void      ik_ui_selection(void);
 internal void      ik_ui_inspector(void);
 internal void      ik_ui_bottom_bar(void);
 internal UI_Signal ik_ui_checkbox(String8 key_string, B32 b);
+internal UI_Signal ik_ui_button(String8 string);
+internal UI_Signal ik_ui_buttonf(char *fmt, ...);
 
 /////////////////////////////////
 //~ Text Operation Functions

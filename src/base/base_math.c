@@ -1594,6 +1594,213 @@ internal Vec2F32 clamp_2f32(Rng2F32 r, Vec2F32 v) {
 }
 
 ////////////////////////////////
+//~ rjf: Color Operations
+
+//- rjf: hsv <-> rgb
+
+internal Vec3F32
+hsv_from_rgb(Vec3F32 rgb)
+{
+  F32 c_max = Max(rgb.x, Max(rgb.y, rgb.z));
+  F32 c_min = Min(rgb.x, Min(rgb.y, rgb.z));
+  F32 delta = c_max - c_min;
+  F32 h = ((delta == 0.f) ? 0.f :
+           (c_max == rgb.x) ? mod_f32((rgb.y - rgb.z)/delta + 6.f, 6.f) :
+           (c_max == rgb.y) ? (rgb.z - rgb.x)/delta + 2.f :
+           (c_max == rgb.z) ? (rgb.x - rgb.y)/delta + 4.f :
+           0.f);
+  F32 s = (c_max == 0.f) ? 0.f : (delta/c_max);
+  F32 v = c_max;
+  Vec3F32 hsv = {h/6.f, s, v};
+  return hsv;
+}
+
+internal Vec3F32
+rgb_from_hsv(Vec3F32 hsv)
+{
+  F32 h = mod_f32(hsv.x * 360.f, 360.f);
+  F32 s = hsv.y;
+  F32 v = hsv.z;
+  
+  F32 c = v*s;
+  F32 x = c*(1.f - abs_f32(mod_f32(h/60.f, 2.f) - 1.f));
+  F32 m = v - c;
+  
+  F32 r = 0;
+  F32 g = 0;
+  F32 b = 0;
+  
+  if ((h >= 0.f && h < 60.f) || (h >= 360.f && h < 420.f)){
+    r = c;
+    g = x;
+    b = 0;
+  }
+  else if (h >= 60.f && h < 120.f){
+    r = x;
+    g = c;
+    b = 0;
+  }
+  else if (h >= 120.f && h < 180.f){
+    r = 0;
+    g = c;
+    b = x;
+  }
+  else if (h >= 180.f && h < 240.f){
+    r = 0;
+    g = x;
+    b = c;
+  }
+  else if (h >= 240.f && h < 300.f){
+    r = x;
+    g = 0;
+    b = c;
+  }
+  else if ((h >= 300.f && h <= 360.f) || (h >= -60.f && h <= 0.f)){
+    r = c;
+    g = 0;
+    b = x;
+  }
+  
+  Vec3F32 rgb = {r + m, g + m, b + m};
+  return(rgb);
+}
+
+internal Vec4F32
+hsva_from_rgba(Vec4F32 rgba)
+{
+  Vec3F32 rgb = v3f32(rgba.x, rgba.y, rgba.z);
+  Vec3F32 hsv = hsv_from_rgb(rgb);
+  Vec4F32 hsva = v4f32(hsv.x, hsv.y, hsv.z, rgba.w);
+  return hsva;
+}
+
+internal Vec4F32
+rgba_from_hsva(Vec4F32 hsva)
+{
+  Vec3F32 hsv = v3f32(hsva.x, hsva.y, hsva.z);
+  Vec3F32 rgb = rgb_from_hsv(hsv);
+  Vec4F32 rgba = v4f32(rgb.x, rgb.y, rgb.z, hsva.w);
+  return rgba;
+}
+
+//- rjf: srgb <-> linear
+
+internal Vec3F32
+linear_from_srgb(Vec3F32 srgb)
+{
+  Vec3F32 result;
+  for EachElement(idx, srgb.v)
+  {
+    result.v[idx] = (srgb.v[idx] < 0.0404482362771082f ? srgb.v[idx] / 12.92f : pow_f32((srgb.v[idx] + 0.055f) / 1.055f, 2.4f));
+  }
+  return result;
+}
+
+internal Vec3F32
+srgb_from_linear(Vec3F32 linear)
+{
+  Vec3F32 result;
+  for EachElement(idx, linear.v)
+  {
+    result.v[idx] = (0 <= linear.v[idx] && linear.v[idx] < 0.00313066844250063) ? linear.v[idx]*12.92f : 1.05f * pow_f32(linear.v[idx], 1.f/2.4f) - 0.055f;
+  }
+  return result;
+}
+
+internal Vec4F32
+linear_from_srgba(Vec4F32 srgba)
+{
+  Vec4F32 result;
+  result.xyz = linear_from_srgb(srgba.xyz);
+  result.w = srgba.w;
+  return result;
+}
+
+internal Vec4F32
+srgba_from_linear(Vec4F32 linear)
+{
+  Vec4F32 result;
+  result.xyz = srgb_from_linear(linear.xyz);
+  result.w = linear.w;
+  return result;
+}
+
+//- rjf: oklab <-> linear
+
+internal Vec3F32
+oklab_from_linear(Vec3F32 linear)
+{
+  F32 l = (0.4122214708f * linear.x + 0.5363325363f * linear.y + 0.0514459929f * linear.z);
+	F32 m = (0.2119034982f * linear.x + 0.6806995451f * linear.y + 0.1073969566f * linear.z);
+	F32 s = (0.0883024619f * linear.x + 0.2817188376f * linear.y + 0.6299787005f * linear.z);
+  F32 l_ = cbrt_f32(l);
+  F32 m_ = cbrt_f32(m);
+  F32 s_ = cbrt_f32(s);
+  Vec3F32 result;
+  result.x = 0.2104542553f*l_ + 0.7936177850f*m_ - 0.0040720468f*s_;
+  result.y = 1.9779984951f*l_ - 2.4285922050f*m_ + 0.4505937099f*s_;
+  result.z = 0.0259040371f*l_ + 0.7827717662f*m_ - 0.8086757660f*s_;
+  return result;
+}
+
+internal Vec3F32
+linear_from_oklab(Vec3F32 oklab)
+{
+  F32 l_ = oklab.x + 0.3963377774f * oklab.y + 0.2158037573f * oklab.z;
+  F32 m_ = oklab.x - 0.1055613458f * oklab.y - 0.0638541728f * oklab.z;
+  F32 s_ = oklab.x - 0.0894841775f * oklab.y - 1.2914855480f * oklab.z;
+  F32 l = l_*l_*l_;
+  F32 m = m_*m_*m_;
+  F32 s = s_*s_*s_;
+  Vec3F32 result;
+  result.x = +4.0767416621f * l - 3.3077115913f * m + 0.2309699292f * s;
+  result.y = -1.2684380046f * l + 2.6097574011f * m - 0.3413193965f * s;
+  result.z = -0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s;
+  return result;
+}
+
+internal Vec4F32
+oklab_from_lineara(Vec4F32 lineara)
+{
+  Vec4F32 result;
+  result.xyz = oklab_from_linear(lineara.xyz);
+  result.w = lineara.w;
+  return result;
+}
+
+internal Vec4F32
+lineara_from_oklab(Vec4F32 oklab)
+{
+  Vec4F32 result;
+  result.xyz = linear_from_oklab(oklab.xyz);
+  result.w = oklab.w;
+  return result;
+}
+
+//- rjf: rgba <-> u32
+
+internal U32
+u32_from_rgba(Vec4F32 rgba)
+{
+  U32 result = 0;
+  result |= ((U32)((U8)(rgba.x*255.f))) << 24;
+  result |= ((U32)((U8)(rgba.y*255.f))) << 16;
+  result |= ((U32)((U8)(rgba.z*255.f))) <<  8;
+  result |= ((U32)((U8)(rgba.w*255.f))) <<  0;
+  return result;
+}
+
+internal Vec4F32
+rgba_from_u32(U32 hex)
+{
+  Vec4F32 result = v4f32(((hex&0xff000000)>>24)/255.f,
+                         ((hex&0x00ff0000)>>16)/255.f,
+                         ((hex&0x0000ff00)>> 8)/255.f,
+                         ((hex&0x000000ff)>> 0)/255.f);
+  return result;
+}
+
+////////////////////////////////
 //~ rjf: Miscellaneous Ops
 
 // thread_static U32 gseed = 0;
@@ -1622,96 +1829,6 @@ internal Vec2F32 clamp_2f32(Rng2F32 r, Vec2F32 v) {
 // {
 //   gseed = s;
 // }
-
-internal Vec3F32 hsv_from_rgb(Vec3F32 rgb) {
-  F32 c_max = Max(rgb.x, Max(rgb.y, rgb.z));
-  F32 c_min = Min(rgb.x, Min(rgb.y, rgb.z));
-  F32 delta = c_max - c_min;
-  F32 h =
-    ((delta == 0.f)     ? 0.f
-     : (c_max == rgb.x) ? mod_f32((rgb.y - rgb.z) / delta + 6.f, 6.f)
-     : (c_max == rgb.y) ? (rgb.z - rgb.x) / delta + 2.f
-     : (c_max == rgb.z) ? (rgb.x - rgb.y) / delta + 4.f
-     : 0.f);
-  F32 s = (c_max == 0.f) ? 0.f : (delta / c_max);
-  F32 v = c_max;
-  Vec3F32 hsv = {h / 6.f, s, v};
-  return hsv;
-}
-
-internal Vec3F32 rgb_from_hsv(Vec3F32 hsv) {
-  F32 h = mod_f32(hsv.x * 360.f, 360.f);
-  F32 s = hsv.y;
-  F32 v = hsv.z;
-
-  F32 c = v * s;
-  F32 x = c * (1.f - abs_f32(mod_f32(h / 60.f, 2.f) - 1.f));
-  F32 m = v - c;
-
-  F32 r = 0;
-  F32 g = 0;
-  F32 b = 0;
-
-  if ((h >= 0.f && h < 60.f) || (h >= 360.f && h < 420.f)) {
-    r = c;
-    g = x;
-    b = 0;
-  } else if (h >= 60.f && h < 120.f) {
-    r = x;
-    g = c;
-    b = 0;
-  } else if (h >= 120.f && h < 180.f) {
-    r = 0;
-    g = c;
-    b = x;
-  } else if (h >= 180.f && h < 240.f) {
-    r = 0;
-    g = x;
-    b = c;
-  } else if (h >= 240.f && h < 300.f) {
-    r = x;
-    g = 0;
-    b = c;
-  } else if ((h >= 300.f && h <= 360.f) || (h >= -60.f && h <= 0.f)) {
-    r = c;
-    g = 0;
-    b = x;
-  }
-
-  Vec3F32 rgb = {r + m, g + m, b + m};
-  return (rgb);
-}
-
-internal Vec4F32 hsva_from_rgba(Vec4F32 rgba) {
-  Vec3F32 rgb = v3f32(rgba.x, rgba.y, rgba.z);
-  Vec3F32 hsv = hsv_from_rgb(rgb);
-  Vec4F32 hsva = v4f32(hsv.x, hsv.y, hsv.z, rgba.w);
-  return hsva;
-}
-
-internal Vec4F32 rgba_from_hsva(Vec4F32 hsva) {
-  Vec3F32 hsv = v3f32(hsva.x, hsva.y, hsva.z);
-  Vec3F32 rgb = rgb_from_hsv(hsv);
-  Vec4F32 rgba = v4f32(rgb.x, rgb.y, rgb.z, hsva.w);
-  return rgba;
-}
-
-internal Vec4F32 rgba_from_u32(U32 hex) {
-  Vec4F32 result = v4f32(((hex & 0xff000000) >> 24) / 255.f,
-                   ((hex & 0x00ff0000) >> 16) / 255.f,
-                   ((hex & 0x0000ff00) >> 8) / 255.f,
-                   ((hex & 0x000000ff) >> 0) / 255.f);
-  return result;
-}
-
-internal U32 u32_from_rgba(Vec4F32 rgba) {
-  U32 result = 0;
-  result |= ((U32)((U8)(rgba.x * 255.f))) << 24;
-  result |= ((U32)((U8)(rgba.y * 255.f))) << 16;
-  result |= ((U32)((U8)(rgba.z * 255.f))) << 8;
-  result |= ((U32)((U8)(rgba.w * 255.f))) << 0;
-  return result;
-}
 
 ////////////////////////////////
 //~ rjf: List Type Functions

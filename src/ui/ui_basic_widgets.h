@@ -102,6 +102,25 @@ internal UI_Signal ui_expander(B32 is_expanded, String8 string);
 internal UI_Signal ui_expanderf(B32 is_expanded, char *fmt, ...);
 
 ////////////////////////////////
+//~ rjf: Color Pickers
+
+//- rjf: tooltips
+internal void ui_do_color_tooltip_hsv(Vec3F32 hsv);
+internal void ui_do_color_tooltip_hsva(Vec4F32 hsva);
+
+//- rjf: saturation/value picker
+internal UI_Signal ui_sat_val_picker(F32 hue, F32 *out_sat, F32 *out_val, String8 string);
+internal UI_Signal ui_sat_val_pickerf(F32 hue, F32 *out_sat, F32 *out_val, char *fmt, ...);
+
+//- rjf: hue picker
+internal UI_Signal ui_hue_picker(F32 *out_hue, F32 sat, F32 val, String8 string);
+internal UI_Signal ui_hue_pickerf(F32 *out_hue, F32 sat, F32 val, char *fmt, ...);
+
+//- rjf: alpha picker
+internal UI_Signal ui_alpha_picker(F32 *out_alpha, String8 string);
+internal UI_Signal ui_alpha_pickerf(F32 *out_alpha, char *fmt, ...);
+
+////////////////////////////////
 //~ rjf: Simple Layout Widgets
 
 internal UI_Box *ui_row_begin(void);

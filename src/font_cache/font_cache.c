@@ -272,6 +272,13 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
 
     B32 is_tab = (piece_substring.size == 1 && piece_substring.str[0] == '\t');
     if(is_tab) piece_substring = str8_lit(" ");
+
+    // TODO(Next): hacks for now, support unicode later
+    if(piece_substring.str[0] < 32 || piece_substring.str[0] > 126)
+    {
+      piece_substring = str8_lit(" ");
+    }
+
     // TODO(Next): what will happen if we have a '\n' here
     // NOTE(k): don't pass \n here, jesus, font rendering is complex
 
