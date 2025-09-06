@@ -544,10 +544,12 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
   String8 font_mplus = str8(__Mplus1Code_Medium_ttf, __Mplus1Code_Medium_ttf_len);
   String8 font_icons = str8(icons_ttf, icons_ttf_len);
   String8 font_toolbar_icons = str8(__toolbar_icons_ttf, __toolbar_icons_ttf_len);
+  String8 font_virgil = str8(__virgil_ttf, __virgil_ttf_len);
   ik_state->cfg_font_tags[IK_FontSlot_Main] = f_tag_from_static_data_string(&font_mplus);
   ik_state->cfg_font_tags[IK_FontSlot_Code] = f_tag_from_static_data_string(&font_mplus);
   ik_state->cfg_font_tags[IK_FontSlot_Icons] = f_tag_from_static_data_string(&font_icons);
   ik_state->cfg_font_tags[IK_FontSlot_ToolbarIcons] = f_tag_from_static_data_string(&font_toolbar_icons);
+  ik_state->cfg_font_tags[IK_FontSlot_HandWrite] = f_tag_from_static_data_string(&font_virgil);
 
   // ik_state->cfg_font_tags[IK_FontSlot_Main] = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
   // ik_state->cfg_font_tags[IK_FontSlot_Code] = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
@@ -786,7 +788,7 @@ ik_frame(void)
   //~ Pick target hz
 
   // pick among a number of sensible targets to snap to, given how well we've been performing
-  F32 target_hz = os_get_gfx_info()->default_refresh_rate;
+  F32 target_hz = !os_window_is_focused(ik_state->os_wnd) ? 2.0f : os_get_gfx_info()->default_refresh_rate;
   if(ik_state->frame_index > 32)
   {
     F32 possible_alternate_hz_targets[] = {target_hz, 60.f, 120.f, 144.f, 240.f};
@@ -1283,7 +1285,7 @@ ik_frame(void)
             D_FancyStringList fancy_strings = {0};
 
             D_FancyString fstr = {0};
-            fstr.font = box->font;
+            fstr.font = ik_font_from_slot(IK_FontSlot_HandWrite);
             fstr.string = line;
             fstr.color = box->palette->colors[text_color_code];
             fstr.size = M_1;
@@ -1768,9 +1770,11 @@ ik_frame(void)
           Vec2F32 center = center_2f32(dst);
           dst.p0 = mix_2f32(center, dst.p0, 1.0-box->disabled_t);
           dst.p1 = mix_2f32(center, dst.p1, 1.0-box->disabled_t);
+          Vec2F32 dim = dim_2f32(dst);
+          B32 zero_dim = dim.x == 0 && dim.y == 0;
 
           // draw drop_shadow
-          if(box->flags & IK_BoxFlag_DrawDropShadow)
+          if(box->flags & IK_BoxFlag_DrawDropShadow && !zero_dim)
           {
             Rng2F32 drop_shadow_rect = shift_2f32(pad_2f32(box->rect, 8), v2f32(4, 4));
             Vec4F32 drop_shadow_color = ik_rgba_from_theme_color(IK_ThemeColor_DropShadow);
@@ -1778,13 +1782,13 @@ ik_frame(void)
           }
 
           // draw rect
-          if(box->flags & IK_BoxFlag_DrawBackground)
+          if(box->flags & IK_BoxFlag_DrawBackground && !zero_dim)
           {
             d_rect(dst, box->color, 0, 0, 0);
           }
           
           // draw image
-          if((box->flags&IK_BoxFlag_DrawImage) && box->image)
+          if((box->flags&IK_BoxFlag_DrawImage) && box->image && !zero_dim)
           {
             IK_Image *image = box->image;
             if(!image->loaded)
@@ -1831,7 +1835,7 @@ ik_frame(void)
           }
 
           // draw border
-          if(box->flags & IK_BoxFlag_DrawBorder)
+          if(box->flags & IK_BoxFlag_DrawBorder && !zero_dim)
           {
             Vec4F32 border_clr = box->palette->colors[IK_ColorCode_Border];
             F32 border_thickness = 1.5 * ik_state->world_to_screen_ratio.x;
@@ -1839,7 +1843,7 @@ ik_frame(void)
           }
 
           // draw selection highlight
-          if(box->sig.f & IK_SignalFlag_Select)
+          if(box->sig.f & IK_SignalFlag_Select && !zero_dim)
           {
             d_rect(pad_2f32(dst, 0*ik_state->world_to_screen_ratio.x), v4f32(1,1,0,0.1), 0, 0, 0);
             F32 border_thickness = 3*ik_state->world_to_screen_ratio.x;
@@ -1876,6 +1880,7 @@ ik_frame(void)
 
   // submit drawing bucket
   ProfScope("submit")
+  if(os_window_is_focused(ik_state->os_wnd))
   {
     r_begin_frame();
     r_window_begin_frame(ik_state->os_wnd, ik_state->r_wnd);
