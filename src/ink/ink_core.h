@@ -333,6 +333,7 @@ typedef U64 IK_BoxFlags;
 # define IK_BoxFlag_Orphan                (IK_BoxFlags)(1ull<<22) // won't push to the frame's box list 
 # define IK_BoxFlag_OmitGroupSelection    (IK_BoxFlags)(1ull<<23)
 # define IK_BoxFlag_OmitDeletion          (IK_BoxFlags)(1ull<<24)
+# define IK_BoxFlag_DoubleClickToCenter   (IK_BoxFlags)(1ull<<25)
 
 typedef struct IK_Box IK_Box;
 //- draw functions
@@ -581,6 +582,9 @@ struct IK_State
   R_Handle              r_wnd;
   OS_Handle             os_wnd;
   UI_EventList          *events;
+
+  // debug
+  B32                   show_stats;
 
   IK_Frame              *active_frame;
 

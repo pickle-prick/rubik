@@ -1230,7 +1230,15 @@ ik_frame(void)
         B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
         B32 is_disabled = box->flags&IK_BoxFlag_Disabled;
 
-        if((sig.f&IK_SignalFlag_Delete) && !(box->flags&IK_BoxFlag_OmitDeletion))
+        // update fixed rect
+        // NOTE(Next): r2f32 can't represent a non-axis-aligned rect, we need to push a xform if we need to rotate
+        Rng2F32 rect = {.p0 = box->position, .p1 = {box->position.x + box->rect_size.x, box->position.y + box->rect_size.y}};
+
+        // update artifacts
+        box->rect = rect;
+        box->sig = sig;
+
+        if((box->sig.f&IK_SignalFlag_Delete) && !(box->flags&IK_BoxFlag_OmitDeletion))
         {
           ik_box_release(box);
           continue;
@@ -1243,13 +1251,16 @@ ik_frame(void)
           box->ratio = box->rect_size.x/box->rect_size.y;
         }
 
-        // update fixed rect
-        // NOTE(Next): r2f32 can't represent a non-axis-aligned rect, we need to push a xform if we need to rotate
-        Rng2F32 rect = {.p0 = box->position, .p1 = {box->position.x + box->rect_size.x, box->position.y + box->rect_size.y}};
+        if(box->flags&IK_BoxFlag_DoubleClickToCenter && box->sig.f&IK_SignalFlag_DoubleClicked)
+        {
+          Vec2F32 viewport_center = center_2f32(frame->camera.target_rect);
+          Vec2F32 box_center = center_2f32(box->rect);
+          Vec2F32 delta = sub_2f32(box_center, viewport_center);
+          ik_kill_action();
 
-        // update artifacts
-        box->rect = rect;
-        box->sig = sig;
+          frame->camera.target_rect.p0 = add_2f32(frame->camera.target_rect.p0, delta);
+          frame->camera.target_rect.p1 = add_2f32(frame->camera.target_rect.p1, delta);
+        }
 
         ////////////////////////////////
         // push to global selection list if box is selected
@@ -1462,29 +1473,40 @@ ik_frame(void)
 
     if(os_window_is_focused(ik_state->os_wnd) && ik_key_match(ik_state->focus_active_box_key, ik_key_zero()))
     {
-      if(ui_key_press(0, OS_Key_H))
+      for(UI_EventNode *evt_node = ik_state->events->first, *next_evt_node = 0;
+          evt_node != 0;
+          evt_node = next_evt_node)
       {
-        ik_state->tool = IK_ToolKind_Hand;
-      }
-      if(ui_key_press(0, OS_Key_S))
-      {
-        ik_state->tool = IK_ToolKind_Selection;
-      }
-      if(ui_key_press(0, OS_Key_R))
-      {
-        ik_state->tool = IK_ToolKind_Rectangle;
-      }
-      if(ui_key_press(0, OS_Key_D))
-      {
-        ik_state->tool = IK_ToolKind_Draw;
-      }
-      if(ui_key_press(0, OS_Key_I))
-      {
-        ik_state->tool = IK_ToolKind_InsertImage;
-      }
-      if(ui_key_press(0, OS_Key_E))
-      {
-        ik_state->tool = IK_ToolKind_Eraser;
+        UI_Event *evt = &evt_node->v;
+
+        if(evt->kind == UI_EventKind_Press && evt->key == OS_Key_H && evt->modifiers == 0)
+        {
+          ik_state->tool = IK_ToolKind_Hand;
+        }
+        if(evt->kind == UI_EventKind_Press && evt->key == OS_Key_S && evt->modifiers == 0)
+        {
+          ik_state->tool = IK_ToolKind_Selection;
+        }
+        if(evt->kind == UI_EventKind_Press && evt->key == OS_Key_R && evt->modifiers == 0)
+        {
+          ik_state->tool = IK_ToolKind_Rectangle;
+        }
+        if(evt->kind == UI_EventKind_Press && evt->key == OS_Key_D && evt->modifiers == 0)
+        {
+          ik_state->tool = IK_ToolKind_Draw;
+        }
+        if(evt->kind == UI_EventKind_Press && evt->key == OS_Key_I && evt->modifiers == 0)
+        {
+          ik_state->tool = IK_ToolKind_InsertImage;
+        }
+        if(evt->kind == UI_EventKind_Press && evt->key == OS_Key_E && evt->modifiers == 0)
+        {
+          ik_state->tool = IK_ToolKind_Eraser;
+        }
+        if(evt->kind == UI_EventKind_Press && evt->key == OS_Key_Tick && (evt->modifiers & OS_Modifier_Ctrl))
+        {
+          ik_state->show_stats = !ik_state->show_stats;
+        }
       }
     }
 
@@ -2868,7 +2890,7 @@ internal IK_Box *
 ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, IK_Image *image)
 {
   IK_Box *box = ik_build_box_from_stringf(0, "image###%I64u", os_now_microseconds());
-  box->flags = flags|IK_BoxFlag_DrawImage|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToScaleRectSize;
+  box->flags = flags|IK_BoxFlag_DrawImage|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToScaleRectSize|IK_BoxFlag_DoubleClickToCenter;
   box->position = pos;
   box->rect_size = rect_size;
   box->hover_cursor = OS_Cursor_UpDownLeftRight;
@@ -3444,6 +3466,8 @@ ik_signal_from_box(IK_Box *box)
 internal void
 ik_ui_stats(void)
 {
+  if(!ik_state->show_stats) return;
+
   IK_Frame *frame = ik_top_frame();
   IK_Camera *camera = &frame->camera;
 
