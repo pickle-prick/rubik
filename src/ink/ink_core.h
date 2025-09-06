@@ -391,8 +391,8 @@ struct IK_Box
   // text
   String8 string;
   F_Tag font;
-  U64 font_size;
-  U64 tab_size;
+  F32 font_size;
+  F32 tab_size;
   F_RasterFlags text_raster_flags;
   F32 text_padding;
   TxtPt cursor;

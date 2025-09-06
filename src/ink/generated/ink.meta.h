@@ -223,7 +223,7 @@ state->font_nil_stack_top.v = f_tag_zero();\
 state->font_size_nil_stack_top.v = 24.f;\
 state->text_raster_flags_nil_stack_top.v = F_RasterFlag_Hinted;\
 state->tab_size_nil_stack_top.v = 24.f*4.f;\
-state->stroke_size_nil_stack_top.v = 16;\
+state->stroke_size_nil_stack_top.v = 8;\
 state->transparency_nil_stack_top.v = 0;\
 state->palette_nil_stack_top.v = 0;\
 state->flags_nil_stack_top.v = 0;\
@@ -253,7 +253,7 @@ state->font_stack.top = &state->font_nil_stack_top; state->font_stack.bottom_val
 state->font_size_stack.top = &state->font_size_nil_stack_top; state->font_size_stack.bottom_val = 24.f; state->font_size_stack.free = 0; state->font_size_stack.auto_pop = 0;\
 state->text_raster_flags_stack.top = &state->text_raster_flags_nil_stack_top; state->text_raster_flags_stack.bottom_val = F_RasterFlag_Hinted; state->text_raster_flags_stack.free = 0; state->text_raster_flags_stack.auto_pop = 0;\
 state->tab_size_stack.top = &state->tab_size_nil_stack_top; state->tab_size_stack.bottom_val = 24.f*4.f; state->tab_size_stack.free = 0; state->tab_size_stack.auto_pop = 0;\
-state->stroke_size_stack.top = &state->stroke_size_nil_stack_top; state->stroke_size_stack.bottom_val = 16; state->stroke_size_stack.free = 0; state->stroke_size_stack.auto_pop = 0;\
+state->stroke_size_stack.top = &state->stroke_size_nil_stack_top; state->stroke_size_stack.bottom_val = 8; state->stroke_size_stack.free = 0; state->stroke_size_stack.auto_pop = 0;\
 state->transparency_stack.top = &state->transparency_nil_stack_top; state->transparency_stack.bottom_val = 0; state->transparency_stack.free = 0; state->transparency_stack.auto_pop = 0;\
 state->palette_stack.top = &state->palette_nil_stack_top; state->palette_stack.bottom_val = 0; state->palette_stack.free = 0; state->palette_stack.auto_pop = 0;\
 state->flags_stack.top = &state->flags_nil_stack_top; state->flags_stack.bottom_val = 0; state->flags_stack.free = 0; state->flags_stack.auto_pop = 0;\

@@ -3835,7 +3835,6 @@ ik_ui_selection(void)
               if(size_added)
               {
                 box->position = sub_2f32(drag.drag_start_position, size_delta);
-                // printf("p1 %f %f\n", box->rect.p1.x, box->rect.p1.y);
               }
             }
             break;
@@ -4183,7 +4182,7 @@ ik_ui_inspector(void)
             ui_labelf("font_size");
           ui_spacer(ui_pct(1.0, 0.0));
           UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("%I64u", b->font_size);
+            ui_labelf("%.2f", b->font_size);
         }
 
         UI_WidthFill
@@ -4697,8 +4696,8 @@ ik_frame_to_tyml(IK_Frame *frame)
           // Text
 
           if(box->string.size > 0) se_multiline_str_with_tag(str8_lit("string"), box->string);
-          se_u64_with_tag(str8_lit("font_size"), box->font_size);
-          se_u64_with_tag(str8_lit("tab_size"), box->tab_size);
+          se_f32_with_tag(str8_lit("font_size"), box->font_size);
+          se_f32_with_tag(str8_lit("tab_size"), box->tab_size);
           se_u64_with_tag(str8_lit("text_raster_flags"), box->text_raster_flags);
           se_f32_with_tag(str8_lit("text_padding"), box->text_padding);
 
@@ -4884,8 +4883,8 @@ ik_frame_from_tyml(String8 path)
         String8 string_joined = str8_list_join(scratch.arena, &list, &join);
         box->string = ik_push_str8_copy(string_joined);
       }
-      box->font_size = se_u64_from_tag(n, str8_lit("font_size"));
-      box->tab_size = se_u64_from_tag(n, str8_lit("tab_size"));
+      box->font_size = se_f32_from_tag(n, str8_lit("font_size"));
+      box->tab_size = se_f32_from_tag(n, str8_lit("tab_size"));
       box->text_raster_flags = se_u64_from_tag(n, str8_lit("text_raster_flags"));
       box->text_padding = se_f32_from_tag(n, str8_lit("text_padding"));
 
