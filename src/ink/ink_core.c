@@ -4276,8 +4276,17 @@ ik_ui_bottom_bar()
     if(ui_clicked(ik_ui_buttonf("%d%%", (int)(zoom_level))))
     {
       Vec2F32 p0 = frame->camera.target_rect.p0;
-      frame->camera.target_rect.x1 = p0.x + ik_state->window_dim.x;
-      frame->camera.target_rect.y1 = p0.y + ik_state->window_dim.y;
+
+      Rng2F32 new_rect = frame->camera.target_rect;
+      new_rect.p1.x = p0.x + ik_state->window_dim.x;
+      new_rect.p1.y = p0.y + ik_state->window_dim.y;
+
+      // move to previous center
+      Vec2F32 old_center = center_2f32(frame->camera.target_rect);
+      Vec2F32 delta = sub_2f32(old_center, center_2f32(new_rect));
+      new_rect.p0 = add_2f32(new_rect.p0, delta);
+      new_rect.p1 = add_2f32(new_rect.p1, delta);
+      frame->camera.target_rect = new_rect;
     }
 
     ui_spacer(ui_pct(1.0, 0.0));
