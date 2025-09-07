@@ -334,6 +334,7 @@ typedef U64 IK_BoxFlags;
 # define IK_BoxFlag_OmitGroupSelection    (IK_BoxFlags)(1ull<<23)
 # define IK_BoxFlag_OmitDeletion          (IK_BoxFlags)(1ull<<24)
 # define IK_BoxFlag_DoubleClickToCenter   (IK_BoxFlags)(1ull<<25)
+# define IK_BoxFlag_PruneZeroText         (IK_BoxFlags)(1ull<<26)
 
 typedef struct IK_Box IK_Box;
 //- draw functions
@@ -410,7 +411,6 @@ struct IK_Box
   // D_FancyStringList *display_line_fstrs; // TODO: support fancy string
   D_FancyRunList *display_line_fruns;
   D_FancyRunList empty_fruns;
-  Rng2F32 rect;
   IK_Signal sig;
   U64 draw_frame_index;
   Vec2F32 text_bounds;
@@ -836,6 +836,12 @@ internal IK_Box* ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, IK_
 internal IK_Box* ik_stroke(void);
 
 /////////////////////////////////
+//~ Box Manipulation Functions
+
+internal B32  ik_box_do_scale(IK_Box *box, Vec2F32 scale, Vec2F32 origin);
+internal void ik_box_do_translate(IK_Box *box, Vec2F32 translate);
+
+/////////////////////////////////
 //~ Point Function
 
 internal IK_Point* ik_point_alloc();
@@ -892,6 +898,8 @@ internal IK_Frame* ik_frame_from_tyml(String8 path);
 
 /////////////////////////////////
 //~ Helpers
+
+#define ik_rect_from_box(b) ((Rng2F32){b->position.x, b->position.y, b->position.x+b->rect_size.x, b->position.y+b->rect_size.y})
 
 // projection
 internal Vec2F32 ik_screen_pos_in_world(Mat4x4F32 proj_view_mat_inv, Vec2F32 pos);
