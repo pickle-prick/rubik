@@ -1572,7 +1572,9 @@ X(IBar, IDC_IBEAM) \
 X(LeftRight, IDC_SIZEWE) \
 X(UpDown, IDC_SIZENS) \
 X(DownRight, IDC_SIZENWSE) \
+X(DownLeft, IDC_SIZENWSE) \
 X(UpRight, IDC_SIZENESW) \
+X(UpLeft, IDC_SIZENWSE) \
 X(UpDownLeftRight, IDC_SIZEALL) \
 X(HandPoint, IDC_HAND)\
 X(Disabled, IDC_NO)
