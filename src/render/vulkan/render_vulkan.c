@@ -112,7 +112,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     // NOTE(k): instance extensions is not the same as the physical device extensions
     U32 ext_count;
     vkEnumerateInstanceExtensionProperties(NULL, &ext_count, NULL);
-    VkExtensionProperties extensions[ext_count]; 
+    VkExtensionProperties *extensions = push_array(scratch.arena, VkExtensionProperties, ext_count);
     vkEnumerateInstanceExtensionProperties(NULL, &ext_count, extensions); /* query the extension details */
 
     printf("%d instance extensions supported\n", ext_count);
@@ -124,7 +124,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     // Required Extensions
     // Glfw required instance extensions
     U64 required_inst_ext_count = 2;
-    const char *required_inst_exts[required_inst_ext_count];
+    const char **required_inst_exts = push_array(scratch.arena, char*, required_inst_ext_count);
     required_inst_exts[0] = "VK_KHR_surface";
     required_inst_exts[1] = os_vulkan_surface_ext();
 
@@ -174,7 +174,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
   // get instance layer info
   U32 instance_layer_count;
   VK_Assert(vkEnumerateInstanceLayerProperties(&instance_layer_count, NULL));
-  VkLayerProperties instance_layers[instance_layer_count];
+  VkLayerProperties *instance_layers = push_array(scratch.arena, VkLayerProperties, instance_layer_count);
   VK_Assert(vkEnumerateInstanceLayerProperties(&instance_layer_count, instance_layers));
 
   // check if all enabled layers are presented
@@ -373,12 +373,12 @@ r_init(const char* app_name, OS_Handle window, bool debug)
 
       U32 surface_format_count;
       VK_Assert(vkGetPhysicalDeviceSurfaceFormatsKHR(pdevices_src[i], surface.h, &surface_format_count, NULL));
-      VkSurfaceFormatKHR surface_formats[surface_format_count];
+      VkSurfaceFormatKHR *surface_formats = push_array(scratch.arena, VkSurfaceFormatKHR, surface_format_count);
       VK_Assert(vkGetPhysicalDeviceSurfaceFormatsKHR(pdevices_src[i], surface.h, &surface_format_count, surface_formats));
 
       U32 surface_present_mode_count;
       VK_Assert(vkGetPhysicalDeviceSurfacePresentModesKHR(pdevices_src[i], surface.h, &surface_present_mode_count, NULL));
-      VkPresentModeKHR surface_present_modes[surface_present_mode_count];
+      VkPresentModeKHR *surface_present_modes = push_array(scratch.arena, VkPresentModeKHR, surface_present_mode_count);
       VK_Assert(vkGetPhysicalDeviceSurfacePresentModesKHR(pdevices_src[i], surface.h, &surface_present_mode_count, surface_present_modes));
 
       // For now, swap chain support is sufficient if there is at least one supported image format and one supported presentation mode given the window surface we have
@@ -3550,6 +3550,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
                               R_Vulkan_DescriptorSet *sets)
 {
   ProfBeginFunction();
+  Temp scratch = scratch_begin(0,0);
   R_Vulkan_DescriptorSetLayout set_layout = r_vulkan_state->set_layouts[kind];
 
   U64 remaining = set_count;
@@ -3565,7 +3566,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
       pool->cmt  = 0;
       pool->cap  = AlignPow2(cap, 16);
 
-      VkDescriptorPoolSize pool_sizes[set_layout.binding_count];
+      VkDescriptorPoolSize *pool_sizes = push_array(scratch.arena, VkDescriptorPoolSize, set_layout.binding_count);
       for(U64 i = 0; i < set_layout.binding_count; i++)
       {
         pool_sizes[i].type = set_layout.bindings[i].descriptorType;
@@ -3596,7 +3597,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
     Assert(alloc_count > 0);
     if(remaining < alloc_count) alloc_count = remaining;
 
-    VkDescriptorSet temp_sets[alloc_count];
+    VkDescriptorSet *temp_sets = push_array(scratch.arena, VkDescriptorSet, alloc_count);
     VkDescriptorSetAllocateInfo set_alloc_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
     set_alloc_info.descriptorPool     = pool->h;
     set_alloc_info.descriptorSetCount = alloc_count;
@@ -3621,10 +3622,8 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
 
   // NOTE(k): set could have multiple writes due multiple bindings
   U64 writes_count = set_count * set_layout.binding_count;
-  VkWriteDescriptorSet writes[writes_count];
-  MemoryZeroArray(writes);
+  VkWriteDescriptorSet *writes = push_array(scratch.arena, VkWriteDescriptorSet, writes_count);
 
-  Temp temp = scratch_begin(0,0);
   for(U64 i = 0; i < set_count; i++)
   {
     for(U64 j = 0; j < set_layout.binding_count; j++)
@@ -3635,7 +3634,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
       {
         case R_Vulkan_DescriptorSetKind_UBO_Rect:
         {
-          VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+          VkDescriptorBufferInfo *buffer_info = push_array(scratch.arena, VkDescriptorBufferInfo, 1);
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           buffer_info->range  = sizeof(R_Vulkan_UBO_Rect);
@@ -3658,7 +3657,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         }break;
         case R_Vulkan_DescriptorSetKind_UBO_Geo2D:
         {
-          VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+          VkDescriptorBufferInfo *buffer_info = push_array(scratch.arena, VkDescriptorBufferInfo, 1);
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           buffer_info->range  = sizeof(R_Vulkan_UBO_Geo2D);
@@ -3675,7 +3674,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         }break;
         case R_Vulkan_DescriptorSetKind_UBO_Geo3D:
         {
-          VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+          VkDescriptorBufferInfo *buffer_info = push_array(scratch.arena, VkDescriptorBufferInfo, 1);
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           buffer_info->range  = sizeof(R_Vulkan_UBO_Geo3D);
@@ -3692,7 +3691,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         }break;
         case R_Vulkan_DescriptorSetKind_SBO_Geo3D_Joints:
         {
-          VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+          VkDescriptorBufferInfo *buffer_info = push_array(scratch.arena, VkDescriptorBufferInfo, 1);
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           // NOTE: we want to access it as an array of R_Vulkan_Storage_Mesh 
@@ -3710,7 +3709,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         }break;
         case R_Vulkan_DescriptorSetKind_SBO_Geo3D_Materials:
         {
-          VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+          VkDescriptorBufferInfo *buffer_info = push_array(scratch.arena, VkDescriptorBufferInfo, 1);
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           // NOTE: we want to access it as an array of R_Vulkan_Storage_Mesh 
@@ -3728,7 +3727,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         }break;
         case R_Vulkan_DescriptorSetKind_Tex2D:
         {
-          VkDescriptorImageInfo *image_info = push_array(temp.arena, VkDescriptorImageInfo, 1);
+          VkDescriptorImageInfo *image_info = push_array(scratch.arena, VkDescriptorImageInfo, 1);
           image_info->sampler     = samplers[i];
           image_info->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
           image_info->imageView   = image_views[i];
@@ -3745,7 +3744,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         }break;
         case R_Vulkan_DescriptorSetKind_UBO_Geo3D_TileFrustum:
         {
-          VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+          VkDescriptorBufferInfo *buffer_info = push_array(scratch.arena, VkDescriptorBufferInfo, 1);
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           buffer_info->range  = sizeof(R_Vulkan_UBO_Geo3D_TileFrustum);
@@ -3762,7 +3761,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         }break;
         case R_Vulkan_DescriptorSetKind_UBO_Geo3D_LightCulling:
         {
-          VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+          VkDescriptorBufferInfo *buffer_info = push_array(scratch.arena, VkDescriptorBufferInfo, 1);
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           buffer_info->range  = sizeof(R_Vulkan_UBO_Geo3D_LightCulling);
@@ -3779,7 +3778,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         }break;
         case R_Vulkan_DescriptorSetKind_SBO_Geo3D_Tiles:
         {
-          VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+          VkDescriptorBufferInfo *buffer_info = push_array(scratch.arena, VkDescriptorBufferInfo, 1);
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           buffer_info->range  = MAX_TILES_PER_PASS*sizeof(R_Vulkan_SBO_Geo3D_Tile);
@@ -3796,7 +3795,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         }break;
         case R_Vulkan_DescriptorSetKind_SBO_Geo3D_Lights:
         {
-          VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+          VkDescriptorBufferInfo *buffer_info = push_array(scratch.arena, VkDescriptorBufferInfo, 1);
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           // NOTE: we want to access it as an array of R_Vulkan_SBO_Lights
@@ -3814,7 +3813,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         }break;
         case R_Vulkan_DescriptorSetKind_SBO_Geo3D_LightIndices:
         {
-          VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+          VkDescriptorBufferInfo *buffer_info = push_array(scratch.arena, VkDescriptorBufferInfo, 1);
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           // NOTE: we want to access it as an array of U32
@@ -3832,7 +3831,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
         }break;
         case R_Vulkan_DescriptorSetKind_SBO_Geo3D_TileLights:
         {
-          VkDescriptorBufferInfo *buffer_info = push_array(temp.arena, VkDescriptorBufferInfo, 1);
+          VkDescriptorBufferInfo *buffer_info = push_array(scratch.arena, VkDescriptorBufferInfo, 1);
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           buffer_info->range  = MAX_TILES_PER_PASS*sizeof(R_Vulkan_SBO_Geo3D_TileLights);
@@ -3856,7 +3855,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
   // It accepts two kinds of arrays as parameters: an array of VkWriteDescriptorSet and an array of VkCopyDescriptorSet
   // The latter can be used to copy descriptors to each other, as its name implies
   vkUpdateDescriptorSets(r_vulkan_state->logical_device.h, writes_count, writes, 0, NULL);
-  scratch_end(temp);
+  scratch_end(scratch);
   ProfEnd();
 }
 
