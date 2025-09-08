@@ -124,7 +124,7 @@ r_init(const char* app_name, OS_Handle window, bool debug)
     // Required Extensions
     // Glfw required instance extensions
     U64 required_inst_ext_count = 2;
-    const char **required_inst_exts = push_array(scratch.arena, char*, required_inst_ext_count);
+    char **required_inst_exts = push_array(scratch.arena, char*, required_inst_ext_count);
     required_inst_exts[0] = "VK_KHR_surface";
     required_inst_exts[1] = os_vulkan_surface_ext();
 

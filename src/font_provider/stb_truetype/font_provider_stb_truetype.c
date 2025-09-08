@@ -125,7 +125,7 @@ fp_raster(Arena *arena, FP_Handle font_handle, F32 size, FP_RasterFlags flags, R
 {
   ProfBeginFunction();
   FP_RasterResult ret = {0};
-  if (fp_handle_match(fp_handle_zero(), font_handle)) {return ret;}
+  if(fp_handle_match(fp_handle_zero(), font_handle)) {return ret;}
 
   U64 gen = font_handle.u64[1];
   FP_STBTT_Font *font = (FP_STBTT_Font *)font_handle.u64[0];
@@ -141,11 +141,11 @@ fp_raster(Arena *arena, FP_Handle font_handle, F32 size, FP_RasterFlags flags, R
 
   stbtt_pack_range pr = {0};
   pr.chardata_for_range = push_array(fp_stbtt_state->arena, stbtt_packedchar, range.max-range.min);
-  pr.array_of_unicode_codepoints      = NULL;
-  pr.font_size                        = size; // height
-                                              // ASCII 32..126 is 95 glyphs
+  pr.array_of_unicode_codepoints = NULL;
+  pr.font_size = size; // height
+  // ASCII 32..126 is 95 glyphs
   pr.first_unicode_codepoint_in_range = range.min;
-  pr.num_chars                        = range.max-range.min;
+  pr.num_chars = range.max-range.min;
 
   AssertAlways(stbtt_PackFontRanges(&ctx, font->buffer, font->idx, &pr,1) != 0);
   stbtt_PackEnd(&ctx);
@@ -182,9 +182,19 @@ fp_hook FP_PackedQuad fp_get_packed_quad(FP_Handle atlas_handle, int char_index,
   FP_STBTT_Atlas *atlas = (FP_STBTT_Atlas *)atlas_handle.u64[0];
   Assert(atlas->generation == gen);
 
-  // TODO(@k): fix it later, what is "aligned to int"
   FP_PackedQuad ret = {0};
-  stbtt_GetPackedQuad(atlas->chardata, atlas->dim.x, atlas->dim.y, char_index, xpos, ypos, (stbtt_aligned_quad *)&ret, 0);
+  stbtt_aligned_quad quad = {0};
+  // NOTE(k): type-punning is not working on gcc, is UB in c, e.g. would causing s0 s1 t0 t1 to be all-0s
+  // stbtt_GetPackedQuad(atlas->chardata, atlas->dim.x, atlas->dim.y, char_index, xpos, ypos, (stbtt_aligned_quad *)&ret, 0);
+  stbtt_GetPackedQuad(atlas->chardata, atlas->dim.x, atlas->dim.y, char_index, xpos, ypos, &quad, 0);
+  ret.x0 = quad.x0;
+  ret.y0 = quad.y0;
+  ret.x1 = quad.x1;
+  ret.y1 = quad.y1;
+  ret.s0 = quad.s0;
+  ret.s1 = quad.s1;
+  ret.t0 = quad.t0;
+  ret.t1 = quad.t1;
 
   // We want src in pixel space
   ret.s0 *= atlas->dim.x;
