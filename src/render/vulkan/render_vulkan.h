@@ -686,8 +686,8 @@ internal R_Handle         r_vulkan_handle_from_buffer(R_Vulkan_Buffer *buffer);
 /////////////////////////////////////////////////////////////////////////////////////////
 // State getter
 
-#define r_vulkan_pdevice(void) (&r_vulkan_state->physical_devices[r_vulkan_state->physical_device_idx])
-#define r_vulkan_ldevice(void) (&r_vulkan_state->logical_device)
+#define r_vulkan_pdevice() (&r_vulkan_state->physical_devices[r_vulkan_state->physical_device_idx])
+#define r_vulkan_ldevice() (&r_vulkan_state->logical_device)
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Swapchain&Surface

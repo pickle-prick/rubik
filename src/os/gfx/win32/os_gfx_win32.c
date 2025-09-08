@@ -862,7 +862,7 @@ os_gfx_init(void)
   
   //- rjf: grab graphics system info
   {
-    os_w32_gfx_state->gfx_info.double_click_time = GetDoubleClickTime()/1000.f;
+    os_w32_gfx_state->gfx_info.double_click_time = GetDoubleClickTime()/2000.f;
     os_w32_gfx_state->gfx_info.caret_blink_time = GetCaretBlinkTime()/1000.f;
     DEVMODEW devmodew = {0};
     if(EnumDisplaySettingsW(0, ENUM_CURRENT_SETTINGS, &devmodew))

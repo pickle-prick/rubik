@@ -71,7 +71,7 @@ entry_point(CmdLine *cmd_line)
   srand(seed);
 
   Vec2F32 window_rect = {900*3, 900*2};
-  String8 window_title = str8_lit("Rubik");
+  String8 window_title = str8_lit("Ink");
 
   // open window
   OS_Handle os_wnd = os_window_open(r2f32p(0,0, window_rect.x, window_rect.y), 0, window_title);

@@ -5696,7 +5696,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           U64 inst_buffer_off = inst_idx*sizeof(R_Rect2DInst);
           for(R_BatchNode *batch = batches->first; batch != 0; batch = batch->next)
           {
-            U8 *dst_ptr = inst_buffer->mapped + inst_idx*sizeof(R_Rect2DInst);
+            U8 *dst_ptr = (U8*)inst_buffer->mapped + inst_idx*sizeof(R_Rect2DInst);
             MemoryCopy(dst_ptr, batch->v.v, batch->v.byte_count);
             inst_idx += batch->v.byte_count / sizeof(R_Rect2DInst);
           }
@@ -6258,7 +6258,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           for(R_BatchNode *batch = batches->first; batch != 0; batch = batch->next)
           {
             U64 batch_inst_count = batch->v.byte_count / sizeof(R_Mesh2DInst);
-            U8 *dst_ptr = inst_buffer->mapped+inst_idx*sizeof(R_Mesh2DInst);
+            U8 *dst_ptr = (U8*)inst_buffer->mapped+inst_idx*sizeof(R_Mesh2DInst);
             MemoryCopy(dst_ptr, batch->v.v, batch->v.byte_count);
             inst_idx += batch_inst_count;
           }
@@ -6492,7 +6492,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
             {
               // Copy instance skinning data to sbo joints buffer
               U64 batch_inst_count = batch->v.byte_count / sizeof(R_Mesh3DInst);
-              U8 *dst_ptr = inst_buffer->mapped + inst_idx*sizeof(R_Mesh3DInst);
+              U8 *dst_ptr = (U8*)inst_buffer->mapped + inst_idx*sizeof(R_Mesh3DInst);
               for(U64 i = 0; i < batch_inst_count; i++)
               {
                 R_Mesh3DInst *inst = ((R_Mesh3DInst *)batch->v.v)+i;
