@@ -431,7 +431,7 @@ os_w32_wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         ScreenToClient(window->hwnd, &p);
         event->pos.x = (F32)p.x;
         event->pos.y = (F32)p.y;
-        event->delta = v2f32(0.f, -(F32)wheel_delta);
+        event->delta = v2f32(0.f, -(F32)wheel_delta/WHEEL_DELTA); // NOTE(k): normalized(/120.0) to [-1,+1]
       }break;
       
       case WM_MOUSEHWHEEL:

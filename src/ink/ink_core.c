@@ -4942,20 +4942,29 @@ ik_frame_to_tyml(IK_Frame *frame)
   /////////////////////////////////
   // Write to file
 
-  FILE *file = fopen((char*)frame->save_path.str, "w");
-  // write header
-  String8 header = push_str8f(scratch.arena, "%I64u\n", blob_size);
-  fwrite(header.str, header.size, 1, file);
-  // write blob
-  fwrite(blob, blob_size, 1, file);
-  // write a new line
-  fwrite("\n", 1, 1, file);
-  // write yml
-  for(String8Node *n = strs.first; n != 0; n = n->next)
   {
-    fwrite(n->string.str, n->string.size, 1, file);
+    U64 c = 0;
+    OS_Handle file = os_file_open(OS_AccessFlag_Write, frame->save_path);
+
+    // write header
+    String8 header = push_str8f(scratch.arena, "%I64u\n", blob_size);
+    os_file_write(file, rng_1u64(c, c+header.size), header.str);
+    c+=header.size;
+
+    // write blob
+    os_file_write(file, rng_1u64(c, c+blob_size), blob);
+    c+=blob_size;
+    // write a new line
+    os_file_write(file, rng_1u64(c, c+1), "\n");
+    c+=1;
+    // write yml
+    for(String8Node *n = strs.first; n != 0; n = n->next)
+    {
+      os_file_write(file, rng_1u64(c, c+n->string.size), n->string.str);
+      c+=n->string.size;
+    }
+    os_file_close(file);
   }
-  fclose(file);
 
   scratch_end(scratch);
   return ret;
@@ -4971,12 +4980,13 @@ ik_frame_from_tyml(String8 path)
 
   /////////////////////////////////
   // Read file
-  //
+
   OS_Handle f = os_file_open(OS_AccessFlag_Read, (path));
   FileProperties f_props = os_properties_from_file(f);
   U64 size = f_props.size;
   U8 *data = push_array(scratch.arena, U8, f_props.size);
   os_file_read(f, rng_1u64(0,size), data);
+  os_file_close(f);
 
   /////////////////////////////////
   // Load blob
