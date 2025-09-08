@@ -1002,7 +1002,7 @@ ik_frame(void)
   IK_Frame *frame = ik_state->active_frame;
   if(frame == 0)
   {
-    // NOTE(Next): check if default tyml is there and can be loaded, otherwise we create a new frame
+    // TODO(Next): check if default tyml is there and can be loaded, otherwise we create a new frame
     String8 binary_path = os_get_process_info()->binary_path; // only directory
     String8 default_path = push_str8f(ik_frame_arena(), "%S/default.tyml", binary_path);
     if(os_file_path_exists(default_path))
@@ -3139,7 +3139,6 @@ IK_BOX_DRAW(stroke)
   }
 }
 
-// TODO(Next): we don't need specify position here
 internal IK_Box *
 ik_stroke()
 {
@@ -3150,7 +3149,6 @@ ik_stroke()
                IK_BoxFlag_DrawStroke|
                IK_BoxFlag_DragToScaleRectSize|
                IK_BoxFlag_DragToScaleStrokeSize;
-  // TODO(Next): we would want the center position
   box->hover_cursor = OS_Cursor_UpDownLeftRight;
   box->ratio = 1.0;
   return box;
@@ -3355,7 +3353,7 @@ ik_image_decode_thread__entry_point(void *ptr)
       image->decoded = data;
     }
 
-    // NOTE(Next): we might need a write barrier here (cpu+compiler) to ensure all therads can see the writes above
+    // NOTE(k): we might need a write barrier here (cpu+compiler) to ensure all therads can see the writes above
     // or we could just use atom_store
     // #include <stdatomic.h>
     // atomic_thread_fence(memory_order_release);
@@ -3375,7 +3373,7 @@ ik_image_decode_queue_push(IK_Image *image)
   queue->queue[queue->mark] = image;
   ins_atomic_u64_inc_eval(&queue->queue_count);
   queue->mark = next_mark;
-  // NOTE(Next): we might not need a write barrier(compiler+cpu), since semaphore could have fence itself
+  // NOTE(k): we might not need a write barrier(compiler+cpu), since semaphore could have fence itself
   semaphore_drop(ik_state->decode_queue.semaphore);
 }
 
@@ -3385,8 +3383,6 @@ ik_image_decode_queue_push(IK_Image *image)
 internal IK_Signal
 ik_signal_from_box(IK_Box *box)
 {
-  // TODO(Next): in release button, the button release won't trigger active reset
-
   IK_Signal sig = {0};
   sig.box = box;
   sig.event_flags |= os_get_modifiers();
@@ -4830,8 +4826,6 @@ ik_frame_to_tyml(IK_Frame *frame)
     /////////////////////////////////
     // Image cache
 
-    // TODO(Next): parse error for images's data field in windows
-    // TODO(Next): only create if cache table has at least one, otherwise will causing parsing issue
     SE_Array_WithTag(str8_lit("images"))
     {
       for(U64 i = 0; i < ArrayCount(frame->image_cache_table); i++)
