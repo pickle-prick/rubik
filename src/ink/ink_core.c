@@ -2473,7 +2473,7 @@ ik_build_box_from_key_(IK_BoxFlags flags, IK_Key key, B32 pre_order)
   box->font_size = ik_top_font_size();
   box->tab_size = ik_top_tab_size();
   box->text_raster_flags = ik_top_text_raster_flags();
-  box->stroke_size = ik_top_stroke_size();
+  box->stroke_size_px = ik_top_stroke_size_px();
   box->point_scale = v2f32(1,1);
   box->palette = ik_top_palette();
   box->transparency = ik_top_transparency();
@@ -2679,7 +2679,7 @@ IK_BOX_UPDATE(text)
 
       D_FancyString fstr = {0};
       fstr.font = box->font;
-      fstr.string = str8_lit("    ");
+      fstr.string = str8_lit("  ");
       fstr.color = box->palette->colors[text_color_code];
       fstr.size = M_1;
       fstr.underline_thickness = 0;
@@ -3036,6 +3036,13 @@ IK_BOX_UPDATE(stroke)
     {
       last_position = box->last_point->position;
     }
+
+    // first point? -> decide stroke size 
+    if(box->first_point == 0)
+    {
+      box->stroke_size = box->stroke_size_px*ik_state->world_to_screen_ratio.x;
+    }
+
     F32 dist = length_2f32(sub_2f32(last_position, ik_state->mouse_in_world));
     if(dist/ik_state->world_to_screen_ratio.x > (ik_state->dpi/96.0)*1)
     {
@@ -3079,7 +3086,8 @@ IK_BOX_DRAW(stroke)
       p2.y = p2.y*box->point_scale.y + box->position.y;
 
       // decide step size
-      F32 smoothness_inv = 2 * (ik_state->dpi/96.0);
+      F32 s = 1; // smaller this number, smoother it is
+      F32 smoothness_inv = s * (ik_state->dpi/96.0);
       F32 dist = length_2f32(sub_2f32(p0, p2));
       F32 steps_f32 = (dist/stroke_size) * (stroke_size_px / (smoothness_inv));
       U64 steps = round_f32(steps_f32);

@@ -386,6 +386,7 @@ struct IK_Box
   // TODO(k): make it effective
   F32 transparency;
   // F32 squish;
+  F32 stroke_size_px; // in px space
   F32 stroke_size;
   Vec2F32 point_scale;
   // image
