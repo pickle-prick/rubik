@@ -3086,12 +3086,12 @@ IK_BOX_DRAW(stroke)
       p2.y = p2.y*box->point_scale.y + box->position.y;
 
       // decide step size
-      F32 s = 1; // smaller this number, smoother it is
+      F32 s = 2; // smaller this number, smoother it is
       F32 smoothness_inv = s * (ik_state->dpi/96.0);
       F32 dist = length_2f32(sub_2f32(p0, p2));
       F32 steps_f32 = (dist/stroke_size) * (stroke_size_px / (smoothness_inv));
       U64 steps = round_f32(steps_f32);
-      steps = Min(steps, 15);
+      steps = Min(steps, 30);
 
       Vec2F32 prev = p0;
       for(U64 i = 1; i <= steps; i++)
@@ -3580,6 +3580,22 @@ ik_signal_from_box(IK_Box *box)
   if(!mouse_in_this_rect && ik_key_match(ik_state->hot_box_key, box->key))
   {
     ik_state->hot_box_key = ik_key_zero();
+  }
+
+  //////////////////////////////
+  //~ Box is active, but focus_hot/focus_active is not this key? -> reset them to 0
+
+  if(ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Left], box->key))
+  {
+    if(!ik_key_match(ik_state->focus_hot_box_key, box->key))
+    {
+      ik_state->focus_hot_box_key = ik_key_zero();
+    }
+
+    if(!ik_key_match(ik_state->focus_active_box_key, box->key))
+    {
+      ik_state->focus_active_box_key = ik_key_zero();
+    }
   }
 
   //////////////////////////////
