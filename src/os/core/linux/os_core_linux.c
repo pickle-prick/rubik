@@ -273,6 +273,10 @@ os_file_open(OS_AccessFlags flags, String8 path)
   {
     lnx_flags |= O_CREAT;
   }
+  if(flags & OS_AccessFlag_Write)
+  {
+    lnx_flags |= O_TRUNC;
+  }
   int fd = open((char *)path_copy.str, lnx_flags, 0755);
   OS_Handle handle = {0};
   if(fd != -1)

@@ -465,6 +465,7 @@ struct IK_Frame
 
   String8 save_path;
   U8 _save_path[512];
+  B32 did_backup;
 
   // lookup table
   IK_BoxHashSlot box_table[1024];

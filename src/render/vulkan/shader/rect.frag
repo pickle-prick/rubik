@@ -71,6 +71,5 @@ void main()
   out_color.a *= globals.opacity;
   out_color.a *= border_sdf_t;
   out_color.a *= corner_sdf_t;
-
   // if (out_color.a == 0) { discard; }
 }

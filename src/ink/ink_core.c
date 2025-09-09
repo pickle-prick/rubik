@@ -1671,6 +1671,7 @@ ik_frame(void)
       box->disabled_t = 1.0;
       ik_state->focus_hot_box_key = box->key;
       ik_state->focus_active_box_key = box->key;
+      ik_kill_action();
     }
 
     //- paste text/image
@@ -1780,6 +1781,17 @@ ik_frame(void)
   // recursive drawing
   D_BucketScope(ik_state->bucket_main)
   {
+    // draw a background
+    {
+      d_push_viewport(ik_state->window_dim);
+      Rng2F32 rect = {0,0, ik_state->window_dim.x, ik_state->window_dim.y};
+      // Vec4F32 clr = rgba_from_u32(0xFF0F0E0E);
+      U32 src = 0x660B05FF;
+      Vec4F32 clr = linear_from_srgba(rgba_from_u32(src));
+      d_rect(rect, clr, 0,0,0);
+      d_pop_viewport();
+    }
+
     // unpack camera settings
     Vec2F32 viewport = dim_2f32(camera->rect);
     Mat3x3F32 xform2d = make_translate_3x3f32(negate_2f32(camera->rect.p0));
@@ -4923,6 +4935,7 @@ ik_frame_to_tyml(IK_Frame *frame)
           se_f32_with_tag(str8_lit("ratio"), box->ratio);
           se_u64_with_tag(str8_lit("hover_cursor"), box->hover_cursor);
           se_f32_with_tag(str8_lit("transparency"), box->transparency);
+          se_f32_with_tag(str8_lit("stroke_size_px"), box->stroke_size_px);
           se_f32_with_tag(str8_lit("stroke_size"), box->stroke_size);
           se_v2f32_with_tag(str8_lit("point_scale"), box->point_scale);
 
@@ -4964,11 +4977,22 @@ ik_frame_to_tyml(IK_Frame *frame)
   String8List strs = se_yml_node_to_strlist(scratch.arena, root);
 
   /////////////////////////////////
+  // Backup
+
+  if(!frame->did_backup)
+  {
+    String8 backup = push_str8f(scratch.arena, "%S.bak", frame->save_path);
+    os_copy_file_path(backup, frame->save_path);
+    frame->did_backup = 1;
+  }
+
+  /////////////////////////////////
   // Write to file
 
   {
     U64 c = 0;
     OS_Handle file = os_file_open(OS_AccessFlag_Write, frame->save_path);
+    Assert(!os_handle_match(file, os_handle_zero()));
 
     // write header
     String8 header = push_str8f(scratch.arena, "%I64u\n", blob_size);
@@ -5059,8 +5083,6 @@ ik_frame_from_tyml(String8 path)
       U64 head = se_u64_from_tag(n, str8_lit("head"));
       U64 tail = se_u64_from_tag(n, str8_lit("tail"));
       String8 image_blob = str8_range(blob.str+head, blob.str+tail);
-      // String8 b64content = se_str_from_tag(n, str8_lit("data"));
-      // String8 bytes = ik_bytes_from_b64string(scratch.arena, b64content);
       IK_Image *image = ik_image_push(key);
       image->encoded = ik_push_str8_copy(image_blob);
       ik_image_decode_queue_push(image);
@@ -5070,10 +5092,11 @@ ik_frame_from_tyml(String8 path)
   /////////////////////////////////
   // Build box
 
+  SE_Node *first_box_node = se_arr_from_tag(se_node, str8_lit("boxes"));
+  if(first_box_node && first_box_node->parent)
   {
-    SE_Node *boxes_node = se_arr_from_tag(se_node, str8_lit("boxes"))->parent;
     // NOTE(k): since we need to add group, and group box is always added after the group children, so we reverse the loading order
-    for(SE_Node *n = boxes_node->last; n != 0; n = n->prev)
+    for(SE_Node *n = first_box_node->parent->last; n != 0; n = n->prev)
     {
       // basic
       Vec2U64 key_src = se_v2u64_from_tag(n, str8_lit("key"));
@@ -5103,6 +5126,7 @@ ik_frame_from_tyml(String8 path)
       box->ratio = se_f32_from_tag(n, str8_lit("ratio"));
       box->hover_cursor = se_u64_from_tag(n, str8_lit("hover_cursor"));
       box->transparency = se_f32_from_tag(n, str8_lit("transparency"));
+      box->stroke_size_px = se_f32_from_tag(n, str8_lit("stroke_size_px"));
       box->stroke_size = se_f32_from_tag(n, str8_lit("stroke_size"));
       box->point_scale = se_v2f32_from_tag(n, str8_lit("point_scale"));
 
