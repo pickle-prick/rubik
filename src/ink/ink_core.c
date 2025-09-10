@@ -1461,6 +1461,7 @@ ik_frame(void)
       F32 step_px = ik_state->window_dim.y*y_pct*delta_y;
       F32 step_world = step_px * ik_state->world_to_screen_ratio.y;
 
+      camera->anim_rate = ik_state->animation.fast_rate;
       camera->target_rect.y0 += step_world;
       camera->target_rect.y1 += step_world;
     }
@@ -3115,6 +3116,7 @@ IK_BOX_DRAW(stroke)
 
   // TODO(Next): move this into box
   Vec4F32 stroke_color = linear_from_srgba(rgba_from_u32(0xEEE6CAFF));
+  F32 edge_softness = 1.0 * ik_state->world_to_screen_ratio.x;
 
   F32 last_scale = 1.0;
   while(p2)
@@ -3177,12 +3179,12 @@ IK_BOX_DRAW(stroke)
         {
           Vec2F32 pos = prev;
           Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
-          d_rect(rect, stroke_color, half_stroke_size, 0, half_stroke_size*0.05);
+          d_rect(rect, stroke_color, half_stroke_size, 0, edge_softness);
         }
         {
           Vec2F32 pos = pt;
           Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
-          d_rect(rect, stroke_color, half_stroke_size, 0, half_stroke_size*0.05);
+          d_rect(rect, stroke_color, half_stroke_size, 0, edge_softness);
         }
 
         prev = pt;
@@ -4171,6 +4173,8 @@ ik_ui_inspector(void)
 {
   ProfBeginFunction();
   IK_Box *b = ik_box_from_key(ik_state->focus_hot_box_key);
+
+  IK_ToolKind tool = ik_tool();
   B32 open = b != 0;
   F32 open_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "inspector_open_t"), open, .reset = 0, .rate = ik_state->animation.fast_rate);
   IK_Frame *frame = ik_top_frame();
@@ -4178,8 +4182,9 @@ ik_ui_inspector(void)
   if(b)
   {
     UI_Box *container;
+    F32 padding_left = ui_top_font_size()*2;
     F32 width_px = ui_top_font_size() * 20;
-    Rng2F32 rect = {0, 0, width_px, ik_state->window_dim.y};
+    Rng2F32 rect = {padding_left, 0, padding_left+width_px, ik_state->window_dim.y};
     Vec2F32 center = center_2f32(rect);
     rect.p0 = mix_2f32(center, rect.p0, open_t);
     rect.p1 = mix_2f32(center, rect.p1, open_t);
@@ -4193,27 +4198,14 @@ ik_ui_inspector(void)
       UI_HeightFill
       UI_Column
       UI_Padding(ui_pct(1.0, 0.0))
-      UI_Row
-      UI_Padding(ui_em(1.0, 0.0))
-      UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawBackground)
       UI_PrefHeight(ui_children_sum(1.0))
       UI_Transparency(0.2)
+      UI_ChildLayoutAxis(Axis2_Y)
+      UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_MouseClickable)
+      UI_CornerRadius(1.0)
       body = ui_build_box_from_stringf(0, "###body");
 
-    UI_Box *inner;
     UI_Parent(body)
-      UI_WidthFill
-      UI_HeightFill
-      UI_Column
-      UI_Padding(ui_em(0.2, 0.0))
-      UI_Row
-      UI_Padding(ui_em(0.2, 0.0))
-      UI_ChildLayoutAxis(Axis2_Y)
-      UI_PrefHeight(ui_children_sum(1.0))
-      // UI_Flags(UI_BoxFlag_Clip)
-      inner = ui_build_box_from_stringf(0, "###inner");
-
-    UI_Parent(inner)
     {
       ////////////////////////////////
       //~ Basic
@@ -4381,10 +4373,10 @@ ik_ui_inspector(void)
         }
       }
 
-      ui_divider(ui_em(0.5, 0.0));
-
       ////////////////////////////////
       //~ Color
+
+      ui_divider(ui_em(0.5, 0.0));
 
       UI_WidthFill
       UI_Row
@@ -4437,13 +4429,13 @@ ik_ui_inspector(void)
           ui_build_box_from_stringf(0, "border_clr");
       }
 
-      ui_divider(ui_em(0.5, 0.0));
-
       ////////////////////////////////
       //~ Text 
 
       if(b->flags & IK_BoxFlag_HasDisplayString)
       {
+        ui_divider(ui_em(0.5, 0.0));
+
         UI_WidthFill
         UI_Row
         {
@@ -4473,8 +4465,6 @@ ik_ui_inspector(void)
           UI_PrefWidth(ui_text_dim(1, 1.0))
             ui_labelf("%.2f", b->text_padding);
         }
-
-        ui_divider(ui_em(0.5, 0.0));
       }
 
 
@@ -4483,6 +4473,8 @@ ik_ui_inspector(void)
 
       if(b->flags & IK_BoxFlag_DrawImage && b->image)
       {
+        ui_divider(ui_em(0.5, 0.0));
+
         UI_WidthFill
         UI_Row
         {
@@ -4502,8 +4494,6 @@ ik_ui_inspector(void)
           UI_PrefWidth(ui_text_dim(1, 1.0))
             ui_labelf("%.2f", (F32)b->image->encoded.size/(1024.f));
         }
-
-        ui_divider(ui_em(0.5, 0.0));
       }
 
       ////////////////////////////////
@@ -4511,6 +4501,8 @@ ik_ui_inspector(void)
 
       if(b->flags & IK_BoxFlag_DrawStroke)
       {
+        ui_divider(ui_em(0.5, 0.0));
+
         UI_WidthFill
         UI_Row
         {
@@ -4520,8 +4512,6 @@ ik_ui_inspector(void)
           UI_PrefWidth(ui_text_dim(1, 1.0))
             ui_labelf("%I64u", b->point_count);
         }
-
-        ui_divider(ui_em(0.5, 0.0));
       }
 
       ////////////////////////////////
@@ -4531,6 +4521,8 @@ ik_ui_inspector(void)
       UI_WidthFill
       UI_Row
       {
+        ui_divider(ui_em(0.5, 0.0));
+
         UI_PrefWidth(ui_text_dim(1, 1.0))
           ui_labelf("align");
         ui_spacer(ui_pct(1.0, 0.0));
@@ -4591,6 +4583,7 @@ ik_ui_inspector(void)
         }
       }
     }
+    ui_signal_from_box(body);
   }
   ProfEnd();
 }
