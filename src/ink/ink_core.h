@@ -21,8 +21,8 @@ typedef enum IK_ToolKind
   IK_ToolKind_Selection,
   IK_ToolKind_Rectangle,
   IK_ToolKind_Draw,
-  IK_ToolKind_InsertImage,
-  IK_ToolKind_Eraser,
+  // IK_ToolKind_InsertImage,
+  // IK_ToolKind_Eraser,
   IK_ToolKind_COUNT,
 } IK_ToolKind;
 
@@ -184,6 +184,7 @@ struct IK_Camera
   F32 zn;
   F32 zf;
 
+  F32 anim_rate;
   F32 min_zoom_step;
   F32 max_zoom_step;
   F32 zoom_t;
@@ -402,7 +403,9 @@ struct IK_Box
   Vec2F32 position; // top left
   F32 rotation; // around center, turns
   Vec2F32 rect_size;
-  Vec4F32 color;
+  Vec4F32 background_color;
+  Vec4F32 text_color;
+  Vec4F32 border_color;
   F32 ratio; // width/height
   OS_Cursor hover_cursor;
   // TODO(k): make it effective
@@ -426,8 +429,6 @@ struct IK_Box
   IK_Point *first_point;
   IK_Point *last_point;
   U64 point_count;
-  // TODO(Next): do we need this, this is not serializable?
-  IK_Palette *palette;
 
   // Per-frmae artifacts
   String8List display_lines;

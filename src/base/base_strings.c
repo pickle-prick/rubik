@@ -10,6 +10,13 @@
 # include "external/stb/stb_sprintf.h"
 #endif
 
+#if !defined(XXH_IMPLEMENTATION)
+# define XXH_INLINE_ALL
+# define XXH_IMPLEMENTATION
+# define XXH_STATIC_LINKING_ONLY
+# include "external/xxHash/xxhash.h"
+#endif
+
 ////////////////////////////////
 //~ NOTE(allen): String <-> Integer Tables
 

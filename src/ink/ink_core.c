@@ -1114,6 +1114,7 @@ ik_frame(void)
         Vec2F32 world_delta = sub_2f32(ik_state->mouse_in_world, mouse_in_world_after);
         rect = shift_2f32(rect, world_delta);
         camera->target_rect = rect;
+        camera->anim_rate = ik_state->animation.fast_rate;
 
         taken = 1;
       }
@@ -1130,6 +1131,7 @@ ik_frame(void)
         Vec2F32 rect_dim = dim_2f32(camera->rect);
         camera->drag_start_rect = camera->target_rect;
         camera->dragging = 1;
+        camera->anim_rate = ik_state->animation.fast_rate;
         taken = 1;
       }
 
@@ -1165,10 +1167,10 @@ ik_frame(void)
     }
 
     // camera animation
-    camera->rect.x0 += ik_state->animation.fast_rate * (camera->target_rect.x0-camera->rect.x0);
-    camera->rect.x1 += ik_state->animation.fast_rate * (camera->target_rect.x1-camera->rect.x1);
-    camera->rect.y0 += ik_state->animation.fast_rate * (camera->target_rect.y0-camera->rect.y0);
-    camera->rect.y1 += ik_state->animation.fast_rate * (camera->target_rect.y1-camera->rect.y1);
+    camera->rect.x0 += camera->anim_rate * (camera->target_rect.x0-camera->rect.x0);
+    camera->rect.x1 += camera->anim_rate * (camera->target_rect.x1-camera->rect.x1);
+    camera->rect.y0 += camera->anim_rate * (camera->target_rect.y0-camera->rect.y0);
+    camera->rect.y1 += camera->anim_rate * (camera->target_rect.y1-camera->rect.y1);
     camera->zoom_t  += ik_state->animation.slow_rate * ((F32)is_zooming-camera->zoom_t);
   }
 
@@ -1296,13 +1298,17 @@ ik_frame(void)
           else if(ik_state->action_slot == IK_ActionSlot_Center)
           {
             IK_BoxDrag drag = *ik_get_drag_struct(IK_BoxDrag);
-            Vec2F32 delta = sub_2f32(ik_state->mouse_in_world, drag.drag_start_mouse_in_world);
-            Vec2F32 position = add_2f32(drag.drag_start_position, delta);
-            Vec2F32 position_delta = sub_2f32(position, box->position);
-            box->position = position;
-            for(IK_Box *child = box->group_first; child != 0; child = child->group_next)
+            // NOTE(k): camera rect could be animating, casuing world mouse delta change even mouse in screen didn't change
+            if(ik_state->mouse_delta.x != 0.f || ik_state->mouse_delta.y != 0.f)
             {
-              child->position = add_2f32(child->position, position_delta);
+              Vec2F32 delta = sub_2f32(ik_state->mouse_in_world, drag.drag_start_mouse_in_world);
+              Vec2F32 position = add_2f32(drag.drag_start_position, delta);
+              Vec2F32 position_delta = sub_2f32(position, box->position);
+              box->position = position;
+              for(IK_Box *child = box->group_first; child != 0; child = child->group_next)
+              {
+                child->position = add_2f32(child->position, position_delta);
+              }
             }
           }
         }
@@ -1329,6 +1335,7 @@ ik_frame(void)
 
           frame->camera.target_rect.p0 = add_2f32(frame->camera.target_rect.p0, delta);
           frame->camera.target_rect.p1 = add_2f32(frame->camera.target_rect.p1, delta);
+          frame->camera.anim_rate = ik_state->animation.slug_rate;
         }
 
         ////////////////////////////////
@@ -1498,16 +1505,16 @@ ik_frame(void)
           ik_state->tool = IK_ToolKind_Draw;
           eat = 1;
         }
-        if(evt->kind == UI_EventKind_Press && evt->key == OS_Key_I && evt->modifiers == 0)
-        {
-          ik_state->tool = IK_ToolKind_InsertImage;
-          eat = 1;
-        }
-        if(evt->kind == UI_EventKind_Press && evt->key == OS_Key_E && evt->modifiers == 0)
-        {
-          ik_state->tool = IK_ToolKind_Eraser;
-          eat = 1;
-        }
+        // if(evt->kind == UI_EventKind_Press && evt->key == OS_Key_I && evt->modifiers == 0)
+        // {
+        //   ik_state->tool = IK_ToolKind_InsertImage;
+        //   eat = 1;
+        // }
+        // if(evt->kind == UI_EventKind_Press && evt->key == OS_Key_E && evt->modifiers == 0)
+        // {
+        //   ik_state->tool = IK_ToolKind_Eraser;
+        //   eat = 1;
+        // }
         if(evt->kind == UI_EventKind_Press && evt->key == OS_Key_Tick && (evt->modifiers & OS_Modifier_Ctrl))
         {
           ik_state->show_stats = !ik_state->show_stats;
@@ -1649,7 +1656,6 @@ ik_frame(void)
       box->position = ik_state->mouse_in_world;
       box->rect_size = v2f32(ik_state->world_to_screen_ratio.x, ik_state->world_to_screen_ratio.y);
       box->ratio = 1.f;
-      box->color = v4f32(1,1,0,1.0);
       box->hover_cursor = OS_Cursor_UpDownLeftRight;
 
       ik_kill_action();
@@ -1665,6 +1671,9 @@ ik_frame(void)
         .last_scale = v2f32(1.f, 1.f),
       };
       ui_store_drag_struct(&drag);
+
+      ik_state->tool = IK_ToolKind_Selection;
+      tool = IK_ToolKind_Selection;
     }
 
     //- edit string (double clicked on the blank)
@@ -1783,7 +1792,6 @@ ik_frame(void)
   /////////////////////////////////
   //~ Main scene drawing
 
-  // recursive drawing
   D_BucketScope(ik_state->bucket_main)
   {
     // draw a background
@@ -1829,10 +1837,10 @@ ik_frame(void)
             d_rect(drop_shadow_rect, drop_shadow_color, 0.8f, 0, 8.f);
           }
 
-          // draw rect
+          // draw rect background
           if(box->flags & IK_BoxFlag_DrawBackground && !zero_dim)
           {
-            d_rect(dst, box->color, 0, 0, 0);
+            d_rect(dst, box->background_color, 0, 0, 0);
           }
           
           // draw image
@@ -1885,9 +1893,8 @@ ik_frame(void)
           // draw border
           if(box->flags & IK_BoxFlag_DrawBorder && !zero_dim)
           {
-            Vec4F32 border_clr = box->palette->colors[IK_ColorCode_Border];
             F32 border_thickness = 1.5 * ik_state->world_to_screen_ratio.x;
-            R_Rect2DInst *inst = d_rect(pad_2f32(dst, 2*border_thickness), border_clr, 0, border_thickness, border_thickness/2.0);
+            R_Rect2DInst *inst = d_rect(pad_2f32(dst, 2*border_thickness), box->border_color, 0, border_thickness, border_thickness/2.0);
           }
 
           // draw selection highlight
@@ -2482,6 +2489,7 @@ ik_build_box_from_key_(IK_BoxFlags flags, IK_Key key, B32 pre_order)
   }
   MemoryZeroStruct(box);
 
+  IK_Palette *palette = ik_top_palette();
   // fill box info
   box->key = key;
   box->flags = flags;
@@ -2492,7 +2500,9 @@ ik_build_box_from_key_(IK_BoxFlags flags, IK_Key key, B32 pre_order)
   box->text_raster_flags = ik_top_text_raster_flags();
   box->stroke_size_px = ik_top_stroke_size_px();
   box->point_scale = v2f32(1,1);
-  box->palette = ik_top_palette();
+  box->background_color = palette->background;
+  box->text_color = palette->text;
+  box->border_color = palette->border;
   box->transparency = ik_top_transparency();
   box->text_padding = ik_top_text_padding();
   box->hover_cursor = ik_top_hover_cursor();
@@ -2664,7 +2674,6 @@ IK_BOX_UPDATE(text)
 
   {
     Temp scratch = scratch_begin(0,0);
-    IK_ColorCode text_color_code = (box->flags & IK_BoxFlag_DrawTextWeak ? IK_ColorCode_TextWeak : IK_ColorCode_Text);
 
     // push line runs
     char *by = "\n";
@@ -2681,7 +2690,7 @@ IK_BOX_UPDATE(text)
       D_FancyString fstr = {0};
       fstr.font = ik_font_from_slot(IK_FontSlot_HandWrite);
       fstr.string = line;
-      fstr.color = box->palette->colors[text_color_code];
+      fstr.color = box->text_color;
       fstr.size = M_1;
       fstr.underline_thickness = 0;
       fstr.strikethrough_thickness = 0;
@@ -2697,7 +2706,7 @@ IK_BOX_UPDATE(text)
       D_FancyString fstr = {0};
       fstr.font = box->font;
       fstr.string = str8_lit("  ");
-      fstr.color = box->palette->colors[text_color_code];
+      fstr.color = box->text_color;
       fstr.size = M_1;
       fstr.underline_thickness = 0;
       fstr.strikethrough_thickness = 0;
@@ -2966,7 +2975,6 @@ ik_text(String8 string, Vec2F32 pos)
                 IK_BoxFlag_DragToPosition;
   box->position = pos;
   box->rect_size = v2f32(font_size_in_world*3, font_size_in_world);
-  box->color = v4f32(1,1,0,1.0);
   box->hover_cursor = OS_Cursor_UpDownLeftRight;
   box->font_size = font_size_in_world;
   box->ratio = 0;
@@ -3849,8 +3857,8 @@ ik_ui_toolbar(void)
       str8_lit("S"),
       str8_lit("R"),
       str8_lit("D"),
-      str8_lit("I"),
-      str8_lit("E"),
+      // str8_lit("I"),
+      // str8_lit("E"),
     };
 
     for(U64 i = 0; i < IK_ToolKind_COUNT; i++)
@@ -3921,14 +3929,14 @@ ik_ui_selection(void)
     UI_Rect(rect)
       container = ui_build_box_from_stringf(0, "###selection_box");
 
-    // TODO: dragging won't trigger this
     B32 is_hot = contains_2f32(rect, ui_state->mouse);
     B32 is_active = ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Left], box->key);
     F32 hot_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "selection_hot_t"), is_hot, .reset = 0, .rate = ik_state->animation.slow_rate);
+    F32 active_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "selection_active_t"), is_active, .reset = 0, .rate = ik_state->animation.slow_rate);
 
     Vec4F32 base_clr = ik_rgba_from_theme_color(IK_ThemeColor_BaseBorder);
     Vec4F32 hot_clr = ik_rgba_from_theme_color(IK_ThemeColor_MenuBarBorder);
-    Vec4F32 clr = mix_4f32(base_clr, hot_clr, hot_t);
+    Vec4F32 clr = mix_4f32(base_clr, hot_clr, Max(active_t, hot_t));
     clr.w = 1.0;
     Vec4F32 background_clr = ik_rgba_from_theme_color(IK_ThemeColor_BaseBackground);
 
@@ -4341,6 +4349,62 @@ ik_ui_inspector(void)
         {
           b->flags ^= flag;
         }
+      }
+
+      ui_divider(ui_em(0.5, 0.0));
+
+      ////////////////////////////////
+      //~ Color
+
+      UI_WidthFill
+      UI_Row
+      {
+        UI_PrefWidth(ui_text_dim(1, 1.0))
+          ui_labelf("background_color");
+        ui_spacer(ui_pct(1.0, 0.0));
+        UI_PrefWidth(ui_em(3.0, 1.0))
+          UI_Column
+          UI_Padding(ui_em(0.1, 1.0))
+          UI_CornerRadius(1.f)
+          UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
+          UI_Palette(ui_build_palette(ui_top_palette(), .background = linear_from_srgba(b->background_color)))
+          UI_PrefWidth(ui_pct(1.0, 0.0))
+          UI_PrefHeight(ui_pct(1.0, 0.0))
+          ui_build_box_from_stringf(0, "background_clr");
+      }
+
+      UI_WidthFill
+      UI_Row
+      {
+        UI_PrefWidth(ui_text_dim(1, 1.0))
+          ui_labelf("text_color");
+        ui_spacer(ui_pct(1.0, 0.0));
+        UI_PrefWidth(ui_em(3.0, 1.0))
+          UI_Column
+          UI_Padding(ui_em(0.1, 1.0))
+          UI_CornerRadius(1.f)
+          UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
+          UI_Palette(ui_build_palette(ui_top_palette(), .background = linear_from_srgba(b->text_color)))
+          UI_PrefWidth(ui_pct(1.0, 0.0))
+          UI_PrefHeight(ui_pct(1.0, 0.0))
+          ui_build_box_from_stringf(0, "text_clr");
+      }
+
+      UI_WidthFill
+      UI_Row
+      {
+        UI_PrefWidth(ui_text_dim(1, 1.0))
+          ui_labelf("border_color");
+        ui_spacer(ui_pct(1.0, 0.0));
+        UI_PrefWidth(ui_em(3.0, 1.0))
+          UI_Column
+          UI_Padding(ui_em(0.1, 1.0))
+          UI_CornerRadius(1.f)
+          UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
+          UI_Palette(ui_build_palette(ui_top_palette(), .background = linear_from_srgba(b->border_color)))
+          UI_PrefWidth(ui_pct(1.0, 0.0))
+          UI_PrefHeight(ui_pct(1.0, 0.0))
+          ui_build_box_from_stringf(0, "border_clr");
       }
 
       ui_divider(ui_em(0.5, 0.0));
@@ -4938,7 +5002,9 @@ ik_frame_to_tyml(IK_Frame *frame)
           se_v2f32_with_tag(str8_lit("position"), box->position);
           se_f32_with_tag(str8_lit("rotation"), box->rotation);
           se_v2f32_with_tag(str8_lit("rect_size"), box->rect_size);
-          se_v4f32_with_tag(str8_lit("color"), box->color);
+          se_v4f32_with_tag(str8_lit("background_color"), box->background_color);
+          se_v4f32_with_tag(str8_lit("text_color"), box->text_color);
+          se_v4f32_with_tag(str8_lit("border_color"), box->border_color);
           se_f32_with_tag(str8_lit("ratio"), box->ratio);
           se_u64_with_tag(str8_lit("hover_cursor"), box->hover_cursor);
           se_f32_with_tag(str8_lit("transparency"), box->transparency);
@@ -5129,7 +5195,9 @@ ik_frame_from_tyml(String8 path)
       box->position = se_v2f32_from_tag(n, str8_lit("position"));
       box->rotation = se_f32_from_tag(n, str8_lit("rotation"));
       box->rect_size = se_v2f32_from_tag(n, str8_lit("rect_size"));
-      box->color = se_v4f32_from_tag(n, str8_lit("color"));
+      box->background_color = se_v4f32_from_tag(n, str8_lit("background_color"));
+      box->text_color = se_v4f32_from_tag(n, str8_lit("text_color"));
+      box->border_color = se_v4f32_from_tag(n, str8_lit("border_color"));
       box->ratio = se_f32_from_tag(n, str8_lit("ratio"));
       box->hover_cursor = se_u64_from_tag(n, str8_lit("hover_cursor"));
       box->transparency = se_f32_from_tag(n, str8_lit("transparency"));

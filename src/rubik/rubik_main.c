@@ -20,10 +20,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "external/stb/stb_image.h"
 // #include "external/linmath.h"
-#include "external/xxHash/xxhash.c"
-#include "external/xxHash/xxhash.h"
-#define DR_WAV_IMPLEMENTATION
-#include "external/dr_wav.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // single unit includes

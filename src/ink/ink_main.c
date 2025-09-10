@@ -16,8 +16,6 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "external/stb/stb_image.h"
-#include "external/xxHash/xxhash.c"
-#include "external/xxHash/xxhash.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // single unit includes
