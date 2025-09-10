@@ -1283,14 +1283,17 @@ ik_frame(void)
         // dragging -> reposition
 
         // TODO(Next): IK_BoxFlag_DragToPosition and IK_BoxFlag_FitChildren are in conflict
-        if((box->sig.f&IK_SignalFlag_LeftDragging) && box->flags&IK_BoxFlag_DragToPosition && (!is_focus_active))
+        if((box->sig.f&IK_SignalFlag_LeftDragging) &&
+            box->flags&IK_BoxFlag_DragToPosition &&
+            (!is_focus_active))
         {
           if(box->sig.f & IK_SignalFlag_Pressed)
           {
             IK_BoxDrag drag = {box->position, ik_state->mouse_in_world};
             ik_store_drag_struct(&drag);
+            ik_state->action_slot = IK_ActionSlot_Center;
           }
-          else
+          else if(ik_state->action_slot == IK_ActionSlot_Center)
           {
             IK_BoxDrag drag = *ik_get_drag_struct(IK_BoxDrag);
             Vec2F32 delta = sub_2f32(ik_state->mouse_in_world, drag.drag_start_mouse_in_world);
@@ -1639,27 +1642,29 @@ ik_frame(void)
     }
 
     //- rectangle Tool
-    // TODO(Next): not finished, we want to drag to resize it
     if(tool == IK_ToolKind_Rectangle && ik_pressed(blank->sig))
     {
       IK_Box *box = ik_build_box_from_stringf(0, "rect###%I64u", os_now_microseconds());
       box->flags |= IK_BoxFlag_DrawBackground|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToScaleRectSize;
       box->position = ik_state->mouse_in_world;
-      box->rect_size = v2f32(300, 300);
+      box->rect_size = v2f32(ik_state->world_to_screen_ratio.x, ik_state->world_to_screen_ratio.y);
       box->ratio = 1.f;
       box->color = v4f32(1,1,0,1.0);
       box->hover_cursor = OS_Cursor_UpDownLeftRight;
 
       ik_kill_action();
       ik_state->focus_hot_box_key = box->key;
+      ik_state->hot_box_key = box->key;
+      ik_state->active_box_key[IK_MouseButtonKind_Left] = box->key;
+      ik_state->action_slot = IK_ActionSlot_DownRight;
 
-      // TODO(Next): won't work, we need a lot of hack to achive this, wtf?
-      // UI_Key key = ui_key_from_stringf(ui_key_from_stringf(ui_key_zero(), "###selection_box"), "###top_left -> anchor");
-      // ui_build_box_from_key(0, key);
-      // ui_state->active_box_key[UI_MouseButtonKind_Left] = key;
-
-      tool = IK_ToolKind_Selection;
-      ik_state->tool = tool;
+      IK_BoxResizeDrag drag =
+      {
+        .drag_start_mouse_in_world = ik_state->mouse_in_world,
+        .drag_start_rect = ik_rect_from_box(box),
+        .last_scale = v2f32(1.f, 1.f),
+      };
+      ui_store_drag_struct(&drag);
     }
 
     //- edit string (double clicked on the blank)
@@ -3918,6 +3923,7 @@ ik_ui_selection(void)
 
     // TODO: dragging won't trigger this
     B32 is_hot = contains_2f32(rect, ui_state->mouse);
+    B32 is_active = ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Left], box->key);
     F32 hot_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "selection_hot_t"), is_hot, .reset = 0, .rate = ik_state->animation.slow_rate);
 
     Vec4F32 base_clr = ik_rgba_from_theme_color(IK_ThemeColor_BaseBorder);
@@ -3935,14 +3941,6 @@ ik_ui_selection(void)
       // TODO(Next): rename to corner_length
       F32 corner_size = mix_1f32(0, 30, box->focus_hot_t);
       UI_BoxFlags flags = UI_BoxFlag_DrawBackground|UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_Floating;
-
-      typedef struct IK_BoxResizeDrag IK_BoxResizeDrag;
-      struct IK_BoxResizeDrag
-      {
-        Rng2F32 drag_start_rect;
-        Vec2F32 drag_start_mouse_in_world;
-        Vec2F32 last_scale;
-      };
 
       // top left
       {
@@ -3971,13 +3969,11 @@ ik_ui_selection(void)
         UI_Signal sig3 = ui_signal_from_box(down);
 
         // dragging
-        UI_Signal sigs[3] = {sig1, sig2, sig3};
-        for(U64 i = 0; i < 3; i++)
+        UI_SignalFlags f = sig1.f|sig2.f|sig3.f;
         {
-          UI_Signal sig = sigs[i];
-          if(sig.f&UI_SignalFlag_LeftDragging)
+          if(f&UI_SignalFlag_LeftDragging || (is_active && ik_state->action_slot == IK_ActionSlot_TopLeft))
           {
-            if(sig.f&UI_SignalFlag_LeftPressed)
+            if(f&UI_SignalFlag_LeftPressed)
             {
               IK_BoxResizeDrag drag =
               {
@@ -3986,6 +3982,9 @@ ik_ui_selection(void)
                 .last_scale = v2f32(1.f, 1.f),
               };
               ui_store_drag_struct(&drag);
+              ik_state->hot_box_key = box->key;
+              ik_state->action_slot = IK_ActionSlot_TopLeft;
+              ik_state->active_box_key[IK_MouseButtonKind_Left] = box->key;
             }
             else
             {
@@ -4022,7 +4021,11 @@ ik_ui_selection(void)
                 if(did_scale) ik_box_do_translate(box, pos_delta);
               }
             }
-            break;
+          }
+
+          if(f&UI_SignalFlag_LeftReleased)
+          {
+            ik_kill_action();
           }
         }
       }
@@ -4054,13 +4057,11 @@ ik_ui_selection(void)
         UI_Signal sig3 = ui_signal_from_box(up);
 
         // dragging
-        UI_Signal sigs[3] = {sig1, sig2, sig3};
-        for(U64 i = 0; i < 3; i++)
+        UI_SignalFlags f = sig1.f|sig2.f|sig3.f;
         {
-          UI_Signal sig = sigs[i];
-          if(sig.f&UI_SignalFlag_LeftDragging)
+          if(f&UI_SignalFlag_LeftDragging || (is_active && ik_state->action_slot == IK_ActionSlot_DownRight))
           { 
-            if(sig.f&UI_SignalFlag_LeftPressed)
+            if(f&UI_SignalFlag_LeftPressed)
             {
               IK_BoxResizeDrag drag =
               {
@@ -4069,6 +4070,9 @@ ik_ui_selection(void)
                 .last_scale = v2f32(1.f, 1.f),
               };
               ui_store_drag_struct(&drag);
+              ik_state->hot_box_key = box->key;
+              ik_state->action_slot = IK_ActionSlot_DownRight;
+              ik_state->active_box_key[IK_MouseButtonKind_Left] = box->key;
             }
             else
             {
@@ -4101,7 +4105,10 @@ ik_ui_selection(void)
                 ik_box_do_scale(box, scale_delta, box->position);
               }
             }
-            break;
+          }
+          if(f&UI_SignalFlag_LeftReleased)
+          {
+            ik_kill_action();
           }
         }
       }

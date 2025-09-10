@@ -195,6 +195,28 @@ struct IK_Camera
 };
 
 ////////////////////////////////
+//~ Action Slot (topleft, downright, center)
+
+typedef enum IK_ActionSlot
+{
+  IK_ActionSlot_TopLeft,
+  IK_ActionSlot_DownRight,
+  IK_ActionSlot_Center,
+  IK_ActionSlot_COUNT,
+} IK_ActionSlot;
+
+////////////////////////////////
+//~ Drag State
+
+typedef struct IK_BoxResizeDrag IK_BoxResizeDrag;
+struct IK_BoxResizeDrag
+{
+  Rng2F32 drag_start_rect;
+  Vec2F32 drag_start_mouse_in_world;
+  Vec2F32 last_scale;
+};
+
+////////////////////////////////
 //~ Signal types
 
 typedef U32 IK_SignalFlags;
@@ -642,6 +664,7 @@ struct IK_State
   // user interaction state
   IK_Key                hot_box_key;
   IK_Key                active_box_key[IK_MouseButtonKind_COUNT];
+  IK_ActionSlot         action_slot;
   IK_Key                focus_hot_box_key;
   IK_Key                focus_active_box_key;
   U64                   hot_pixel_key; // hot pixel key from renderer
