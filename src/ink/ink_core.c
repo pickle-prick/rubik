@@ -3071,33 +3071,74 @@ IK_BOX_UPDATE(stroke)
       box->stroke_size = box->stroke_size_px*ik_state->world_to_screen_ratio.x;
     }
 
-    F32 dist = length_2f32(sub_2f32(last_position, ik_state->mouse_in_world));
-    if(dist/ik_state->world_to_screen_ratio.x > (ik_state->dpi/96.0)*1)
+    Vec2F32 next_position = ik_state->mouse_in_world;
+    F32 dist = length_2f32(sub_2f32(last_position, next_position));
+    F32 dist_px = dist/ik_state->world_to_screen_ratio.x;
+    if(dist_px > (ik_state->dpi/96.0)*1.5)
     {
       IK_Point *p = ik_point_alloc();
       DLLPushBack(box->first_point, box->last_point, p);
-      p->position = ik_state->mouse_in_world;
+      p->position = next_position;
       box->point_count++;
+
+      // TODO(Next): we should do some purge here to reduce the point count
+      // e.g. points basically on a line, we can just save two endpoint in this case
+#if 0
+      IK_Point *p2 = p;
+      IK_Point *p1 = p->prev;
+      IK_Point *p0 = p1 ? p1->prev : 0;
+      if(p0)
+      {
+        Vec2F32 p0_2_p1 = normalize_2f32(sub_2f32(p1->position, p0->position));
+        Vec2F32 p1_2_p2 = normalize_2f32(sub_2f32(p2->position, p1->position));
+        if(abs_f32(1-dot_2f32(p0_2_p1, p1_2_p2)) < 1e-3)
+        {
+          DLLRemove(box->first_point, box->last_point, p1);
+          box->point_count--;
+          ik_point_release(p1);
+          printf("removed\n");
+        }
+      }
+#endif
     }
   }
 }
 
 IK_BOX_DRAW(stroke)
 {
-  F32 stroke_size = box->stroke_size;
-  F32 stroke_size_px = stroke_size/ik_state->world_to_screen_ratio.x;
-  F32 half_stroke_size = stroke_size/2.0;
-
+  F32 base_stroke_size = box->stroke_size;
   IK_Point *p0 = box->first_point;
   IK_Point *p1 = p0 ? p0->next : 0;
   IK_Point *p2 = p1 ? p1->next : 0;
 
+  // TODO(Next): at this point, we might just sdf instead
+
+  // TODO(Next): move this into box
+  Vec4F32 stroke_color = linear_from_srgba(rgba_from_u32(0xEEE6CAFF));
+
+  F32 last_scale = 1.0;
   while(p2)
   {
-    // compute midpoints
+    // compute midpoints p0 -> p1 -> p2
     Vec2F32 m1 = {(p0->position.x + p1->position.x) * 0.5f, (p0->position.y + p1->position.y) * 0.5f};
     Vec2F32 m = p1->position;
     Vec2F32 m2 = {(p1->position.x + p2->position.x) * 0.5f, (p1->position.y + p2->position.y) * 0.5f};
+
+#if 1
+    // scale stroke size based on dist, mimic ink pen effect
+    F32 dist = length_2f32(sub_2f32(m1, m2));
+    F32 dist_px = dist/ik_state->world_to_screen_ratio.x;
+    F32 t = round_f32(dist/base_stroke_size);
+    F32 scale = mix_1f32(1.0, 0.25, t*0.5);
+    scale = last_scale*0.9+0.1*scale;
+    last_scale = scale;
+    F32 stroke_size = base_stroke_size*scale;
+    F32 half_stroke_size = stroke_size*0.5;
+#else
+    F32 stroke_size = base_stroke_size;
+    F32 stroke_size_px = base_stroke_size_px;
+    F32 half_stroke_size = base_half_stroke_size;
+#endif
 
     // draw quadratic curve: m1 -> m2 with p1 as control
     {
@@ -3114,12 +3155,10 @@ IK_BOX_DRAW(stroke)
       p2.y = p2.y*box->point_scale.y + box->position.y;
 
       // decide step size
-      F32 s = 2; // smaller this number, smoother it is
-      F32 smoothness_inv = s * (ik_state->dpi/96.0);
-      F32 dist = length_2f32(sub_2f32(p0, p2));
-      F32 steps_f32 = (dist/stroke_size) * (stroke_size_px / (smoothness_inv));
+      F32 smoothness = 2.f * (ik_state->dpi/96.0);
+      F32 steps_f32 = dist_px*smoothness;
       U64 steps = round_f32(steps_f32);
-      steps = Min(steps, 30);
+      steps = ClampTop(steps, 60);
 
       Vec2F32 prev = p0;
       for(U64 i = 1; i <= steps; i++)
@@ -3132,38 +3171,19 @@ IK_BOX_DRAW(stroke)
           u*u*p0.y + 2*u*t*p1.y + t*t*p2.y
         };
 
-        // draw line segment (prev → pt) with thickness
+        // TODO(Next): draw line segment (prev → pt) with thickness
         // d_line(prev, pt, v4f32(0,0,1,1), radius);
-#if 0
-        // TODO(Next): don't work, this only produce axis-aligned rect, either we use xform2d
-        //             but since we could have many line, the rect gpu-distancing will be disabled
-        {
-          Vec2F32 prev = {300,300};
-          Vec2F32 pt = {600,600};
-          Vec2F32 a_to_b = sub_2f32(pt, prev);
-          Vec3F32 dir3 = cross_3f32(v3f32(a_to_b.x, a_to_b.y, 0), v3f32(0,0,1));
-          Vec2F32 dir2 = normalize_2f32(v2f32(dir3.x, dir3.y));
-          Vec2F32 p0 = add_2f32(prev, scale_2f32(dir2, half_stroke_size));
-          Vec2F32 p1 = sub_2f32(pt, scale_2f32(dir2, half_stroke_size));
-          // p1 = add_2f32(p1, box->position);
-          // p2 = add_2f32(p2, box->position);
-          Rng2F32 rect = {.p0 = p0, .p1 = p1};
-          d_rect(rect, v4f32(0,0,1,0.1), 0, 0, 0);
-        }
-#else
+
         {
           Vec2F32 pos = prev;
           Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
-          // d_rect(rect, v4f32(0,0,1,1), half_stroke_size, 0, 0);
-          d_rect(rect, v4f32(0,0,1,1), half_stroke_size, 0, half_stroke_size*0.05);
+          d_rect(rect, stroke_color, half_stroke_size, 0, half_stroke_size*0.05);
         }
         {
           Vec2F32 pos = pt;
           Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
-          // d_rect(rect, v4f32(0,0,1,1), half_stroke_size, 0, 0);
-          d_rect(rect, v4f32(0,0,1,1), half_stroke_size, 0, half_stroke_size*0.05);
+          d_rect(rect, stroke_color, half_stroke_size, 0, half_stroke_size*0.05);
         }
-#endif
 
         prev = pt;
       }

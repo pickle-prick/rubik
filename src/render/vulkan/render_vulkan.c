@@ -5701,6 +5701,12 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
             inst_idx += batch->v.byte_count / sizeof(R_Rect2DInst);
           }
 
+          if(inst_idx > MAX_RECT_INSTANCES)
+          {
+            fprintf(stderr, "too many rects, %lu > %d\n", inst_idx, MAX_RECT_INSTANCES);
+            exit(1);
+          }
+
           // Bind instance buffer
           vkCmdBindVertexBuffers(cmd_buf, 0, 1, &inst_buffer->h, &(VkDeviceSize){inst_buffer_off});
 
