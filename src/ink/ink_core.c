@@ -756,14 +756,6 @@ ik_frame(void)
     ik_state->mouse_delta = sub_2f32(ik_state->mouse, ik_state->last_mouse);
     ik_state->last_dpi = ik_state->dpi;
     ik_state->dpi = os_dpi_from_window(ik_state->os_wnd);
-
-    // animation
-    ik_state->animation.vast_rate = 1 - pow_f32(2, (-60.f * ui_state->animation_dt));
-    ik_state->animation.fast_rate = 1 - pow_f32(2, (-50.f * ui_state->animation_dt));
-    ik_state->animation.fish_rate = 1 - pow_f32(2, (-40.f * ui_state->animation_dt));
-    ik_state->animation.slow_rate = 1 - pow_f32(2, (-30.f * ui_state->animation_dt));
-    ik_state->animation.slug_rate = 1 - pow_f32(2, (-15.f * ui_state->animation_dt));
-    ik_state->animation.slaf_rate = 1 - pow_f32(2, (-8.f  * ui_state->animation_dt));
   }
 
   /////////////////////////////////
@@ -813,6 +805,16 @@ ik_frame(void)
   }
 
   ik_state->frame_dt = 1.f/target_hz;
+
+  /////////////////////////////////
+  //~ Fill animation rates
+
+  ik_state->animation.vast_rate = 1 - pow_f32(2, (-60.f * ik_state->frame_dt));
+  ik_state->animation.fast_rate = 1 - pow_f32(2, (-50.f * ik_state->frame_dt));
+  ik_state->animation.fish_rate = 1 - pow_f32(2, (-40.f * ik_state->frame_dt));
+  ik_state->animation.slow_rate = 1 - pow_f32(2, (-30.f * ik_state->frame_dt));
+  ik_state->animation.slug_rate = 1 - pow_f32(2, (-15.f * ik_state->frame_dt));
+  ik_state->animation.slaf_rate = 1 - pow_f32(2, (-8.f  * ik_state->frame_dt));
 
   // begin measuring actual per-frame work
   U64 begin_time_us = os_now_microseconds();
@@ -2431,6 +2433,7 @@ ik_frame_alloc()
   frame->camera.target_rect = frame->camera.rect;
   frame->camera.zn = -0.1;
   frame->camera.zf = 1000000.0;
+  frame->camera.anim_rate = ik_state->animation.fast_rate;
   frame->camera.min_zoom_step = 0.05;
   frame->camera.max_zoom_step = 0.35;
 
@@ -3655,6 +3658,7 @@ ik_ui_stats(void)
 
   IK_Frame *frame = ik_top_frame();
   IK_Camera *camera = &frame->camera;
+  Vec2F32 viewport_dim = dim_2f32(camera->rect);
 
   UI_Box *container = 0;
   F32 width = ui_top_font_size()*30;
@@ -3768,21 +3772,27 @@ ik_ui_stats(void)
     }
     UI_Row
     {
-      ui_labelf("ik_camera_rect");
+      ui_labelf("viewport_ratio");
       ui_spacer(ui_pct(1.0, 0.0));
-      ui_labelf("%.0f %.0f %.0f %.0f", camera->rect.x0, camera->rect.y0, camera->rect.y0, camera->rect.y1);
+      ui_labelf("%.2f", viewport_dim.x/viewport_dim.y);
     }
     UI_Row
     {
-      ui_labelf("ik_world_to_screen_ratio");
+      ui_labelf("window_ratio");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%.2f", ik_state->window_dim.x/ik_state->window_dim.y);
+    }
+    UI_Row
+    {
+      ui_labelf("window_dim");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%.2f %.2f", ik_state->window_dim.x, ik_state->window_dim.y);
+    }
+    UI_Row
+    {
+      ui_labelf("world_to_screen_ratio");
       ui_spacer(ui_pct(1.0, 0.0));
       ui_labelf("%.2f %.2f", ik_state->world_to_screen_ratio.x, ik_state->world_to_screen_ratio.y);
-    }
-    UI_Row
-    {
-      ui_labelf("window");
-      ui_spacer(ui_pct(1.0, 0.0));
-      ui_labelf("%.2f, %.2f", ik_state->window_dim.x, ik_state->window_dim.y);
     }
     ui_divider(ui_em(0.1, 0.0));
     UI_Row
