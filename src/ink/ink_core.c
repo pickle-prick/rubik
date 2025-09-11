@@ -2920,13 +2920,92 @@ IK_BOX_UPDATE(text)
     *cursor = mouse_pt;
   }
 
-  // focus active and double clicked => select all
+  // focus active and double clicked? -> select current word
   if(is_focus_active && sig.f&IK_SignalFlag_DoubleClicked)
   {
-    *mark = txt_pt(1,1);
-    *cursor = txt_pt(1, box->string.size+1);
+    String8 string = box->string;
+    TxtPt cursor = box->cursor;
+    TxtPt mark = box->mark;
+
+    char *first = (char*)string.str;
+    char *opl = (char*)(string.str+string.size);
+    char *curr = (char*)(string.str+cursor.column)-1;
+    char *c = curr;
+
+    if(char_is_space(*c))
+    {
+      // find next non-empty char
+      for(; c < opl && char_is_space(*c); c++);
+      // update cursor
+      cursor.column = c-first;
+
+      // reset c
+      c = curr;
+
+      // find prev non-empty char
+      for(; c > first && char_is_space(*(c-1)); c--);
+      mark.column = c-first+1;
+
+      // update mark
+    }
+    else
+    {
+      // find next empty space
+      for(; c < opl && !char_is_space(*c); c++);
+      // update cursor
+      cursor.column = c-first+1;
+
+      // reset c
+      c = curr;
+
+      // find prev empty space
+      for(; c > first && !char_is_space(*(c-1)); c--);
+      mark.column = c-first+1;
+    }
+
     ik_kill_action();
+    // commit new cursor&mark
+    box->cursor = cursor;
+    box->mark = mark;
   }
+
+  // focus active and triple clicked? -> select current line
+  if(is_focus_active && sig.f&IK_SignalFlag_TripleClicked)
+  {
+    String8 string = box->string;
+    TxtPt cursor = box->cursor;
+    TxtPt mark = box->mark;
+
+    char *first = (char*)string.str;
+    char *opl = (char*)(string.str+string.size);
+    char *curr = (char*)(string.str+cursor.column)-1;
+    char *c = curr;
+
+    // find next linebreak
+    for(; c < opl && *c != '\n'; c++);
+    cursor.column = c-first+1;
+
+    // reset c
+    c = curr;
+
+    // find prev linebreak
+    for(; c > first && *(c-1) != '\n'; c--);
+    mark.column = c-first+1;
+
+    ik_kill_action();
+    // commit  new cursor&mark
+    box->cursor = cursor;
+    box->mark = mark;
+  }
+
+  // NOTE(k): deprecated, remove it later
+  // focus active and double clicked => select all
+  // if(is_focus_active && sig.f&IK_SignalFlag_DoubleClicked)
+  // {
+  //   *mark = txt_pt(1,1);
+  //   *cursor = txt_pt(1, box->string.size+1);
+  //   ik_kill_action();
+  // }
 
   box->hover_cursor = is_focus_active ? OS_Cursor_IBar : OS_Cursor_UpDownLeftRight;
 }
@@ -3492,15 +3571,26 @@ ik_signal_from_box(IK_Box *box)
         sig.f |= (IK_SignalFlag_LeftDoubleClicked<<evt_mouse_button_kind);
       }
 
-      // TODO: handle tripled clicking
+      if(ik_key_match(box->key, ik_state->press_key_history[evt_mouse_button_kind][0]) &&
+         ik_key_match(box->key, ik_state->press_key_history[evt_mouse_button_kind][1]) &&
+         evt->timestamp_us-ik_state->press_timestamp_history_us[evt_mouse_button_kind][0] <= 1000000*os_get_gfx_info()->double_click_time &&
+         ik_state->press_timestamp_history_us[evt_mouse_button_kind][0] - ik_state->press_timestamp_history_us[evt_mouse_button_kind][1] <= 1000000*os_get_gfx_info()->double_click_time)
+      {
+        sig.f |= (IK_SignalFlag_LeftTripleClicked<<evt_mouse_button_kind);
+      }
+
       MemoryCopy(&ik_state->press_key_history[evt_mouse_button_kind][1],
                  &ik_state->press_key_history[evt_mouse_button_kind][0],
                  sizeof(ik_state->press_key_history[evt_mouse_button_kind][0]) * (ArrayCount(ik_state->press_key_history)-1));
       MemoryCopy(&ik_state->press_timestamp_history_us[evt_mouse_button_kind][1],
                  &ik_state->press_timestamp_history_us[evt_mouse_button_kind][0],
                  sizeof(ik_state->press_timestamp_history_us[evt_mouse_button_kind][0]) * (ArrayCount(ik_state->press_timestamp_history_us)-1));
+      MemoryCopy(&ik_state->press_pos_history[evt_mouse_button_kind][1], &ik_state->press_pos_history[evt_mouse_button_kind][0],
+                 sizeof(ik_state->press_pos_history[evt_mouse_button_kind][0]) * ArrayCount(ik_state->press_pos_history[evt_mouse_button_kind])-1);
+
       ik_state->press_key_history[evt_mouse_button_kind][0] = box->key;
       ik_state->press_timestamp_history_us[evt_mouse_button_kind][0] = evt->timestamp_us;
+      ik_state->press_pos_history[evt_mouse_button_kind][0] = evt_mouse;
 
       taken = 1;
     }

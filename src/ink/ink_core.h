@@ -672,8 +672,11 @@ struct IK_State
   IK_Key                focus_hot_box_key;
   IK_Key                focus_active_box_key;
   U64                   hot_pixel_key; // hot pixel key from renderer
+
   U64                   press_timestamp_history_us[IK_MouseButtonKind_COUNT][3];
   IK_Key                press_key_history[IK_MouseButtonKind_COUNT][3];
+  Vec2F32               press_pos_history[IK_MouseButtonKind_COUNT][3];
+
   Vec2F32               drag_start_mouse;
   Arena                 *drag_state_arena;
   String8               drag_state_data;
