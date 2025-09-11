@@ -200,6 +200,7 @@ struct IK_Camera
 
 typedef enum IK_ActionSlot
 {
+  IK_ActionSlot_Invalid,
   IK_ActionSlot_TopLeft,
   IK_ActionSlot_DownRight,
   IK_ActionSlot_Center,
@@ -406,6 +407,8 @@ struct IK_Box
   Vec4F32 background_color;
   Vec4F32 text_color;
   Vec4F32 border_color;
+  // TODO(Next): store this
+  Vec4F32 stroke_color;
   F32 ratio; // width/height
   OS_Cursor hover_cursor;
   // TODO(k): make it effective

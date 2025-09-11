@@ -707,6 +707,7 @@ ik_drop_hot_key(void)
 internal void
 ik_kill_action(void)
 {
+  ik_state->action_slot = IK_ActionSlot_Invalid;
   for EachEnumVal(IK_MouseButtonKind, k)
   {
     ik_state->active_box_key[k] = ik_key_zero();
@@ -2927,7 +2928,7 @@ IK_BOX_UPDATE(text)
     ik_kill_action();
   }
 
-  box->hover_cursor = is_focus_active ? OS_Cursor_IBar : OS_Cursor_Pointer;
+  box->hover_cursor = is_focus_active ? OS_Cursor_IBar : OS_Cursor_UpDownLeftRight;
 }
 
 IK_BOX_DRAW(text)
@@ -3108,6 +3109,8 @@ IK_BOX_UPDATE(stroke)
 IK_BOX_DRAW(stroke)
 {
   F32 base_stroke_size = box->stroke_size;
+  F32 min_visiable_stroke_size = (2*ik_state->dpi/96.f) * ik_state->world_to_screen_ratio.x;
+
   IK_Point *p0 = box->first_point;
   IK_Point *p1 = p0 ? p0->next : 0;
   IK_Point *p2 = p1 ? p1->next : 0;
@@ -3131,10 +3134,11 @@ IK_BOX_DRAW(stroke)
     F32 dist = length_2f32(sub_2f32(m1, m2));
     F32 dist_px = dist/ik_state->world_to_screen_ratio.x;
     F32 t = round_f32(dist/base_stroke_size);
-    F32 scale = mix_1f32(1.0, 0.25, t*0.5);
+    F32 scale = mix_1f32(1.0, 0.25, t/4.0);
     scale = last_scale*0.9+0.1*scale;
     last_scale = scale;
     F32 stroke_size = base_stroke_size*scale;
+    stroke_size = ClampBot(stroke_size, min_visiable_stroke_size);
     F32 half_stroke_size = stroke_size*0.5;
 #else
     F32 stroke_size = base_stroke_size;
@@ -3160,7 +3164,8 @@ IK_BOX_DRAW(stroke)
       F32 smoothness = 2.f * (ik_state->dpi/96.0);
       F32 steps_f32 = dist_px*smoothness;
       U64 steps = round_f32(steps_f32);
-      steps = ClampTop(steps, 60);
+      // NOTE(k): if the cap is too small and drag step is too large, there will be visiable effects
+      steps = ClampTop(steps, 100);
 
       Vec2F32 prev = p0;
       for(U64 i = 1; i <= steps; i++)
@@ -4205,7 +4210,16 @@ ik_ui_inspector(void)
       UI_CornerRadius(1.0)
       body = ui_build_box_from_stringf(0, "###body");
 
+    UI_Box *padded;
     UI_Parent(body)
+      UI_WidthFill
+      UI_PrefHeight(ui_children_sum(0.0))
+      UI_Row
+      UI_Padding(ui_em(0.2, 0.0))
+      UI_ChildLayoutAxis(Axis2_Y)
+      padded = ui_build_box_from_stringf(0, "###padded");
+
+    UI_Parent(padded)
     {
       ////////////////////////////////
       //~ Basic
@@ -4465,8 +4479,17 @@ ik_ui_inspector(void)
           UI_PrefWidth(ui_text_dim(1, 1.0))
             ui_labelf("%.2f", b->text_padding);
         }
-      }
 
+        UI_WidthFill
+        UI_Row
+        {
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("cursor");
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("%d %d", b->cursor.line, b->cursor.column);
+        }
+      }
 
       ////////////////////////////////
       //~ Image 
@@ -4768,13 +4791,44 @@ ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, T
     }break;
     case UI_EventDeltaUnit_Word:
     {
-      NotImplemented;
+      char *first = (char*)string.str;
+      char *opl = (char*)(string.str+string.size);
+      char *curr = (char*)(string.str+cursor.column)-1;
+      char *c = curr;
+
+      if(delta.x > 0)
+      {
+        if(char_is_space(*c))
+        {
+          // find next non-empty char
+          for(; c < opl && char_is_space(*c); c++);
+        }
+        else
+        {
+          // find next empty space
+          for(; c < opl && !char_is_space(*c); c++);
+        }
+      }
+      else
+      {
+        if(c > first && char_is_space(*(c-1)))
+        {
+          // find prev non-empty char
+          for(; c > first && char_is_space(*(c-1)); c--);
+        }
+        else
+        {
+          // find prev empty space
+          for(; c > first && !char_is_space(*(c-1)); c--);
+        }
+      }
+      delta.x = c-curr;
     }break;
     case UI_EventDeltaUnit_Line:
     {
       char *first = (char*)string.str;
       char *opl = (char*)(string.str+string.size);
-      char *curr = (char*)(string.str+cursor.column);
+      char *curr = (char*)(string.str+cursor.column)-1;
       char *c = curr;
 
       // skip to current line's head
@@ -4784,16 +4838,45 @@ ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, T
       // TODO(Next): finish it
       if(delta.y < 0)
       {
-        U64 linebreak_count = 0;
-        for(; c >= first && linebreak_count < 2; c--)
+        // jump to last line end
+        for(; c >= first; c--)
         {
-          if(*c == '\n') linebreak_count++;
+          if(*c == '\n') break;
         }
-        if(linebreak_count > 0) delta.x = (c-curr+curr_line_column+1);
+        // jump to last line head
+        for(; c > first && *(c-1) != '\n'; c--);
+    
+        for(U64 i = 0; i < curr_line_column && c < opl; c++, i++)
+        {
+          if(*c == '\n')
+          {
+            break;
+          }
+        }
+        delta.x = c-curr;
       }
       else
       {
-        // TODO(Next)
+        for(U64 j = 0; j < delta.y && c < opl; j++)
+        {
+          // find next line head
+          for(;c < opl;c++)
+          {
+            if(*c == '\n')
+            {
+              c++;
+              break;
+            }
+          }
+          for(U64 i = 0; i < curr_line_column && c < opl; c++, i++)
+          {
+            if(*c == '\n')
+            {
+              break;
+            }
+          }
+        }
+        delta.x = c-curr;
       }
     }break;
     case UI_EventDeltaUnit_Whole:
