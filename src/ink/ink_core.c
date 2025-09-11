@@ -4299,7 +4299,7 @@ ik_ui_toolbar(void)
       str8_lit("D"),
       // str8_lit("I"),
       // str8_lit("E"),
-      str8_lit("E"),
+      str8_lit("M"),
     };
 
     for(U64 i = 0; i < IK_ToolKind_COUNT; i++)
