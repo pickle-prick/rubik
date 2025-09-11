@@ -23,6 +23,7 @@ typedef enum IK_ToolKind
   IK_ToolKind_Draw,
   // IK_ToolKind_InsertImage,
   // IK_ToolKind_Eraser,
+  IK_ToolKind_Man,
   IK_ToolKind_COUNT,
 } IK_ToolKind;
 
@@ -48,6 +49,29 @@ typedef enum IK_TextAlign
   IK_TextAlign_Right,
   IK_TextAlign_COUNT
 } IK_TextAlign;
+
+////////////////////////////////
+//~ Message
+
+typedef struct IK_Message IK_Message;
+struct IK_Message
+{
+  IK_Message *next;
+  IK_Message *prev;
+  F32 create_t;
+  F32 expired_t;
+  F32 elapsed_sec;
+  F32 expired;
+  String8 string;
+};
+
+typedef struct IK_MessageList IK_MessageList;
+struct IK_MessageList
+{
+  IK_Message *first;
+  IK_Message *last;
+  U64 count;
+};
 
 ////////////////////////////////
 //~ Palettes
@@ -613,6 +637,7 @@ struct IK_State
 
   // debug
   B32                   show_stats;
+  B32                   show_man_page;
 
   IK_Frame              *active_frame;
 
@@ -643,6 +668,10 @@ struct IK_State
   F32                   dpi;
   F32                   last_dpi;
   B32                   window_should_close;
+
+  // messages
+  Arena                 *message_arena;
+  IK_MessageList        messages;
 
   // camera
   Mat4x4F32             proj_mat;
@@ -825,6 +854,11 @@ internal void         ik_drawlist_reset(IK_DrawList *drawlist);
 internal IK_DrawNode* ik_drawlist_push_rect(Arena *arena, IK_DrawList *drawlist, Rng2F32 dst, Rng2F32 src);
 
 /////////////////////////////////
+//~ Message Functions
+
+internal IK_Message* ik_message_push(String8 string);
+
+/////////////////////////////////
 //~ String Block Functions
 
 internal String8 ik_push_str8_copy(String8 src);
@@ -908,10 +942,12 @@ internal void ik_fancy_run_list(Vec2F32 p, D_FancyRunList *list, F32 max_x);
 //~ UI Widget
 
 internal void      ik_ui_stats(void);
+internal void      ik_ui_man_page(void);
 internal void      ik_ui_toolbar(void);
 internal void      ik_ui_selection(void);
 internal void      ik_ui_inspector(void);
 internal void      ik_ui_bottom_bar(void);
+internal void      ik_ui_notification(void);
 internal UI_Signal ik_ui_checkbox(String8 key_string, B32 b);
 internal UI_Signal ik_ui_button(String8 string);
 internal UI_Signal ik_ui_buttonf(char *fmt, ...);

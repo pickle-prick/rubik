@@ -134,6 +134,7 @@ struct UI_Event
   OS_Key             key;
   OS_Modifiers       modifiers;
   String8            string;
+  String8List        paths;
   UI_EventDeltaUnit  delta_unit;
   Vec2F32            delta_2f32;
   Vec2S32            delta_2s32;

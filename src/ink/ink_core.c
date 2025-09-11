@@ -509,6 +509,7 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
     ik_state->drag_state_arena = arena_alloc();
     ik_state->box_scratch_arena = arena_alloc();
     ik_state->tool = IK_ToolKind_Selection;
+    ik_state->message_arena = arena_alloc();
     // decode queue & threads
     ik_state->decode_queue.semaphore = semaphore_alloc(0, ArrayCount(ik_state->decode_queue.queue), str8_lit(""));
     for(U64 i = 0; i < ArrayCount(ik_state->decode_threads); i++)
@@ -847,15 +848,24 @@ ik_frame(void)
     ui_evt.key          = os_evt->key;
     ui_evt.modifiers    = os_evt->modifiers;
     ui_evt.string       = os_evt->character ? str8_from_32(ui_build_arena(), str32(&os_evt->character, 1)) : str8_zero();
+    ui_evt.paths        = str8_list_copy(ui_build_arena(), &os_evt->strings);
     ui_evt.pos          = os_evt->pos;
     ui_evt.delta_2f32   = os_evt->delta;
     ui_evt.timestamp_us = os_evt->timestamp_us;
 
-    if(ui_evt.key == OS_Key_Backspace && ui_evt.kind == UI_EventKind_Press)
+    if(ui_evt.key == OS_Key_Backspace && !(ui_evt.modifiers&OS_Modifier_Ctrl) && ui_evt.kind == UI_EventKind_Press)
     {
       ui_evt.kind       = UI_EventKind_Edit;
       ui_evt.flags      = UI_EventFlag_Delete | UI_EventFlag_KeepMark;
       ui_evt.delta_unit = UI_EventDeltaUnit_Char;
+      ui_evt.delta_2s32 = v2s32(-1,0);
+    }
+
+    if(ui_evt.key == OS_Key_Backspace && (ui_evt.modifiers&OS_Modifier_Ctrl) && ui_evt.kind == UI_EventKind_Press)
+    {
+      ui_evt.kind       = UI_EventKind_Edit;
+      ui_evt.flags      = UI_EventFlag_Delete | UI_EventFlag_KeepMark;
+      ui_evt.delta_unit = UI_EventDeltaUnit_Word;
       ui_evt.delta_2s32 = v2s32(-1,0);
     }
 
@@ -881,6 +891,27 @@ ik_frame(void)
       ui_evt_0.delta_unit = UI_EventDeltaUnit_Whole;
       ui_evt_0.delta_2s32 = v2s32(-1,0);
       ui_event_list_push(ui_build_arena(), &ui_events, &ui_evt_0);
+    }
+
+    if(ui_evt.key == OS_Key_X && (ui_evt.modifiers & OS_Modifier_Ctrl) && ui_evt.kind == UI_EventKind_Press)
+    {
+      ui_evt.kind  = UI_EventKind_Edit;
+      ui_evt.flags = UI_EventFlag_Delete | UI_EventFlag_Copy | UI_EventFlag_KeepMark;
+    }
+
+    if(ui_evt.key == OS_Key_C && (ui_evt.modifiers & OS_Modifier_Ctrl) && ui_evt.kind == UI_EventKind_Press)
+    {
+      ui_evt.kind       = UI_EventKind_Navigate;
+      ui_evt.flags      = UI_EventFlag_Copy | UI_EventFlag_KeepMark;
+      ui_evt.delta_unit = UI_EventDeltaUnit_Char;
+      ui_evt.delta_2s32 = v2s32(0,0);
+    }
+
+    if(ui_evt.key == OS_Key_V && (ui_evt.modifiers & OS_Modifier_Ctrl) && ui_evt.kind == UI_EventKind_Press)
+    {
+      ui_evt.kind   = UI_EventKind_Edit;
+      ui_evt.flags  = UI_EventFlag_Paste;
+      ui_evt.string = os_get_clipboard_text(ui_build_arena());
     }
 
     if(ui_evt.key == OS_Key_Left && ui_evt.kind == UI_EventKind_Press)
@@ -1037,12 +1068,40 @@ ik_frame(void)
   ik_state->mouse_delta_in_world.y = ik_state->mouse_delta.y*ik_state->world_to_screen_ratio.y;
 
   ////////////////////////////////
+  //~ Messages Processing (purge+animating)
+
+  for(IK_Message *msg = ik_state->messages.first, *next = 0;
+      msg != 0;
+      msg = next)
+  {
+    next = msg->next;
+    B32 is_top = msg == ik_state->messages.first;
+    if(msg->expired && msg->expired_t == 1.f)
+    {
+      DLLRemove(ik_state->messages.first, ik_state->messages.last, msg);
+      ik_state->messages.count--;
+      continue;
+    }
+
+    msg->create_t += ik_state->animation.fast_rate * (1.f - msg->create_t);
+    msg->expired_t += ik_state->animation.slow_rate * ((F32)msg->expired - msg->expired_t);
+    if(is_top) msg->elapsed_sec += ik_state->frame_dt;
+    msg->expired = msg->elapsed_sec > 3.0;
+
+    F32 epsilon = 1e-2;
+    msg->create_t = abs_f32(1.f-msg->create_t) < epsilon ? 1.f : msg->create_t;
+    msg->expired_t = abs_f32((F32)msg->expired-msg->expired_t) < epsilon ? 1.f : msg->expired_t;
+  }
+
+  ////////////////////////////////
   //~ Build Debug UI
 
   ik_ui_stats();
+  ik_ui_man_page();
   ik_ui_toolbar();
   ik_ui_inspector();
   ik_ui_bottom_bar();
+  ik_ui_notification();
   ik_ui_selection();
 
   ////////////////////////////////
@@ -1748,6 +1807,7 @@ ik_frame(void)
     if(ui_key_press(OS_Modifier_Ctrl, OS_Key_S))
     {
       ik_frame_to_tyml(frame);
+      ik_message_push(push_str8f(ik_frame_arena(), "saved: %S", frame->save_path));
     }
 
     /////////////////////////////////
@@ -2266,6 +2326,25 @@ ik_drawlist_reset(IK_DrawList *drawlist)
 }
 
 /////////////////////////////////
+//~ Message Functions
+
+internal IK_Message *
+ik_message_push(String8 string)
+{
+  // list is empty? -> reset message arena
+  if(ik_state->messages.count == 0)
+  {
+    arena_clear(ik_state->message_arena);
+  }
+  
+  IK_Message *msg = push_array(ik_state->message_arena, IK_Message, 1);
+  msg->string = push_str8_copy(ik_state->message_arena, string);
+  DLLPushBack(ik_state->messages.first, ik_state->messages.last, msg);
+  ik_state->messages.count++;
+  return msg;
+}
+
+/////////////////////////////////
 //- high level building API 
 
 internal IK_DrawNode *
@@ -2674,6 +2753,59 @@ IK_BOX_UPDATE(text)
   B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key);
   B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
 
+  // data buffer
+  IK_EditBoxDrawData *draw_data = push_array(ik_frame_arena(), IK_EditBoxDrawData, 1);
+  box->draw_data = draw_data;
+
+  TxtPt *cursor = &box->cursor;
+  TxtPt *mark = &box->mark;
+
+  ////////////////////////////////
+  // Take navigation actions for editing
+
+  if(is_focus_active)
+  {
+    Temp scratch = scratch_begin(0,0);
+    UI_EventList *events = ik_state->events;
+    for(UI_EventNode *n = events->first; n != 0; n = n->next)
+    {
+      UI_Event *evt = &n->v;
+
+      if(evt->key == OS_Key_Return && evt->kind == UI_EventKind_Press)
+      {
+        evt->kind = UI_EventKind_Text;
+        evt->string = str8_lit("\n");
+      }
+
+      // don't consume anything that doesn't fit a single|multi-line's operations
+      if((evt->kind != UI_EventKind_Edit && evt->kind != UI_EventKind_Navigate && evt->kind != UI_EventKind_Text)) { continue; }
+
+      // map this action to an TxtOp
+      UI_TxtOp op = ik_multi_line_txt_op_from_event(scratch.arena, &n->v, box->string, *cursor, *mark);
+
+      // perform replace range
+      if(!txt_pt_match(op.range.min, op.range.max) || op.replace.size != 0)
+      {
+        String8 new_string = ui_push_string_replace_range(scratch.arena, box->string, r1s64(op.range.min.column, op.range.max.column), op.replace);
+        ik_box_equip_display_string(box, new_string);
+      }
+
+      if((op.flags&UI_TxtOpFlag_Copy) && op.copy.size != 0)
+      {
+        os_set_clipboard_text(op.copy);
+        ik_message_push(str8_lit("copied"));
+      }
+
+      // commit op's changed cursor & mark to caller-provided state
+      *cursor = op.cursor;
+      *mark = op.mark;
+
+      // consume event
+      ui_eat_event(&n->v);
+    }
+    scratch_end(scratch);
+  }
+
   ////////////////////////////////
   //~ Push line runs
 
@@ -2722,53 +2854,6 @@ IK_BOX_UPDATE(text)
     // fill
     box->display_lines = lines;
     box->display_line_fruns = line_fruns;
-    scratch_end(scratch);
-  }
-
-  // data buffer
-  IK_EditBoxDrawData *draw_data = push_array(ik_frame_arena(), IK_EditBoxDrawData, 1);
-  box->draw_data = draw_data;
-
-  TxtPt *cursor = &box->cursor;
-  TxtPt *mark = &box->mark;
-
-  ////////////////////////////////
-  // Take navigation actions for editing
-
-  if(is_focus_active)
-  {
-    Temp scratch = scratch_begin(0,0);
-    UI_EventList *events = ik_state->events;
-    for(UI_EventNode *n = events->first; n != 0; n = n->next)
-    {
-      UI_Event *evt = &n->v;
-
-      if(evt->key == OS_Key_Return && evt->kind == UI_EventKind_Press)
-      {
-        evt->kind = UI_EventKind_Text;
-        evt->string = str8_lit("\n");
-      }
-
-      // don't consume anything that doesn't fit a single|multi-line's operations
-      if((evt->kind != UI_EventKind_Edit && evt->kind != UI_EventKind_Navigate && evt->kind != UI_EventKind_Text)) { continue; }
-
-      // map this action to an TxtOp
-      UI_TxtOp op = ik_multi_line_txt_op_from_event(scratch.arena, &n->v, box->string, *cursor, *mark);
-
-      // perform replace range
-      if(!txt_pt_match(op.range.min, op.range.max) || op.replace.size != 0)
-      {
-        String8 new_string = ui_push_string_replace_range(scratch.arena, box->string, r1s64(op.range.min.column, op.range.max.column), op.replace);
-        ik_box_equip_display_string(box, new_string);
-      }
-
-      // commit op's changed cursor & mark to caller-provided state
-      *cursor = op.cursor;
-      *mark = op.mark;
-
-      // consume event
-      ui_eat_event(&n->v);
-    }
     scratch_end(scratch);
   }
 
@@ -3952,6 +4037,234 @@ ik_ui_stats(void)
 }
 
 internal void
+ik_ui_man_page()
+{
+  F32 open_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "man_page_open_t"), ik_state->show_man_page, .reset = 0, .rate = ik_state->animation.fast_rate);
+  if(open_t < 1e-3) return;
+
+  Rng2F32 rect = {0,0, ik_state->window_dim.x, ik_state->window_dim.y};
+  Vec2F32 center = center_2f32(rect);
+  rect.p0 = mix_2f32(center, rect.p0, open_t);
+  rect.p1 = mix_2f32(center, rect.p1, open_t);
+
+  UI_Box *container;
+  UI_Rect(rect)
+    UI_Flags(UI_BoxFlag_MouseClickable|UI_BoxFlag_Scroll|UI_BoxFlag_DrawBackground|UI_BoxFlag_Floating|UI_BoxFlag_Clip)
+    UI_Transparency(mix_1f32(0.f, 0.1, open_t))
+    container = ui_build_box_from_stringf(0, "###man_page_container");
+
+  UI_Box *body;
+  UI_Parent(container)
+    UI_WidthFill
+    UI_HeightFill
+    UI_Column
+    UI_Padding(ui_pct(1.0, 0.0))
+    UI_PrefHeight(ui_children_sum(1.0))
+    UI_Row
+    UI_Padding(ui_pct(1.0, 0.0))
+    UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_MouseClickable)
+    UI_PrefWidth(ui_children_sum(1.0))
+    UI_CornerRadius(1.f)
+    body = ui_build_box_from_stringf(0, "###body");
+
+  UI_Box *padded;
+  UI_Parent(body)
+    UI_PrefHeight(ui_children_sum(1.0))
+    UI_PrefWidth(ui_children_sum(1.0))
+    UI_Column
+    UI_Padding(ui_em(0.5, 0.0))
+    UI_Row
+    UI_Padding(ui_em(0.5, 0.0))
+    UI_ChildLayoutAxis(Axis2_Y)
+    UI_PrefWidth(ui_em(mix_1f32(0.f, 30.f, open_t), 1.0))
+    padded = ui_build_box_from_stringf(0, "###padded");
+
+  UI_Parent(padded)
+  {
+    /////////////////////////////////
+    // Header
+
+    UI_WidthFill
+    UI_Row
+    {
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("Man Page");
+      ui_spacer(ui_pct(1.0, 0.0));
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+        if(ui_pressed(ik_ui_buttonf("x")))
+        {
+          ik_state->show_man_page = !ik_state->show_man_page;
+        }
+    }
+    UI_WidthFill
+    ui_divider(ui_em(1.5, 0.0));
+
+    /////////////////////////////////
+    // Navigation
+
+    ui_set_next_pref_width(ui_pct(1.0, 0.0));
+    ui_set_next_flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow);
+    ui_labelf("Camera");
+    ui_spacer(ui_em(0.2,0.0));
+
+    UI_WidthFill
+    UI_Row
+    {
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("Zoom");
+      ui_spacer(ui_pct(1.0, 0.0));
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("CTRL+SCROLL");
+    }
+
+    UI_WidthFill
+    UI_Row
+    {
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("Pan");
+      ui_spacer(ui_pct(1.0, 0.0));
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("Hold space and drag");
+    }
+
+    UI_WidthFill
+    UI_Row
+    {
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("PageDown/PageUp");
+      ui_spacer(ui_pct(1.0, 0.0));
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("Mouse scroll");
+    }
+
+    UI_WidthFill
+    UI_Row
+    {
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("Center");
+      ui_spacer(ui_pct(1.0, 0.0));
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("Double click image to center viewport");
+    }
+
+    /////////////////////////////////
+    // Edit
+
+    ui_set_next_pref_width(ui_pct(1.0, 0.0));
+    ui_set_next_flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow);
+    ui_labelf("Edit");
+    ui_spacer(ui_em(0.2,0.0));
+
+    UI_WidthFill
+    UI_Row
+    {
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("Type");
+      ui_spacer(ui_pct(1.0, 0.0));
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("Double click on empty area to type");
+    }
+
+    UI_WidthFill
+    UI_Row
+    {
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("PasteText");
+      ui_spacer(ui_pct(1.0, 0.0));
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("CTRL+V to paste text from clipboard");
+    }
+
+    UI_WidthFill
+    UI_Row
+    {
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("PasteImage");
+      ui_spacer(ui_pct(1.0, 0.0));
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("CTRL+V to paste image from clipboard");
+    }
+
+    UI_WidthFill
+    UI_Row
+    {
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("FileDrop");
+      ui_spacer(ui_pct(1.0, 0.0));
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("TODO");
+    }
+
+    UI_WidthFill
+    UI_Row
+    {
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("Delete");
+      ui_spacer(ui_pct(1.0, 0.0));
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("Select box then press Delete");
+    }
+
+    /////////////////////////////////
+    // File
+
+    ui_set_next_pref_width(ui_pct(1.0, 0.0));
+    ui_set_next_flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow);
+    ui_labelf("File");
+    ui_spacer(ui_em(0.2,0.0));
+
+    UI_WidthFill
+    UI_Row
+    {
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("Save");
+      ui_spacer(ui_pct(1.0, 0.0));
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("CTRL+S");
+    }
+
+    UI_WidthFill
+    UI_Row
+    {
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("SaveAs");
+      ui_spacer(ui_pct(1.0, 0.0));
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("TODO");
+    }
+
+    /////////////////////////////////
+    // Debug
+
+    ui_set_next_pref_width(ui_pct(1.0, 0.0));
+    ui_set_next_flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow);
+    ui_labelf("Debug");
+    ui_spacer(ui_em(0.2,0.0));
+
+    UI_WidthFill
+    UI_Row
+    {
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("ShowStats");
+      ui_spacer(ui_pct(1.0, 0.0));
+      UI_PrefWidth(ui_text_dim(1, 1.0))
+        ui_labelf("CTRL+`");
+    }
+
+    UI_WidthFill
+    ui_divider(ui_em(1.5, 0.0));
+  }
+
+  ui_signal_from_box(body);
+  UI_Signal sig = ui_signal_from_box(container);
+  if(ui_pressed(sig))
+  {
+    ik_state->show_man_page = 0;
+  }
+}
+
+internal void
 ik_ui_toolbar(void)
 {
   UI_Box *container;
@@ -3986,6 +4299,7 @@ ik_ui_toolbar(void)
       str8_lit("D"),
       // str8_lit("I"),
       // str8_lit("E"),
+      str8_lit("E"),
     };
 
     for(U64 i = 0; i < IK_ToolKind_COUNT; i++)
@@ -4012,7 +4326,14 @@ ik_ui_toolbar(void)
 
       if(ui_pressed(sig))
       {
-        ik_state->tool = i;
+        switch(i)
+        {
+          default: {ik_state->tool = i;}break;
+          case IK_ToolKind_Man:
+          {
+            ik_state->show_man_page = !ik_state->show_man_page;
+          }break;
+        }
       }
     }
   }
@@ -4746,6 +5067,42 @@ ik_ui_bottom_bar()
       UI_Transparency(0.3)
       UI_FontSize(ui_top_font_size()*1.1f)
       ui_label(frame->save_path);
+  }
+}
+
+internal void
+ik_ui_notification(void)
+{
+  F32 width = ui_top_font_size()*20;
+  F32 padding_right = ui_top_font_size()*1;
+  F32 padding_vertical = ui_top_font_size()*1;
+  Rng2F32 rect =
+  {
+    .x0 = ik_state->window_dim.x-width-padding_right,
+    .y0 = padding_vertical,
+    .x1 = ik_state->window_dim.x-padding_right,
+    .y1 = ik_state->window_dim.y-padding_vertical,
+  };
+
+  UI_Box *container;
+  UI_Rect(rect)
+    UI_ChildLayoutAxis(Axis2_Y)
+    container = ui_build_box_from_stringf(0, "###notification_container");
+
+  UI_Parent(container)
+  for(IK_Message *msg = ik_state->messages.first;
+      msg != 0;
+      msg = msg->next)
+  {
+    F32 t = msg->expired ? 1.f-msg->expired_t : msg->create_t;
+
+    UI_Transparency(mix_1f32(1.0f, 0.3f, t))
+    UI_PrefWidth(ui_pct(mix_1f32(0.f, 1.f, t), 0.0))
+    UI_CornerRadius(1.f)
+    UI_Flags(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow)
+      ui_label(msg->string);
+
+    if(msg->next) ui_spacer(ui_em(0.5,0.0));
   }
 }
 
