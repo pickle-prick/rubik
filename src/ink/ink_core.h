@@ -838,6 +838,7 @@ internal String8 ik_get_drag_data(U64 min_required_size);
 
 internal B32 ik_paste(void);
 internal B32 ik_copy(void);
+internal String8List ik_file_drop(void);
 // TODO(k): for now, we just reuse the ui eat consumption helpers, since we are using the same event list
 // internal void ik_eat_event_node(UI_EventList *list, UI_EventNode *node);
 // internal B32  ik_key_press(OS_Modifiers mods, OS_Key key);

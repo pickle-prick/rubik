@@ -1747,6 +1747,41 @@ ik_frame(void)
       ik_kill_action();
     }
 
+    //- file drop
+    {
+      String8List paths = ik_file_drop();
+      if(paths.node_count > 0)
+      {
+        Vec2F32 position = ik_state->mouse_in_world;
+        for(String8Node *n = paths.first;
+            n != 0;
+            n = n->next)
+        {
+          String8 path = n->string; 
+
+          // TODO(Next)
+          // IK_Key key = ik_key_make(ui_hash_from_string(0, content), 0);
+          // IK_Image *image = ik_image_from_key(key);
+          // if(!image)
+          // {
+          //   image = ik_image_push(key);
+          //   image->encoded = ik_push_str8_copy(content);
+          //   ik_image_decode_queue_push(image);
+          // }
+
+          // {
+          //   F32 default_screen_width = ik_state->window_dim.x * 0.25;
+          //   F32 width = default_screen_width * ik_state->world_to_screen_ratio.x;
+          //   IK_Box *box = ik_image(IK_BoxFlag_DrawBorder, ik_state->mouse_in_world, v2f32(width, width), image);
+          //   box->ratio = 1.0;
+          //   box->disabled_t = 1.0;
+          //   // TODO(Next): not ideal, fix it later
+          //   box->draw_frame_index = ik_state->frame_index+1;
+          // }
+        }
+      }
+    }
+
     //- paste text/image
     if(ik_paste())
     {
@@ -2265,6 +2300,27 @@ ik_copy(void)
     if(evt->kind == UI_EventKind_Edit && (evt->flags&UI_EventFlag_Copy))
     {
       ret = 1;
+      ui_eat_event_node(ik_state->events, n);
+      break;
+    }
+
+  }
+  return ret;
+}
+
+internal String8List
+ik_file_drop(void)
+{
+  String8List ret = {0};
+  for(UI_EventNode *n = ik_state->events->first, *next = 0; n != 0; n = next)
+  {
+    B32 taken = 0;
+    next = n->next;
+    UI_Event *evt = &n->v;
+
+    if(evt->kind == UI_EventKind_FileDrop)
+    {
+      ret = evt->paths;
       ui_eat_event_node(ik_state->events, n);
       break;
     }
@@ -4069,6 +4125,31 @@ ik_ui_stats(void)
       ui_spacer(ui_pct(1.0, 0.0));
       ui_labelf("%.2f, %.2f", ui_state->drag_start_mouse.x, ui_state->drag_start_mouse.y);
     }
+
+    // cpu graph
+    UI_WidthFill
+    UI_PrefHeight(ui_em(4,0.f))
+    UI_Row
+    {
+      F32 ref_hz = 1.f/60.f;
+      F32 max = (ref_hz*1e6)*3;
+      for(U64 i = 0; i < ArrayCount(ik_state->frame_time_us_history); i++)
+      {
+        U64 idx = (ik_state->frame_index+i)%ArrayCount(ik_state->frame_time_us_history);
+        F32 pct = (F32)ik_state->frame_time_us_history[idx]/max;
+        pct = Clamp(0, pct, 1.0);
+
+        UI_HeightFill
+        UI_PrefWidth(ui_pct(1.0, 0.0))
+        UI_Column
+        {
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_PrefHeight(ui_pct(pct, 1.0))
+          UI_Flags(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder)
+            ui_build_box_from_stringf(0, "###frame_%I64u", idx);
+        }
+      }
+    }
   }
 }
 
@@ -5179,9 +5260,12 @@ ik_ui_notification(void)
   {
     F32 t = msg->expired ? 1.f-msg->expired_t : msg->create_t;
 
-    UI_Transparency(mix_1f32(1.0f, 0.3f, t))
+    UI_Transparency(mix_1f32(1.0f, 0.1f, t))
     UI_PrefWidth(ui_pct(mix_1f32(0.f, 1.f, t), 0.0))
     UI_CornerRadius(1.f)
+    UI_Palette(ui_build_palette(ui_top_palette(), .border = ik_rgba_from_theme_color(IK_ThemeColor_BaseBackground),
+                                                  .text = v4f32(0,0,0,1.0),
+                                                  .background = ik_rgba_from_theme_color(IK_ThemeColor_Breakpoint)))
     UI_Flags(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow)
       ui_label(msg->string);
 
