@@ -836,12 +836,12 @@ ik_frame(void)
     switch(os_evt->kind)
     {
       default:{}break;
-      case OS_EventKind_Press:       {kind = UI_EventKind_Press;}break;
-      case OS_EventKind_Release:     {kind = UI_EventKind_Release;}break;
-      case OS_EventKind_MouseMove:   {kind = UI_EventKind_MouseMove;}break;
-      case OS_EventKind_Text:        {kind = UI_EventKind_Text;}break;
-      case OS_EventKind_Scroll:      {kind = UI_EventKind_Scroll;}break;
-      case OS_EventKind_FileDrop:    {kind = UI_EventKind_FileDrop;}break;
+      case OS_EventKind_Press:     {kind = UI_EventKind_Press;}break;
+      case OS_EventKind_Release:   {kind = UI_EventKind_Release;}break;
+      case OS_EventKind_MouseMove: {kind = UI_EventKind_MouseMove;}break;
+      case OS_EventKind_Text:      {kind = UI_EventKind_Text;}break;
+      case OS_EventKind_Scroll:    {kind = UI_EventKind_Scroll;}break;
+      case OS_EventKind_FileDrop:  {kind = UI_EventKind_FileDrop;}break;
     }
 
     ui_evt.kind         = kind;
@@ -901,7 +901,7 @@ ik_frame(void)
 
     if(ui_evt.key == OS_Key_C && (ui_evt.modifiers & OS_Modifier_Ctrl) && ui_evt.kind == UI_EventKind_Press)
     {
-      ui_evt.kind       = UI_EventKind_Navigate;
+      ui_evt.kind       = UI_EventKind_Edit;
       ui_evt.flags      = UI_EventFlag_Copy | UI_EventFlag_KeepMark;
       ui_evt.delta_unit = UI_EventDeltaUnit_Char;
       ui_evt.delta_2s32 = v2s32(0,0);
@@ -911,7 +911,7 @@ ik_frame(void)
     {
       ui_evt.kind   = UI_EventKind_Edit;
       ui_evt.flags  = UI_EventFlag_Paste;
-      ui_evt.string = os_get_clipboard_text(ui_build_arena());
+      // ui_evt.string = os_get_clipboard_text(ui_build_arena());
     }
 
     if(ui_evt.key == OS_Key_Left && ui_evt.kind == UI_EventKind_Press)
@@ -1205,10 +1205,7 @@ ik_frame(void)
         camera->dragging = 0;
       }
 
-      if(taken)
-      {
-        ui_eat_event_node(ik_state->events, n);
-      }
+      if(taken) ui_eat_event_node(ik_state->events, n);
     }
 
     // TODO(Next): not pretty
@@ -1743,7 +1740,6 @@ ik_frame(void)
     if(tool == IK_ToolKind_Selection && blank->sig.f&IK_SignalFlag_LeftDoubleClicked)
     {
       IK_Box *box = ik_text(str8_lit(""), ik_state->mouse_in_world);
-      // TODO(Next): not ideal, fix it later
       box->draw_frame_index = ik_state->frame_index+1;
       box->disabled_t = 1.0;
       ik_state->focus_hot_box_key = box->key;
@@ -1752,7 +1748,7 @@ ik_frame(void)
     }
 
     //- paste text/image
-    if(ui_key_press(OS_Modifier_Ctrl, OS_Key_V))
+    if(ik_paste())
     {
       Temp scratch = scratch_begin(0,0);
 
@@ -2235,7 +2231,47 @@ ik_get_drag_data(U64 min_required_size)
 /////////////////////////////////
 //~ OS event consumption helpers
 
-// TODO(k): for now, we just reuse the ui eat consumption helpers, since we are using the same event list
+internal B32
+ik_paste(void)
+{
+  B32 ret = 0;
+  for(UI_EventNode *n = ik_state->events->first, *next = 0; n != 0; n = next)
+  {
+    B32 taken = 0;
+    next = n->next;
+    UI_Event *evt = &n->v;
+
+    if(evt->kind == UI_EventKind_Edit && (evt->flags&UI_EventFlag_Paste))
+    {
+      ret = 1;
+      ui_eat_event_node(ik_state->events, n);
+      break;
+    }
+
+  }
+  return ret;
+}
+
+internal B32
+ik_copy(void)
+{
+  B32 ret = 0;
+  for(UI_EventNode *n = ik_state->events->first, *next = 0; n != 0; n = next)
+  {
+    B32 taken = 0;
+    next = n->next;
+    UI_Event *evt = &n->v;
+
+    if(evt->kind == UI_EventKind_Edit && (evt->flags&UI_EventFlag_Copy))
+    {
+      ret = 1;
+      ui_eat_event_node(ik_state->events, n);
+      break;
+    }
+
+  }
+  return ret;
+}
 
 /////////////////////////////////
 //~ Dynamic drawing (in immediate mode fashion)

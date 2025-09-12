@@ -772,8 +772,9 @@ os_get_events(Arena *arena, B32 wait)
         OS_LNX_Window *window = os_lnx_window_from_x11window(evt.xkey.window);
         KeySym keysym = 0;
         U8 text[256] = {0};
+        // NOTE(k): text_size will be 0 if ControlMask is maksed
         U64 text_size = Xutf8LookupString(window->xic, &evt.xkey, (char *)text, sizeof(text), &keysym, 0);
-        // NOTE(k): Xutf8LookupString won't produce keysym on keyPress
+        // NOTE(k): Xutf8LookupString won't produce keysym on keyPress (should it be keyRelease?)
         if(keysym == 0) keysym = XLookupKeysym(&evt.xkey, 0);
         
         // rjf: map keysym -> OS_Key
