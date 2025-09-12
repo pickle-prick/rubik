@@ -165,6 +165,9 @@ internal F32                        d_top_transparency(void);
 //- rjf: rectangles
 internal inline R_Rect2DInst* d_rect(Rng2F32 dst, Vec4F32 color, F32 corner_radius, F32 border_thickness, F32 edge_softness);
 
+//- rjf: lines
+internal inline R_Rect2DInst* d_line(Vec2F32 a, Vec2F32 b, Vec4F32 color, F32 line_thickness, F32 edge_softness);
+
 //- rjf: images
 internal inline R_Rect2DInst* d_img(Rng2F32 dst, Rng2F32 src, R_Handle texture, Vec4F32 color, F32 corner_radius, F32 border_thickness, F32 edge_softness);
 

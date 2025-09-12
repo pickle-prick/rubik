@@ -9,6 +9,7 @@ layout(location = 4) in vec4 color01;
 layout(location = 5) in vec4 color11;
 layout(location = 6) in vec4 corner_radii_px;
 layout(location = 7) in vec4 style_params;
+layout(location = 8) in vec4 line;
 
 layout(location = 0)      out vec4  frag_position;
 layout(location = 1) flat out vec2  frag_rect_half_size_px;
@@ -20,6 +21,7 @@ layout(location = 6) flat out float frag_border_thickness_px;
 layout(location = 7) flat out float frag_softness_px;
 layout(location = 8) flat out float frag_omit_texture;
 layout(location = 9) flat out float frag_white_texture_override;
+layout(location = 10) flat out vec4 frag_line;
 
 layout(set = 0, binding = 0) uniform Globals {
   vec2 viewport_size_px;                // Vec2F32 viewport_size;
@@ -87,4 +89,5 @@ void main()
   frag_softness_px            = softness_px;
   frag_omit_texture           = omit_texture;
   frag_white_texture_override = white_texture_override;
+  frag_line                   = vec4(line.xy-frag_rect_half_size_px, line.zw-frag_rect_half_size_px);
 }

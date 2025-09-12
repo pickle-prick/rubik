@@ -603,6 +603,61 @@ d_rect(Rng2F32 dst, Vec4F32 color, F32 corner_radius, F32 border_thickness, F32 
   inst->edge_softness           = edge_softness;
   inst->white_texture_override  = 0.f;
   inst->omit_texture            = 1.f;
+  inst->line                    = v4f32(0,0,0,0);
+  bucket->last_cmd_stack_gen = bucket->stack_gen;
+  return inst;
+}
+
+//- k: lines
+internal inline R_Rect2DInst *
+d_line(Vec2F32 a, Vec2F32 b, Vec4F32 color, F32 line_thickness, F32 edge_softness)
+{
+  Arena *arena = d_thread_ctx->arena;
+  D_Bucket *bucket = d_top_bucket();
+  AssertAlways(bucket != 0);
+  R_Pass *pass = r_pass_from_kind(arena, &bucket->passes, R_PassKind_UI, 1);
+  R_PassParams_UI *params = pass->params_ui;
+  R_BatchGroupRectList *rects = &params->rects;
+  R_BatchGroupRectNode *node = rects->last;
+
+  if(node == 0 || bucket->stack_gen != bucket->last_cmd_stack_gen)
+  {
+    node = push_array(arena, R_BatchGroupRectNode, 1);
+    SLLQueuePush(rects->first, rects->last, node);
+    rects->count += 1;
+    node->batches = r_batch_list_make(sizeof(R_Rect2DInst));
+    node->params.tex             = r_handle_zero();
+    node->params.viewport        = bucket->top_viewport->v;
+    node->params.tex_sample_kind = bucket->top_tex2d_sample_kind->v;
+    node->params.xform           = bucket->top_xform2d->v;
+    node->params.clip            = bucket->top_clip->v;
+    node->params.transparency    = bucket->top_transparency->v;
+  }
+  R_Rect2DInst *inst = (R_Rect2DInst *)r_batch_list_push_inst(arena, &node->batches, 256);
+
+  Rng2F32 dst = {.p0 = a, .p1 = b};
+  if(dst.x0 > dst.x1) Swap(F32, dst.x0, dst.x1);
+  if(dst.y0 > dst.y1) Swap(F32, dst.y0, dst.y1);
+  F32 radius = line_thickness;
+  dst = pad_2f32(dst, radius);
+  Vec2F32 p0 = sub_2f32(a, dst.p0);
+  Vec2F32 p1 = sub_2f32(b, dst.p0);
+
+  inst->dst                     = dst;
+  inst->src                     = r2f32p(0, 0, 0, 0);
+  inst->colors[Corner_00]       = color;
+  inst->colors[Corner_10]       = color;
+  inst->colors[Corner_11]       = color;
+  inst->colors[Corner_01]       = color;
+  inst->corner_radii[Corner_00] = 0;
+  inst->corner_radii[Corner_10] = 0;
+  inst->corner_radii[Corner_11] = 0;
+  inst->corner_radii[Corner_01] = 0;
+  inst->border_thickness        = line_thickness;
+  inst->edge_softness           = edge_softness;
+  inst->white_texture_override  = 0.f;
+  inst->omit_texture            = 1.f;
+  inst->line                    = v4f32(p0.x, p0.y, p1.x, p1.y);
   bucket->last_cmd_stack_gen = bucket->stack_gen;
   return inst;
 }
@@ -652,6 +707,7 @@ d_img(Rng2F32 dst, Rng2F32 src, R_Handle texture, Vec4F32 color,
   inst->edge_softness           = edge_softness;
   inst->white_texture_override  = 0.f;
   inst->omit_texture            = 0.f;
+  inst->line                    = v4f32(0,0,0,0);
   bucket->last_cmd_stack_gen = bucket->stack_gen;
   return inst;
 }

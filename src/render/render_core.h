@@ -141,6 +141,7 @@ struct R_Rect2DInst
   F32 edge_softness;
   F32 white_texture_override;
   F32 omit_texture;
+  Vec4F32 line;
 };
 
 typedef struct R_Mesh2DInst R_Mesh2DInst;

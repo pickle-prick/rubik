@@ -76,6 +76,11 @@ entry_point(CmdLine *cmd_line)
   Vec2F32 window_dim = {monitor_dim.y*0.6f*ratio, monitor_dim.y*0.6f};
   Vec2F32 half_window_dim = scale_2f32(window_dim, 0.5);
   Rng2F32 window_rect = {.p0 = sub_2f32(center, half_window_dim), .p1 = add_2f32(center, half_window_dim)};
+  // TODO(Next): just a hack for linux, we don't have os_dim_from_monitor implemented yet
+  if(window_rect.x1 == 0)
+  {
+    window_rect = r2f32p(0,0, 1600, 1000);
+  }
   String8 window_title = str8_lit("Ink");
 
   // open window

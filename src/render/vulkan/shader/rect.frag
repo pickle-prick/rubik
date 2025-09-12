@@ -10,9 +10,11 @@ layout(location = 6) in float border_thickness_px;
 layout(location = 7) in float softness_px;
 layout(location = 8) in float omit_texture;
 layout(location = 9) in float white_texture_override;
+layout(location = 10) in vec4 line;
 
 layout(location = 0) out vec4 out_color;
-layout(set = 0, binding = 0) uniform Globals {
+layout(set = 0, binding = 0) uniform Globals
+{
   vec2 viewport_size_px;                // Vec2F32 viewport_size;
   float opacity;                        // F32 opacity;
   float _padding0_;                     // F32 _padding0_;
@@ -32,6 +34,13 @@ float rect_sdf(vec2 pos, vec2 rect_size, float r)
   return length(max(abs(pos)-rect_size+r, 0.0)) - r;
 }
 
+float line_sdf(vec2 p, vec2 a, vec2 b, float r)
+{
+  vec2 pa = p-a, ba = b-a;
+  float h = clamp(dot(pa,ba)/dot(ba,ba), 0.0, 1.0);
+  return length(pa-ba*h) - r;
+}
+
 void main()
 {
   // Sample texture
@@ -46,10 +55,24 @@ void main()
     }
   }
 
+  // Sample for line
+  float line_sdf_t = 1.0;
+  vec2 a = line.xy;
+  vec2 b = line.zw;
+  // if(!(a.x == 0 && b.x == 0 && a.y == 0 && b.y == 0))
+  float eps = 1e-6;
+  bool draw_line = length(a-b) > eps;
+  if(draw_line)
+  {
+    // TODO(k): we don't have more slots more line_thickness, so we use border_thickness_px here
+    float thickness = border_thickness_px;
+    float line_sdf_s = line_sdf(sdf_sample_pos, a, b, thickness/2);
+    line_sdf_t = 1.0 - smoothstep(0, softness_px*2, line_sdf_s);
+  }
+
   // Sample for borders
-  // TODO(@k): support border color
   float border_sdf_t = 1.0;
-  if(border_thickness_px > 0)
+  if(border_thickness_px > 0 && !(draw_line))
   {
     float border_sdf_s = rect_sdf(sdf_sample_pos,
                                   rect_half_size_px - 2*softness_px - border_thickness_px,
@@ -71,5 +94,5 @@ void main()
   out_color.a *= globals.opacity;
   out_color.a *= border_sdf_t;
   out_color.a *= corner_sdf_t;
-  // if (out_color.a == 0) { discard; }
+  out_color.a *= line_sdf_t;
 }

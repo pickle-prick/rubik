@@ -3392,13 +3392,11 @@ IK_BOX_UPDATE(stroke)
 IK_BOX_DRAW(stroke)
 {
   F32 base_stroke_size = box->stroke_size;
-  F32 min_visiable_stroke_size = (2*ik_state->dpi/96.f) * ik_state->world_to_screen_ratio.x;
+  F32 min_visiable_stroke_size = (0.5*ik_state->dpi/96.f) * ik_state->world_to_screen_ratio.x;
 
   IK_Point *p0 = box->first_point;
   IK_Point *p1 = p0 ? p0->next : 0;
   IK_Point *p2 = p1 ? p1->next : 0;
-
-  // TODO(Next): at this point, we might just sdf instead
 
   // TODO(Next): move this into box
   Vec4F32 stroke_color = linear_from_srgba(rgba_from_u32(0xEEE6CAFF));
@@ -3412,22 +3410,14 @@ IK_BOX_DRAW(stroke)
     Vec2F32 m = p1->position;
     Vec2F32 m2 = {(p1->position.x + p2->position.x) * 0.5f, (p1->position.y + p2->position.y) * 0.5f};
 
-#if 1
     // scale stroke size based on dist, mimic ink pen effect
     F32 dist = length_2f32(sub_2f32(m1, m2));
-    F32 dist_px = dist/ik_state->world_to_screen_ratio.x;
     F32 t = round_f32(dist/base_stroke_size);
-    F32 scale = mix_1f32(1.0, 0.25, t/4.0);
-    scale = last_scale*0.9+0.1*scale;
+    F32 scale = mix_1f32(1.0, 0.2, t/2.0);
+    scale = last_scale*0.6+0.4*scale;
     last_scale = scale;
     F32 stroke_size = base_stroke_size*scale;
     stroke_size = ClampBot(stroke_size, min_visiable_stroke_size);
-    F32 half_stroke_size = stroke_size*0.5;
-#else
-    F32 stroke_size = base_stroke_size;
-    F32 stroke_size_px = base_stroke_size_px;
-    F32 half_stroke_size = base_half_stroke_size;
-#endif
 
     // draw quadratic curve: m1 -> m2 with p1 as control
     {
@@ -3444,11 +3434,7 @@ IK_BOX_DRAW(stroke)
       p2.y = p2.y*box->point_scale.y + box->position.y;
 
       // decide step size
-      F32 smoothness = 2.f * (ik_state->dpi/96.0);
-      F32 steps_f32 = dist_px*smoothness;
-      U64 steps = round_f32(steps_f32);
-      // NOTE(k): if the cap is too small and drag step is too large, there will be visiable effects
-      steps = ClampTop(steps, 30);
+      U64 steps = 3;
 
       Vec2F32 prev = p0;
       for(U64 i = 1; i <= steps; i++)
@@ -3461,9 +3447,11 @@ IK_BOX_DRAW(stroke)
           u*u*p0.y + 2*u*t*p1.y + t*t*p2.y
         };
 
-        // TODO(Next): draw line segment (prev → pt) with thickness
-        // d_line(prev, pt, v4f32(0,0,1,1), radius);
+        // draw line segment (prev → pt) with thickness
+#if 1
+        d_line(prev, pt, stroke_color, stroke_size, edge_softness);
 
+#else
         {
           Vec2F32 pos = prev;
           Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
@@ -3474,6 +3462,7 @@ IK_BOX_DRAW(stroke)
           Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
           d_rect(rect, stroke_color, half_stroke_size, 0, edge_softness);
         }
+#endif
 
         prev = pt;
       }

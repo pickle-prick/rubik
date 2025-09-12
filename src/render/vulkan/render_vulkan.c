@@ -4439,7 +4439,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
     case(R_Vulkan_PipelineKind_GFX_Rect):
     {
       vtx_binding_desc_count = 1;
-      vtx_attr_desc_cnt = 8;
+      vtx_attr_desc_cnt = 9;
 
       vtx_binding_desc[0].binding   = 0;
       vtx_binding_desc[0].stride    = sizeof(R_Rect2DInst);
@@ -4492,6 +4492,12 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       vtx_attr_descs[7].location = 7;
       vtx_attr_descs[7].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
       vtx_attr_descs[7].offset   = offsetof(R_Rect2DInst, border_thickness);
+
+      // sty
+      vtx_attr_descs[8].binding  = 0;
+      vtx_attr_descs[8].location = 8;
+      vtx_attr_descs[8].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
+      vtx_attr_descs[8].offset   = offsetof(R_Rect2DInst, line);
     }break;
     // case R_Vulkan_PipelineKind_GFX_Blur:
     case R_Vulkan_PipelineKind_GFX_Noise:
