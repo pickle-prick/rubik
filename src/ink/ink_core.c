@@ -747,14 +747,7 @@ ik_frame(void)
     ik_state->window_res_changed = ik_state->window_rect.x0 != ik_state->last_window_rect.x0 || ik_state->window_rect.x1 != ik_state->last_window_rect.x1 || ik_state->window_rect.y0 != ik_state->last_window_rect.y0 || ik_state->window_rect.y1 != ik_state->last_window_rect.y1;
     ik_state->window_dim = dim_2f32(ik_state->window_rect);
     ik_state->last_mouse = ik_state->mouse;
-    {
-      Vec2F32 mouse = os_window_is_focused(ik_state->os_wnd) ? os_mouse_from_window(ik_state->os_wnd) : v2f32(-100,-100);
-      if(mouse.x >= 0 && mouse.x <= ik_state->window_dim.x &&
-         mouse.y >= 0 && mouse.y <= ik_state->window_dim.y)
-      {
-        ik_state->mouse = mouse;
-      }
-    }
+    ik_state->mouse = os_window_is_focused(ik_state->os_wnd) ? os_mouse_from_window(ik_state->os_wnd) : v2f32(-100,-100);
     ik_state->mouse_delta = sub_2f32(ik_state->mouse, ik_state->last_mouse);
     ik_state->last_dpi = ik_state->dpi;
     ik_state->dpi = os_dpi_from_window(ik_state->os_wnd);
@@ -1749,35 +1742,61 @@ ik_frame(void)
 
     //- file drop
     {
-      String8List paths = ik_file_drop();
+      Vec2F32 drop_position = ik_state->mouse;
+      String8List paths = ik_file_drop(&drop_position);
       if(paths.node_count > 0)
       {
-        Vec2F32 position = ik_state->mouse_in_world;
+        // NOTE(k): drag on w32 could make window out of focus 
+        os_window_focus(ik_state->os_wnd);
+
+        Vec2F32 position = ik_screen_pos_in_world(ik_state->proj_mat_inv, drop_position);
+        F32 offset_x = 0;
         for(String8Node *n = paths.first;
             n != 0;
             n = n->next)
         {
           String8 path = n->string; 
 
-          // TODO(Next)
-          // IK_Key key = ik_key_make(ui_hash_from_string(0, content), 0);
-          // IK_Image *image = ik_image_from_key(key);
-          // if(!image)
-          // {
-          //   image = ik_image_push(key);
-          //   image->encoded = ik_push_str8_copy(content);
-          //   ik_image_decode_queue_push(image);
-          // }
+          OS_Handle file = os_file_open(OS_AccessFlag_ShareRead|OS_AccessFlag_Read, path);
+          if(!os_handle_match(os_handle_zero(), file))
+          {
+            FileProperties prop = os_properties_from_file(file);
+            String8 encoded = ik_str8_new(prop.size);
+            encoded.size = prop.size;
+            U64 read = os_file_read(file, (Rng1U64){0, prop.size}, (void*)encoded.str);
+            os_file_close(file);
 
-          // {
-          //   F32 default_screen_width = ik_state->window_dim.x * 0.25;
-          //   F32 width = default_screen_width * ik_state->world_to_screen_ratio.x;
-          //   IK_Box *box = ik_image(IK_BoxFlag_DrawBorder, ik_state->mouse_in_world, v2f32(width, width), image);
-          //   box->ratio = 1.0;
-          //   box->disabled_t = 1.0;
-          //   // TODO(Next): not ideal, fix it later
-          //   box->draw_frame_index = ik_state->frame_index+1;
-          // }
+
+            // decide initial width&height
+            F32 default_screen_width = ik_state->window_dim.x * 0.25;
+            F32 width = default_screen_width * ik_state->world_to_screen_ratio.x;
+            F32 height = width;
+            F32 ratio = 1.0;
+
+            // TODO(Next): we can't use content to hash the key, since we could drag multiple files with the same content
+            // we would cause a bug, the first image is sent to decode, and it's dim haven't been solved, but we use the same cached image to create the remaning boxes
+            IK_Key key = ik_key_make(ui_hash_from_string(0, path), 0);
+            IK_Image *image = ik_image_from_key(key);
+            if(!image)
+            {
+              image = ik_image_push(key);
+              image->encoded = encoded;
+              ik_image_decode_queue_push(image);
+            }
+            else
+            {
+              // image cached? -> set height based on ratio
+              ratio = (F32)image->x/image->y;
+              height = width/ratio;
+            }
+
+            IK_Box *box = ik_image(IK_BoxFlag_DrawBorder, v2f32(position.x+offset_x, position.y), v2f32(width, height), image);
+            box->ratio = ratio;
+            box->disabled_t = 1.0;
+            // TODO(Next): not ideal, fix it later
+            box->draw_frame_index = ik_state->frame_index+1;
+            offset_x += width/2.0;
+          }
         }
       }
     }
@@ -2309,7 +2328,7 @@ ik_copy(void)
 }
 
 internal String8List
-ik_file_drop(void)
+ik_file_drop(Vec2F32 *return_mouse)
 {
   String8List ret = {0};
   for(UI_EventNode *n = ik_state->events->first, *next = 0; n != 0; n = next)
@@ -2321,6 +2340,7 @@ ik_file_drop(void)
     if(evt->kind == UI_EventKind_FileDrop)
     {
       ret = evt->paths;
+      *return_mouse = evt->pos;
       ui_eat_event_node(ik_state->events, n);
       break;
     }
@@ -2492,12 +2512,22 @@ ik_drawlist_push_rect(Arena *arena, IK_DrawList *drawlist, Rng2F32 dst, Rng2F32 
 internal String8
 ik_push_str8_copy(String8 src)
 {
+  String8 ret = ik_str8_new(src.size+1); // NOTE: add 1 for null terminator
+  MemoryCopy(ret.str, src.str, src.size);
+  ret.size = src.size;
+  ret.str[ret.size] = '\0';
+  return ret;
+}
+
+internal String8
+ik_str8_new(U64 size)
+{
   ProfBeginFunction();
 #define MIN_CAP 512
   String8 ret = {0};
   IK_Frame *frame = ik_top_frame();
 
-  U64 required_bytes = Max(MIN_CAP, src.size+1); // add one for null terminator
+  U64 required_bytes = Max(MIN_CAP, size);
   IK_StringBlock *block = 0;
   for(IK_StringBlock *b = frame->first_free_string_block; b != 0; b = b->free_next)
   {
@@ -2522,14 +2552,11 @@ ik_push_str8_copy(String8 src)
   }
 
   ret.str = block->p;
-  ret.size = src.size;
-  MemoryCopy(ret.str, src.str, src.size);
-  ret.str[ret.size] = 0;
+  ret.size = size;
   ProfEnd();
   return ret;
 #undef MIN_CAP
 }
-
 
 internal void
 ik_string_block_release(String8 string)
@@ -3421,7 +3448,7 @@ IK_BOX_DRAW(stroke)
       F32 steps_f32 = dist_px*smoothness;
       U64 steps = round_f32(steps_f32);
       // NOTE(k): if the cap is too small and drag step is too large, there will be visiable effects
-      steps = ClampTop(steps, 100);
+      steps = ClampTop(steps, 30);
 
       Vec2F32 prev = p0;
       for(U64 i = 1; i <= steps; i++)
@@ -4057,6 +4084,12 @@ ik_ui_stats(void)
       ui_labelf("ik_mouse");
       ui_spacer(ui_pct(1.0, 0.0));
       ui_labelf("%.0f %.0f", ik_state->mouse.x, ik_state->mouse.y);
+    }
+    UI_Row
+    {
+      ui_labelf("ik_mouse_in_world");
+      ui_spacer(ui_pct(1.0, 0.0));
+      ui_labelf("%.0f %.0f", ik_state->mouse_in_world.x, ik_state->mouse_in_world.y);
     }
     UI_Row
     {
@@ -5982,10 +6015,10 @@ internal Vec2F32
 ik_screen_pos_in_world(Mat4x4F32 proj_view_mat_inv, Vec2F32 pos)
 {
   // mouse ndc pos
-  F32 mox_ndc = (ik_state->mouse.x / ik_state->window_dim.x) * 2.f - 1.f;
-  F32 moy_ndc = (ik_state->mouse.y / ik_state->window_dim.y) * 2.f - 1.f;
-  Vec4F32 mouse_in_world_4 = transform_4x4f32(proj_view_mat_inv, v4f32(mox_ndc, moy_ndc, 1., 1.));
-  Vec2F32 ret = v2f32(mouse_in_world_4.x, mouse_in_world_4.y);
+  F32 mox_ndc = (pos.x / ik_state->window_dim.x) * 2.f - 1.f;
+  F32 moy_ndc = (pos.y / ik_state->window_dim.y) * 2.f - 1.f;
+  Vec4F32 pos_in_world_4 = transform_4x4f32(proj_view_mat_inv, v4f32(mox_ndc, moy_ndc, 1., 1.));
+  Vec2F32 ret = v2f32(pos_in_world_4.x, pos_in_world_4.y);
   return ret;
 }
 

@@ -838,7 +838,7 @@ internal String8 ik_get_drag_data(U64 min_required_size);
 
 internal B32 ik_paste(void);
 internal B32 ik_copy(void);
-internal String8List ik_file_drop(void);
+internal String8List ik_file_drop(Vec2F32 *return_mouse);
 // TODO(k): for now, we just reuse the ui eat consumption helpers, since we are using the same event list
 // internal void ik_eat_event_node(UI_EventList *list, UI_EventNode *node);
 // internal B32  ik_key_press(OS_Modifiers mods, OS_Key key);
@@ -865,6 +865,7 @@ internal IK_Message* ik_message_push(String8 string);
 //~ String Block Functions
 
 internal String8 ik_push_str8_copy(String8 src);
+internal String8 ik_str8_new(U64 size);
 internal void    ik_string_block_release(String8 string);
 
 /////////////////////////////////

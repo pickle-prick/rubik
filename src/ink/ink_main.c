@@ -68,12 +68,20 @@ entry_point(CmdLine *cmd_line)
   U32 seed = time(NULL);
   srand(seed);
 
-  Vec2F32 window_rect = {900*3, 900*2};
+  // prepare window
+  F32 ratio = 16.f/10.f;
+  OS_Handle monitor = os_primary_monitor();
+  Vec2F32 monitor_dim = os_dim_from_monitor(monitor);
+  Vec2F32 center = scale_2f32(monitor_dim, 0.5);
+  Vec2F32 window_dim = {monitor_dim.y*0.6f*ratio, monitor_dim.y*0.6f};
+  Vec2F32 half_window_dim = scale_2f32(window_dim, 0.5);
+  Rng2F32 window_rect = {.p0 = sub_2f32(center, half_window_dim), .p1 = add_2f32(center, half_window_dim)};
   String8 window_title = str8_lit("Ink");
 
   // open window
-  OS_Handle os_wnd = os_window_open(r2f32p(0,0, window_rect.x, window_rect.y), 0, window_title);
+  OS_Handle os_wnd = os_window_open(window_rect, 0, window_title);
   os_window_first_paint(os_wnd);
+  os_window_focus(os_wnd);
 
   // init main audio device
 #if OS_FEATURE_AUDIO
@@ -91,7 +99,7 @@ entry_point(CmdLine *cmd_line)
   UI_State *ui = ui_state_alloc();
   ui_select_state(ui);
 
-  // init game state
+  // init ik state
   ik_init(os_wnd, r_wnd);
 
   ///////////////////////////////////////////////////////////////////////////////////////

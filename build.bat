@@ -37,8 +37,8 @@ if "%~1"=="release" if "%~2"=="" echo [default mode, assuming `rubik` build] && 
 
 :: --- Unpack Command Line Build Arguments ------------------------------------
 set auto_compile_flags=
-if "%profile%"=="1" set auto_compile_flags=%auto_compile_flags% -DPROFILE=1 && echo [profiling enabled]
-if "%asan%"=="1"      set auto_compile_flags=%auto_compile_flags% -fsanitize=address && echo [asan enabled]
+if "%profile%"=="1" set auto_compile_flags=%auto_compile_flags% -DPROFILE=1 -DPROFILE_SPALL=1 && echo [profiling enabled]
+if "%asan%"=="1"    set auto_compile_flags=%auto_compile_flags% -fsanitize=address && echo [asan enabled]
 
 :: --- Compile/Link Line Definitions ------------------------------------------
 set cl_common=     /I..\src\ /I..\local\ /I"%VULKAN_SDK%\Include" /nologo /FC /Z7
