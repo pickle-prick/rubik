@@ -5052,6 +5052,53 @@ ik_ui_inspector(void)
           }
         }
       }
+
+      ////////////////////////////////
+      //~ Actions
+
+      ui_divider(ui_em(0.5, 0.0));
+      UI_WidthFill
+      UI_Row
+      {
+        UI_PrefWidth(ui_text_dim(1, 1.0))
+          ui_labelf("actions");
+        ui_spacer(ui_pct(1.0, 0.0));
+        UI_Row
+        {
+          // copy
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_PrefWidth(ui_text_dim(0.f, 0.f))
+          UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+          UI_TextAlignment(UI_TextAlign_Center)
+          if(ui_clicked(ik_ui_buttonf("F")))
+          {
+            ik_message_push(str8_lit("TODO"));
+          }
+
+          // delete
+          ui_spacer(ui_em(0.2, 1.0));
+          UI_PrefWidth(ui_text_dim(0.f, 0.f))
+          UI_TextAlignment(UI_TextAlign_Center)
+          UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+          if(ui_clicked(ik_ui_buttonf("#")))
+          {
+            IK_Box *select = frame->select;
+            if(b == select)
+            {
+              for(IK_Box *child = select->group_first, *next = 0; child != 0; child = next)
+              {
+                next = child->group_next;
+                ik_box_release(child);
+              }
+              select->flags |= IK_BoxFlag_Disabled;
+            }
+            else ik_box_release(b);
+          }
+        }
+      }
+
+      // bottom padding
+      ui_spacer(ui_em(0.2, 0.0));
     }
     ui_signal_from_box(body);
   }
@@ -5199,8 +5246,7 @@ ik_ui_button(String8 string)
   UI_Signal sig;
   UI_Size pref_width = ui_top_pref_width();
   F32 padding_em = 0.15f;
-  // F32 font_size = ui_top_font_size() * (1.f-padding_em*2);
-  F32 font_size = ui_top_font_size() * (1.f-padding_em);
+  F32 font_size = ui_top_font_size() * (1.f-padding_em*2);
   F32 corner_radius = font_size/16.0f;
 
   UI_Box *container;
