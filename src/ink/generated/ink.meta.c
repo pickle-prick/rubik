@@ -9,7 +9,9 @@
 #define IK_FontSize_Scope(v) DeferLoop(ik_push_font_size(v), ik_pop_font_size())
 #define IK_TextRasterFlags_Scope(v) DeferLoop(ik_push_text_raster_flags(v), ik_pop_text_raster_flags())
 #define IK_TabSize_Scope(v) DeferLoop(ik_push_tab_size(v), ik_pop_tab_size())
+#define IK_BackgroundColor_Scope(v) DeferLoop(ik_push_background_color(v), ik_pop_background_color())
 #define IK_StrokeSize_Scope(v) DeferLoop(ik_push_stroke_size(v), ik_pop_stroke_size())
+#define IK_StrokeColor_Scope(v) DeferLoop(ik_push_stroke_color(v), ik_pop_stroke_color())
 #define IK_Transparency_Scope(v) DeferLoop(ik_push_transparency(v), ik_pop_transparency())
 #define IK_Palette_Scope(v) DeferLoop(ik_push_palette(v), ik_pop_palette())
 #define IK_Flags_Scope(v) DeferLoop(ik_push_flags(v), ik_pop_flags())
@@ -22,7 +24,9 @@ internal F_Tag ik_top_font(void) { IK_StackTopImpl(ik_state, Font, font) }
 internal F32 ik_top_font_size(void) { IK_StackTopImpl(ik_state, FontSize, font_size) }
 internal F_RasterFlags ik_top_text_raster_flags(void) { IK_StackTopImpl(ik_state, TextRasterFlags, text_raster_flags) }
 internal F32 ik_top_tab_size(void) { IK_StackTopImpl(ik_state, TabSize, tab_size) }
+internal Vec4F32 ik_top_background_color(void) { IK_StackTopImpl(ik_state, BackgroundColor, background_color) }
 internal F32 ik_top_stroke_size(void) { IK_StackTopImpl(ik_state, StrokeSize, stroke_size) }
+internal Vec4F32 ik_top_stroke_color(void) { IK_StackTopImpl(ik_state, StrokeColor, stroke_color) }
 internal F32 ik_top_transparency(void) { IK_StackTopImpl(ik_state, Transparency, transparency) }
 internal IK_Palette*     ik_top_palette(void) { IK_StackTopImpl(ik_state, Palette, palette) }
 internal IK_BoxFlags ik_top_flags(void) { IK_StackTopImpl(ik_state, Flags, flags) }
@@ -34,7 +38,9 @@ internal F_Tag ik_bottom_font(void) { IK_StackBottomImpl(ik_state, Font, font) }
 internal F32 ik_bottom_font_size(void) { IK_StackBottomImpl(ik_state, FontSize, font_size) }
 internal F_RasterFlags ik_bottom_text_raster_flags(void) { IK_StackBottomImpl(ik_state, TextRasterFlags, text_raster_flags) }
 internal F32 ik_bottom_tab_size(void) { IK_StackBottomImpl(ik_state, TabSize, tab_size) }
+internal Vec4F32 ik_bottom_background_color(void) { IK_StackBottomImpl(ik_state, BackgroundColor, background_color) }
 internal F32 ik_bottom_stroke_size(void) { IK_StackBottomImpl(ik_state, StrokeSize, stroke_size) }
+internal Vec4F32 ik_bottom_stroke_color(void) { IK_StackBottomImpl(ik_state, StrokeColor, stroke_color) }
 internal F32 ik_bottom_transparency(void) { IK_StackBottomImpl(ik_state, Transparency, transparency) }
 internal IK_Palette*     ik_bottom_palette(void) { IK_StackBottomImpl(ik_state, Palette, palette) }
 internal IK_BoxFlags ik_bottom_flags(void) { IK_StackBottomImpl(ik_state, Flags, flags) }
@@ -46,7 +52,9 @@ internal F_Tag ik_push_font(F_Tag v) { IK_StackPushImpl(ik_state, Font, font, F_
 internal F32 ik_push_font_size(F32 v) { IK_StackPushImpl(ik_state, FontSize, font_size, F32, v) }
 internal F_RasterFlags ik_push_text_raster_flags(F_RasterFlags v) { IK_StackPushImpl(ik_state, TextRasterFlags, text_raster_flags, F_RasterFlags, v) }
 internal F32 ik_push_tab_size(F32 v) { IK_StackPushImpl(ik_state, TabSize, tab_size, F32, v) }
+internal Vec4F32 ik_push_background_color(Vec4F32 v) { IK_StackPushImpl(ik_state, BackgroundColor, background_color, Vec4F32, v) }
 internal F32 ik_push_stroke_size(F32 v) { IK_StackPushImpl(ik_state, StrokeSize, stroke_size, F32, v) }
+internal Vec4F32 ik_push_stroke_color(Vec4F32 v) { IK_StackPushImpl(ik_state, StrokeColor, stroke_color, Vec4F32, v) }
 internal F32 ik_push_transparency(F32 v) { IK_StackPushImpl(ik_state, Transparency, transparency, F32, v) }
 internal IK_Palette*     ik_push_palette(IK_Palette*     v) { IK_StackPushImpl(ik_state, Palette, palette, IK_Palette*    , v) }
 internal IK_BoxFlags ik_push_flags(IK_BoxFlags v) { IK_StackPushImpl(ik_state, Flags, flags, IK_BoxFlags, v) }
@@ -58,7 +66,9 @@ internal F_Tag ik_pop_font(void) { IK_StackPopImpl(ik_state, Font, font) }
 internal F32 ik_pop_font_size(void) { IK_StackPopImpl(ik_state, FontSize, font_size) }
 internal F_RasterFlags ik_pop_text_raster_flags(void) { IK_StackPopImpl(ik_state, TextRasterFlags, text_raster_flags) }
 internal F32 ik_pop_tab_size(void) { IK_StackPopImpl(ik_state, TabSize, tab_size) }
+internal Vec4F32 ik_pop_background_color(void) { IK_StackPopImpl(ik_state, BackgroundColor, background_color) }
 internal F32 ik_pop_stroke_size(void) { IK_StackPopImpl(ik_state, StrokeSize, stroke_size) }
+internal Vec4F32 ik_pop_stroke_color(void) { IK_StackPopImpl(ik_state, StrokeColor, stroke_color) }
 internal F32 ik_pop_transparency(void) { IK_StackPopImpl(ik_state, Transparency, transparency) }
 internal IK_Palette*     ik_pop_palette(void) { IK_StackPopImpl(ik_state, Palette, palette) }
 internal IK_BoxFlags ik_pop_flags(void) { IK_StackPopImpl(ik_state, Flags, flags) }
@@ -70,7 +80,9 @@ internal F_Tag ik_set_next_font(F_Tag v) { IK_StackSetNextImpl(ik_state, Font, f
 internal F32 ik_set_next_font_size(F32 v) { IK_StackSetNextImpl(ik_state, FontSize, font_size, F32, v) }
 internal F_RasterFlags ik_set_next_text_raster_flags(F_RasterFlags v) { IK_StackSetNextImpl(ik_state, TextRasterFlags, text_raster_flags, F_RasterFlags, v) }
 internal F32 ik_set_next_tab_size(F32 v) { IK_StackSetNextImpl(ik_state, TabSize, tab_size, F32, v) }
+internal Vec4F32 ik_set_next_background_color(Vec4F32 v) { IK_StackSetNextImpl(ik_state, BackgroundColor, background_color, Vec4F32, v) }
 internal F32 ik_set_next_stroke_size(F32 v) { IK_StackSetNextImpl(ik_state, StrokeSize, stroke_size, F32, v) }
+internal Vec4F32 ik_set_next_stroke_color(Vec4F32 v) { IK_StackSetNextImpl(ik_state, StrokeColor, stroke_color, Vec4F32, v) }
 internal F32 ik_set_next_transparency(F32 v) { IK_StackSetNextImpl(ik_state, Transparency, transparency, F32, v) }
 internal IK_Palette*     ik_set_next_palette(IK_Palette*     v) { IK_StackSetNextImpl(ik_state, Palette, palette, IK_Palette*    , v) }
 internal IK_BoxFlags ik_set_next_flags(IK_BoxFlags v) { IK_StackSetNextImpl(ik_state, Flags, flags, IK_BoxFlags, v) }

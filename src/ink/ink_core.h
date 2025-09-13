@@ -138,6 +138,18 @@ struct IK_SettingVal
 };
 
 ////////////////////////////////
+//~ Cfg
+
+typedef struct IK_Cfg IK_Cfg;
+struct IK_Cfg
+{
+  F32 stroke_size;
+  Vec4F32 stroke_color;
+  Vec4F32 background_color;
+  // IK_FontSlot text_font_slot;
+};
+
+////////////////////////////////
 //~ String Block
 
 typedef struct IK_Frame IK_Frame;
@@ -431,14 +443,13 @@ struct IK_Box
   Vec4F32 background_color;
   Vec4F32 text_color;
   Vec4F32 border_color;
-  // TODO(Next): store this
-  Vec4F32 stroke_color;
   F32 ratio; // width/height
   OS_Cursor hover_cursor;
   // TODO(k): make it effective
   F32 transparency;
   // F32 squish;
   F32 stroke_size;
+  Vec4F32 stroke_color;
   Vec2F32 point_scale;
   // image
   IK_Image *image;
@@ -512,6 +523,7 @@ struct IK_Frame
   IK_Box *select;
   IK_Camera camera;
 
+  IK_Cfg cfg;
   String8 save_path;
   U8 _save_path[512];
   B32 did_backup;
@@ -798,6 +810,7 @@ internal IK_Key ik_drop_hot_key(void);
 
 //- interaction
 internal void ik_kill_action(void);
+internal void ik_kill_focus(void);
 
 //- frame
 internal B32          ik_frame(void);
@@ -881,6 +894,11 @@ internal IK_Frame* ik_frame_alloc();
 internal void ik_frame_release(IK_Frame *frame);
 
 /////////////////////////////////
+//~ Cfg Functions
+
+internal IK_Cfg ik_cfg_default();
+
+/////////////////////////////////
 //~ Box Tree Building API
 
 //- box node construction
@@ -954,6 +972,7 @@ internal void      ik_ui_notification(void);
 internal UI_Signal ik_ui_checkbox(String8 key_string, B32 b);
 internal UI_Signal ik_ui_button(String8 string);
 internal UI_Signal ik_ui_buttonf(char *fmt, ...);
+internal UI_Signal ik_ui_slider_f32(String8 string, F32 *value, F32 px_to_val);
 
 /////////////////////////////////
 //~ Text Operation Functions

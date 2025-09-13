@@ -715,6 +715,13 @@ ik_kill_action(void)
   }
 }
 
+internal void
+ik_kill_focus(void)
+{
+  ik_state->focus_hot_box_key = ik_key_zero();
+  ik_state->focus_active_box_key = ik_key_zero();
+}
+
 //- frame
 
 internal B32
@@ -1002,12 +1009,12 @@ ik_frame(void)
   }
 
   ////////////////////////////////
-  //~ Push frame boundary context
+  //~ Global stacks
 
   // font
   F_Tag main_font = ik_font_from_slot(IK_FontSlot_Main);
   F32 main_font_size = ik_font_size_from_slot(IK_FontSlot_Main);
-  // F_Tag icon_font = ik_font_from_slot(IK_FontSlot_Icons);
+  F_Tag icon_font = ik_font_from_slot(IK_FontSlot_Icons);
 
   // widget palette
   IK_WidgetPaletteInfo widget_palette_info = {0};
@@ -1017,6 +1024,7 @@ ik_frame(void)
     widget_palette_info.scrollbar_palette = ik_palette_from_code(IK_PaletteCode_ScrollBarButton);
   }
   ik_state->widget_palette_info = widget_palette_info;
+
 
   ik_push_font(main_font);
   ik_push_font_size(main_font_size);
@@ -1046,6 +1054,13 @@ ik_frame(void)
   }
 
   ik_push_frame(frame);
+
+  ////////////////////////////////
+  //~ Frame stacks
+
+  ik_push_background_color(frame->cfg.background_color);
+  ik_push_stroke_size(frame->cfg.stroke_size);
+  ik_push_stroke_color(frame->cfg.stroke_color);
 
   ////////////////////////////////
   //~ Unpack camera
@@ -1919,7 +1934,7 @@ ik_frame(void)
   D_BucketScope(ik_state->bucket_main)
   {
     /////////////////////////////////
-    //- screen space drawing
+    //- screen space drawing (background)
 
     d_push_viewport(ik_state->window_dim);
     // draw a background
@@ -1930,18 +1945,6 @@ ik_frame(void)
       Vec4F32 clr = linear_from_srgba(rgba_from_u32(src));
       d_rect(rect, clr, 0,0,0);
     }
-
-    IK_ToolKind tool = ik_tool();
-    // draw tool indicator
-    if(tool == IK_ToolKind_Draw)
-    {
-      U32 src = 0x66FB05FF;
-      Vec4F32 clr = linear_from_srgba(rgba_from_u32(src));
-      Rng2F32 rect = {.p0 = ik_state->mouse, .p1 = ik_state->mouse};
-      rect = pad_2f32(rect, 8);
-      d_rect(rect, clr, 8,4,1);
-    }
-    d_pop_viewport();
 
     /////////////////////////////////
     //- world space drawing
@@ -2051,6 +2054,23 @@ ik_frame(void)
 
     d_pop_viewport();
     d_pop_xform2d();
+
+    /////////////////////////////////
+    //- screen space drawing (overlay)
+
+    IK_ToolKind tool = ik_tool();
+    // draw tool indicator
+    if(tool == IK_ToolKind_Draw)
+    {
+      U32 src = 0x66FB05FF;
+      Vec4F32 clr = linear_from_srgba(rgba_from_u32(src));
+      clr.w = 0.3;
+      Rng2F32 rect = {.p0 = ik_state->mouse, .p1 = ik_state->mouse};
+      F32 stroke_size_px = ik_top_stroke_size()*ik_state->world_to_screen_ratio.x;
+      rect = pad_2f32(rect, stroke_size_px);
+      d_rect(rect, clr, stroke_size_px, 0,1.f);
+    }
+    d_pop_viewport();
   }
 
   /////////////////////////////////
@@ -2146,12 +2166,17 @@ ik_frame(void)
   ////////////////////////////////
   //~ Pop frame ctx
 
+  // global stacks
   ik_pop_font();
   ik_pop_font_size();
   ik_pop_text_padding();
   ik_pop_palette();
-
   ik_pop_frame();
+
+  // frame stacks
+  ik_pop_background_color();
+  ik_pop_stroke_size();
+  ik_pop_stroke_color();
 
   /////////////////////////////////
   //~ End
@@ -2658,6 +2683,7 @@ ik_frame_alloc()
   // TODO(Next): may use proper filepath join
   String8 save_path = push_str8f(scratch.arena, "%S/default.tyml", binary_path);
   frame->save_path = push_str8_copy_static(save_path, frame->_save_path);
+  frame->cfg = ik_cfg_default();
 
   // camera
   frame->camera.rect = ik_state->window_rect;
@@ -2670,6 +2696,10 @@ ik_frame_alloc()
 
   // create blank box
   ik_push_frame(frame);
+  // frame stacks
+  ik_push_background_color(frame->cfg.background_color);
+  ik_push_stroke_size(frame->cfg.stroke_size);
+  ik_push_stroke_color(frame->cfg.stroke_color);
   frame->blank = ik_build_box_from_stringf(IK_BoxFlag_MouseClickable|
                                            IK_BoxFlag_FitViewport|
                                            IK_BoxFlag_Scroll|
@@ -2690,6 +2720,9 @@ ik_frame_alloc()
   frame->select->hover_cursor = OS_Cursor_UpDownLeftRight;
 
   ik_pop_frame();
+  ik_pop_background_color();
+  ik_pop_stroke_size();
+  ik_pop_stroke_color();
   scratch_end(scratch);
   return frame;
 }
@@ -2698,6 +2731,19 @@ internal void
 ik_frame_release(IK_Frame *frame)
 {
   SLLStackPush(ik_state->first_free_frame, frame);
+}
+
+/////////////////////////////////
+//~ Cfg Functions
+
+internal IK_Cfg
+ik_cfg_default()
+{
+  IK_Cfg cfg = {0};
+  cfg.stroke_size = ik_bottom_stroke_size();
+  cfg.stroke_color = linear_from_srgba(ik_bottom_stroke_color());
+  cfg.background_color = linear_from_srgba(ik_bottom_background_color());
+  return cfg;
 }
 
 /////////////////////////////////
@@ -2733,8 +2779,9 @@ ik_build_box_from_key_(IK_BoxFlags flags, IK_Key key, B32 pre_order)
   box->tab_size = ik_top_tab_size();
   box->text_raster_flags = ik_top_text_raster_flags();
   box->stroke_size = ik_top_stroke_size();
+  box->stroke_color = ik_top_stroke_color();
   box->point_scale = v2f32(1,1);
-  box->background_color = palette->background;
+  box->background_color = ik_top_background_color();
   box->text_color = palette->text;
   box->border_color = palette->border;
   box->transparency = ik_top_transparency();
@@ -4812,12 +4859,11 @@ ik_ui_inspector(void)
   ProfBeginFunction();
   IK_Box *b = ik_box_from_key(ik_state->focus_hot_box_key);
 
-  IK_ToolKind tool = ik_tool();
-  B32 open = b != 0;
+  B32 open = b != 0 || ik_state->tool == IK_ToolKind_Draw;
   F32 open_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "inspector_open_t"), open, .reset = 0, .rate = ik_state->animation.fast_rate);
   IK_Frame *frame = ik_top_frame();
 
-  if(b)
+  if(open_t > 1e-3)
   {
     UI_Box *container;
     F32 padding_left = ui_top_font_size()*0.5;
@@ -4827,7 +4873,7 @@ ik_ui_inspector(void)
     rect.p0 = mix_2f32(center, rect.p0, open_t);
     rect.p1 = mix_2f32(center, rect.p1, open_t);
     UI_Rect(rect)
-      UI_Flags(UI_BoxFlag_Floating)
+      UI_Flags(UI_BoxFlag_Floating|UI_BoxFlag_Clip)
       container = ui_build_box_from_stringf(0, "###inspector_container");
 
     UI_Box *body;
@@ -4840,7 +4886,7 @@ ik_ui_inspector(void)
       UI_Transparency(0.2)
       UI_ChildLayoutAxis(Axis2_Y)
       UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_MouseClickable)
-      UI_CornerRadius(1.0)
+      UI_CornerRadius(4.0)
       body = ui_build_box_from_stringf(0, "###body");
 
     UI_Box *padded;
@@ -4848,443 +4894,494 @@ ik_ui_inspector(void)
       UI_WidthFill
       UI_PrefHeight(ui_children_sum(0.0))
       UI_Row
-      UI_Padding(ui_em(0.2, 0.0))
+      UI_Padding(ui_em(0.4, 0.0))
+      UI_Column
+      UI_Padding(ui_em(0.4, 0.0))
       UI_ChildLayoutAxis(Axis2_Y)
       padded = ui_build_box_from_stringf(0, "###padded");
 
     UI_Parent(padded)
     {
       ////////////////////////////////
-      //~ Basic
+      //~ Stacks
 
-      UI_WidthFill
-      UI_Row
+      IK_Cfg *cfg = &frame->cfg;
+
+      B32 show_cfg = ik_state->tool == IK_ToolKind_Draw;
+      if(show_cfg)
       {
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("name");
-        ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("%S", b->name);
-      }
-
-      UI_WidthFill
-      UI_Row
-      {
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("key");
-        ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("%I64u", b->key.u64[0]);
-      }
-
-      ui_divider(ui_em(0.5, 0.0));
-
-      UI_WidthFill
-      UI_Row
-      {
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("position");
-        ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("%.2f %.2f", b->position.x, b->position.y);
-      }
-
-      UI_WidthFill
-      UI_Row
-      {
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("size");
-        ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("%.2f %.2f", b->rect_size.x, b->rect_size.y);
-      }
-
-      UI_WidthFill
-      UI_Row
-      {
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("ratio");
-        ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("%.2f", b->ratio);
-      }
-
-      UI_WidthFill
-      UI_Row
-      {
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("stroke_size");
-        ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("%.2f", b->stroke_size);
-      }
-
-      // ui_set_next_flags(UI_BoxFlag_DrawBorder);
-      // UI_WidthFill
-      // UI_Row
-      // {
-      //   UI_PrefWidth(ui_text_dim(1, 1.0))
-      //     ui_labelf("background");
-      //   ui_spacer(ui_pct(1.0, 0.0));
-      //   ui_alpha_pickerf(&b->color.x, "x");
-      //   ui_alpha_pickerf(&b->color.y, "y");
-      //   ui_alpha_pickerf(&b->color.z, "z");
-      //   ui_alpha_pickerf(&b->color.w, "w");
-      // }
-
-      if(!(b->flags&IK_BoxFlag_Orphan))
-      UI_WidthFill
-      UI_Row
-      {
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("layer");
-        ui_spacer(ui_pct(1.0, 0.0));
+        UI_WidthFill
         UI_Row
         {
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("stroke_size");
           ui_spacer(ui_pct(1.0, 0.0));
-          // UI_PrefWidth(ui_text_dim(1, 1.0))
-          //   ik_ui_buttonf("%I64u", 100);
-          // ui_spacer(ui_em(0.1, 0.0));
-          UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
           UI_PrefWidth(ui_text_dim(1, 1.0))
-          if(ui_clicked(ik_ui_buttonf("+")))
-          {
-            IK_Box *next = b->next;
-            if(next)
-            {
-              DLLRemove(frame->box_list.first, frame->box_list.last, b);
-              DLLInsert(frame->box_list.first, frame->box_list.last, next, b);
-            }
-          }
+            ik_ui_slider_f32(str8_lit("stroke_size_val"), &cfg->stroke_size, 0.1);
+        }
+        ui_spacer(ui_em(0.1, 0.0));
 
-          ui_spacer(ui_em(0.1, 0.0));
+        UI_WidthFill
+        UI_Row
+        {
           UI_PrefWidth(ui_text_dim(1, 1.0))
-          UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
-          if(ui_clicked(ik_ui_buttonf("-")))
-          {
-            IK_Box *prev = b;
-            for(U64 i = 0; i < 2 && prev != 0; i++, prev = prev->prev);
-            if(prev)
-            {
-              DLLRemove(frame->box_list.first, frame->box_list.last, b);
-              DLLInsert(frame->box_list.first, frame->box_list.last, prev, b);
-            }
-          }
-        }
-      }
-
-      ui_divider(ui_em(0.5, 0.0));
-
-      ////////////////////////////////
-      //~ Drawing
-
-      UI_WidthFill
-      UI_Row
-      {
-        IK_BoxFlags flag = IK_BoxFlag_DrawBorder;
-        B32 on = b->flags&flag;
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("draw border");
-        ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(str8_lit("draw_border"), on)))
-        {
-          b->flags ^= flag;
-        }
-      }
-
-      UI_WidthFill
-      UI_Row
-      {
-        IK_BoxFlags flag = IK_BoxFlag_DrawBackground;
-        B32 on = b->flags&flag;
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("draw background");
-        ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(str8_lit("draw_background"), on)))
-        {
-          b->flags ^= flag;
-        }
-      }
-
-      UI_WidthFill
-      UI_Row
-      {
-        IK_BoxFlags flag = IK_BoxFlag_DrawDropShadow;
-        B32 on = b->flags&flag;
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("draw drop shadow");
-        ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(str8_lit("draw_dropshadow"), on)))
-        {
-          b->flags ^= flag;
+            ui_labelf("stroke_color");
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_PrefWidth(ui_em(3.0, 1.0))
+            UI_Column
+            UI_Padding(ui_em(0.1, 1.0))
+            UI_CornerRadius(1.f)
+            UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
+            UI_Palette(ui_build_palette(ui_top_palette(), .background = linear_from_srgba(cfg->background_color)))
+            UI_PrefWidth(ui_pct(1.0, 0.0))
+            UI_PrefHeight(ui_pct(1.0, 0.0))
+            ui_build_box_from_stringf(0, "stroke_clr");
         }
       }
 
       ////////////////////////////////
-      //~ Color
+      //~ Focus Hot Box
 
-      ui_divider(ui_em(0.5, 0.0));
+      F32 focus_hot_t = b ? b->focus_hot_t : 0.f;
 
-      UI_WidthFill
-      UI_Row
+      UI_Box *box_info_container;
+      UI_PrefHeight(ui_children_sum(0.0))
+        UI_WidthFill
+        UI_ChildLayoutAxis(Axis2_Y)
+        UI_Flags((show_cfg&&b) ? UI_BoxFlag_DrawSideLeft|UI_BoxFlag_DrawSideTop : 0)
+        box_info_container = ui_build_box_from_stringf(0, "box_info");
+
+      if(b) UI_Parent(box_info_container)
       {
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("background_color");
-        ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_em(3.0, 1.0))
-          UI_Column
-          UI_Padding(ui_em(0.1, 1.0))
-          UI_CornerRadius(1.f)
-          UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
-          UI_Palette(ui_build_palette(ui_top_palette(), .background = linear_from_srgba(b->background_color)))
-          UI_PrefWidth(ui_pct(1.0, 0.0))
-          UI_PrefHeight(ui_pct(1.0, 0.0))
-          ui_build_box_from_stringf(0, "background_clr");
-      }
+        ////////////////////////////////
+        //~ Basic
 
-      UI_WidthFill
-      UI_Row
-      {
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("text_color");
-        ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_em(3.0, 1.0))
-          UI_Column
-          UI_Padding(ui_em(0.1, 1.0))
-          UI_CornerRadius(1.f)
-          UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
-          UI_Palette(ui_build_palette(ui_top_palette(), .background = linear_from_srgba(b->text_color)))
-          UI_PrefWidth(ui_pct(1.0, 0.0))
-          UI_PrefHeight(ui_pct(1.0, 0.0))
-          ui_build_box_from_stringf(0, "text_clr");
-      }
+        UI_WidthFill
+        UI_Row
+        {
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("name");
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("%S", b->name);
+        }
 
-      UI_WidthFill
-      UI_Row
-      {
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("border_color");
-        ui_spacer(ui_pct(1.0, 0.0));
-        UI_PrefWidth(ui_em(3.0, 1.0))
-          UI_Column
-          UI_Padding(ui_em(0.1, 1.0))
-          UI_CornerRadius(1.f)
-          UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
-          UI_Palette(ui_build_palette(ui_top_palette(), .background = linear_from_srgba(b->border_color)))
-          UI_PrefWidth(ui_pct(1.0, 0.0))
-          UI_PrefHeight(ui_pct(1.0, 0.0))
-          ui_build_box_from_stringf(0, "border_clr");
-      }
+        UI_WidthFill
+        UI_Row
+        {
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("key");
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("%I64u", b->key.u64[0]);
+        }
 
-      ////////////////////////////////
-      //~ Text 
-
-      if(b->flags & IK_BoxFlag_HasDisplayString)
-      {
         ui_divider(ui_em(0.5, 0.0));
 
         UI_WidthFill
         UI_Row
         {
           UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("string_size");
+            ui_labelf("position");
           ui_spacer(ui_pct(1.0, 0.0));
           UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("%I64u", b->string.size);
+            ui_labelf("%.2f %.2f", b->position.x, b->position.y);
         }
 
         UI_WidthFill
         UI_Row
         {
           UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("font_size");
+            ui_labelf("size");
           ui_spacer(ui_pct(1.0, 0.0));
           UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("%.2f", b->font_size);
+            ui_labelf("%.2f %.2f", b->rect_size.x, b->rect_size.y);
         }
 
         UI_WidthFill
         UI_Row
         {
           UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("text_padding");
+            ui_labelf("ratio");
           ui_spacer(ui_pct(1.0, 0.0));
           UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("%.2f", b->text_padding);
+            ui_labelf("%.2f", b->ratio);
         }
 
         UI_WidthFill
         UI_Row
         {
           UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("cursor");
+            ui_labelf("stroke_size");
           ui_spacer(ui_pct(1.0, 0.0));
           UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("%d %d", b->cursor.line, b->cursor.column);
+            ui_labelf("%.2f", b->stroke_size);
         }
-      }
 
-      ////////////////////////////////
-      //~ Image 
+        // ui_set_next_flags(UI_BoxFlag_DrawBorder);
+        // UI_WidthFill
+        // UI_Row
+        // {
+        //   UI_PrefWidth(ui_text_dim(1, 1.0))
+        //     ui_labelf("background");
+        //   ui_spacer(ui_pct(1.0, 0.0));
+        //   ui_alpha_pickerf(&b->color.x, "x");
+        //   ui_alpha_pickerf(&b->color.y, "y");
+        //   ui_alpha_pickerf(&b->color.z, "z");
+        //   ui_alpha_pickerf(&b->color.w, "w");
+        // }
 
-      if(b->flags & IK_BoxFlag_DrawImage && b->image)
-      {
-        ui_divider(ui_em(0.5, 0.0));
-
+        if(!(b->flags&IK_BoxFlag_Orphan))
         UI_WidthFill
         UI_Row
         {
           UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("image");
+            ui_labelf("layer");
           ui_spacer(ui_pct(1.0, 0.0));
-          UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("%I64u %I64u", b->image->x, b->image->y);
-        }
-
-        UI_WidthFill
-        UI_Row
-        {
-          UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("kb");
-          ui_spacer(ui_pct(1.0, 0.0));
-          UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("%.2f", (F32)b->image->encoded.size/(1024.f));
-        }
-      }
-
-      ////////////////////////////////
-      //~ Stroke
-
-      if(b->flags & IK_BoxFlag_DrawStroke)
-      {
-        ui_divider(ui_em(0.5, 0.0));
-
-        UI_WidthFill
-        UI_Row
-        {
-          UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("points");
-          ui_spacer(ui_pct(1.0, 0.0));
-          UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("%I64u", b->point_count);
-        }
-      }
-
-      ////////////////////////////////
-      //~ Group
-
-      if(b->group_children_count > 0)
-      UI_WidthFill
-      UI_Row
-      {
-        ui_divider(ui_em(0.5, 0.0));
-
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("align");
-        ui_spacer(ui_pct(1.0, 0.0));
-        UI_Row
-        {
-          ui_spacer(ui_pct(1.0, 0.0));
-          UI_PrefWidth(ui_em(1.0, 0.0))
-          UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
-          UI_TextAlignment(UI_TextAlign_Center)
-          // left
-          if(ui_clicked(ik_ui_buttonf("<")))
+          UI_Row
           {
-            for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+            ui_spacer(ui_pct(1.0, 0.0));
+            // UI_PrefWidth(ui_text_dim(1, 1.0))
+            //   ik_ui_buttonf("%I64u", 100);
+            // ui_spacer(ui_em(0.1, 0.0));
+            UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+            if(ui_clicked(ik_ui_buttonf("+")))
             {
-              child->position.x = b->position.x;
-            }
-          }
-
-          ui_spacer(ui_em(0.1, 0.0));
-          UI_PrefWidth(ui_em(1.0, 0.0))
-          UI_TextAlignment(UI_TextAlign_Center)
-          UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
-          // top
-          if(ui_clicked(ik_ui_buttonf("^")))
-          {
-            for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
-            {
-              child->position.y = b->position.y;
-            }
-          }
-
-          ui_spacer(ui_em(0.1, 0.0));
-          // UI_PrefWidth(ui_text_dim(1, 1.0))
-          UI_PrefWidth(ui_em(1.0, 0.0))
-          UI_TextAlignment(UI_TextAlign_Center)
-          UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
-          // down
-          if(ui_clicked(ik_ui_buttonf("v")))
-          {
-            for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
-            {
-              child->position.y = b->position.y + b->rect_size.y - child->rect_size.y;
-            }
-          }
-
-          ui_spacer(ui_em(0.1, 0.0));
-          UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
-          UI_PrefWidth(ui_em(1.0, 0.0))
-          UI_TextAlignment(UI_TextAlign_Center)
-          // right
-          if(ui_clicked(ik_ui_buttonf(">")))
-          {
-            for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
-            {
-              child->position.x = b->position.x + b->rect_size.x - child->rect_size.x;
-            }
-          }
-        }
-      }
-
-      ////////////////////////////////
-      //~ Actions
-
-      ui_divider(ui_em(0.5, 0.0));
-      UI_WidthFill
-      UI_Row
-      {
-        UI_PrefWidth(ui_text_dim(1, 1.0))
-          ui_labelf("actions");
-        ui_spacer(ui_pct(1.0, 0.0));
-        UI_Row
-        {
-          // copy
-          ui_spacer(ui_pct(1.0, 0.0));
-          UI_PrefWidth(ui_text_dim(0.f, 0.f))
-          UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
-          UI_TextAlignment(UI_TextAlign_Center)
-          if(ui_clicked(ik_ui_buttonf("F")))
-          {
-            ik_message_push(str8_lit("TODO"));
-          }
-
-          // delete
-          ui_spacer(ui_em(0.2, 1.0));
-          UI_PrefWidth(ui_text_dim(0.f, 0.f))
-          UI_TextAlignment(UI_TextAlign_Center)
-          UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
-          if(ui_clicked(ik_ui_buttonf("#")))
-          {
-            IK_Box *select = frame->select;
-            if(b == select)
-            {
-              for(IK_Box *child = select->group_first, *next = 0; child != 0; child = next)
+              IK_Box *next = b->next;
+              if(next)
               {
-                next = child->group_next;
-                ik_box_release(child);
+                DLLRemove(frame->box_list.first, frame->box_list.last, b);
+                DLLInsert(frame->box_list.first, frame->box_list.last, next, b);
               }
-              select->flags |= IK_BoxFlag_Disabled;
             }
-            else ik_box_release(b);
+
+            ui_spacer(ui_em(0.1, 0.0));
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+            UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+            if(ui_clicked(ik_ui_buttonf("-")))
+            {
+              IK_Box *prev = b;
+              for(U64 i = 0; i < 2 && prev != 0; i++, prev = prev->prev);
+              if(prev)
+              {
+                DLLRemove(frame->box_list.first, frame->box_list.last, b);
+                DLLInsert(frame->box_list.first, frame->box_list.last, prev, b);
+              }
+            }
+          }
+        }
+
+        ui_divider(ui_em(0.5, 0.0));
+
+        ////////////////////////////////
+        //~ Drawing
+
+        UI_WidthFill
+        UI_Row
+        {
+          IK_BoxFlags flag = IK_BoxFlag_DrawBorder;
+          B32 on = b->flags&flag;
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("draw border");
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(str8_lit("draw_border"), on)))
+          {
+            b->flags ^= flag;
+          }
+        }
+
+        UI_WidthFill
+        UI_Row
+        {
+          IK_BoxFlags flag = IK_BoxFlag_DrawBackground;
+          B32 on = b->flags&flag;
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("draw background");
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(str8_lit("draw_background"), on)))
+          {
+            b->flags ^= flag;
+          }
+        }
+
+        UI_WidthFill
+        UI_Row
+        {
+          IK_BoxFlags flag = IK_BoxFlag_DrawDropShadow;
+          B32 on = b->flags&flag;
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("draw drop shadow");
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(str8_lit("draw_dropshadow"), on)))
+          {
+            b->flags ^= flag;
+          }
+        }
+
+        ////////////////////////////////
+        //~ Color
+
+        ui_divider(ui_em(0.5, 0.0));
+
+        UI_WidthFill
+        UI_Row
+        {
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("background_color");
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_PrefWidth(ui_em(3.0, 1.0))
+            UI_Column
+            UI_Padding(ui_em(0.1, 1.0))
+            UI_CornerRadius(1.f)
+            UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
+            UI_Palette(ui_build_palette(ui_top_palette(), .background = linear_from_srgba(b->background_color)))
+            UI_PrefWidth(ui_pct(1.0, 0.0))
+            UI_PrefHeight(ui_pct(1.0, 0.0))
+            ui_build_box_from_stringf(0, "background_clr");
+        }
+
+        UI_WidthFill
+        UI_Row
+        {
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("text_color");
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_PrefWidth(ui_em(3.0, 1.0))
+            UI_Column
+            UI_Padding(ui_em(0.1, 1.0))
+            UI_CornerRadius(1.f)
+            UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
+            UI_Palette(ui_build_palette(ui_top_palette(), .background = linear_from_srgba(b->text_color)))
+            UI_PrefWidth(ui_pct(1.0, 0.0))
+            UI_PrefHeight(ui_pct(1.0, 0.0))
+            ui_build_box_from_stringf(0, "text_clr");
+        }
+
+        UI_WidthFill
+        UI_Row
+        {
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("border_color");
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_PrefWidth(ui_em(3.0, 1.0))
+            UI_Column
+            UI_Padding(ui_em(0.1, 1.0))
+            UI_CornerRadius(1.f)
+            UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
+            UI_Palette(ui_build_palette(ui_top_palette(), .background = linear_from_srgba(b->border_color)))
+            UI_PrefWidth(ui_pct(1.0, 0.0))
+            UI_PrefHeight(ui_pct(1.0, 0.0))
+            ui_build_box_from_stringf(0, "border_clr");
+        }
+
+        ////////////////////////////////
+        //~ Text 
+
+        if(b->flags & IK_BoxFlag_HasDisplayString)
+        {
+          ui_divider(ui_em(0.5, 0.0));
+
+          UI_WidthFill
+          UI_Row
+          {
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("string_size");
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("%I64u", b->string.size);
+          }
+
+          UI_WidthFill
+          UI_Row
+          {
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("font_size");
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("%.2f", b->font_size);
+          }
+
+          UI_WidthFill
+          UI_Row
+          {
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("text_padding");
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("%.2f", b->text_padding);
+          }
+
+          UI_WidthFill
+          UI_Row
+          {
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("cursor");
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("%d %d", b->cursor.line, b->cursor.column);
+          }
+        }
+
+        ////////////////////////////////
+        //~ Image 
+
+        if(b->flags & IK_BoxFlag_DrawImage && b->image)
+        {
+          ui_divider(ui_em(0.5, 0.0));
+
+          UI_WidthFill
+          UI_Row
+          {
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("image");
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("%I64u %I64u", b->image->x, b->image->y);
+          }
+
+          UI_WidthFill
+          UI_Row
+          {
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("kb");
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("%.2f", (F32)b->image->encoded.size/(1024.f));
+          }
+        }
+
+        ////////////////////////////////
+        //~ Stroke
+
+        if(b->flags & IK_BoxFlag_DrawStroke)
+        {
+          ui_divider(ui_em(0.5, 0.0));
+
+          UI_WidthFill
+          UI_Row
+          {
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("points");
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("%I64u", b->point_count);
+          }
+        }
+
+        ////////////////////////////////
+        //~ Group
+
+        if(b->group_children_count > 0)
+        UI_WidthFill
+        UI_Row
+        {
+          ui_divider(ui_em(0.5, 0.0));
+
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("align");
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_Row
+          {
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_PrefWidth(ui_em(1.0, 0.0))
+            UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+            UI_TextAlignment(UI_TextAlign_Center)
+            // left
+            if(ui_clicked(ik_ui_buttonf("<")))
+            {
+              for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+              {
+                child->position.x = b->position.x;
+              }
+            }
+
+            ui_spacer(ui_em(0.1, 0.0));
+            UI_PrefWidth(ui_em(1.0, 0.0))
+            UI_TextAlignment(UI_TextAlign_Center)
+            UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+            // top
+            if(ui_clicked(ik_ui_buttonf("^")))
+            {
+              for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+              {
+                child->position.y = b->position.y;
+              }
+            }
+
+            ui_spacer(ui_em(0.1, 0.0));
+            // UI_PrefWidth(ui_text_dim(1, 1.0))
+            UI_PrefWidth(ui_em(1.0, 0.0))
+            UI_TextAlignment(UI_TextAlign_Center)
+            UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+            // down
+            if(ui_clicked(ik_ui_buttonf("v")))
+            {
+              for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+              {
+                child->position.y = b->position.y + b->rect_size.y - child->rect_size.y;
+              }
+            }
+
+            ui_spacer(ui_em(0.1, 0.0));
+            UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+            UI_PrefWidth(ui_em(1.0, 0.0))
+            UI_TextAlignment(UI_TextAlign_Center)
+            // right
+            if(ui_clicked(ik_ui_buttonf(">")))
+            {
+              for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+              {
+                child->position.x = b->position.x + b->rect_size.x - child->rect_size.x;
+              }
+            }
+          }
+        }
+
+        ////////////////////////////////
+        //~ Actions
+
+        ui_divider(ui_em(0.5, 0.0));
+        UI_WidthFill
+        UI_Row
+        {
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("actions");
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_Row
+          {
+            // copy
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_PrefWidth(ui_text_dim(0.f, 0.f))
+            UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+            UI_TextAlignment(UI_TextAlign_Center)
+            if(ui_clicked(ik_ui_buttonf("F")))
+            {
+              ik_message_push(str8_lit("TODO"));
+            }
+
+            // delete
+            ui_spacer(ui_em(0.2, 1.0));
+            UI_PrefWidth(ui_text_dim(0.f, 0.f))
+            UI_TextAlignment(UI_TextAlign_Center)
+            UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+            if(ui_clicked(ik_ui_buttonf("#")))
+            {
+              IK_Box *select = frame->select;
+              if(b == select)
+              {
+                for(IK_Box *child = select->group_first, *next = 0; child != 0; child = next)
+                {
+                  next = child->group_next;
+                  ik_box_release(child);
+                }
+                select->flags |= IK_BoxFlag_Disabled;
+              }
+              else ik_box_release(b);
+            }
           }
         }
       }
-
-      // bottom padding
-      ui_spacer(ui_em(0.2, 0.0));
     }
     ui_signal_from_box(body);
   }
@@ -5481,6 +5578,36 @@ ik_ui_buttonf(char *fmt, ...)
   va_end(args);
   UI_Signal sig = ik_ui_button(string);
   scratch_end(scratch);
+  return sig;
+}
+
+internal UI_Signal
+ik_ui_slider_f32(String8 string, F32 *value, F32 px_to_val)
+{
+  UI_Box *container;
+
+  UI_CornerRadius(1)
+    UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_Clickable|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawText|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects)
+    UI_PrefWidth(ui_text_dim(ui_top_font_size(), 1.0))
+    UI_TextAlignment(UI_TextAlign_Center)
+    UI_HoverCursor(OS_Cursor_LeftRight)
+    container = ui_build_box_from_stringf(0, "%.2f###%S", *value, string);
+
+  UI_Signal sig = ui_signal_from_box(container);
+
+  if(ui_dragging(sig))
+  {
+    if(ui_pressed(sig))
+    {
+      ui_store_drag_struct(value);
+    }
+    else
+    {
+      F32 drag_start_value = *ui_get_drag_struct(F32);
+      Vec2F32 delta = ui_drag_delta();
+      *value = drag_start_value + delta.x*px_to_val;
+    }
+  }
   return sig;
 }
 

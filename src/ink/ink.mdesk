@@ -12,8 +12,12 @@ IK_StackTable:
   { TextRasterFlags                    text_raster_flags             F_RasterFlags         F_RasterFlag_Hinted                }
   { TabSize                            tab_size                      F32                   `24.f*4.f`                         }
 
+  //- k: background
+  { BackgroundColor                    background_color              Vec4F32               `rgba_from_u32(0xEEE6CAFF)`        }
+
   //- k: stroke
   { StrokeSize                         stroke_size                   F32                   `8`                                }
+  { StrokeColor                        stroke_color                  Vec4F32               `rgba_from_u32(0xEEE6CAFF)`        }
 
   //- k: colors
   { Transparency                       transparency                  F32                   0                                  }
