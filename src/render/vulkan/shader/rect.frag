@@ -59,9 +59,7 @@ void main()
   float line_sdf_t = 1.0;
   vec2 a = line.xy;
   vec2 b = line.zw;
-  // if(!(a.x == 0 && b.x == 0 && a.y == 0 && b.y == 0))
-  float eps = 1e-6;
-  bool draw_line = length(a-b) > eps;
+  bool draw_line = !all(equal(a,b));
   if(draw_line)
   {
     // TODO(k): we don't have more slots more line_thickness, so we use border_thickness_px here

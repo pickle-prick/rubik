@@ -12,7 +12,7 @@ run_full:
 	make build_full
 	./build/$(BUILD_TARGET)
 clean:
-	rm -rf ./build
+	rm ./build/$(BUILD_TARGET)
 	rm ./src/render/vulkan/shader/*.spv || true
 debug:
 	make build_debug
