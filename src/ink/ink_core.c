@@ -3529,6 +3529,7 @@ IK_BOX_DRAW(stroke)
 #endif
 
   F32 last_scale = 1.0;
+  F32 last_point_drawn = 0;
   while(p2)
   {
     // compute midpoints p0 -> p1 -> p2
@@ -3599,6 +3600,13 @@ IK_BOX_DRAW(stroke)
     p0 = p1;
     p1 = p2;
     p2 = p2->next;
+
+    // no more points and last point haven't drawn? -> duplicate last point
+    if(!p2 && !last_point_drawn)
+    {
+      p2 = p1;
+      last_point_drawn = 1;
+    }
   }
 }
 
