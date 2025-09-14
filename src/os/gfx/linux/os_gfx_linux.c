@@ -1207,7 +1207,18 @@ os_vulkan_surface_ext()
 internal void
 os_graphical_message(B32 error, String8 title, String8 message)
 {
-  
+  if(error)
+  {
+    fprintf(stderr, "[X] ");
+  }
+  fprintf(stderr, "%.*s\n", str8_varg(title));
+  fprintf(stderr, "%.*s\n\n", str8_varg(message));
+}
+
+internal String8
+os_graphical_pick_file(Arena *arena, String8 initial_path)
+{
+  return str8_zero();
 }
 
 ////////////////////////////////
@@ -1216,5 +1227,11 @@ os_graphical_message(B32 error, String8 title, String8 message)
 internal void
 os_show_in_filesystem_ui(String8 path)
 {
-  
+  // TODO(rjf)
+}
+
+internal void
+os_open_in_browser(String8 url)
+{
+  // TODO(rjf)
 }

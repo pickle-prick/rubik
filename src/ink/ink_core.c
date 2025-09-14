@@ -42,6 +42,11 @@ return old_value;
 
 #define M_1 200
 
+// TODO(Next): maybe we could use metagen
+// Color palette
+internal Vec4F32 stroke_colors[] = {rgba_from_u32_lit_comp(0xEEE6CAFF), rgba_from_u32_lit_comp(0x666666FF), rgba_from_u32_lit_comp(0xEB5B00FF)};
+internal Vec4F32 background_colors[] = {rgba_from_u32_lit_comp(0xEEE6CAFF), rgba_from_u32_lit_comp(0x666666FF), rgba_from_u32_lit_comp(0xEB5B00FF)};
+
 internal void
 ik_ui_draw()
 {
@@ -1366,7 +1371,9 @@ ik_frame(void)
           {
             IK_BoxDrag drag = *ik_get_drag_struct(IK_BoxDrag);
             // NOTE(k): camera rect could be animating, casuing world mouse delta change even mouse in screen didn't change
-            if(ik_state->mouse_delta.x != 0.f || ik_state->mouse_delta.y != 0.f)
+            F32 epsilon = (ik_state->dpi/96.f)*1.5;
+            F32 drag_px = length_2f32(ik_drag_delta());
+            if(drag_px > epsilon)
             {
               Vec2F32 delta = sub_2f32(ik_state->mouse_in_world, drag.drag_start_mouse_in_world);
               Vec2F32 position = add_2f32(drag.drag_start_position, delta);
@@ -2041,6 +2048,27 @@ ik_frame(void)
             R_Rect2DInst *inst = d_rect(pad_2f32(dst, 2*border_thickness), box->border_color, 0, border_thickness, border_thickness/2.0);
           }
 
+          if(box->flags & IK_BoxFlag_DrawHotEffects)
+          {
+            F32 effective_active_t = box->active_t;
+            if(!(box->flags & UI_BoxFlag_DrawActiveEffects))
+            {
+              effective_active_t = 0;
+            }
+
+            F32 t = box->hot_t * (1.f-effective_active_t);
+            R_Rect2DInst *inst = d_rect(dst, v4f32(0, 0, 0, 0), 0, 0, 1.f);
+            Vec4F32 color = ik_rgba_from_theme_color(IK_ThemeColor_Hover);
+            color.w *= t*0.1f;
+            inst->colors[Corner_00] = color;
+            inst->colors[Corner_01] = color;
+            inst->colors[Corner_10] = color;
+            inst->colors[Corner_11] = color;
+            inst->colors[Corner_10].w *= t;
+            inst->colors[Corner_11].w *= t;
+            // MemoryCopyArray(inst->corner_radii, box->corner_radii);
+          }
+
           // draw selection highlight
           if(box->sig.f & IK_SignalFlag_Select && !zero_dim)
           {
@@ -2062,13 +2090,14 @@ ik_frame(void)
     // draw tool indicator
     if(tool == IK_ToolKind_Draw)
     {
-      U32 src = 0x66FB05FF;
+      U32 src = 0xF6FB05FF;
       Vec4F32 clr = linear_from_srgba(rgba_from_u32(src));
-      clr.w = 0.3;
+      clr.w = 0.8;
       Rng2F32 rect = {.p0 = ik_state->mouse, .p1 = ik_state->mouse};
-      F32 stroke_size_px = ik_top_stroke_size()*ik_state->world_to_screen_ratio.x;
+      F32 stroke_size_px = (ik_top_stroke_size()/ik_state->world_to_screen_ratio.x)*0.5;
       rect = pad_2f32(rect, stroke_size_px);
-      d_rect(rect, clr, stroke_size_px, 0,1.f);
+      d_rect(pad_2f32(rect, 2.0), v4f32(1,0,0,0.8), stroke_size_px+2.0, 0, 0.f);
+      d_rect(rect, clr, stroke_size_px, 0, 1.f);
     }
     d_pop_viewport();
   }
@@ -2740,9 +2769,10 @@ internal IK_Cfg
 ik_cfg_default()
 {
   IK_Cfg cfg = {0};
+  // all in srgb space
   cfg.stroke_size = ik_bottom_stroke_size();
-  cfg.stroke_color = linear_from_srgba(ik_bottom_stroke_color());
-  cfg.background_color = linear_from_srgba(ik_bottom_background_color());
+  cfg.stroke_color = ik_bottom_stroke_color();
+  cfg.background_color = ik_bottom_background_color();
   return cfg;
 }
 
@@ -3382,8 +3412,8 @@ IK_BOX_UPDATE(stroke)
 
       if(evt->kind == UI_EventKind_Release && evt->key == OS_Key_LeftMouseButton)
       {
+        // ik_state->focus_hot_box_key = ik_key_zero();
         is_focus_active = 0;
-        ik_state->focus_hot_box_key = ik_key_zero();
         ik_state->focus_active_box_key = ik_key_zero();
 
         // commited -> calculate bounds
@@ -3479,8 +3509,7 @@ IK_BOX_DRAW(stroke)
   IK_Point *p1 = p0 ? p0->next : 0;
   IK_Point *p2 = p1 ? p1->next : 0;
 
-  // TODO(Next): move this into box
-  Vec4F32 stroke_color = linear_from_srgba(rgba_from_u32(0xEEE6CAFF));
+  Vec4F32 stroke_color = linear_from_srgba(box->stroke_color);
   F32 edge_softness = 1.0 * ik_state->world_to_screen_ratio.x;
 
 #if 0
@@ -4919,7 +4948,8 @@ ik_ui_inspector(void)
           UI_PrefWidth(ui_text_dim(1, 1.0))
             ik_ui_slider_f32(str8_lit("stroke_size_val"), &cfg->stroke_size, 0.1);
         }
-        ui_spacer(ui_em(0.1, 0.0));
+
+        ui_spacer(ui_em(0.2, 0.0));
 
         UI_WidthFill
         UI_Row
@@ -4927,16 +4957,20 @@ ik_ui_inspector(void)
           UI_PrefWidth(ui_text_dim(1, 1.0))
             ui_labelf("stroke_color");
           ui_spacer(ui_pct(1.0, 0.0));
-          UI_PrefWidth(ui_em(3.0, 1.0))
-            UI_Column
-            UI_Padding(ui_em(0.1, 1.0))
-            UI_CornerRadius(1.f)
-            UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
-            UI_Palette(ui_build_palette(ui_top_palette(), .background = linear_from_srgba(cfg->background_color)))
-            UI_PrefWidth(ui_pct(1.0, 0.0))
-            UI_PrefHeight(ui_pct(1.0, 0.0))
-            ui_build_box_from_stringf(0, "stroke_clr");
+          ik_ui_color_palette(str8_lit("stroke_clr"), stroke_colors, 3, &cfg->stroke_color);
         }
+
+        // UI_WidthFill
+        // UI_Row
+        // {
+        //   F32 transparency = 0.5;
+        //   UI_PrefWidth(ui_text_dim(1, 1.0))
+        //     ui_labelf("transparency");
+        //   ui_spacer(ui_pct(1.0, 0.0));
+        //   UI_PrefWidth(ui_em(9.0, 0.0))
+        //     ik_ui_range_slider_f32(str8_lit("transparency"), &transparency, 1.0, 0.0);
+        // }
+        // ui_spacer(ui_em(0.1, 0.0));
       }
 
       ////////////////////////////////
@@ -5114,6 +5148,34 @@ ik_ui_inspector(void)
             ui_labelf("draw drop shadow");
           ui_spacer(ui_pct(1.0, 0.0));
           UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(str8_lit("draw_dropshadow"), on)))
+          {
+            b->flags ^= flag;
+          }
+        }
+
+        UI_WidthFill
+        UI_Row
+        {
+          IK_BoxFlags flag = IK_BoxFlag_DrawHotEffects;
+          B32 on = b->flags&flag;
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("draw hot effects");
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(str8_lit("draw_hot_effects"), on)))
+          {
+            b->flags ^= flag;
+          }
+        }
+
+        UI_WidthFill
+        UI_Row
+        {
+          IK_BoxFlags flag = IK_BoxFlag_DrawActiveEffects;
+          B32 on = b->flags&flag;
+          UI_PrefWidth(ui_text_dim(1, 1.0))
+            ui_labelf("draw active effects");
+          ui_spacer(ui_pct(1.0, 0.0));
+          UI_PrefWidth(ui_top_pref_height()) if(ui_clicked(ik_ui_checkbox(str8_lit("draw_active_effects"), on)))
           {
             b->flags ^= flag;
           }
@@ -5611,6 +5673,77 @@ ik_ui_slider_f32(String8 string, F32 *value, F32 px_to_val)
   return sig;
 }
 
+internal UI_Signal
+ik_ui_range_slider_f32(String8 string, F32 *value, F32 max, F32 min)
+{
+  UI_Box *b;
+  UI_HeightFill
+    UI_Column
+    UI_Center
+    UI_Palette(ui_state->widget_palette_info.scrollbar_palette)
+    UI_WidthFill
+    UI_PrefHeight(ui_em(0.35,1.0))
+    UI_CornerRadius(ui_top_font_size()*0.125)
+    UI_Flags(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder)
+    b = ui_build_box_from_string(0, string);
+  UI_Signal sig = ui_signal_from_box(b);
+  return sig;
+}
+
+internal UI_BOX_CUSTOM_DRAW(ik_ui_palette_current_draw)
+{
+  Rng2F32 dst = box->rect;
+  // Vec4F32 src_clr = box->palette->background;
+  // Vec4F32 src_hsv = hsva_from_rgba(src_clr);
+  // Vec4F32 highlight_clr = src_hsv.z > 0.5 ? v4f32(0,0,0,1) : v4f32(1, 1, 1, 1);
+  Vec4F32 highlight_clr = v4f32(0,0,0,0.9);
+  d_rect(dst, highlight_clr, 2, 4, 1.f);
+}
+
+internal void
+ik_ui_color_palette(String8 string, Vec4F32 *colors, U64 color_count, Vec4F32 *current)
+{
+  UI_Box *container;
+  UI_PrefWidth(ui_children_sum(1.0))
+    UI_Flags(UI_BoxFlag_DrawBorder)
+    UI_ChildLayoutAxis(Axis2_X)
+    UI_CornerRadius(4.0)
+    container = ui_build_box_from_string(0, string);
+
+  UI_Parent(container)
+  {
+    for(U64 i = 0; i < color_count; i++)
+    {
+      Vec4F32 clr = colors[i];
+      Vec4F32 clr_linear = linear_from_srgba(clr);
+      UI_BoxFlags flags = UI_BoxFlag_DrawBackground|UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects;
+      B32 is_current = (clr.x == current->x && clr.y == current->y && clr.z == current->z && clr.w == current->w);
+      if(is_current) flags |= UI_BoxFlag_DrawDropShadow;
+
+      UI_Box *b;
+      UI_PrefWidth(ui_top_pref_height())
+        UI_CornerRadius(1.0)
+        UI_Palette(ui_build_palette(ui_top_palette(), .background = clr_linear))
+        UI_Flags(flags)
+      b = ui_build_box_from_stringf(0, "%I64u", i);
+      UI_Signal sig = ui_signal_from_box(b);
+      if(ui_clicked(sig))
+      {
+        *current = clr;
+      }
+
+      if(is_current)
+      {
+        ui_box_equip_custom_draw(b, ik_ui_palette_current_draw, 0);
+      }
+      if(i != color_count-1)
+      {
+        ui_spacer(ui_em(0.1, 0.0));
+      }
+    }
+  }
+}
+
 /////////////////////////////////
 //~ Text Operation Functions
 
@@ -5956,6 +6089,7 @@ ik_frame_to_tyml(IK_Frame *frame)
           se_v4f32_with_tag(str8_lit("background_color"), box->background_color);
           se_v4f32_with_tag(str8_lit("text_color"), box->text_color);
           se_v4f32_with_tag(str8_lit("border_color"), box->border_color);
+          se_v4f32_with_tag(str8_lit("stroke_color"), box->stroke_color);
           se_f32_with_tag(str8_lit("ratio"), box->ratio);
           se_u64_with_tag(str8_lit("hover_cursor"), box->hover_cursor);
           se_f32_with_tag(str8_lit("transparency"), box->transparency);
@@ -6148,6 +6282,7 @@ ik_frame_from_tyml(String8 path)
       box->background_color = se_v4f32_from_tag(n, str8_lit("background_color"));
       box->text_color = se_v4f32_from_tag(n, str8_lit("text_color"));
       box->border_color = se_v4f32_from_tag(n, str8_lit("border_color"));
+      box->stroke_color = se_v4f32_from_tag(n, str8_lit("stroke_color"));
       box->ratio = se_f32_from_tag(n, str8_lit("ratio"));
       box->hover_cursor = se_u64_from_tag(n, str8_lit("hover_cursor"));
       box->transparency = se_f32_from_tag(n, str8_lit("transparency"));

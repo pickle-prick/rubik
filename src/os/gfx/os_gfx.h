@@ -200,10 +200,12 @@ internal char*          os_vulkan_surface_ext();
 //~ rjf: @os_hooks Native User-Facing Graphical Messages (Implemented Per-OS)
 
 internal void           os_graphical_message(B32 error, String8 title, String8 message);
+internal String8        os_graphical_pick_file(Arena *arena, String8 initial_path);
 
 ////////////////////////////////
 //~ rjf: @os_hooks Shell Operations
 
 internal void           os_show_in_filesystem_ui(String8 path);
+internal void           os_open_in_browser(String8 url);
 
 #endif // OS_GFX_H
