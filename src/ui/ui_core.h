@@ -721,6 +721,7 @@ struct UI_State
   String8              drag_state_data;
   U64                  press_timestamp_history_us[UI_MouseButtonKind_COUNT][3];
   UI_Key               press_key_history[UI_MouseButtonKind_COUNT][3];
+  Vec2F32              press_pos_history[UI_MouseButtonKind_COUNT][3];
   U64                  last_time_mousemoved_us;
   B32                  grab_cursor;
 

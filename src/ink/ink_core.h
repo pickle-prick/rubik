@@ -477,6 +477,7 @@ struct IK_Box
   Vec2F32 text_bounds;
   // TODO(Next): we may remove this
   void *draw_data;
+  B32 deleted; // TODO(Next): not the prettiest thing in the world, find a better way
 
   // Animation
   F32 hot_t;
@@ -519,9 +520,10 @@ struct IK_Frame
   U64 arena_clear_pos;
   IK_Frame *next;
   IK_BoxList box_list;
+  IK_Camera camera;
+  // TODO(Next): can we move those two out of frame? it's weird 
   IK_Box *blank;
   IK_Box *select;
-  IK_Camera camera;
 
   IK_Cfg cfg;
   String8 save_path;

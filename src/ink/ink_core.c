@@ -1113,14 +1113,14 @@ ik_frame(void)
   ////////////////////////////////
   //~ Build Debug UI
 
-  ik_ui_stats();
   ik_ui_man_page();
   ik_ui_toolbar();
-  ik_ui_inspector();
   ik_ui_bottom_bar();
   ik_ui_notification();
   ik_ui_box_ctx_menu();
   ik_ui_selection();
+  ik_ui_inspector();
+  ik_ui_stats();
 
   ////////////////////////////////
   //~ Copy events
@@ -1321,7 +1321,7 @@ ik_frame(void)
         {
           delete = 1;
         }
-        if((box->sig.f&IK_SignalFlag_Delete) && !(box->flags&IK_BoxFlag_OmitDeletion))
+        if((box->sig.f&IK_SignalFlag_Delete || box->deleted) && !(box->flags&IK_BoxFlag_OmitDeletion))
         {
           delete = 1;
         }
@@ -1679,7 +1679,7 @@ ik_frame(void)
     // }
 
     //- delete sig on select box? -> delete all grouped children
-    if(select->sig.f&IK_SignalFlag_Delete)
+    if(select->sig.f&IK_SignalFlag_Delete || select->deleted)
     {
       for(IK_Box *child = select->group_first, *next = 0; child != 0; child = next)
       {
@@ -1687,6 +1687,7 @@ ik_frame(void)
         ik_box_release(child);
       }
       select->flags |= IK_BoxFlag_Disabled;
+      select->deleted = 0;
     }
 
     //- select box is not focused -> disable it
@@ -2747,6 +2748,7 @@ ik_frame_alloc()
                                            IK_BoxFlag_OmitDeletion,
                                            "blank");
   frame->select = ik_build_box_from_stringf(IK_BoxFlag_MouseClickable|
+                                            IK_BoxFlag_ClickToFocus|
                                             IK_BoxFlag_Orphan|
                                             IK_BoxFlag_DrawBorder|
                                             IK_BoxFlag_DrawDropShadow|
@@ -4293,14 +4295,14 @@ ik_ui_stats(void)
     {
       ui_labelf("ui_hot_key");
       ui_spacer(ui_pct(1.0, 0.0));
-      ui_labelf("%lu", ui_state->hot_box_key.u64[0]);
+      ui_labelf("%I64u", ui_state->hot_box_key.u64[0]);
     }
     UI_Row
       UI_PrefWidth(ui_text_dim(1, 1.0))
     {
       ui_labelf("ui_active_key");
       ui_spacer(ui_pct(1.0, 0.0));
-      ui_labelf("%lu", ui_state->active_box_key[UI_MouseButtonKind_Left].u64[0]);
+      ui_labelf("%I64u", ui_state->active_box_key[UI_MouseButtonKind_Left].u64[0]);
     }
     UI_Row
       UI_PrefWidth(ui_text_dim(1, 1.0))
@@ -5612,7 +5614,9 @@ ik_ui_box_ctx_menu(void)
 
     if(deleted)
     {
-      ik_box_release(box);
+      // TODO(Next): box could be select box, we don't handle deletion here
+      //             just a hack for now, find a better way later
+      box->deleted = 1;
     }
   }
 }

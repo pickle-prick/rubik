@@ -1675,6 +1675,7 @@ ui_signal_from_box(UI_Box *box)
   //////////////////////////////
   //- rjf: process events related to this box
   //
+  B32 view_scrolled = 0;
   for(UI_EventNode *n = ui_state->events->first, *next=0; n != 0; n = next)
   {
     B32 taken = 0;
@@ -1720,8 +1721,11 @@ ui_signal_from_box(UI_Box *box)
       MemoryCopy(&ui_state->press_timestamp_history_us[evt_mouse_button_kind][1],
                  &ui_state->press_timestamp_history_us[evt_mouse_button_kind][0],
                  sizeof(ui_state->press_timestamp_history_us[evt_mouse_button_kind][0]) * (ArrayCount(ui_state->press_timestamp_history_us)-1));
+      MemoryCopy(&ui_state->press_pos_history[evt_mouse_button_kind][1], &ui_state->press_pos_history[evt_mouse_button_kind][0],
+                 sizeof(ui_state->press_pos_history[evt_mouse_button_kind][0]) * ArrayCount(ui_state->press_pos_history[evt_mouse_button_kind])-1);
       ui_state->press_key_history[evt_mouse_button_kind][0] = box->key;
       ui_state->press_timestamp_history_us[evt_mouse_button_kind][0] = evt->timestamp_us;
+      ui_state->press_pos_history[evt_mouse_button_kind][0] = evt_mouse;
 
       taken = 1;
     }
@@ -1736,11 +1740,8 @@ ui_signal_from_box(UI_Box *box)
       ui_state->active_box_key[evt_mouse_button_kind] = ui_key_zero();
       sig.f |= (UI_SignalFlag_LeftReleased << evt_mouse_button_kind);
       sig.f |= (UI_SignalFlag_LeftClicked << evt_mouse_button_kind);
-
       taken = 1;
     }
-
-    // TODO: handle ancestors which are covering this box
 
     //- k: mouse released outside of active box -> unset hot/active
     if(box->flags & UI_BoxFlag_MouseClickable &&
@@ -1752,11 +1753,10 @@ ui_signal_from_box(UI_Box *box)
       ui_state->hot_box_key = ui_key_zero();
       ui_state->active_box_key[evt_mouse_button_kind] = ui_key_zero();
       sig.f |= (UI_SignalFlag_LeftReleased << evt_mouse_button_kind);
-
       taken = 1;
     }
 
-    //- k: (input)focus is hot & keyboard click -> mark signal
+    //- k: focus is hot & keyboard click -> mark signal
     if((box->flags & UI_BoxFlag_KeyboardClickable) &&
         is_focus_hot &&
         evt->kind == UI_EventKind_Press &&
@@ -1766,7 +1766,7 @@ ui_signal_from_box(UI_Box *box)
       taken = 1;
     }
 
-    //- k: scroll
+    //- k: scrolling
     if(box->flags & UI_BoxFlag_Scroll &&
        evt->kind == UI_EventKind_Scroll &&
        evt->modifiers != OS_Modifier_Ctrl &&
@@ -1787,10 +1787,110 @@ ui_signal_from_box(UI_Box *box)
       taken = 1;
     }
 
+    //- rjf: view scrolling
+    if(box->flags & UI_BoxFlag_ViewScroll && box->first_touched_build_index != box->last_touched_build_index &&
+       evt->kind == UI_EventKind_Scroll &&
+       (evt->modifiers == 0 || evt->modifiers == OS_Modifier_Shift) &&
+       evt_mouse_in_bounds)
+    {
+      Vec2F32 delta = evt->delta_2f32;
+      if(evt->modifiers & OS_Modifier_Shift)
+      {
+        Swap(F32, delta.x, delta.y);
+      }
+      if(!(box->flags & UI_BoxFlag_ViewScrollX))
+      {
+        if(delta.y == 0)
+        {
+          delta.y = delta.x;
+        }
+        delta.x = 0;
+      }
+      if(!(box->flags & UI_BoxFlag_ViewScrollY))
+      {
+        if(delta.x == 0)
+        {
+          delta.x = delta.y;
+        }
+        delta.y = 0;
+      }
+      box->view_off_target.x += delta.x;
+      box->view_off_target.y += delta.y;
+      view_scrolled = 1;
+      taken = 1;
+    }
+
     //- k: taken -> eat event
     if(taken)
     {
       ui_eat_event(evt);
+    }
+  }
+
+  //////////////////////////////
+  //- rjf: clamp view scrolling
+  //
+  if(view_scrolled && box->flags & UI_BoxFlag_ViewClamp)
+  {
+    Vec2F32 max_view_off_target =
+    {
+      ClampBot(0, box->view_bounds.x - box->fixed_size.x),
+      ClampBot(0, box->view_bounds.y - box->fixed_size.y),
+    };
+    if(box->flags & UI_BoxFlag_ViewClampX) { box->view_off_target.x = Clamp(0, box->view_off_target.x, max_view_off_target.x); }
+    if(box->flags & UI_BoxFlag_ViewClampY) { box->view_off_target.y = Clamp(0, box->view_off_target.y, max_view_off_target.y); }
+  }
+
+  //////////////////////////////
+  //- rjf: active -> dragging
+
+  if(box->flags & UI_BoxFlag_MouseClickable)
+  {
+    for EachEnumVal(UI_MouseButtonKind, k)
+    {
+      if(ui_key_match(ui_state->active_box_key[k], box->key) || sig.f & (UI_SignalFlag_LeftPressed<<k))
+      {
+        sig.f |= (UI_SignalFlag_LeftDragging<<k);
+      }
+    }
+  }
+
+  //////////////////////////////
+  //- rjf: dragging started via double-click -> double-dragging
+  //
+  if(box->flags & UI_BoxFlag_MouseClickable)
+  {
+    for EachEnumVal(UI_MouseButtonKind, k)
+    {
+      if(sig.f & (UI_SignalFlag_LeftDragging<<k) &&
+         ui_key_match(ui_state->press_key_history[k][0], box->key) &&
+         ui_key_match(ui_state->press_key_history[k][1], box->key) &&
+         ui_state->press_timestamp_history_us[k][0] - ui_state->press_timestamp_history_us[k][1] <= 1000000*os_get_gfx_info()->double_click_time &&
+         length_2f32(sub_2f32(ui_state->press_pos_history[k][0], ui_state->press_pos_history[k][1])) < 10.f)
+      {
+        sig.f |= (UI_SignalFlag_LeftDoubleDragging<<k);
+      }
+    }
+  }
+
+  //////////////////////////////
+  //- rjf: dragging started via triple-click -> triple-dragging
+  //
+  if(box->flags & UI_BoxFlag_MouseClickable)
+  {
+    for EachEnumVal(UI_MouseButtonKind, k)
+    {
+      if(sig.f & (UI_SignalFlag_LeftDragging<<k) &&
+         ui_key_match(ui_state->press_key_history[k][0], box->key) &&
+         ui_key_match(ui_state->press_key_history[k][1], box->key) &&
+         ui_key_match(ui_state->press_key_history[k][2], box->key) &&
+         ui_state->press_timestamp_history_us[k][0] - ui_state->press_timestamp_history_us[k][1] <= 1000000*os_get_gfx_info()->double_click_time &&
+         ui_state->press_timestamp_history_us[k][1] - ui_state->press_timestamp_history_us[k][2] <= 1000000*os_get_gfx_info()->double_click_time &&
+         length_2f32(sub_2f32(ui_state->press_pos_history[k][0], ui_state->press_pos_history[k][1])) < 10.f &&
+         length_2f32(sub_2f32(ui_state->press_pos_history[k][1], ui_state->press_pos_history[k][2])) < 10.f)
+      {
+        sig.f |= (UI_SignalFlag_LeftTripleDragging<<k);
+      }
     }
   }
 
@@ -1821,6 +1921,26 @@ ui_signal_from_box(UI_Box *box)
   }
 
   //////////////////////////////
+  //- rjf: mouse is over this box's rect, currently-active-key has the same group key? -> set hot/active key
+  //
+  // if(box->flags & UI_BoxFlag_MouseClickable &&
+  //    contains_2f32(rect, ui_state->mouse) &&
+  //    !contains_2f32(blacklist_rect, ui_state->mouse) &&
+  //    !ui_key_match(ui_key_zero(), box->group_key))
+  // {
+  //   for EachEnumVal(UI_MouseButtonKind, k)
+  //   {
+  //     UI_Box *active_box = ui_box_from_key(ui_state->active_box_key[k]);
+  //     if(ui_key_match(box->group_key, active_box->group_key))
+  //     {
+  //       ui_state->hot_box_key = box->key;
+  //       ui_state->active_box_key[k] = box->key;
+  //       sig.f |= UI_SignalFlag_Hovering|(UI_SignalFlag_Dragging<<k);
+  //     }
+  //   }
+  // }
+
+  //////////////////////////////
   //- rjf: mouse is over this box's rect, drop site, no other drop hot key? -> set drop hot key
   //
   {
@@ -1847,25 +1967,11 @@ ui_signal_from_box(UI_Box *box)
   }
 
   //////////////////////////////
-  //- rjf: active -> dragging
-
-  if(box->flags & UI_BoxFlag_MouseClickable)
+  //- rjf: clicking on something outside the context menu kills the context menu
+  //
+  if(!ctx_menu_is_ancestor && sig.f & (UI_SignalFlag_LeftPressed|UI_SignalFlag_RightPressed|UI_SignalFlag_MiddlePressed))
   {
-    for EachEnumVal(UI_MouseButtonKind, k)
-    {
-      if(ui_key_match(ui_state->active_box_key[k], box->key) || sig.f & (UI_SignalFlag_LeftPressed<<k))
-      {
-        sig.f |= (UI_SignalFlag_LeftDragging<<k);
-      }
-    }
-  }
-
-  //////////////////////////////
-  //- rjf: mouse is not over this box, hot key is the box? -> unset hot key
-
-  if(!contains_2f32(rect, ui_state->mouse) && ui_key_match(ui_state->hot_box_key, box->key))
-  {
-    ui_state->hot_box_key = ui_key_zero();
+    ui_ctx_menu_close();
   }
 
   //////////////////////////////
