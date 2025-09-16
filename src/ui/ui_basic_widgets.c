@@ -1393,7 +1393,7 @@ ui_f32_edit(F32 *n, F32 min, F32 max, TxtPt *cursor, TxtPt *mark, U8 *edit_buffe
   return sig;
 }
 
-// tooltips
+//- tooltips
 internal void
 ui_tooltip_begin_base(void)
 {
@@ -1451,4 +1451,90 @@ ui_tooltip_end(void)
   UI_PrefWidth(ui_px(0, 1)) ui_spacer(ui_em(1.f, 1.f));
   ui_column_end();
   ui_tooltip_end_base();
+}
+
+//- rjf: context menus
+
+internal void
+ui_ctx_menu_open(UI_Key key, UI_Key anchor_box_key, Vec2F32 anchor_off)
+{
+  anchor_off.x = (F32)(int)anchor_off.x;
+  anchor_off.y = (F32)(int)anchor_off.y;
+  ui_state->next_ctx_menu_open = 1;
+  ui_state->ctx_menu_changed = 1;
+  ui_state->ctx_menu_open_t = 0;
+  ui_state->ctx_menu_key = key;
+  ui_state->next_ctx_menu_anchor_key = anchor_box_key;
+  ui_state->ctx_menu_anchor_off = anchor_off;
+  ui_state->ctx_menu_touched_this_frame = 1;
+  ui_state->ctx_menu_anchor_box_last_pos = v2f32(0, 0);
+  ui_state->ctx_menu_root->default_nav_focus_active_key = ui_key_zero();
+  ui_state->ctx_menu_root->default_nav_focus_next_active_key = ui_key_zero();
+}
+
+internal void
+ui_ctx_menu_close(void)
+{
+  ui_state->next_ctx_menu_open = 0;
+}
+
+internal B32
+ui_begin_ctx_menu(UI_Key key)
+{
+  ui_push_parent(ui_root_from_state(ui_state));
+  ui_push_parent(ui_state->ctx_menu_root);
+  ui_push_pref_width(ui_bottom_pref_width());
+  ui_push_pref_height(ui_bottom_pref_height());
+  ui_push_focus_hot(UI_FocusKind_Root);
+  ui_push_focus_active(UI_FocusKind_Root);
+  // ui_push_tag(str8_lit("."));
+  B32 is_open = ui_key_match(key, ui_state->ctx_menu_key) && ui_state->ctx_menu_open;
+  if(is_open != 0)/* UI_TagF("floating") */
+  {
+    ui_state->ctx_menu_touched_this_frame = 1;
+    ui_state->ctx_menu_root->flags |= UI_BoxFlag_RoundChildrenByParent;
+    ui_state->ctx_menu_root->flags |= UI_BoxFlag_DrawBackgroundBlur;
+    ui_state->ctx_menu_root->flags |= UI_BoxFlag_DrawBackground;
+    ui_state->ctx_menu_root->flags |= UI_BoxFlag_DisableFocusOverlay;
+    ui_state->ctx_menu_root->flags |= UI_BoxFlag_DrawBorder;
+    ui_state->ctx_menu_root->flags |= UI_BoxFlag_Clip;
+    ui_state->ctx_menu_root->flags |= UI_BoxFlag_Clickable;
+    ui_state->ctx_menu_root->corner_radii[Corner_00] = ui_state->ctx_menu_root->corner_radii[Corner_01] = ui_state->ctx_menu_root->corner_radii[Corner_10] = ui_state->ctx_menu_root->corner_radii[Corner_11] = ui_top_font_size()*0.25f;
+    // ui_state->ctx_menu_root->tags_key = ui_top_tags_key();
+    // ui_state->ctx_menu_root->blur_size = ui_top_blur_size();
+    // ui_state->ctx_menu_root->text_color = ui_color_from_name(str8_lit("text"));
+    // ui_state->ctx_menu_root->background_color = ui_color_from_name(str8_lit("background"));
+    // ui_spacer(ui_em(1.f, 1.f));
+  }
+  ui_state->is_in_open_ctx_menu = is_open;
+  return is_open;
+}
+
+internal void
+ui_end_ctx_menu(void)
+{
+  if(ui_state->is_in_open_ctx_menu)
+  {
+    ui_state->is_in_open_ctx_menu = 0;
+    // ui_spacer(ui_em(1.f, 1.f));
+  }
+  // ui_pop_tag();
+  ui_pop_focus_active();
+  ui_pop_focus_hot();
+  ui_pop_pref_width();
+  ui_pop_pref_height();
+  ui_pop_parent();
+  ui_pop_parent();
+}
+
+internal B32
+ui_ctx_menu_is_open(UI_Key key)
+{
+  return (ui_state->ctx_menu_open && ui_key_match(key, ui_state->ctx_menu_key));
+}
+
+internal B32
+ui_any_ctx_menu_is_open(void)
+{
+  return ui_state->ctx_menu_open;
 }

@@ -439,10 +439,14 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
   {
     UI_InitStacks(ui_state);
     ui_state->root = &ui_nil_box;
+    ui_state->ctx_menu_touched_this_frame = 0;
     ui_state->default_animation_rate = 1 - pow_f32(2, (-50.f * ui_state->animation_dt));
     ui_state->last_build_box_count = ui_state->build_box_count;
     ui_state->build_box_count = 0;
     ui_state->tooltip_open = 0;
+    ui_state->tooltip_can_overflow_window = 0;
+    ui_state->tooltip_anchor_key = ui_key_zero();
+    ui_state->ctx_menu_changed = 0;
   }
 
   // prune unused animation nodes
@@ -539,6 +543,30 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
     ui_state->tooltip_root = ui_build_box_from_stringf(0, "###tooltip_%I64x", os_wnd.u64[0]);
   }
 
+  //- rjf: setup parent box for context menu
+  ui_state->ctx_menu_open = ui_state->next_ctx_menu_open;
+  ui_state->ctx_menu_anchor_key = ui_state->next_ctx_menu_anchor_key;
+  {
+    UI_Box *anchor_box = ui_box_from_key(ui_state->ctx_menu_anchor_key);
+    if(!ui_box_is_nil(anchor_box))
+    {
+      ui_state->ctx_menu_anchor_box_last_pos = anchor_box->rect.p0;
+    }
+    Vec2F32 anchor = add_2f32(ui_state->ctx_menu_anchor_box_last_pos, ui_state->ctx_menu_anchor_off);
+    UI_FixedX(anchor.x) UI_FixedY(anchor.y) UI_PrefWidth(ui_children_sum(1.f)) UI_PrefHeight(ui_children_sum(1.f))
+      UI_Focus(UI_FocusKind_On)
+      UI_Squish(0.1f-ui_state->ctx_menu_open_t*0.1f)
+      UI_Transparency(1-ui_state->ctx_menu_open_t)
+    {
+      ui_set_next_child_layout_axis(Axis2_Y);
+      ui_state->ctx_menu_root = ui_build_box_from_stringf(UI_BoxFlag_Clickable|
+                                                          UI_BoxFlag_SquishAnchored|
+                                                          UI_BoxFlag_DrawDropShadow|
+                                                          (ui_state->ctx_menu_open*UI_BoxFlag_DefaultFocusNavY),
+                                                          "###ctx_menu_%I64x", os_wnd.u64[0]);
+    }
+  }
+
   //- rjf: reset hot if we don't have an active widget
   {
     B32 has_active = 0;
@@ -582,6 +610,12 @@ ui_begin_build(OS_Handle os_wnd, UI_EventList *events, UI_IconInfo *icon_info, U
       ui_state->active_box_key[k] = ui_key_zero();
     }
   }
+
+  //- rjf: escape -> close context menu
+  if(ui_any_ctx_menu_is_open() && ui_slot_press(UI_EventActionSlot_Cancel))
+  {
+    ui_ctx_menu_close();
+  }
   ProfEnd();
 }
 
@@ -589,10 +623,10 @@ internal void
 ui_end_build(void)
 {
   ProfBeginFunction();
-  // TODO(k): potential bugs here, after running for while, this function (ui_end_build) will take a lot cpu cyles when window is focused but is normal when window is out of focused (weird)
 
-  // Prune untouched or transient widgets in the cache
-  ProfScope("prune ui nodes") for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
+  //- rjf: prune untouched or transient boxes in the cache
+  ProfScope("prune ui nodes")
+  for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
   {
     for(UI_Box *box = ui_state->box_table[slot_idx].hash_first; !ui_box_is_nil(box); box = box->hash_next)
     {
@@ -609,10 +643,96 @@ ui_end_build(void)
     }
   }
 
-  // Layout box tree
+  //- rjf: layout box tree
   ProfScope("ui layout") for(Axis2 axis = 0; axis < Axis2_COUNT; axis++)
   {
     ui_layout_root(ui_state->root, axis);
+  }
+
+  //- rjf: close ctx menu if untouched
+  if(!ui_state->ctx_menu_touched_this_frame)
+  {
+    ui_ctx_menu_close();
+  }
+  
+  //- rjf: stick ctx menu to anchor
+  if(ui_state->ctx_menu_touched_this_frame && !ui_state->ctx_menu_changed)
+  {
+    UI_Box *anchor_box = ui_box_from_key(ui_state->ctx_menu_anchor_key);
+    if(!ui_box_is_nil(anchor_box))
+    {
+      Rng2F32 root_rect = ui_state->ctx_menu_root->rect;
+      Vec2F32 pos =
+      {
+        anchor_box->rect.x0 + ui_state->ctx_menu_anchor_off.x,
+        anchor_box->rect.y0 + ui_state->ctx_menu_anchor_off.y,
+      };
+      Vec2F32 shift = sub_2f32(pos, root_rect.p0);
+      Rng2F32 new_root_rect = shift_2f32(root_rect, shift);
+      ui_state->ctx_menu_root->fixed_position = new_root_rect.p0;
+      ui_state->ctx_menu_root->fixed_size = dim_2f32(new_root_rect);
+      ui_state->ctx_menu_root->rect = new_root_rect;
+    }
+  }
+  
+  //- rjf: anchor tooltips
+  if(!ui_key_match(ui_state->tooltip_anchor_key, ui_key_zero()))
+  {
+    UI_Box *anchor_box = ui_box_from_key(ui_state->tooltip_anchor_key);
+    if(!ui_box_is_nil(anchor_box))
+    {
+      Vec2F32 dim = dim_2f32(ui_state->tooltip_root->rect);
+      ui_state->tooltip_root->fixed_position.x = ui_state->tooltip_root->rect.x0 = anchor_box->rect.x0;
+      ui_state->tooltip_root->fixed_position.y = ui_state->tooltip_root->rect.y0 = anchor_box->rect.y1 + anchor_box->font_size*0.5f;
+      ui_state->tooltip_root->rect.x1 = ui_state->tooltip_root->rect.x0 + dim.x;
+      ui_state->tooltip_root->rect.y1 = ui_state->tooltip_root->rect.y0 + dim.y;
+    }
+    else
+    {
+      ui_state->tooltip_root->rect.x0 = 10000;
+      ui_state->tooltip_root->rect.y0 = 10000;
+    }
+  }
+
+  //- rjf: ensure special floating roots are within screen bounds
+  UI_Box *floating_roots[] = {ui_state->tooltip_root, ui_state->ctx_menu_root};
+  B32 force_contain[] =
+  {
+    !ui_state->tooltip_can_overflow_window,
+    1,
+  };
+  for(U64 idx = 0; idx < ArrayCount(floating_roots); idx += 1)
+  {
+    UI_Box *root = floating_roots[idx];
+    if(!ui_box_is_nil(root))
+    {
+      Rng2F32 window_rect = os_client_rect_from_window(ui_state->os_wnd, 0);
+      Vec2F32 window_dim = dim_2f32(window_rect);
+      Rng2F32 root_rect = root->rect;
+      Vec2F32 shift_down =
+      {
+        -ClampBot(0, root_rect.x1 - window_rect.x1) * (force_contain[idx]),
+        -ClampBot(0, root_rect.y1 - window_rect.y1) * (force_contain[idx]),
+      };
+      Rng2F32 new_root_rect = shift_2f32(root_rect, shift_down);
+      Vec2F32 shift_up =
+      {
+        ClampBot(0, window_rect.x0 - new_root_rect.x0) * (force_contain[idx]),
+        ClampBot(0, window_rect.y0 - new_root_rect.y0) * (force_contain[idx]),
+      };
+      new_root_rect = shift_2f32(new_root_rect, shift_up);
+      root->fixed_position = new_root_rect.p0;
+      root->fixed_size = dim_2f32(new_root_rect);
+      root->rect = new_root_rect;
+      for(Axis2 axis = (Axis2)0; axis < Axis2_COUNT; axis = (Axis2)(axis + 1))
+      {
+        ui_calc_sizes_standalone__in_place_rec(root, axis);
+        ui_calc_sizes_upwards_dependent__in_place_rec(root, axis);
+        ui_calc_sizes_downwards_dependent__in_place_rec(root, axis);
+        ui_layout_enforce_constraints__in_place_rec(root, axis);
+        ui_layout_position__in_place_rec(root, axis);
+      }
+    }
   }
 
   // Enforce child-rounding
@@ -663,6 +783,11 @@ ui_end_build(void)
       }
     }
 
+    ui_state->ctx_menu_open_t += ((F32)!!ui_state->ctx_menu_open - ui_state->ctx_menu_open_t) * ui_state->animation_info.menu_animation_rate;
+    if(ui_state->ctx_menu_open_t >= 0.99f && ui_state->ctx_menu_open)
+    {
+      ui_state->ctx_menu_open_t = 1.f;
+    }
     ui_state->tooltip_open_t += ((F32)!!ui_state->tooltip_open - ui_state->tooltip_open_t) * ui_state->animation_info.tooltip_animation_rate;
 
     for(U64 slot_idx = 0; slot_idx < ui_state->box_table_size; slot_idx++)
@@ -728,6 +853,24 @@ ui_end_build(void)
             b->view_off.y = b->view_off_target.y;
           }
         }
+      }
+    }
+  }
+
+  //- rjf: fall-through interact with context menu
+  if(ui_state->ctx_menu_open)
+  {
+    ui_signal_from_box(ui_state->ctx_menu_root);
+  }
+
+  //- rjf: close ctx menu if unconsumed clicks
+  {
+    for(UI_Event *evt = 0; ui_next_event(&evt);)
+    {
+      if(evt->kind == UI_EventKind_Press &&
+         (evt->key == OS_Key_LeftMouseButton || evt->key == OS_Key_RightMouseButton))
+      {
+        ui_ctx_menu_close();
       }
     }
   }
@@ -1492,7 +1635,9 @@ ui_signal_from_box(UI_Box *box)
   sig.event_flags |= os_get_modifiers();
   B32 is_focus_hot = box->flags & UI_BoxFlag_FocusHot && !(box->flags & UI_BoxFlag_FocusHotDisabled);
 
-  //- k: calculate possibly-clipped box rectangle
+  //////////////////////////////
+  //- rjf: calculate possibly-clipped box rectangle
+  //
   Rng2F32 rect = box->rect;
   for(UI_Box *b = box->parent; !ui_box_is_nil(b); b = b->parent)
   {
@@ -1502,9 +1647,34 @@ ui_signal_from_box(UI_Box *box)
     }
   }
 
-  /////////////////////////////////////////////////////////////////////////////////////
-  //- k: process events related to this box
+  //////////////////////////////
+  //- rjf: determine if we're under the context menu or not
+  //
+  B32 ctx_menu_is_ancestor = 0;
+  ProfScope("check context menu ancestor")
+  {
+    for(UI_Box *parent = box; !ui_box_is_nil(parent); parent = parent->parent)
+    {
+      if(parent == ui_state->ctx_menu_root)
+      {
+        ctx_menu_is_ancestor = 1;
+        break;
+      }
+    }
+  }
+  
+  //////////////////////////////
+  //- rjf: calculate blacklist rectangles
+  //
+  Rng2F32 blacklist_rect = {0};
+  if(!ctx_menu_is_ancestor && ui_state->ctx_menu_open)
+  {
+    blacklist_rect = ui_state->ctx_menu_root->rect;
+  }
 
+  //////////////////////////////
+  //- rjf: process events related to this box
+  //
   for(UI_EventNode *n = ui_state->events->first, *next=0; n != 0; n = next)
   {
     B32 taken = 0;
@@ -1513,7 +1683,7 @@ ui_signal_from_box(UI_Box *box)
 
     //- k: unpack event
     Vec2F32 evt_mouse = evt->pos;
-    B32 evt_mouse_in_bounds = contains_2f32(rect, evt_mouse);
+    B32 evt_mouse_in_bounds = !contains_2f32(blacklist_rect, evt_mouse) && contains_2f32(rect, evt_mouse);
     UI_MouseButtonKind evt_mouse_button_kind = 
       evt->key == OS_Key_LeftMouseButton   ? UI_MouseButtonKind_Left   :
       evt->key == OS_Key_RightMouseButton  ? UI_MouseButtonKind_Right  :
@@ -1627,9 +1797,12 @@ ui_signal_from_box(UI_Box *box)
   //////////////////////////////
   //- rjf: mouse is over this box's rect -> always mark mouse-over
 
-  if(contains_2f32(rect, ui_state->mouse))
   {
-    sig.f |= UI_SignalFlag_MouseOver;
+    if(contains_2f32(rect, ui_state->mouse) &&
+       !contains_2f32(blacklist_rect, ui_state->mouse))
+    {
+      sig.f |= UI_SignalFlag_MouseOver;
+    }
   }
 
   //////////////////////////////
@@ -1637,6 +1810,7 @@ ui_signal_from_box(UI_Box *box)
 
   if(box->flags & UI_BoxFlag_MouseClickable &&
      contains_2f32(rect, ui_state->mouse) &&
+     !contains_2f32(blacklist_rect, ui_state->mouse) &&
      (ui_key_match(ui_state->hot_box_key, ui_key_zero()) || ui_key_match(ui_state->hot_box_key, box->key)) &&
      (ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Left], ui_key_zero()) || ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Left], box->key)) &&
      (ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Middle], ui_key_zero()) || ui_key_match(ui_state->active_box_key[UI_MouseButtonKind_Middle], box->key)) &&
@@ -1652,6 +1826,7 @@ ui_signal_from_box(UI_Box *box)
   {
     if(box->flags & UI_BoxFlag_DropSite &&
        contains_2f32(rect, ui_state->mouse) &&
+       !contains_2f32(blacklist_rect, ui_state->mouse) &&
        (ui_key_match(ui_state->drop_hot_box_key, ui_key_zero()) || ui_key_match(ui_state->drop_hot_box_key, box->key)))
     {
       ui_state->drop_hot_box_key = box->key;
@@ -1663,7 +1838,8 @@ ui_signal_from_box(UI_Box *box)
   //
   {
     if(box->flags & UI_BoxFlag_DropSite &&
-       !contains_2f32(rect, ui_state->mouse) &&
+       (!contains_2f32(rect, ui_state->mouse) ||
+        contains_2f32(blacklist_rect, ui_state->mouse)) &&
        ui_key_match(ui_state->drop_hot_box_key, box->key))
     {
       ui_state->drop_hot_box_key = ui_key_zero();

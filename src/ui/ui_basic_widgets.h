@@ -81,11 +81,20 @@ internal UI_Signal ui_hover_labelf(char *fmt, ...);
 internal UI_Signal ui_line_edit(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, U64 *edit_string_size_out, String8 pre_edit_value, String8 string);
 internal UI_Signal ui_line_editf(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, U64 *edit_string_size_out, String8 pre_edit_value, char *fmt, ...);
 internal UI_Signal ui_f32_edit(F32 *n, F32 min, F32 max, TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, U64 *edit_string_size_out, B32 *has_draft, String8 string);
-// tooltips
+
+//- rjf: too tips
 internal void      ui_tooltip_begin_base(void);
 internal void      ui_tooltip_end_base(void);
 internal void      ui_tooltip_begin(void);
 internal void      ui_tooltip_end(void);
+
+//- rjf: context menus
+internal void ui_ctx_menu_open(UI_Key key, UI_Key anchor_box_key, Vec2F32 anchor_off);
+internal void ui_ctx_menu_close(void);
+internal B32  ui_begin_ctx_menu(UI_Key key);
+internal void ui_end_ctx_menu(void);
+internal B32  ui_ctx_menu_is_open(UI_Key key);
+internal B32  ui_any_ctx_menu_is_open(void);
 
 ////////////////////////////////
 //~ rjf: Images
@@ -158,8 +167,12 @@ internal void ui_scroll_list_end(void);
 #define UI_Padding(size) DeferLoop(ui_spacer(size), ui_spacer(size))
 #define UI_Center UI_Padding(ui_pct(1, 0))
 #define UI_ScrollList(params, scroll_pt_out, cursor_out, mark_out, visible_row_range_out, signal_out) DeferLoop(ui_scroll_list_begin((params), (scroll_pt_out), (cursor_out), (mark_out), (visible_row_range_out), (signal_out)), ui_scroll_list_end())
+
 // tooltip
 #define UI_TooltipBase DeferLoop(ui_tooltip_begin_base(), ui_tooltip_end_base())
 #define UI_Tooltip DeferLoop(ui_tooltip_begin(), ui_tooltip_end())
+
+// ctx menu
+#define UI_CtxMenu(key) DeferLoopChecked(ui_begin_ctx_menu(key), ui_end_ctx_menu())
 
 #endif // UI_BASIC_WIDGETS_H

@@ -688,12 +688,19 @@ struct UI_State
   U64                  anim_slots_count;
   UI_AnimSlot          *anim_slots;
 
+  // build state machine state
+  B32                  is_in_open_ctx_menu;
+  B32                  tooltip_can_overflow_window;
+  UI_Key               tooltip_anchor_key;
+
   // build phase output
   UI_Box               *root;
   UI_Box               *tooltip_root;
   UI_Box               *ctx_menu_root;
   U64                  build_box_count;
   U64                  last_build_box_count;
+  B32                  ctx_menu_touched_this_frame;
+  // B32                  is_animating;
 
   // build parameters
   UI_IconInfo          icon_info;
@@ -720,6 +727,17 @@ struct UI_State
   // tooltip state
   F32                  tooltip_open_t;
   B32                  tooltip_open;
+
+  // ctx menu state
+  UI_Key               ctx_menu_anchor_key;
+  UI_Key               next_ctx_menu_anchor_key;
+  Vec2F32              ctx_menu_anchor_box_last_pos;
+  Vec2F32              ctx_menu_anchor_off;
+  B32                  ctx_menu_open;
+  B32                  next_ctx_menu_open;
+  F32                  ctx_menu_open_t;
+  UI_Key               ctx_menu_key;
+  B32                  ctx_menu_changed;
 
   // build phase stacks
   UI_DeclStackNils;

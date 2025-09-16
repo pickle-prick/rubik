@@ -90,7 +90,8 @@ ik_ui_draw()
       Mat3x3F32 scale_xform = make_scale_3x3f32(v2f32(1-box->squish, 1-box->squish));
       Mat3x3F32 origin2box_xform = make_translate_3x3f32(v2f32(box->rect.x0 + box_dim.x/2 - anchor_off.x, box->rect.y0 - anchor_off.y));
       Mat3x3F32 xform = mul_3x3f32(origin2box_xform, mul_3x3f32(scale_xform, box2origin_xform));
-      // TODO: we may need to tranpose this
+      // TODO(k): we may need to tranpose this, check it later
+      xform = transpose_3x3f32(xform);
       d_push_xform2d(xform);
       d_push_tex2d_sample_kind(R_Tex2DSampleKind_Linear);
     }
@@ -226,7 +227,7 @@ ik_ui_draw()
     }
 
     // NOTE(k): draw focus viz
-    if(0)
+    if(1)
     {
       B32 focused = (box->flags & (UI_BoxFlag_FocusHot|UI_BoxFlag_FocusActive) &&
                      box->flags & UI_BoxFlag_Clickable);
@@ -723,7 +724,10 @@ ik_kill_action(void)
 internal void
 ik_kill_focus(void)
 {
-  ik_state->focus_hot_box_key = ik_key_zero();
+  for EachEnumVal(IK_MouseButtonKind, k)
+  {
+    ik_state->focus_hot_box_key[k] = ik_key_zero();
+  }
   ik_state->focus_active_box_key = ik_key_zero();
 }
 
@@ -1115,6 +1119,7 @@ ik_frame(void)
   ik_ui_inspector();
   ik_ui_bottom_bar();
   ik_ui_notification();
+  ik_ui_box_ctx_menu();
   ik_ui_selection();
 
   ////////////////////////////////
@@ -1303,7 +1308,7 @@ ik_frame(void)
 
         B32 is_hot = ik_key_match(box->key, ik_state->hot_box_key);
         B32 is_active = ik_key_match(box->key, ik_state->active_box_key[IK_MouseButtonKind_Left]);
-        B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key);
+        B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key[IK_MouseButtonKind_Left]);
         B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
         B32 is_disabled = box->flags&IK_BoxFlag_Disabled;
 
@@ -1490,30 +1495,36 @@ ik_frame(void)
     /////////////////////////////////
     //~ Reset focus-hot key if focus-hot box is disabled
 
-    if(!ik_key_match(ik_state->focus_hot_box_key, ik_key_zero()))
+    for EachEnumVal(IK_MouseButtonKind, k)
     {
-      IK_Box *box = ik_box_from_key(ik_state->focus_hot_box_key);
-      if(box && box->flags&IK_BoxFlag_Disabled)
+      if(!ik_key_match(ik_state->focus_hot_box_key[k], ik_key_zero()))
       {
-        ik_state->focus_hot_box_key = ik_key_zero();
+        IK_Box *box = ik_box_from_key(ik_state->focus_hot_box_key[k]);
+        if(box && box->flags&IK_BoxFlag_Disabled)
+        {
+          ik_state->focus_hot_box_key[k] = ik_key_zero();
+        }
       }
     }
 
     /////////////////////////////////
-    //~ Pruned box active/focus_hot, reset it
+    //~ Active/focus_hot box is pruned, reset keys
 
-    for(U64 i = 0; i < IK_MouseButtonKind_COUNT; i++)
+    for EachEnumVal(IK_MouseButtonKind, k)
     {
-      if(!ik_key_match(ik_state->active_box_key[i], ik_key_zero()))
+      if(!ik_key_match(ik_state->active_box_key[k], ik_key_zero()))
       {
-        IK_Box *box = ik_box_from_key(ik_state->active_box_key[i]);
-        if(!box) ik_state->active_box_key[i] = ik_key_zero();
+        IK_Box *box = ik_box_from_key(ik_state->active_box_key[k]);
+        if(!box) ik_state->active_box_key[k] = ik_key_zero();
       }
     }
-    if(!ik_key_match(ik_state->focus_hot_box_key, ik_key_zero()))
+    for EachEnumVal(IK_MouseButtonKind, k)
     {
-      IK_Box *box = ik_box_from_key(ik_state->focus_hot_box_key);
-      if(!box) ik_state->focus_hot_box_key = ik_key_zero();
+      if(!ik_key_match(ik_state->focus_hot_box_key[k], ik_key_zero()))
+      {
+        IK_Box *box = ik_box_from_key(ik_state->focus_hot_box_key[k]);
+        if(!box) ik_state->focus_hot_box_key[k] = ik_key_zero();
+      }
     }
 
     /////////////////////////////////
@@ -1543,8 +1554,7 @@ ik_frame(void)
 
     if(blank->sig.f&IK_SignalFlag_LeftPressed)
     {
-      ik_state->focus_hot_box_key = ik_key_zero();
-      ik_state->focus_active_box_key = ik_key_zero();
+      ik_kill_focus();
     }
 
     /////////////////////////////////
@@ -1644,7 +1654,7 @@ ik_frame(void)
     {
       if(ik_state->selected_box_count > 0)
       {
-        ik_state->focus_hot_box_key = select->key;
+        ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = select->key;
         select->flags ^= IK_BoxFlag_Disabled;
         select->group_first = 0;
         select->group_last = 0;
@@ -1680,7 +1690,7 @@ ik_frame(void)
     }
 
     //- select box is not focused -> disable it
-    if(!ik_key_match(ik_state->focus_hot_box_key, select->key))
+    if(!ik_key_match(ik_state->focus_hot_box_key[IK_MouseButtonKind_Left], select->key))
     {
       select->flags |= IK_BoxFlag_Disabled;
     }
@@ -1703,7 +1713,7 @@ ik_frame(void)
     }
 
     //- select box is focused -> flag every selected box 
-    if(ik_key_match(ik_state->focus_hot_box_key, select->key))
+    if(ik_key_match(ik_state->focus_hot_box_key[IK_MouseButtonKind_Left], select->key))
     {
       for(IK_Box *child = select->group_first; child != 0; child = child->group_next)
       {
@@ -1719,7 +1729,7 @@ ik_frame(void)
     {
       IK_Box *b = ik_stroke();
       ik_kill_action();
-      ik_state->focus_hot_box_key = b->key;
+      ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = b->key;
       ik_state->focus_active_box_key = b->key;
     }
 
@@ -1734,7 +1744,7 @@ ik_frame(void)
       box->hover_cursor = OS_Cursor_UpDownLeftRight;
 
       ik_kill_action();
-      ik_state->focus_hot_box_key = box->key;
+      ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = box->key;
       ik_state->hot_box_key = box->key;
       ik_state->active_box_key[IK_MouseButtonKind_Left] = box->key;
       ik_state->action_slot = IK_ActionSlot_DownRight;
@@ -1757,7 +1767,7 @@ ik_frame(void)
       IK_Box *box = ik_text(str8_lit(""), ik_state->mouse_in_world);
       box->draw_frame_index = ik_state->frame_index+1;
       box->disabled_t = 1.0;
-      ik_state->focus_hot_box_key = box->key;
+      ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = box->key;
       ik_state->focus_active_box_key = box->key;
       ik_kill_action();
     }
@@ -2977,7 +2987,7 @@ struct IK_EditBoxDrawData
 
 IK_BOX_UPDATE(text)
 { 
-  B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key);
+  B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key[IK_MouseButtonKind_Left]);
   B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
 
   // data buffer
@@ -3217,10 +3227,10 @@ IK_BOX_UPDATE(text)
 
   IK_Signal sig = box->sig;
 
-  // not focus active => doubleclicked or keyboard
+  // not focus active => double clicked or keyboard
   if(!is_focus_active && sig.f&(IK_SignalFlag_DoubleClicked|IK_SignalFlag_KeyboardPressed))
   {
-    ik_state->focus_hot_box_key = box->key;
+    ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = box->key;
     ik_state->focus_active_box_key = box->key;
 
     // select all text
@@ -3891,7 +3901,7 @@ ik_signal_from_box(IK_Box *box)
     {
       ik_state->hot_box_key = box->key;
       ik_state->active_box_key[evt_mouse_button_kind] = box->key;
-      sig.f |= (IK_SignalFlag_LeftPressed << evt_mouse_button_kind);
+      sig.f |= (IK_SignalFlag_LeftPressed<<evt_mouse_button_kind);
       ik_state->drag_start_mouse = evt->pos;
 
       if(ik_key_match(box->key, ik_state->press_key_history[evt_mouse_button_kind][0]) &&
@@ -3972,7 +3982,7 @@ ik_signal_from_box(IK_Box *box)
       taken = 1;
     }
 
-    if(ik_key_match(ik_state->focus_hot_box_key, box->key) &&
+    if(ik_key_match(ik_state->focus_hot_box_key[IK_MouseButtonKind_Left], box->key) &&
        evt->kind == UI_EventKind_Press &&
        evt->key == OS_Key_Delete)
     {
@@ -4061,9 +4071,12 @@ ik_signal_from_box(IK_Box *box)
 
   if(ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Left], box->key))
   {
-    if(!ik_key_match(ik_state->focus_hot_box_key, box->key))
+    for EachEnumVal(IK_MouseButtonKind, k)
     {
-      ik_state->focus_hot_box_key = ik_key_zero();
+      if(!ik_key_match(ik_state->focus_hot_box_key[k], box->key))
+      {
+        ik_state->focus_hot_box_key[k] = ik_key_zero();
+      }
     }
 
     if(!ik_key_match(ik_state->focus_active_box_key, box->key))
@@ -4075,9 +4088,20 @@ ik_signal_from_box(IK_Box *box)
   //////////////////////////////
   //~ Clicked on this box and set focus_hot_key
 
-  if(box->flags & IK_BoxFlag_ClickToFocus && sig.f&IK_SignalFlag_Pressed)
+  if(box->flags & IK_BoxFlag_ClickToFocus)
   {
-    ik_state->focus_hot_box_key = box->key;
+    for EachEnumVal(IK_MouseButtonKind, k)
+    {
+      if(sig.f&IK_SignalFlag_LeftPressed<<k)
+      {
+        ik_state->focus_hot_box_key[k] = box->key;
+        // TODO(k): hack, we just need this work for now
+        if(k == IK_MouseButtonKind_Right)
+        {
+          ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = box->key;
+        }
+      }
+    }
   }
 
   ////////////////////////////////
@@ -4198,7 +4222,7 @@ ik_ui_stats(void)
     {
       ui_labelf("ik_focus_hot_key");
       ui_spacer(ui_pct(1.0, 0.0));
-      ui_labelf("%lu", ik_state->focus_hot_box_key.u64[0]);
+      ui_labelf("%lu", ik_state->focus_hot_box_key[IK_MouseButtonKind_Left].u64[0]);
     }
     UI_Row
       UI_PrefWidth(ui_text_dim(1, 1.0))
@@ -4652,7 +4676,7 @@ ik_ui_selection(void)
   IK_Frame *frame = ik_top_frame();
   IK_Camera *camera = &frame->camera;
 
-  IK_Box *box = ik_box_from_key(ik_state->focus_hot_box_key);
+  IK_Box *box = ik_box_from_key(ik_state->focus_hot_box_key[IK_MouseButtonKind_Left]);
   if(box && ik_tool() == IK_ToolKind_Selection)
   {
     Rng2F32 camera_rect = camera->rect;
@@ -4894,7 +4918,7 @@ internal void
 ik_ui_inspector(void)
 {
   ProfBeginFunction();
-  IK_Box *b = ik_box_from_key(ik_state->focus_hot_box_key);
+  IK_Box *b = ik_box_from_key(ik_state->focus_hot_box_key[IK_MouseButtonKind_Left]);
 
   B32 open = b != 0 || ik_state->tool == IK_ToolKind_Draw;
   F32 open_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "inspector_open_t"), open, .reset = 0, .rate = ik_state->animation.fast_rate);
@@ -5526,6 +5550,70 @@ ik_ui_notification(void)
       ui_label(msg->string);
 
     if(msg->next) ui_spacer(ui_em(0.5,0.0));
+  }
+}
+
+internal void
+ik_ui_box_ctx_menu(void)
+{
+  IK_Key key = ik_state->focus_hot_box_key[IK_MouseButtonKind_Right];
+  IK_Box *box = ik_box_from_key(key);
+  B32 deleted = 0;
+  if(box)
+  {
+    UI_Key key = ui_key_from_stringf(ui_key_zero(), "box_ctx_menu_%I64u", box->key.u64[0]);
+    UI_CtxMenu(key)
+    {
+      UI_Box *container;
+
+      UI_PrefWidth(ui_children_sum(1.0))
+      UI_PrefHeight(ui_children_sum(1.0))
+        // UI_Flags(UI_BoxFlag_DrawBackground)
+        UI_ChildLayoutAxis(Axis2_Y)
+        UI_Transparency(0.1)
+        container = ui_build_box_from_key(0, ui_key_zero());
+
+      UI_Parent(container)
+        UI_TextPadding(ui_top_font_size()*0.5)
+      {
+        B32 taken = 0;
+        if(ui_clicked(ui_buttonf("copy")))
+        {
+          ik_message_push(str8_lit("TODO"));
+          taken = 1;
+        }
+        if(ui_clicked(ui_buttonf("paste")))
+        {
+          ik_message_push(str8_lit("TODO"));
+          taken = 1;
+        }
+        if(ui_clicked(ui_buttonf("delete")))
+        {
+          deleted = 1;
+          taken = 1;
+        }
+
+        if(taken)
+        {
+          ui_ctx_menu_close();
+          ik_state->focus_hot_box_key[IK_MouseButtonKind_Right] = ik_key_zero();
+        }
+      }
+    }
+
+    if(!ui_ctx_menu_is_open(key))
+    {
+      ui_ctx_menu_open(key, ui_key_zero(), ui_state->mouse);
+    }
+    else if(box->sig.f&IK_SignalFlag_RightPressed)
+    {
+      ui_ctx_menu_close();
+    }
+
+    if(deleted)
+    {
+      ik_box_release(box);
+    }
   }
 }
 

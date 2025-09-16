@@ -709,7 +709,7 @@ struct IK_State
   IK_Key                hot_box_key;
   IK_Key                active_box_key[IK_MouseButtonKind_COUNT];
   IK_ActionSlot         action_slot;
-  IK_Key                focus_hot_box_key;
+  IK_Key                focus_hot_box_key[IK_MouseButtonKind_COUNT];
   IK_Key                focus_active_box_key;
   U64                   hot_pixel_key; // hot pixel key from renderer
 
@@ -969,6 +969,7 @@ internal void      ik_ui_selection(void);
 internal void      ik_ui_inspector(void);
 internal void      ik_ui_bottom_bar(void);
 internal void      ik_ui_notification(void);
+internal void      ik_ui_box_ctx_menu(void);
 internal UI_Signal ik_ui_checkbox(String8 key_string, B32 b);
 internal UI_Signal ik_ui_button(String8 string);
 internal UI_Signal ik_ui_buttonf(char *fmt, ...);
