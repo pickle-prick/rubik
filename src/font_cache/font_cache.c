@@ -291,7 +291,7 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
     piece->rect        = r2s16p(quad.x0, quad.y0, quad.x1, quad.y1);
     piece->subrect     = r2f32p(quad.s0, quad.t0, quad.s1, quad.t1);
     piece->advance     = x - xpos;
-    piece->decode_size = 1;
+    piece->decode_size = 1; // TODO: assume ascii for now
 
     xpos = x;
     ypos = y;

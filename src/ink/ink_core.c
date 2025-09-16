@@ -3060,7 +3060,24 @@ IK_BOX_UPDATE(text)
       fstr.strikethrough_thickness = 0;
       d_fancy_string_list_push(scratch.arena, &fancy_strings, &fstr);
 
-      line_fruns[line_index] = d_fancy_run_list_from_fancy_string_list(ik_frame_arena(), box->tab_size, box->text_raster_flags, &fancy_strings);
+      D_FancyRunList run = d_fancy_run_list_from_fancy_string_list(ik_frame_arena(), box->tab_size, box->text_raster_flags, &fancy_strings);
+
+      // has next line? -> push a line break piece
+      if(n->next != 0)
+      {
+        F_Piece *pieces = run.first->v.run.pieces.v;
+        U64 piece_count = run.first->v.run.pieces.count;
+
+        U64 next_piece_count = piece_count+1;
+        F_Piece *next_pieces = push_array(ik_frame_arena(), F_Piece, next_piece_count);
+        MemoryCopy(next_pieces, pieces, sizeof(F_Piece)*piece_count);
+        next_pieces[next_piece_count-1].decode_size = 1;
+
+        run.first->v.run.pieces.v = next_pieces;
+        run.first->v.run.pieces.count = next_piece_count;
+      }
+
+      line_fruns[line_index] = run;
     }
 
     // push a empty run
@@ -3119,7 +3136,7 @@ IK_BOX_UPDATE(text)
         text_bounds.y += line_run_dim.y;
 
         F_Piece *piece_first = run.run.pieces.v;
-        F_Piece *piece_opl = run.run.pieces.v + n->v.run.pieces.count;
+        F_Piece *piece_opl = run.run.pieces.v + run.run.pieces.count;
 
         F32 line_x = x;
         F32 line_y = y + run.run.ascent*font_size_scale;;
@@ -3136,35 +3153,30 @@ IK_BOX_UPDATE(text)
                                piece->rect.x1*font_size_scale + line_x,
                                piece->rect.y1*font_size_scale + line_y);
           Rng2F32 src = r2f32p(piece->subrect.x0, piece->subrect.y0, piece->subrect.x1, piece->subrect.y1);
-          // TODO(k): src wil be all zeros in gcc release build but not with clang, wtf!!!
-          // TODO(Next): this could happen, don't know why yet, figure it out later
-          // AssertAlways((src.x0 + src.x1 + src.y0 + src.y1) != 0);
           Vec2F32 size = dim_2f32(dst);
-          AssertAlways(!r_handle_match(piece->texture, r_handle_zero()));
 
           // issue draw
-          // TODO(Next): Space will have 0 extent, what heck, fix this?
           // if(size.x > 0 && size.y > 0)
-          // TODO(Next): how we handle space
           B32 highlight = (c_index+1) >= selection_rng.min.column && (c_index+1) < selection_rng.max.column;
           Rng2F32 parent_rect = {x+advance_x, y, x+advance_x+piece->advance*font_size_scale, y+line_run_dim.y};
           IK_EditBoxTextRect text_rect = {parent_rect, dst, src, piece->texture, run.color, highlight};
           darray_push(ik_frame_arena(), draw_data->text_rects, text_rect);
 
-          // TODO(Next): we have to handle \n, not pretty, fix it later
-          if(mark && mark->column == (c_index+1))     mark_rect = line_cursor;
-          if(cursor && cursor->column == (c_index+1)) cursor_rect = line_cursor;
+          if(mark && mark->column == (c_index+1))
+            mark_rect = line_cursor;
+          if(cursor && cursor->column == (c_index+1))
+            cursor_rect = line_cursor;
 
           // update mouse_pt if it's closer
-          // TODO:(Next): this won't work on empty line
+          // Note(k): this won't work on empty line
           if(mouse_in_line_bounds)
           {
             F32 dist_to_mouse = length_2f32(sub_2f32(ik_state->mouse_in_world, center_2f32(parent_rect)));
             if(dist_to_mouse < best_mouse_offset)
             {
-              // TODO(k): if we are handling unicode, we want the decode_size_offset too
+              // TODO(k): if we are handling unicode, we want the utf-8 decode_size too
               best_mouse_offset = dist_to_mouse;
-              mouse_pt.column = abs_f32(ik_state->mouse_in_world.x-dst.x0) < abs_f32(ik_state->mouse_in_world.x-dst.x0-this_advance_x) ? c_index+1 : c_index+2;
+              mouse_pt.column = abs_f32(ik_state->mouse_in_world.x-dst.x0) <= abs_f32(ik_state->mouse_in_world.x-dst.x0-this_advance_x) ? c_index+1 : c_index+2;
             }
           }
 
@@ -3173,7 +3185,7 @@ IK_BOX_UPDATE(text)
           line_cursor.x0 += this_advance_x;
         }
 
-        // TODO(Next): we have to handle \n, not pretty, fix it later
+        // NOTE(k): cursor|makr is end of line
         if(mark && mark->column == (c_index+1))     mark_rect = line_cursor;
         if(cursor && cursor->column == (c_index+1)) cursor_rect = line_cursor;
 
@@ -3188,9 +3200,6 @@ IK_BOX_UPDATE(text)
         advance_y += line_run_dim.y;
         y += line_run_dim.y;
       }
-
-      // has next line => inc c_index for \n
-      if(line_index < (line_count-1)) c_index++;
     }
 
     // TODO(Next): fix it
@@ -3310,15 +3319,6 @@ IK_BOX_UPDATE(text)
     box->mark = mark;
   }
 
-  // NOTE(k): deprecated, remove it later
-  // focus active and double clicked => select all
-  // if(is_focus_active && sig.f&IK_SignalFlag_DoubleClicked)
-  // {
-  //   *mark = txt_pt(1,1);
-  //   *cursor = txt_pt(1, box->string.size+1);
-  //   ik_kill_action();
-  // }
-
   box->hover_cursor = is_focus_active ? OS_Cursor_IBar : OS_Cursor_UpDownLeftRight;
 }
 
@@ -3348,8 +3348,8 @@ IK_BOX_DRAW(text)
   cursor_rect.x1 += cursor_thickness;
   mark_rect.x0 -= cursor_thickness;
   mark_rect.x1 += cursor_thickness;
-  d_rect(cursor_rect, v4f32(0,0,1,0.5), cursor_thickness, 0, cursor_thickness*0.2);
-  d_rect(mark_rect, v4f32(0,1,0,0.5), cursor_thickness, 0, cursor_thickness*0.2);
+  d_rect(cursor_rect, v4f32(0,0,1,0.5), cursor_thickness, 0, 1.0*ik_state->world_to_screen_ratio.x);
+  d_rect(mark_rect, v4f32(0,1,0,0.5), cursor_thickness, 0, 1.0*ik_state->world_to_screen_ratio.x);
 }
 
 internal IK_Box *
@@ -5057,21 +5057,8 @@ ik_ui_inspector(void)
             ui_labelf("stroke_size");
           ui_spacer(ui_pct(1.0, 0.0));
           UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("%.2f", b->stroke_size);
+            ik_ui_slider_f32(str8_lit("stroke_size_val"), &b->stroke_size, 0.1);
         }
-
-        // ui_set_next_flags(UI_BoxFlag_DrawBorder);
-        // UI_WidthFill
-        // UI_Row
-        // {
-        //   UI_PrefWidth(ui_text_dim(1, 1.0))
-        //     ui_labelf("background");
-        //   ui_spacer(ui_pct(1.0, 0.0));
-        //   ui_alpha_pickerf(&b->color.x, "x");
-        //   ui_alpha_pickerf(&b->color.y, "y");
-        //   ui_alpha_pickerf(&b->color.z, "z");
-        //   ui_alpha_pickerf(&b->color.w, "w");
-        // }
 
         if(!(b->flags&IK_BoxFlag_Orphan))
         UI_WidthFill
@@ -5083,9 +5070,6 @@ ik_ui_inspector(void)
           UI_Row
           {
             ui_spacer(ui_pct(1.0, 0.0));
-            // UI_PrefWidth(ui_text_dim(1, 1.0))
-            //   ik_ui_buttonf("%I64u", 100);
-            // ui_spacer(ui_em(0.1, 0.0));
             UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
             UI_PrefWidth(ui_text_dim(1, 1.0))
             if(ui_clicked(ik_ui_buttonf("+")))
@@ -5269,7 +5253,7 @@ ik_ui_inspector(void)
               ui_labelf("font_size");
             ui_spacer(ui_pct(1.0, 0.0));
             UI_PrefWidth(ui_text_dim(1, 1.0))
-              ui_labelf("%.2f", b->font_size);
+              ik_ui_slider_f32(str8_lit("font_size_val"), &b->font_size, 0.1);
           }
 
           UI_WidthFill
@@ -5821,14 +5805,11 @@ ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, T
       for(; c > first && *(c-1) != '\n'; c--);
       U64 curr_line_column = curr-c;
 
-      // TODO(Next): finish it
       if(delta.y < 0)
       {
         // jump to last line end
-        for(; c >= first; c--)
-        {
-          if(*c == '\n') break;
-        }
+        if(c > first) c--;
+
         // jump to last line head
         for(; c > first && *(c-1) != '\n'; c--);
     
