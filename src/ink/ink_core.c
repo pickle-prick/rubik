@@ -1770,15 +1770,26 @@ ik_frame(void)
       ik_state->focus_active_box_key = b->key;
     }
 
-    //- rectangle Tool
+    //- rectangle tool
     if(tool == IK_ToolKind_Rectangle && ik_pressed(blank->sig))
     {
+      F32 font_size = ik_top_font_size();
+      F32 font_size_in_world = font_size * ik_state->world_to_screen_ratio.x * 2;
       IK_Box *box = ik_build_box_from_stringf(0, "rect###%I64u", os_now_microseconds());
-      box->flags |= IK_BoxFlag_DrawBackground|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToScaleRectSize;
+      box->flags |= (IK_BoxFlag_DrawBackground|
+                     IK_BoxFlag_MouseClickable|
+                     IK_BoxFlag_ClickToFocus|
+                     IK_BoxFlag_DrawText|
+                     IK_BoxFlag_DragToPosition|
+                     IK_BoxFlag_DragToScaleRectSize);
       box->position = ik_state->mouse_in_world;
       box->rect_size = v2f32(ik_state->world_to_screen_ratio.x, ik_state->world_to_screen_ratio.y);
+      box->font_size = font_size_in_world;
+      box->text_align = IK_TextAlign_HCenter|IK_TextAlign_VCenter;
+      box->disabled_t = 1.0;
       box->ratio = 1.f;
       box->hover_cursor = OS_Cursor_UpDownLeftRight;
+      box->draw_frame_index = ik_state->frame_index+1;
 
       ik_kill_action();
       ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = box->key;
@@ -3084,6 +3095,8 @@ IK_BOX_UPDATE(text)
   ////////////////////////////////
   //~ Push line runs
 
+  Vec2F32 total_text_dim = {0,0};
+  Vec2F32 empty_text_dim = {0,0};
   {
     Temp scratch = scratch_begin(0,0);
 
@@ -3126,6 +3139,8 @@ IK_BOX_UPDATE(text)
       }
 
       line_fruns[line_index] = run;
+      total_text_dim.x = Max(total_text_dim.x, run.dim.x);
+      total_text_dim.y += run.dim.y;
     }
 
     // push a empty run
@@ -3141,6 +3156,7 @@ IK_BOX_UPDATE(text)
       fstr.strikethrough_thickness = 0;
       d_fancy_string_list_push(scratch.arena, &fancy_strings, &fstr);
       box->empty_fruns = d_fancy_run_list_from_fancy_string_list(ik_frame_arena(), box->tab_size, box->text_raster_flags, &fancy_strings);
+      empty_text_dim = box->empty_fruns.dim;
     }
 
     // fill
@@ -3152,25 +3168,46 @@ IK_BOX_UPDATE(text)
   ////////////////////////////////
   // rendering
 
+  Rng2F32 box_rect = ik_rect_from_box(box);
+  Vec2F32 box_dim = dim_2f32(box_rect);
   TxtPt mouse_pt = {1, 1};
   F32 font_size = mix_1f32(0, box->font_size, 1.0-box->disabled_t);
   Vec2F32 text_bounds = {0};
   {
     F32 font_size_scale = font_size / (F32)M_1;
     F32 best_mouse_offset = inf32();
+
     F32 advance_x = 0;
     F32 advance_y = 0;
     F32 text_padding_x = box->text_padding*font_size_scale;
-    Rng2F32 box_rect = ik_rect_from_box(box);
     F32 x = box_rect.p0.x + text_padding_x;
     F32 y = box_rect.p0.y;
+    F32 max_x = box_dim.x - text_padding_x*2;
+    F32 max_y = box_dim.y;
+    IK_TextAlign text_align = box->text_align;
 
-    Rng2F32 mark_rect ={x, y, x, box_rect.y1};
-    Rng2F32 cursor_rect ={x, y, x, box_rect.y1};
+    // unpack lines
+    U64 line_count = box->string.size > 0 ? box->display_lines.node_count : 1;
+    Vec2F32 text_dim = box->string.size > 0 ? total_text_dim : empty_text_dim;
+    text_dim.x *= font_size_scale;
+    text_dim.y *= font_size_scale;
+
+    // vertical align
+    if(text_align&IK_TextAlign_VCenter)
+    {
+      y += (max_y-text_dim.y)/2.0;
+    }
+    if(text_align&IK_TextAlign_Bottom)
+    {
+      y += (max_y-text_dim.y);
+    }
+
+    // unpack mark & cursor
+    Rng2F32 mark_rect = {x, y, x, box_rect.y1};
+    Rng2F32 cursor_rect = {x, y, x, box_rect.y1};
     TxtRng selection_rng = is_focus_active ? txt_rng(*cursor, *mark) : (TxtRng){0};
 
     U64 c_index = 0;
-    U64 line_count = box->string.size > 0 ? box->display_lines.node_count : 1;
     D_FancyRunList *line_fruns = box->string.size > 0 ? box->display_line_fruns : &box->empty_fruns;
     for(U64 line_index = 0; line_index < line_count; line_index++)
     {
@@ -3183,15 +3220,25 @@ IK_BOX_UPDATE(text)
         text_bounds.x = Max(text_bounds.x, line_run_dim.x+text_padding_x*2);
         text_bounds.y += line_run_dim.y;
 
-        F_Piece *piece_first = run.run.pieces.v;
-        F_Piece *piece_opl = run.run.pieces.v + run.run.pieces.count;
-
+        // TODO(Next): to be searilized
         F32 line_x = x;
         F32 line_y = y + run.run.ascent*font_size_scale;;
-        Rng2F32 line_cursor = {x,y,x,y+line_run_dim.y};
-        // Rng2F32 line_rect = {x, y, x+line_run_dim.x, y+line_run_dim.y};
-        B32 mouse_in_line_bounds = ik_state->mouse_in_world.y > y && ik_state->mouse_in_world.y < (y+line_run_dim.y);
 
+        // horizontal align
+        if(text_align&IK_TextAlign_HCenter)
+        {
+          line_x += (max_x-line_run_dim.x)/2.0;
+        }
+        if(text_align&IK_TextAlign_Right)
+        {
+          line_x += (max_x-line_run_dim.x);
+        }
+
+        B32 mouse_in_line_bounds = ik_state->mouse_in_world.y > y && ik_state->mouse_in_world.y < (y+line_run_dim.y);
+        Rng2F32 line_cursor = {line_x,y,line_x,y+line_run_dim.y};
+
+        F_Piece *piece_first = run.run.pieces.v;
+        F_Piece *piece_opl = run.run.pieces.v + run.run.pieces.count;
         for(F_Piece *piece = piece_first; piece < piece_opl; piece++, c_index++)
         {
           F32 this_advance_x = piece->advance*font_size_scale;
@@ -3206,7 +3253,7 @@ IK_BOX_UPDATE(text)
           // issue draw
           // if(size.x > 0 && size.y > 0)
           B32 highlight = (c_index+1) >= selection_rng.min.column && (c_index+1) < selection_rng.max.column;
-          Rng2F32 parent_rect = {x+advance_x, y, x+advance_x+piece->advance*font_size_scale, y+line_run_dim.y};
+          Rng2F32 parent_rect = {line_x+advance_x, y, line_x+advance_x+piece->advance*font_size_scale, y+line_run_dim.y};
           IK_EditBoxTextRect text_rect = {parent_rect, dst, src, piece->texture, run.color, highlight};
           darray_push(ik_frame_arena(), draw_data->text_rects, text_rect);
 
@@ -3233,7 +3280,7 @@ IK_BOX_UPDATE(text)
           line_cursor.x0 += this_advance_x;
         }
 
-        // NOTE(k): cursor|makr is end of line
+        // NOTE(k): cursor or mark is end of line
         if(mark && mark->column == (c_index+1))     mark_rect = line_cursor;
         if(cursor && cursor->column == (c_index+1)) cursor_rect = line_cursor;
 
@@ -6222,6 +6269,7 @@ ik_frame_to_tyml(IK_Frame *frame)
           se_f32_with_tag(str8_lit("tab_size"), box->tab_size);
           se_u64_with_tag(str8_lit("text_raster_flags"), box->text_raster_flags);
           se_f32_with_tag(str8_lit("text_padding"), box->text_padding);
+          se_u64_with_tag(str8_lit("text_align"), box->text_align);
 
           /////////////////////////////////
           // Points
@@ -6432,6 +6480,7 @@ ik_frame_from_tyml(String8 path)
       box->tab_size = se_f32_from_tag(n, str8_lit("tab_size"));
       box->text_raster_flags = se_u64_from_tag(n, str8_lit("text_raster_flags"));
       box->text_padding = se_f32_from_tag(n, str8_lit("text_padding"));
+      box->text_align = se_u64_from_tag(n, str8_lit("text_align"));
 
       // points
       for(SE_Node *p = se_arr_from_tag(n, str8_lit("points")); p != 0 && p->kind == SE_NodeKind_Vec2F32; p = p->next)

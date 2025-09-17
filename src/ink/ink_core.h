@@ -42,13 +42,16 @@ IK_DragDropState;
 ////////////////////////////////
 //~ Text
 
-typedef enum IK_TextAlign
+typedef U64 IK_TextAlign;
+enum
 {
-  IK_TextAlign_Left,
-  IK_TextAlign_Center,
-  IK_TextAlign_Right,
-  IK_TextAlign_COUNT
-} IK_TextAlign;
+  IK_TextAlign_Left    = (1<<0),
+  IK_TextAlign_Right   = (1<<1),
+  IK_TextAlign_HCenter = (1<<2),
+  IK_TextAlign_Top     = (1<<3),
+  IK_TextAlign_Bottom  = (1<<4),
+  IK_TextAlign_VCenter = (1<<5),
+};
 
 ////////////////////////////////
 //~ Message
@@ -460,6 +463,7 @@ struct IK_Box
   F32 tab_size;
   F_RasterFlags text_raster_flags;
   F32 text_padding;
+  IK_TextAlign text_align;
   TxtPt cursor;
   TxtPt mark;
   // point
