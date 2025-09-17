@@ -1104,7 +1104,7 @@ ui_layout_enforce_constraints__in_place_rec(UI_Box *root, Axis2 axis)
   scratch_end(scratch);
 }
 
-  internal void
+internal void
 ui_layout_position__in_place_rec(UI_Box *root, Axis2 axis)
 {
   F32 layout_position = 0;

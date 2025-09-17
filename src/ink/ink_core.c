@@ -54,6 +54,10 @@ ik_ui_draw()
   F32 box_squish_epsilon = 0.001f;
   d_push_viewport(ik_state->window_dim);
 
+  // unpack some settings
+  F32 border_softness = 1.f;
+  F32 rounded_corner_amount = 1.0;
+
   // DEBUG mouse
   if(0)
   {
@@ -65,6 +69,15 @@ ik_ui_draw()
   while(!ui_box_is_nil(box))
   {
     UI_BoxRec rec = ui_box_rec_df_post(box, &ui_nil_box);
+
+    // rjf: get corner radii
+    F32 box_corner_radii[Corner_COUNT] =
+    {
+      box->corner_radii[Corner_00]*rounded_corner_amount,
+      box->corner_radii[Corner_01]*rounded_corner_amount,
+      box->corner_radii[Corner_10]*rounded_corner_amount,
+      box->corner_radii[Corner_11]*rounded_corner_amount,
+    };
 
     // push transparency
     if(box->transparency != 0)
@@ -85,12 +98,14 @@ ik_ui_draw()
       {
         anchor_off.y = -box_dim.y/8.0;
       }
+      // NOTE(k): this is not from center
+      Vec2F32 origin = {box->rect.x0 + box_dim.x/2 - anchor_off.x, box->rect.y0 - anchor_off.y};
 
-      Mat3x3F32 box2origin_xform = make_translate_3x3f32(v2f32(-box->rect.x0 - box_dim.x/2 + anchor_off.x, -box->rect.y0 + anchor_off.y));
+      Mat3x3F32 box2origin_xform = make_translate_3x3f32(v2f32(-origin.x, -origin.y));
       Mat3x3F32 scale_xform = make_scale_3x3f32(v2f32(1-box->squish, 1-box->squish));
-      Mat3x3F32 origin2box_xform = make_translate_3x3f32(v2f32(box->rect.x0 + box_dim.x/2 - anchor_off.x, box->rect.y0 - anchor_off.y));
+      Mat3x3F32 origin2box_xform = make_translate_3x3f32(origin);
       Mat3x3F32 xform = mul_3x3f32(origin2box_xform, mul_3x3f32(scale_xform, box2origin_xform));
-      // TODO(k): we may need to tranpose this, check it later
+      // TODO(k): why we may need to tranpose this, should it already column major? check it later
       xform = transpose_3x3f32(xform);
       d_push_xform2d(xform);
       d_push_tex2d_sample_kind(R_Tex2DSampleKind_Linear);
@@ -113,6 +128,9 @@ ik_ui_draw()
 
       if(box->flags & UI_BoxFlag_DrawHotEffects)
       {
+        B32 is_hot = !ui_key_match(box->key, ui_key_zero()) && ui_key_match(box->key, ui_hot_key());
+        Vec4F32 hover_color = ik_rgba_from_theme_color(IK_ThemeColor_Hover);
+
         F32 effective_active_t = box->active_t;
         if(!(box->flags & UI_BoxFlag_DrawActiveEffects))
         {
@@ -122,16 +140,35 @@ ik_ui_draw()
 
         // brighten
         {
-          R_Rect2DInst *inst = d_rect(box->rect, v4f32(0, 0, 0, 0), 0, 0, 1.f);
-          Vec4F32 color = ik_rgba_from_theme_color(IK_ThemeColor_Hover);
-          color.w *= t*0.2f;
+          Vec4F32 color = hover_color;
+          color.w *= 0.15f;
+          if(!is_hot)
+          {
+            color.w *= t;
+          }
+          R_Rect2DInst *inst = d_rect(pad_2f32(box->rect, 1.f), v4f32(0, 0, 0, 0), 0, 0, border_softness*1.f);
           inst->colors[Corner_00] = color;
-          inst->colors[Corner_01] = color;
           inst->colors[Corner_10] = color;
+          inst->colors[Corner_01] = color;
           inst->colors[Corner_11] = color;
-          inst->colors[Corner_10].w *= t;
-          inst->colors[Corner_11].w *= t;
-          MemoryCopyArray(inst->corner_radii, box->corner_radii);
+          MemoryCopyArray(inst->corner_radii, box_corner_radii);
+        }
+
+        // rjf: soft circle around mouse
+        if(box->hot_t > 0.01f) D_ClipScope(box->rect)
+        {
+          Vec4F32 color = hover_color;
+          color.w *= 0.04f;
+          if(!is_hot)
+          {
+            color.w *= t;
+          }
+          Vec2F32 center = ui_mouse();
+          Vec2F32 box_dim = dim_2f32(box->rect);
+          F32 max_dim = Max(box_dim.x, box_dim.y);
+          F32 radius = box->font_size*12.f;
+          radius = Min(max_dim, radius);
+          d_rect(pad_2f32(r2f32(center, center), radius), color, radius, 0, radius/3.f);
         }
 
         // rjf: slight emboss fadeoff
@@ -149,11 +186,8 @@ ik_ui_draw()
         // active effect extension
         if(box->flags & UI_BoxFlag_DrawActiveEffects)
         {
-          Vec4F32 shadow_color = ik_rgba_from_theme_color(IK_ThemeColor_Hover);
-          shadow_color.x *= 0.3f;
-          shadow_color.y *= 0.3f;
-          shadow_color.z *= 0.3f;
-          shadow_color.w *= 0.5f*box->active_t;
+          Vec4F32 shadow_color = ik_rgba_from_theme_color(IK_ThemeColor_DropShadow);
+          shadow_color.w *= 1.f*box->active_t;
 
           Vec2F32 shadow_size =
           {
@@ -168,33 +202,33 @@ ik_ui_draw()
             R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x0, box->rect.y0, box->rect.x1, box->rect.y0 + shadow_size.y), v4f32(0, 0, 0, 0), 0, 0, 1.f);
             inst->colors[Corner_00] = inst->colors[Corner_10] = shadow_color;
             inst->colors[Corner_01] = inst->colors[Corner_11] = v4f32(0.f, 0.f, 0.f, 0.0f);
-            MemoryCopyArray(inst->corner_radii, box->corner_radii);
+            MemoryCopyArray(inst->corner_radii, box_corner_radii);
           }
-
+          
           // rjf: bottom -> top light effect
           {
             R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x0, box->rect.y1 - shadow_size.y, box->rect.x1, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
             inst->colors[Corner_00] = inst->colors[Corner_10] = v4f32(0, 0, 0, 0);
-            inst->colors[Corner_01] = inst->colors[Corner_11] = v4f32(0.4f, 0.4f, 0.4f, 0.4f*box->active_t);
-            MemoryCopyArray(inst->corner_radii, box->corner_radii);
+            inst->colors[Corner_01] = inst->colors[Corner_11] = v4f32(1.0f, 1.0f, 1.0f, 0.08f*box->active_t);
+            MemoryCopyArray(inst->corner_radii, box_corner_radii);
           }
-
+          
           // rjf: left -> right dark effect
           {
             R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x0, box->rect.y0, box->rect.x0 + shadow_size.x, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
             inst->colors[Corner_10] = inst->colors[Corner_11] = v4f32(0.f, 0.f, 0.f, 0.f);
             inst->colors[Corner_00] = shadow_color;
             inst->colors[Corner_01] = shadow_color;
-            MemoryCopyArray(inst->corner_radii, box->corner_radii);
+            MemoryCopyArray(inst->corner_radii, box_corner_radii);
           }
-
+          
           // rjf: right -> left dark effect
           {
             R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x1 - shadow_size.x, box->rect.y0, box->rect.x1, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
             inst->colors[Corner_00] = inst->colors[Corner_01] = v4f32(0.f, 0.f, 0.f, 0.f);
             inst->colors[Corner_10] = shadow_color;
             inst->colors[Corner_11] = shadow_color;
-            MemoryCopyArray(inst->corner_radii, box->corner_radii);
+            MemoryCopyArray(inst->corner_radii, box_corner_radii);
           }
         }
       }
@@ -315,7 +349,7 @@ ik_ui_draw()
         //- k: draw the border
         if(b->flags & UI_BoxFlag_DrawBorder)
         {
-          R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1.f), b->palette->colors[UI_ColorCode_Border], 0, 1.f, 1.f);
+          R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1.f), b->palette->colors[UI_ColorCode_Border], 0, 1.f, border_softness*1.f);
           MemoryCopyArray(inst->corner_radii, b->corner_radii);
 
           // rjf: hover effect
@@ -324,6 +358,8 @@ ik_ui_draw()
             Vec4F32 color = ik_rgba_from_theme_color(IK_ThemeColor_Hover);
             color.w *= b->hot_t;
             R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), color, 0, 1.f, 1.f);
+            inst->colors[Corner_01].w *= 0.2f;
+            inst->colors[Corner_11].w *= 0.2f;
             MemoryCopyArray(inst->corner_radii, b->corner_radii);
           }
         }
@@ -4137,7 +4173,6 @@ ik_ui_stats(void)
   Rng2F32 rect = {ik_state->window_dim.x-width, 0, ik_state->window_dim.x, ik_state->window_dim.y};
   UI_Rect(rect)
     UI_ChildLayoutAxis(Axis2_Y)
-    UI_Flags(UI_BoxFlag_Floating)
   {
     container = ui_build_box_from_stringf(0, "###stats_container");
   }
@@ -4367,14 +4402,12 @@ ik_ui_man_page()
   if(open_t < 1e-3) return;
 
   Rng2F32 rect = {0,0, ik_state->window_dim.x, ik_state->window_dim.y};
-  Vec2F32 center = center_2f32(rect);
-  rect.p0 = mix_2f32(center, rect.p0, open_t);
-  rect.p1 = mix_2f32(center, rect.p1, open_t);
 
   UI_Box *container;
   UI_Rect(rect)
-    UI_Flags(UI_BoxFlag_MouseClickable|UI_BoxFlag_Scroll|UI_BoxFlag_DrawBackground|UI_BoxFlag_Floating|UI_BoxFlag_Clip)
-    UI_Transparency(mix_1f32(0.f, 0.1, open_t))
+    UI_Flags(UI_BoxFlag_MouseClickable|UI_BoxFlag_Scroll|UI_BoxFlag_DrawBackground)
+    UI_Transparency(mix_1f32(0, 0.3, open_t))
+    UI_Squish(1.f-open_t)
     container = ui_build_box_from_stringf(0, "###man_page_container");
 
   UI_Box *body;
@@ -4400,7 +4433,7 @@ ik_ui_man_page()
     UI_Row
     UI_Padding(ui_em(0.5, 0.0))
     UI_ChildLayoutAxis(Axis2_Y)
-    UI_PrefWidth(ui_em(mix_1f32(0.f, 30.f, open_t), 1.0))
+    UI_PrefWidth(ui_em(30.f,1.0))
     padded = ui_build_box_from_stringf(0, "###padded");
 
   UI_Parent(padded)
@@ -4594,7 +4627,6 @@ ik_ui_toolbar(void)
   UI_Box *container;
   Rng2F32 rect = {0, 0, ik_state->window_dim.x, ui_top_font_size()*10};
   UI_Rect(rect)
-    UI_Flags(UI_BoxFlag_Floating)
     container = ui_build_box_from_stringf(0, "##toolbar_container");
 
   F32 cell_width = ui_top_font_size()*2.5;
@@ -4932,11 +4964,7 @@ ik_ui_inspector(void)
     F32 padding_left = ui_top_font_size()*0.5;
     F32 width_px = ui_top_font_size() * 18;
     Rng2F32 rect = {padding_left, 0, padding_left+width_px, ik_state->window_dim.y};
-    Vec2F32 center = center_2f32(rect);
-    rect.p0 = mix_2f32(center, rect.p0, open_t);
-    rect.p1 = mix_2f32(center, rect.p1, open_t);
     UI_Rect(rect)
-      UI_Flags(UI_BoxFlag_Floating|UI_BoxFlag_Clip)
       container = ui_build_box_from_stringf(0, "###inspector_container");
 
     UI_Box *body;
@@ -4950,6 +4978,7 @@ ik_ui_inspector(void)
       UI_ChildLayoutAxis(Axis2_Y)
       UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_MouseClickable)
       UI_CornerRadius(4.0)
+      UI_Squish(1.f-open_t)
       body = ui_build_box_from_stringf(0, "###body");
 
     UI_Box *padded;
@@ -5478,7 +5507,7 @@ ik_ui_bottom_bar()
   Rng2F32 rect = {0, ik_state->window_dim.y-height, ik_state->window_dim.x, ik_state->window_dim.y};
   rect = pad_2f32(rect, -ui_top_font_size()*0.5);
   UI_Rect(rect)
-    UI_Flags(UI_BoxFlag_Floating | UI_BoxFlag_AllowOverflowY)
+    UI_Flags(UI_BoxFlag_AllowOverflowY)
     container = ui_build_box_from_stringf(0, "bottom_bar_container");
 
   UI_Parent(container)
