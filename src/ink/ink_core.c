@@ -1394,6 +1394,18 @@ ik_frame(void)
           box->ratio = box->rect_size.x/box->rect_size.y;
         }
 
+        if(box->flags & IK_BoxFlag_ClampBotTextDimX)
+        {
+          box->rect_size.x = ClampBot(box->text_bounds.x, box->rect_size.x);
+          box->ratio = box->rect_size.x/box->rect_size.y;
+        }
+
+        if(box->flags & IK_BoxFlag_ClampBotTextDimY)
+        {
+          box->rect_size.y = ClampBot(box->text_bounds.y, box->rect_size.y);
+          box->ratio = box->rect_size.x/box->rect_size.y;
+        }
+
         ////////////////////////////////
         // dragging -> reposition
 
@@ -1780,6 +1792,8 @@ ik_frame(void)
                      IK_BoxFlag_MouseClickable|
                      IK_BoxFlag_ClickToFocus|
                      IK_BoxFlag_DrawText|
+                     IK_BoxFlag_WrapText|
+                     IK_BoxFlag_ClampBotTextDimY|
                      IK_BoxFlag_DragToPosition|
                      IK_BoxFlag_DragToScaleRectSize);
       box->position = ik_state->mouse_in_world;
@@ -3092,6 +3106,17 @@ IK_BOX_UPDATE(text)
     scratch_end(scratch);
   }
 
+  // unpack box rect
+  Rng2F32 box_rect = ik_rect_from_box(box);
+  Vec2F32 box_dim = dim_2f32(box_rect);
+
+  // unpack font params
+  F32 font_size = mix_1f32(0, box->font_size, 1.0-box->disabled_t);
+  F32 font_size_scale = font_size / (F32)M_1;
+  F32 text_padding_x = box->text_padding*font_size_scale;
+  F32 max_x = box_dim.x - text_padding_x*2;
+  F32 max_y = box_dim.y;
+
   ////////////////////////////////
   //~ Push line runs
 
@@ -3103,44 +3128,77 @@ IK_BOX_UPDATE(text)
     // push line runs
     char *by = "\n";
     String8List lines = str8_split(ik_frame_arena(), box->string, (U8*)by, 1, StringSplitFlag_KeepEmpties);
-    D_FancyRunList *line_fruns = push_array(ik_frame_arena(), D_FancyRunList, lines.node_count);
+    D_FancyRunList *line_fruns = 0;
 
     U64 line_index = 0;
     for(String8Node *n = lines.first; n != 0; n = n->next, line_index++)
     {
-      String8 line = n->string;
-
-      D_FancyStringList fancy_strings = {0};
-
-      D_FancyString fstr = {0};
-      fstr.font = ik_font_from_slot(IK_FontSlot_HandWrite);
-      fstr.string = line;
-      fstr.color = box->text_color;
-      fstr.size = M_1;
-      fstr.underline_thickness = 0;
-      fstr.strikethrough_thickness = 0;
-      d_fancy_string_list_push(scratch.arena, &fancy_strings, &fstr);
-
-      D_FancyRunList run = d_fancy_run_list_from_fancy_string_list(ik_frame_arena(), box->tab_size, box->text_raster_flags, &fancy_strings);
-
-      // has next line? -> push a line break piece
-      if(n->next != 0)
+      String8 string = n->string;
+      for(;;)
       {
-        F_Piece *pieces = run.first->v.run.pieces.v;
-        U64 piece_count = run.first->v.run.pieces.count;
+        D_FancyStringList fancy_strings = {0};
 
-        U64 next_piece_count = piece_count+1;
-        F_Piece *next_pieces = push_array(ik_frame_arena(), F_Piece, next_piece_count);
-        MemoryCopy(next_pieces, pieces, sizeof(F_Piece)*piece_count);
-        next_pieces[next_piece_count-1].decode_size = 1;
+        D_FancyString fstr = {0};
+        fstr.font = ik_font_from_slot(IK_FontSlot_HandWrite);
+        fstr.string = string;
+        fstr.color = box->text_color;
+        fstr.size = M_1;
+        fstr.underline_thickness = 0;
+        fstr.strikethrough_thickness = 0;
+        d_fancy_string_list_push(scratch.arena, &fancy_strings, &fstr);
 
-        run.first->v.run.pieces.v = next_pieces;
-        run.first->v.run.pieces.count = next_piece_count;
+        D_FancyRunList run = d_fancy_run_list_from_fancy_string_list(ik_frame_arena(), box->tab_size, box->text_raster_flags, &fancy_strings);
+
+        U64 cutoff = 0;
+        Vec2F32 run_dim_px = {run.dim.x*font_size_scale, run.dim.y*font_size_scale};
+        // text_wrapping
+        // TODO(Next): bug here, fix me
+        if((box->flags&IK_BoxFlag_WrapText) && run_dim_px.x > max_x)
+        {
+          F_PieceArray pieces = run.first->v.run.pieces;
+          F_Piece *piece_first = pieces.v;
+          F_Piece *piece_opl = piece_first+pieces.count;
+          F32 cutoff_x = 0;
+          for(F_Piece *piece = piece_opl-1;
+              piece > piece_first && run_dim_px.x > max_x;
+              piece--)
+          {
+            cutoff++;
+            cutoff_x += piece->advance;
+            run_dim_px.x -= piece->advance*font_size_scale;
+          }
+
+          // commit new run dim and piece count
+          run.first->v.run.pieces.count -= cutoff;
+          run.dim.x -= cutoff_x;
+          run.first->v.run.dim.x -= cutoff_x;
+        }
+
+        // has next line? -> push a line break piece
+        if(cutoff == 0 && n->next != 0)
+        {
+          F_Piece *pieces = run.first->v.run.pieces.v;
+          U64 piece_count = run.first->v.run.pieces.count;
+
+          U64 next_piece_count = piece_count+1;
+          F_Piece *next_pieces = push_array(ik_frame_arena(), F_Piece, next_piece_count);
+          MemoryCopy(next_pieces, pieces, sizeof(F_Piece)*piece_count);
+          next_pieces[next_piece_count-1].decode_size = 1;
+
+          run.first->v.run.pieces.v = next_pieces;
+          run.first->v.run.pieces.count = next_piece_count;
+        }
+
+        // skip to cutoff
+        string.str += (string.size-cutoff);
+        string.size = cutoff;
+
+        darray_push(ik_frame_arena(), line_fruns, run);
+        total_text_dim.x = Max(total_text_dim.x, run.dim.x);
+        total_text_dim.y += run.dim.y;
+
+        if(cutoff == 0) break;
       }
-
-      line_fruns[line_index] = run;
-      total_text_dim.x = Max(total_text_dim.x, run.dim.x);
-      total_text_dim.y += run.dim.y;
     }
 
     // push a empty run
@@ -3168,26 +3226,20 @@ IK_BOX_UPDATE(text)
   ////////////////////////////////
   // rendering
 
-  Rng2F32 box_rect = ik_rect_from_box(box);
-  Vec2F32 box_dim = dim_2f32(box_rect);
   TxtPt mouse_pt = {1, 1};
-  F32 font_size = mix_1f32(0, box->font_size, 1.0-box->disabled_t);
   Vec2F32 text_bounds = {0};
   {
-    F32 font_size_scale = font_size / (F32)M_1;
     F32 best_mouse_offset = inf32();
 
     F32 advance_x = 0;
     F32 advance_y = 0;
-    F32 text_padding_x = box->text_padding*font_size_scale;
     F32 x = box_rect.p0.x + text_padding_x;
     F32 y = box_rect.p0.y;
-    F32 max_x = box_dim.x - text_padding_x*2;
-    F32 max_y = box_dim.y;
     IK_TextAlign text_align = box->text_align;
 
     // unpack lines
-    U64 line_count = box->string.size > 0 ? box->display_lines.node_count : 1;
+    D_FancyRunList *line_fruns = box->string.size > 0 ? box->display_line_fruns : &box->empty_fruns;
+    U64 line_count = box->string.size > 0 ? darray_size(box->display_line_fruns) : 1;
     Vec2F32 text_dim = box->string.size > 0 ? total_text_dim : empty_text_dim;
     text_dim.x *= font_size_scale;
     text_dim.y *= font_size_scale;
@@ -3208,7 +3260,6 @@ IK_BOX_UPDATE(text)
     TxtRng selection_rng = is_focus_active ? txt_rng(*cursor, *mark) : (TxtRng){0};
 
     U64 c_index = 0;
-    D_FancyRunList *line_fruns = box->string.size > 0 ? box->display_line_fruns : &box->empty_fruns;
     for(U64 line_index = 0; line_index < line_count; line_index++)
     {
       // one line
@@ -3220,7 +3271,6 @@ IK_BOX_UPDATE(text)
         text_bounds.x = Max(text_bounds.x, line_run_dim.x+text_padding_x*2);
         text_bounds.y += line_run_dim.y;
 
-        // TODO(Next): to be searilized
         F32 line_x = x;
         F32 line_y = y + run.run.ascent*font_size_scale;;
 

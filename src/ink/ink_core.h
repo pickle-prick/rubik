@@ -398,6 +398,11 @@ typedef U64 IK_BoxFlags;
 # define IK_BoxFlag_OmitDeletion          (IK_BoxFlags)(1ull<<24)
 # define IK_BoxFlag_DoubleClickToCenter   (IK_BoxFlags)(1ull<<25)
 # define IK_BoxFlag_PruneZeroText         (IK_BoxFlags)(1ull<<26)
+// TODO(Next): move these into text section
+# define IK_BoxFlag_WrapText              (IK_BoxFlags)(1ull<<27)
+// TODO(Next): move these into size section
+# define IK_BoxFlag_ClampBotTextDimX      (IK_BoxFlags)(1ull<<28)
+# define IK_BoxFlag_ClampBotTextDimY      (IK_BoxFlags)(1ull<<29)
 
 typedef struct IK_Box IK_Box;
 //- draw functions
