@@ -33,7 +33,7 @@
 // fonts
 #include "font_icons.h"
 #include "font_mplus1code_medium.h"
-#include "font_toolbar_icons.h"
+#include "font_icons_extra.h"
 #include "font_virgil.h"
 
 // [c]

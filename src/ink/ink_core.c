@@ -586,12 +586,12 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
   // Fonts
   String8 font_mplus = str8(__Mplus1Code_Medium_ttf, __Mplus1Code_Medium_ttf_len);
   String8 font_icons = str8(icons_ttf, icons_ttf_len);
-  String8 font_toolbar_icons = str8(__toolbar_icons_ttf, __toolbar_icons_ttf_len);
+  String8 font_icons_extra = str8(__icons_extra_ttf, __icons_extra_ttf_len);
   String8 font_virgil = str8(__virgil_ttf, __virgil_ttf_len);
   ik_state->cfg_font_tags[IK_FontSlot_Main] = f_tag_from_static_data_string(&font_mplus);
   ik_state->cfg_font_tags[IK_FontSlot_Code] = f_tag_from_static_data_string(&font_mplus);
   ik_state->cfg_font_tags[IK_FontSlot_Icons] = f_tag_from_static_data_string(&font_icons);
-  ik_state->cfg_font_tags[IK_FontSlot_ToolbarIcons] = f_tag_from_static_data_string(&font_toolbar_icons);
+  ik_state->cfg_font_tags[IK_FontSlot_IconsExtra] = f_tag_from_static_data_string(&font_icons_extra);
   ik_state->cfg_font_tags[IK_FontSlot_HandWrite] = f_tag_from_static_data_string(&font_virgil);
 
   // ik_state->cfg_font_tags[IK_FontSlot_Main] = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
@@ -1214,7 +1214,6 @@ ik_frame(void)
         Vec2F32 shift_inv = rect_center;
         rect = shift_2f32(rect, shift);
 
-        // TODO(Next): bug in win32
         F32 zoom_step = mix_1f32(camera->min_zoom_step, camera->max_zoom_step, camera->zoom_t);
         F32 scale = 1 + delta*zoom_step;
         rect.x0 *= scale;
@@ -1473,7 +1472,6 @@ ik_frame(void)
 
         ////////////////////////////////
         // animation (hot_t, ...)
-
         
         B32 is_hot = ik_key_match(box->key, ik_state->hot_box_key);
         B32 is_active = ik_key_match(box->key, ik_state->active_box_key[IK_MouseButtonKind_Left]);
@@ -1711,7 +1709,7 @@ ik_frame(void)
             child != 0;
             child = child->select_next)
         {
-          // TODO(Next): bug here, if child is already within a group, it can't be selected, it's parent should be selected
+          // FIXME: bug here, if child is already within a group, it can't be selected, it's parent should be selected
           DLLPushFront_NP(select->group_first, select->group_last, child, group_next, group_prev);
           select->group_children_count++;
           child->group = select;
@@ -1867,7 +1865,7 @@ ik_frame(void)
             F32 height = width;
             F32 ratio = 1.0;
 
-            // TODO(Next): we can't use content to hash the key, since we could drag multiple files with the same content
+            // FIXME: we can't use content to hash the key, since we could drag multiple files with the same content
             // we would cause a bug, the first image is sent to decode, and it's dim haven't been solved, but we use the same cached image to create the remaning boxes
             IK_Key key = ik_key_make(ui_hash_from_string(0, path), 0);
             IK_Image *image = ik_image_from_key(key);
@@ -1939,7 +1937,7 @@ ik_frame(void)
         else
         {
           // image cached? -> set height based on ratio
-          // TODO(Next): bug here, this image could still being decoding
+          // FIXME: bug here, this image could still being decoding
           ratio = (F32)image->x/image->y;
           height = width/ratio;
         }
@@ -3714,8 +3712,6 @@ IK_BOX_DRAW(stroke)
     Vec2F32 m = p1->position;
     Vec2F32 m2 = {(p1->position.x + p2->position.x) * 0.5f, (p1->position.y + p2->position.y) * 0.5f};
 
-    // TODO(Next): if the dist between p1 and p2 very large, we wouldn't draw the last point, there will be a visiual blank
-
     // scale stroke size based on dist, mimic ink pen effect
     F32 dist = length_2f32(sub_2f32(m1, m2));
     F32 t = round_f32(dist/base_stroke_size);
@@ -4770,13 +4766,13 @@ ik_ui_toolbar(void)
   {
     String8 strs[IK_ToolKind_COUNT] =
     {
-      str8_lit("H"),
-      str8_lit("S"),
-      str8_lit("R"),
-      str8_lit("D"),
+      str8_lit(" "),
+      str8_lit("!"),
+      str8_lit("\""),
+      str8_lit("#"),
       // str8_lit("I"),
       // str8_lit("E"),
-      str8_lit("M"),
+      str8_lit("&"),
     };
 
     for(U64 i = 0; i < IK_ToolKind_COUNT; i++)
@@ -4796,7 +4792,7 @@ ik_ui_toolbar(void)
 
       UI_PrefWidth(ui_px(cell_width, 1.0))
         UI_PrefHeight(ui_px(cell_width, 1.0))
-        UI_Font(ik_font_from_slot(IK_FontSlot_ToolbarIcons))
+        UI_Font(ik_font_from_slot(IK_FontSlot_IconsExtra))
         UI_Flags(flags)
         UI_TextAlignment(UI_TextAlign_Center)
         b = ui_build_box_from_string(0, strs[i]);
@@ -5415,13 +5411,67 @@ ik_ui_inspector(void)
           }
 
           UI_WidthFill
-          UI_Row
+          UI_NamedRow(str8_lit("font_size"))
           {
             UI_PrefWidth(ui_text_dim(1, 1.0))
               ui_labelf("font_size");
             ui_spacer(ui_pct(1.0, 0.0));
             UI_PrefWidth(ui_text_dim(1, 1.0))
               ik_ui_slider_f32(str8_lit("font_size_val"), &b->font_size, 0.1);
+          }
+
+          UI_WidthFill
+          UI_NamedRow(str8_lit("text_align"))
+          {
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("text_align");
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_PrefWidth(ui_children_sum(1.0))
+            UI_Row
+            {
+              UI_Font(ik_font_from_slot(IK_FontSlot_IconsExtra))
+              UI_PrefWidth(ui_text_dim(1.0, 0.0))
+              if(ui_clicked(ik_ui_buttonf("'")))
+              {
+                b->text_align |= IK_TextAlign_Left;
+                b->text_align &= ~(IK_TextAlign_Right|IK_TextAlign_HCenter);
+              }
+              ui_spacer(ui_em(0.1,0.0));
+
+              UI_Font(ik_font_from_slot(IK_FontSlot_IconsExtra))
+              UI_PrefWidth(ui_text_dim(1.0, 0.0))
+              if(ui_clicked(ik_ui_buttonf("(")))
+              {
+                b->text_align = IK_TextAlign_HCenter|IK_TextAlign_VCenter;
+              }
+              ui_spacer(ui_em(0.1,0.0));
+
+              UI_Font(ik_font_from_slot(IK_FontSlot_IconsExtra))
+              UI_PrefWidth(ui_text_dim(1.0, 0.0))
+              if(ui_clicked(ik_ui_buttonf(")")))
+              {
+                b->text_align |= IK_TextAlign_Right;
+                b->text_align &= ~(IK_TextAlign_Left|IK_TextAlign_HCenter);
+              }
+              ui_spacer(ui_em(0.1,0.0));
+
+              UI_Font(ik_font_from_slot(IK_FontSlot_IconsExtra))
+              UI_PrefWidth(ui_text_dim(1.0, 0.0))
+              if(ui_clicked(ik_ui_buttonf("*")))
+              {
+                b->text_align |= IK_TextAlign_Top;
+                b->text_align &= ~(IK_TextAlign_Bottom|IK_TextAlign_VCenter);
+              }
+              ui_spacer(ui_em(0.1,0.0));
+
+              UI_Font(ik_font_from_slot(IK_FontSlot_IconsExtra))
+              UI_PrefWidth(ui_text_dim(1.0, 0.0))
+              if(ui_clicked(ik_ui_buttonf("+")))
+              {
+                b->text_align |= IK_TextAlign_Bottom;
+                b->text_align &= ~(IK_TextAlign_Top|IK_TextAlign_VCenter);
+              }
+            }
           }
 
           UI_WidthFill
@@ -5495,66 +5545,167 @@ ik_ui_inspector(void)
         //~ Group
 
         if(b->group_children_count > 0)
-        UI_WidthFill
-        UI_Row
         {
           ui_divider(ui_em(0.5, 0.0));
 
-          UI_PrefWidth(ui_text_dim(1, 1.0))
-            ui_labelf("align");
-          ui_spacer(ui_pct(1.0, 0.0));
+          // align
+          UI_WidthFill
           UI_Row
           {
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("align");
             ui_spacer(ui_pct(1.0, 0.0));
-            UI_PrefWidth(ui_em(1.0, 0.0))
-            UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
-            UI_TextAlignment(UI_TextAlign_Center)
-            // left
-            if(ui_clicked(ik_ui_buttonf("<")))
+            UI_Row
             {
-              for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+              ui_spacer(ui_pct(1.0, 0.0));
+              UI_PrefWidth(ui_em(1.0, 0.0))
+              UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+              UI_TextAlignment(UI_TextAlign_Center)
+              // left
+              if(ui_clicked(ik_ui_buttonf("<")))
               {
-                child->position.x = b->position.x;
+                for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+                {
+                  child->position.x = b->position.x;
+                }
+              }
+
+              ui_spacer(ui_em(0.1, 0.0));
+              UI_PrefWidth(ui_em(1.0, 0.0))
+              UI_TextAlignment(UI_TextAlign_Center)
+              UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+              // top
+              if(ui_clicked(ik_ui_buttonf("^")))
+              {
+                for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+                {
+                  child->position.y = b->position.y;
+                }
+              }
+
+              ui_spacer(ui_em(0.1, 0.0));
+              // UI_PrefWidth(ui_text_dim(1, 1.0))
+              UI_PrefWidth(ui_em(1.0, 0.0))
+              UI_TextAlignment(UI_TextAlign_Center)
+              UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+              // down
+              if(ui_clicked(ik_ui_buttonf("v")))
+              {
+                for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+                {
+                  child->position.y = b->position.y + b->rect_size.y - child->rect_size.y;
+                }
+              }
+
+              ui_spacer(ui_em(0.1, 0.0));
+              UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
+              UI_PrefWidth(ui_em(1.0, 0.0))
+              UI_TextAlignment(UI_TextAlign_Center)
+              // right
+              if(ui_clicked(ik_ui_buttonf(">")))
+              {
+                for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+                {
+                  child->position.x = b->position.x + b->rect_size.x - child->rect_size.x;
+                }
               }
             }
+          }
 
-            ui_spacer(ui_em(0.1, 0.0));
-            UI_PrefWidth(ui_em(1.0, 0.0))
-            UI_TextAlignment(UI_TextAlign_Center)
-            UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
-            // top
-            if(ui_clicked(ik_ui_buttonf("^")))
+          // stretch
+          UI_WidthFill
+          UI_NamedRow(str8_lit("stretch"))
+          {
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("stretch");
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_PrefWidth(ui_children_sum(1.0))
+            UI_Row
             {
-              for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+              // vertical
+              ui_spacer(ui_em(0.1, 0.0));
+              UI_Font(ik_font_from_slot(IK_FontSlot_IconsExtra))
+              UI_PrefWidth(ui_text_dim(1.0, 0.0))
+              UI_TextAlignment(UI_TextAlign_Center)
+              if(ui_clicked(ik_ui_buttonf(",")))
               {
-                child->position.y = b->position.y;
+                F32 max_height = 0;
+                for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+                {
+                  max_height = Max(max_height, child->rect_size.y);
+                  ik_box_do_translate(child, v2f32(0, b->position.y-child->position.y));
+                }
+
+                for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+                {
+                  F32 scale = max_height/child->rect_size.y;
+                  ik_box_do_scale(child, v2f32(scale,scale), b->position);
+                }
+              }
+
+              // horizontal
+              ui_spacer(ui_em(0.1, 0.0));
+              UI_Font(ik_font_from_slot(IK_FontSlot_IconsExtra))
+              UI_PrefWidth(ui_text_dim(1.0, 0.0))
+              UI_TextAlignment(UI_TextAlign_Center)
+              if(ui_clicked(ik_ui_buttonf("-")))
+              {
+                F32 max_width = 0;
+                for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+                {
+                  max_width = Max(max_width, child->rect_size.x);
+                  ik_box_do_translate(child, v2f32(b->position.x-child->position.x, 0));
+                }
+
+                for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+                {
+                  F32 scale = max_width/child->rect_size.x;
+                  ik_box_do_scale(child, v2f32(scale,scale), b->position);
+                }
               }
             }
+          }
 
-            ui_spacer(ui_em(0.1, 0.0));
-            // UI_PrefWidth(ui_text_dim(1, 1.0))
-            UI_PrefWidth(ui_em(1.0, 0.0))
-            UI_TextAlignment(UI_TextAlign_Center)
-            UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
-            // down
-            if(ui_clicked(ik_ui_buttonf("v")))
+          // sort
+          UI_WidthFill
+          UI_NamedRow(str8_lit("sort"))
+          {
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("sort");
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_PrefWidth(ui_children_sum(1.0))
+            UI_Row
             {
-              for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+              // vertical
+              ui_spacer(ui_em(0.1, 0.0));
+              UI_Font(ik_font_from_slot(IK_FontSlot_IconsExtra))
+              UI_PrefWidth(ui_text_dim(1.0, 0.0))
+              UI_TextAlignment(UI_TextAlign_Center)
+              if(ui_clicked(ik_ui_buttonf(",")))
               {
-                child->position.y = b->position.y + b->rect_size.y - child->rect_size.y;
+                F32 advance_y = 0;
+                for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+                {
+                  F32 y = b->position.y+advance_y;
+                  ik_box_do_translate(child, v2f32(0, y-child->position.y));
+                  advance_y += child->rect_size.y;
+                }
               }
-            }
 
-            ui_spacer(ui_em(0.1, 0.0));
-            UI_Font(ik_font_from_slot(IK_FontSlot_Icons))
-            UI_PrefWidth(ui_em(1.0, 0.0))
-            UI_TextAlignment(UI_TextAlign_Center)
-            // right
-            if(ui_clicked(ik_ui_buttonf(">")))
-            {
-              for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+              // horizontal
+              ui_spacer(ui_em(0.1, 0.0));
+              UI_Font(ik_font_from_slot(IK_FontSlot_IconsExtra))
+              UI_PrefWidth(ui_text_dim(1.0, 0.0))
+              UI_TextAlignment(UI_TextAlign_Center)
+              if(ui_clicked(ik_ui_buttonf("-")))
               {
-                child->position.x = b->position.x + b->rect_size.x - child->rect_size.x;
+                F32 advance_x = 0;
+                for(IK_Box *child = b->group_first; child != 0; child = child->group_next)
+                {
+                  F32 x = b->position.x+advance_x;
+                  ik_box_do_translate(child, v2f32(x-child->position.x, 0));
+                  advance_x += child->rect_size.x;
+                }
               }
             }
           }
