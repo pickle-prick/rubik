@@ -750,7 +750,7 @@ ik_drop_hot_key(void)
 internal void
 ik_kill_action(void)
 {
-  ik_state->action_slot = IK_ActionSlot_Invalid;
+  ik_state->action_slot = IK_ActionSlot_Null;
   for EachEnumVal(IK_MouseButtonKind, k)
   {
     ik_state->active_box_key[k] = ik_key_zero();
@@ -1342,18 +1342,11 @@ ik_frame(void)
         next = box->prev;
         box->sig = ik_signal_from_box(box);
 
-        B32 is_hot = ik_key_match(box->key, ik_state->hot_box_key);
-        B32 is_active = ik_key_match(box->key, ik_state->active_box_key[IK_MouseButtonKind_Left]);
-        B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key[IK_MouseButtonKind_Left]);
-        B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
-        B32 is_disabled = box->flags&IK_BoxFlag_Disabled;
-
-
         /////////////////////////////////
         // Handle deletion
 
         B32 delete = 0;
-        if(!is_focus_active && box->flags&IK_BoxFlag_PruneZeroText && box->string.size == 0)
+        if(!ik_key_match(box->key, ik_state->focus_active_box_key) && box->flags&IK_BoxFlag_PruneZeroText && box->string.size == 0)
         {
           delete = 1;
         }
@@ -1412,7 +1405,7 @@ ik_frame(void)
         // TODO(Next): IK_BoxFlag_DragToPosition and IK_BoxFlag_FitChildren are in conflict
         if((box->sig.f&IK_SignalFlag_LeftDragging) &&
             box->flags&IK_BoxFlag_DragToPosition &&
-            (!is_focus_active))
+            (!ik_key_match(box->key, ik_state->focus_active_box_key)))
         {
           if(box->sig.f & IK_SignalFlag_Pressed)
           {
@@ -1481,12 +1474,18 @@ ik_frame(void)
         ////////////////////////////////
         // animation (hot_t, ...)
 
+        
+        B32 is_hot = ik_key_match(box->key, ik_state->hot_box_key);
+        B32 is_active = ik_key_match(box->key, ik_state->active_box_key[IK_MouseButtonKind_Left]);
+        B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key[IK_MouseButtonKind_Left]);
+        B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
+        B32 is_disabled = box->flags&IK_BoxFlag_Disabled;
+
         box->hot_t += ik_state->animation.fast_rate * ((F32)is_hot-box->hot_t);
         box->active_t += ik_state->animation.fast_rate * ((F32)is_active-box->active_t);
         box->focus_hot_t += ik_state->animation.fast_rate * ((F32)is_focus_hot-box->focus_hot_t);
         box->focus_active_t += ik_state->animation.fast_rate * ((F32)is_focus_active-box->focus_active_t);
         box->disabled_t += ik_state->animation.fast_rate * ((F32)is_disabled-box->disabled_t);
-
 
         F32 epsilon = 1e-2;
         box->hot_t = abs_f32(is_hot-box->hot_t) < epsilon ? (F32)is_hot : box->hot_t;
@@ -3408,7 +3407,7 @@ IK_BOX_UPDATE(text)
   }
 
   // dragging => move cursor
-  if(is_focus_active && ik_dragging(sig))
+  if(is_focus_active && ik_dragging(sig) && ik_state->action_slot == IK_ActionSlot_Null)
   {
     if(ik_pressed(sig))
     {
@@ -4939,7 +4938,6 @@ ik_ui_selection(void)
               Vec2F32 old_rect_size = dim_2f32(old_rect);
               Vec2F32 new_rect_size = dim_2f32(new_rect);
 
-              // FIXME: this is not working well with wrap text
               B32 keep_ratio = !!(box->flags&(IK_BoxFlag_FixedRatio|IK_BoxFlag_FitChildren|IK_BoxFlag_FitText));
               if(keep_ratio)
               {
