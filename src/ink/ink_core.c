@@ -1793,11 +1793,13 @@ ik_frame(void)
                      IK_BoxFlag_ClickToFocus|
                      IK_BoxFlag_DrawText|
                      IK_BoxFlag_WrapText|
+                     IK_BoxFlag_ClampBotTextDimX|
                      IK_BoxFlag_ClampBotTextDimY|
                      IK_BoxFlag_DragToPosition|
                      IK_BoxFlag_DragToScaleRectSize);
       box->position = ik_state->mouse_in_world;
       box->rect_size = v2f32(ik_state->world_to_screen_ratio.x, ik_state->world_to_screen_ratio.y);
+      box->last_rect_size = box->rect_size;
       box->font_size = font_size_in_world;
       box->text_align = IK_TextAlign_HCenter|IK_TextAlign_VCenter;
       box->disabled_t = 1.0;
@@ -1815,7 +1817,6 @@ ik_frame(void)
       {
         .drag_start_mouse_in_world = ik_state->mouse_in_world,
         .drag_start_rect = ik_rect_from_box(box),
-        .last_scale = v2f32(1.f, 1.f),
       };
       ui_store_drag_struct(&drag);
 
@@ -1965,7 +1966,33 @@ ik_frame(void)
     }
 
     /////////////////////////////////
-    //~ Hover cursor
+    //~ Build End
+
+    /////////////////////////////////
+    //- update last_rect_size & commit drag offset
+
+    for(U64 i = 0; i < ArrayCount(roots); i++)
+    {
+      IK_Box *root = roots[i];
+      for(IK_Box *box = root, *next = 0; box != 0; box = next)
+      {
+        next = box->prev;
+        B32 is_active = ik_key_match(ik_state->active_box_key[IK_MouseButtonKind_Left], box->key);
+
+        //- top left dragged? -> offset position by rect size delta
+        B32 top_left_dragging = is_active && ik_state->action_slot == IK_ActionSlot_TopLeft;
+        if(top_left_dragging)
+        {
+          Vec2F32 dim_delta = sub_2f32(box->last_rect_size, box->rect_size);
+          ik_box_do_translate(box, dim_delta);
+        }
+
+        box->last_rect_size = box->rect_size;
+      }
+    }
+
+    /////////////////////////////////
+    //- hover cursor
 
     if(tool == IK_ToolKind_Selection)
     {
@@ -3111,7 +3138,7 @@ IK_BOX_UPDATE(text)
   Vec2F32 box_dim = dim_2f32(box_rect);
 
   // unpack font params
-  F32 font_size = mix_1f32(0, box->font_size, 1.0-box->disabled_t);
+  F32 font_size = box->font_size;
   F32 font_size_scale = font_size / (F32)M_1;
   F32 text_padding_x = box->text_padding*font_size_scale;
   F32 max_x = box_dim.x - text_padding_x*2;
@@ -3152,7 +3179,6 @@ IK_BOX_UPDATE(text)
         U64 cutoff = 0;
         Vec2F32 run_dim_px = {run.dim.x*font_size_scale, run.dim.y*font_size_scale};
         // text_wrapping
-        // TODO(Next): bug here, fix me
         if((box->flags&IK_BoxFlag_WrapText) && run_dim_px.x > max_x)
         {
           F_PieceArray pieces = run.first->v.run.pieces;
@@ -3233,6 +3259,8 @@ IK_BOX_UPDATE(text)
 
     F32 advance_x = 0;
     F32 advance_y = 0;
+    // FIXME: box rect is always one frame behind, so the text rendered will be one frame off
+    //        we could use relative pos, then push a xform2d, too much work for now
     F32 x = box_rect.p0.x + text_padding_x;
     F32 y = box_rect.p0.y;
     IK_TextAlign text_align = box->text_align;
@@ -3248,6 +3276,7 @@ IK_BOX_UPDATE(text)
     if(text_align&IK_TextAlign_VCenter)
     {
       y += (max_y-text_dim.y)/2.0;
+      y = ClampBot(box_rect.p0.y, y);
     }
     if(text_align&IK_TextAlign_Bottom)
     {
@@ -3278,10 +3307,12 @@ IK_BOX_UPDATE(text)
         if(text_align&IK_TextAlign_HCenter)
         {
           line_x += (max_x-line_run_dim.x)/2.0;
+          line_x = ClampBot(x, line_x);
         }
         if(text_align&IK_TextAlign_Right)
         {
           line_x += (max_x-line_run_dim.x);
+          line_x = ClampBot(x, line_x);
         }
 
         B32 mouse_in_line_bounds = ik_state->mouse_in_world.y > y && ik_state->mouse_in_world.y < (y+line_run_dim.y);
@@ -3516,6 +3547,7 @@ ik_text(String8 string, Vec2F32 pos)
                 IK_BoxFlag_DragToPosition;
   box->position = pos;
   box->rect_size = v2f32(font_size_in_world*3, font_size_in_world);
+  box->last_rect_size = box->rect_size;
   box->hover_cursor = OS_Cursor_UpDownLeftRight;
   box->font_size = font_size_in_world;
   box->ratio = 0;
@@ -3537,6 +3569,7 @@ ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, IK_Image *image)
   box->flags = flags|IK_BoxFlag_DrawImage|IK_BoxFlag_MouseClickable|IK_BoxFlag_ClickToFocus|IK_BoxFlag_FixedRatio|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToScaleRectSize|IK_BoxFlag_DoubleClickToCenter;
   box->position = pos;
   box->rect_size = rect_size;
+  box->last_rect_size = rect_size;
   box->hover_cursor = OS_Cursor_UpDownLeftRight;
   box->image = image;
   image->rc++;
@@ -3773,26 +3806,20 @@ ik_stroke()
 /////////////////////////////////
 //~ Box Manipulation Functions
 
-internal B32
+internal void
 ik_box_do_scale(IK_Box *box, Vec2F32 scale, Vec2F32 origin)
 {
-  B32 did_scale = 0;
   // rect size
   if(box->flags & IK_BoxFlag_DragToScaleRectSize)
   {
     box->rect_size.x *= scale.x;
     box->rect_size.y *= scale.y;
-    did_scale = 1;
   }
 
   // font size
   if(box->flags&IK_BoxFlag_DragToScaleFontSize)
   {
     box->font_size *= scale.y;
-    if(box->flags&IK_BoxFlag_FitText)
-    {
-      did_scale = 1;
-    }
   }
 
   // stroke size
@@ -3814,9 +3841,8 @@ ik_box_do_scale(IK_Box *box, Vec2F32 scale, Vec2F32 origin)
       child != 0;
       child = child->group_next)
   {
-    did_scale += ik_box_do_scale(child, scale, origin);
+    ik_box_do_scale(child, scale, origin);
   }
-  return !!did_scale;
 }
 
 internal void
@@ -4896,7 +4922,6 @@ ik_ui_selection(void)
               {
                 .drag_start_mouse_in_world = ik_state->mouse_in_world,
                 .drag_start_rect = ik_rect_from_box(box),
-                .last_scale = v2f32(1.f, 1.f),
               };
               ui_store_drag_struct(&drag);
               ik_state->hot_box_key = box->key;
@@ -4914,6 +4939,7 @@ ik_ui_selection(void)
               Vec2F32 old_rect_size = dim_2f32(old_rect);
               Vec2F32 new_rect_size = dim_2f32(new_rect);
 
+              // FIXME: this is not working well with wrap text
               B32 keep_ratio = !!(box->flags&(IK_BoxFlag_FixedRatio|IK_BoxFlag_FitChildren|IK_BoxFlag_FitText));
               if(keep_ratio)
               {
@@ -4924,18 +4950,12 @@ ik_ui_selection(void)
                 new_rect.y1 = new_rect.y0 + new_rect_size.y;
               }
 
-              Vec2F32 scale = v2f32(new_rect_size.x/old_rect_size.x, new_rect_size.y/old_rect_size.y);
-              Vec2F32 scale_delta = v2f32(scale.x/drag.last_scale.x, scale.y/drag.last_scale.y);
+              Vec2F32 box_rect_dim = box->rect_size;
+              Vec2F32 scale_delta = v2f32(new_rect_size.x/box_rect_dim.x, new_rect_size.y/box_rect_dim.y);
 
-              if(scale_delta.x > 0 && scale_delta.y > 0)
+              if(scale_delta.x > 0 || scale_delta.y > 0)
               {
-                drag.last_scale = scale;
-                ui_store_drag_struct(&drag);
-                Vec2F32 last_dim = box->rect_size;
-                Vec2F32 expected_dim = v2f32(box->rect_size.x*scale_delta.x, box->rect_size.y*scale_delta.y);
-                Vec2F32 pos_delta = sub_2f32(last_dim, expected_dim);
-                B32 did_scale = ik_box_do_scale(box, scale_delta, box->position);
-                if(did_scale) ik_box_do_translate(box, pos_delta);
+                ik_box_do_scale(box, scale_delta, box->position);
               }
             }
           }
@@ -4984,7 +5004,6 @@ ik_ui_selection(void)
               {
                 .drag_start_mouse_in_world = ik_state->mouse_in_world,
                 .drag_start_rect = ik_rect_from_box(box),
-                .last_scale = v2f32(1.f, 1.f),
               };
               ui_store_drag_struct(&drag);
               ik_state->hot_box_key = box->key;
@@ -5013,12 +5032,11 @@ ik_ui_selection(void)
                 new_rect.y1 = new_rect.y0 + new_rect_size.y;
               }
 
-              Vec2F32 scale = v2f32(new_rect_size.x/old_rect_size.x, new_rect_size.y/old_rect_size.y);
-              Vec2F32 scale_delta = v2f32(scale.x/drag.last_scale.x, scale.y/drag.last_scale.y);
-              if(scale_delta.x > 0 && scale_delta.y > 0)
+              Vec2F32 box_rect_dim = box->rect_size;
+              Vec2F32 scale_delta = v2f32(new_rect_size.x/box_rect_dim.x, new_rect_size.y/box_rect_dim.y);
+
+              if(scale_delta.x > 0 || scale_delta.y > 0)
               {
-                drag.last_scale = scale;
-                ui_store_drag_struct(&drag);
                 ik_box_do_scale(box, scale_delta, box->position);
               }
             }

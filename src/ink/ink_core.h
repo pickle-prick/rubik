@@ -254,7 +254,6 @@ struct IK_BoxResizeDrag
 {
   Rng2F32 drag_start_rect;
   Vec2F32 drag_start_mouse_in_world;
-  Vec2F32 last_scale;
 };
 
 ////////////////////////////////
@@ -448,6 +447,7 @@ struct IK_Box
   Vec2F32 position; // top left
   F32 rotation; // around center, turns
   Vec2F32 rect_size;
+  Vec2F32 last_rect_size;
   Vec4F32 background_color;
   Vec4F32 text_color;
   Vec4F32 border_color;
@@ -936,7 +936,7 @@ internal IK_Box* ik_stroke(void);
 /////////////////////////////////
 //~ Box Manipulation Functions
 
-internal B32  ik_box_do_scale(IK_Box *box, Vec2F32 scale, Vec2F32 origin);
+internal void ik_box_do_scale(IK_Box *box, Vec2F32 scale, Vec2F32 origin);
 internal void ik_box_do_translate(IK_Box *box, Vec2F32 translate);
 
 /////////////////////////////////
