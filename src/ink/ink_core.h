@@ -389,7 +389,7 @@ typedef U64 IK_BoxFlags;
 # define IK_BoxFlag_DrawTextWeak          (IK_BoxFlags)(1ull<<17)
 // drag
 # define IK_BoxFlag_DragToScaleFontSize   (IK_BoxFlags)(1ull<<18)
-# define IK_BoxFlag_DragToScaleStrokeSize (IK_BoxFlags)(1ull<<19)
+# define IK_BoxFlag_DragToScalePoint      (IK_BoxFlags)(1ull<<19)
 # define IK_BoxFlag_DragToScaleRectSize   (IK_BoxFlags)(1ull<<20)
 # define IK_BoxFlag_DragToPosition        (IK_BoxFlags)(1ull<<21)
 // misc
@@ -406,7 +406,9 @@ typedef U64 IK_BoxFlags;
 // TODO(Next): move these into drawing section
 # define IK_BoxFlag_DrawArrow             (IK_BoxFlags)(1ull<<30)
 // TODO(Next): move these into dragging section
+// TODO(Next): find a better name? 
 # define IK_BoxFlag_DragPoint             (IK_BoxFlags)(1ull<<31)
+# define IK_BoxFlag_DragToScaleStrokeSize (IK_BoxFlags)(1ull<<32)
 
 typedef struct IK_Box IK_Box;
 //- draw functions
@@ -465,7 +467,6 @@ struct IK_Box
   // F32 squish;
   F32 stroke_size;
   Vec4F32 stroke_color;
-  Vec2F32 point_scale;
   // image
   IK_Image *image;
   // text

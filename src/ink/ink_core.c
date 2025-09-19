@@ -1428,11 +1428,8 @@ ik_frame(void)
               Vec2F32 delta = sub_2f32(ik_state->mouse_in_world, drag.drag_start_mouse_in_world);
               Vec2F32 position = add_2f32(drag.drag_start_position, delta);
               Vec2F32 position_delta = sub_2f32(position, box->position);
-              box->position = position;
-              for(IK_Box *child = box->group_first; child != 0; child = child->group_next)
-              {
-                child->position = add_2f32(child->position, position_delta);
-              }
+
+              ik_box_do_translate(box, position_delta);
             }
           }
         }
@@ -2927,7 +2924,6 @@ ik_build_box_from_key_(IK_BoxFlags flags, IK_Key key, B32 pre_order)
   box->text_raster_flags = ik_top_text_raster_flags();
   box->stroke_size = ik_top_stroke_size();
   box->stroke_color = ik_top_stroke_color();
-  box->point_scale = v2f32(1,1);
   box->background_color = ik_top_background_color();
   box->text_color = palette->text;
   box->border_color = palette->border;
@@ -3630,12 +3626,6 @@ IK_BOX_UPDATE(stroke)
           box->position = bounds.p0;
           box->rect_size = bounds_dim;
           box->ratio = bounds_dim.x/bounds_dim.y;
-
-          // convert position to relative
-          for(IK_Point *p = box->first_point; p != 0; p = p->next)
-          {
-            p->position = sub_2f32(p->position, box->position);
-          }
         }
       }
 
@@ -3713,8 +3703,6 @@ IK_BOX_DRAW(stroke)
   {
     IK_Point *p = box->last_point;
     Vec2F32 pos = p->position;
-    pos.x *= box->point_scale.x;
-    pos.y *= box->point_scale.y;
     pos = add_2f32(pos, box->position);
     Rng2F32 rect = {.p0 = pos, .p1 = pos};
     F32 stroke_size = 30 * ik_state->world_to_screen_ratio.x;
@@ -3746,14 +3734,6 @@ IK_BOX_DRAW(stroke)
       Vec2F32 p0 = m1;
       Vec2F32 p1 = m;
       Vec2F32 p2 = m2;
-
-      // scale and translate
-      p0.x = p0.x*box->point_scale.x + box->position.x;
-      p0.y = p0.y*box->point_scale.y + box->position.y;
-      p1.x = p1.x*box->point_scale.x + box->position.x;
-      p1.y = p1.y*box->point_scale.y + box->position.y;
-      p2.x = p2.x*box->point_scale.x + box->position.x;
-      p2.y = p2.y*box->point_scale.y + box->position.y;
 
       // decide step size
       U64 steps = 3;
@@ -3810,9 +3790,10 @@ ik_stroke()
   box->flags = IK_BoxFlag_MouseClickable|
                IK_BoxFlag_ClickToFocus|
                IK_BoxFlag_DragToPosition|
-               IK_BoxFlag_DrawStroke|
+               IK_BoxFlag_DragToScaleStrokeSize|
                IK_BoxFlag_DragToScaleRectSize|
-               IK_BoxFlag_DragToScaleStrokeSize;
+               IK_BoxFlag_DragToScalePoint|
+               IK_BoxFlag_DrawStroke;
   box->hover_cursor = OS_Cursor_UpDownLeftRight;
   box->ratio = 1.0;
   return box;
@@ -3855,25 +3836,6 @@ IK_BOX_UPDATE(arrow)
   }
 
   /////////////////////////////////
-  //~ Point scale here
-
-  if(box->point_scale.x != 1.0 || box->point_scale.y != 1.0)
-  {
-    for(IK_Point *p = box->first_point; p != 0; p = p->next)
-    {
-      Vec2F32 pos_next = p->position;
-      pos_next = sub_2f32(pos_next, box->position);
-      pos_next.x *= box->point_scale.x;
-      pos_next.y *= box->point_scale.y;
-      pos_next = add_2f32(pos_next, box->position);
-      p->position = pos_next;
-    }
-
-    box->point_scale.x = 1.0;
-    box->point_scale.y = 1.0;
-  }
-
-  /////////////////////////////////
   // calc point bounds
   {
     F32 half_stroke_size = box->stroke_size/2.0;
@@ -3902,17 +3864,9 @@ IK_BOX_DRAW(arrow)
   IK_Point *pm = pa->next;
   IK_Point *pb = box->last_point;
 
-  Vec2F32 ps[3] = {pa->position, pm->position, pb->position};
-  for(U64 i = 0; i < ArrayCount(ps); i++)
-  {
-    Vec2F32 *pos = &ps[i];
-    pos->x *= box->point_scale.x;
-    pos->y *= box->point_scale.y;
-  }
-
-  Vec2F32 a = ps[0];
-  Vec2F32 m = ps[1];
-  Vec2F32 b = ps[2];
+  Vec2F32 a = pa->position;
+  Vec2F32 m = pm->position;
+  Vec2F32 b = pb->position;
 
   F32 stroke_size = box->stroke_size;
   F32 half_stroke_size = box->stroke_size*0.5;
@@ -3990,9 +3944,10 @@ ik_arrow()
   box->flags = IK_BoxFlag_MouseClickable|
                IK_BoxFlag_ClickToFocus|
                IK_BoxFlag_DragToPosition|
+               IK_BoxFlag_DragToScaleStrokeSize|
                IK_BoxFlag_DrawArrow|
                IK_BoxFlag_DragPoint|
-               IK_BoxFlag_DragToScaleStrokeSize;
+               IK_BoxFlag_DragToScalePoint;
   box->hover_cursor = OS_Cursor_UpDownLeftRight;
   box->ratio = 1.0;
   // NOTE(k): it's a hack, in this case relative point pos is just absolute pos
@@ -4029,11 +3984,10 @@ ik_box_do_scale(IK_Box *box, Vec2F32 scale, Vec2F32 origin)
     box->font_size *= scale.y;
   }
 
-  // stroke size
-  if(box->flags & IK_BoxFlag_DragToScaleStrokeSize)
+  // stroke_size
+  if(box->flags&IK_BoxFlag_DragToScaleStrokeSize)
   {
-    box->point_scale.x *= scale.x;
-    box->point_scale.y *= scale.y;
+    box->stroke_size *= scale.y;
   }
 
   // position scale
@@ -4042,6 +3996,19 @@ ik_box_do_scale(IK_Box *box, Vec2F32 scale, Vec2F32 origin)
     pos_rel.x *= scale.x;
     pos_rel.y *= scale.y;
     box->position = add_2f32(pos_rel, origin);
+  }
+
+  // point scale
+  if(box->flags & IK_BoxFlag_DragToScalePoint)
+  {
+    for(IK_Point *p = box->first_point; p != 0; p = p->next)
+    {
+      Vec2F32 pos_next = sub_2f32(p->position, box->position);
+      pos_next.x *= scale.x;
+      pos_next.y *= scale.y;
+      pos_next = add_2f32(pos_next, box->position);
+      p->position = pos_next;
+    }
   }
 
   for(IK_Box *child = box->group_first;
@@ -4056,6 +4023,14 @@ internal void
 ik_box_do_translate(IK_Box *box, Vec2F32 translate)
 {
   box->position = add_2f32(box->position, translate);
+
+  // translate points
+  for(IK_Point *p = box->first_point; p != 0; p = p->next)
+  {
+    p->position.x += translate.x;
+    p->position.y += translate.y;
+  }
+
   for(IK_Box *child = box->group_first;
       child != 0;
       child = child->group_next)
@@ -5032,6 +5007,21 @@ ik_ui_toolbar(void)
   }
 }
 
+typedef struct UI_LineDrawData UI_LineDrawData;
+struct UI_LineDrawData
+{
+  Vec2F32 a;
+  Vec2F32 b;
+  F32 stroke_size;
+  Vec4F32 stroke_color;
+};
+
+internal UI_BOX_CUSTOM_DRAW(ui_line_draw)
+{
+  UI_LineDrawData *draw_data = (UI_LineDrawData *)user_data;
+  d_line(draw_data->a, draw_data->b, draw_data->stroke_color, draw_data->stroke_size, 1.0);
+}
+
 internal void
 ik_ui_selection(void)
 {
@@ -5317,6 +5307,7 @@ ik_ui_selection(void)
 
     if(box->flags&IK_BoxFlag_DragPoint)
     {
+      Vec2F32 last_pos = {0};
       for(IK_Point *p = box->first_point; p != 0; p = p->next)
       {
         Vec2F32 pos = p->position;
@@ -5328,10 +5319,23 @@ ik_ui_selection(void)
 
         UI_Rect(rect)
           UI_CornerRadius(r)
-          UI_Flags(UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects)
+          UI_Palette(ui_build_palette(ui_top_palette(), .background = v4f32(0.1,0.1,0.9,0.5)))
+          UI_Flags(UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects)
         {
           UI_Box *b = ui_build_box_from_stringf(0, "###%p", p);
           UI_Signal sig = ui_signal_from_box(b);
+
+          if(p->prev)
+          {
+
+            UI_LineDrawData *draw_data = push_array(ui_build_arena(), UI_LineDrawData, 1);
+            draw_data->a = last_pos;
+            draw_data->b = pos;
+            draw_data->stroke_size = 2.f;
+            draw_data->stroke_color = v4f32(0.1,0.1,0.8, 0.25);
+            ui_box_equip_custom_draw(b, ui_line_draw, draw_data);
+          }
+
           if(ui_dragging(sig))
           {
             if(ui_pressed(sig))
@@ -5344,13 +5348,12 @@ ik_ui_selection(void)
               Vec2F32 delta = sub_2f32(ui_mouse(), ui_state->drag_start_mouse);
               delta.x *= ik_state->world_to_screen_ratio.x;
               delta.y *= ik_state->world_to_screen_ratio.y;
-              delta.x /= box->point_scale.x;
-              delta.y /= box->point_scale.y;
               p->position.x = drag_start_pos.x + delta.x;
               p->position.y = drag_start_pos.y + delta.y;
             }
           }
         }
+        last_pos = pos;
       }
     }
   }
@@ -6756,7 +6759,6 @@ ik_frame_to_tyml(IK_Frame *frame)
           se_u64_with_tag(str8_lit("hover_cursor"), box->hover_cursor);
           se_f32_with_tag(str8_lit("transparency"), box->transparency);
           se_f32_with_tag(str8_lit("stroke_size"), box->stroke_size);
-          se_v2f32_with_tag(str8_lit("point_scale"), box->point_scale);
 
           /////////////////////////////////
           // Image
@@ -6950,7 +6952,6 @@ ik_frame_from_tyml(String8 path)
       box->hover_cursor = se_u64_from_tag(n, str8_lit("hover_cursor"));
       box->transparency = se_f32_from_tag(n, str8_lit("transparency"));
       box->stroke_size = se_f32_from_tag(n, str8_lit("stroke_size"));
-      box->point_scale = se_v2f32_from_tag(n, str8_lit("point_scale"));
 
       // image
       Vec2U64 image_key = se_v2u64_from_tag(n, str8_lit("image"));
