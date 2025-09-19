@@ -1380,6 +1380,11 @@ ik_frame(void)
           ik_update_stroke(box);
         }
 
+        if(box->flags & IK_BoxFlag_DrawArrow)
+        {
+          ik_update_arrow(box);
+        }
+
         if(box->flags & IK_BoxFlag_FitText)
         {
           box->rect_size = box->text_bounds;
@@ -1821,6 +1826,15 @@ ik_frame(void)
       tool = IK_ToolKind_Selection;
     }
 
+    //- arrow tool
+    if(tool == IK_ToolKind_Arrow && ik_pressed(blank->sig))
+    {
+      IK_Box *b = ik_arrow();
+      ik_kill_action();
+      ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = b->key;
+      ik_state->focus_active_box_key = b->key;
+    }
+
     //- edit string (double clicked on the blank)
     if(tool == IK_ToolKind_Selection && blank->sig.f&IK_SignalFlag_LeftDoubleClicked)
     {
@@ -2135,6 +2149,12 @@ ik_frame(void)
           if(box->flags & IK_BoxFlag_DrawStroke)
           {
             ik_draw_stroke(box);
+          }
+
+          // draw arrow
+          if(box->flags & IK_BoxFlag_DrawArrow)
+          {
+            ik_draw_arrow(box);
           }
 
           // draw border
@@ -3798,6 +3818,198 @@ ik_stroke()
   return box;
 }
 
+IK_BOX_UPDATE(arrow)
+{
+  IK_Signal sig = box->sig;
+  B32 is_focus_active = ik_key_match(ik_state->focus_active_box_key, box->key);
+
+  if(is_focus_active)
+  {
+    for(UI_EventNode *n = ik_state->events->first, *next = 0; n != 0; n = next)
+    {
+      B32 taken = 0;
+      next = n->next;
+      UI_Event *evt = &n->v;
+
+      if(evt->kind == UI_EventKind_Release && evt->key == OS_Key_LeftMouseButton)
+      {
+        is_focus_active = 0;
+        ik_state->focus_active_box_key = ik_key_zero();
+        ik_state->tool = IK_ToolKind_Selection;
+      }
+
+      if(taken)
+      {
+        ui_eat_event_node(ik_state->events, n);
+      }
+    }
+  }
+
+  if(is_focus_active)
+  {
+    IK_Point *a = box->first_point;
+    IK_Point *m = a->next;
+    IK_Point *b = box->last_point;
+    b->position = ik_state->mouse_in_world;
+    m->position = scale_2f32(add_2f32(a->position, b->position), 0.5);
+  }
+
+  /////////////////////////////////
+  //~ Point scale here
+
+  if(box->point_scale.x != 1.0 || box->point_scale.y != 1.0)
+  {
+    for(IK_Point *p = box->first_point; p != 0; p = p->next)
+    {
+      Vec2F32 pos_next = p->position;
+      pos_next = sub_2f32(pos_next, box->position);
+      pos_next.x *= box->point_scale.x;
+      pos_next.y *= box->point_scale.y;
+      pos_next = add_2f32(pos_next, box->position);
+      p->position = pos_next;
+    }
+
+    box->point_scale.x = 1.0;
+    box->point_scale.y = 1.0;
+  }
+
+  /////////////////////////////////
+  // calc point bounds
+  {
+    F32 half_stroke_size = box->stroke_size/2.0;
+    Rng2F32 bounds = {inf32(), inf32(), neg_inf32(), neg_inf32()};
+    for(IK_Point *p = box->first_point; p != 0; p = p->next)
+    {
+      Vec2F32 pos = p->position;
+      Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
+
+      // update bounds
+      bounds.x0 = Min(rect.x0, bounds.x0);
+      bounds.x1 = Max(rect.x1, bounds.x1);
+      bounds.y0 = Min(rect.y0, bounds.y0);
+      bounds.y1 = Max(rect.y1, bounds.y1);
+    }
+    Vec2F32 bounds_dim = dim_2f32(bounds);
+    box->position = bounds.p0;
+    box->rect_size = bounds_dim;
+    box->ratio = bounds_dim.x/bounds_dim.y;
+  }
+}
+
+IK_BOX_DRAW(arrow)
+{
+  IK_Point *pa = box->first_point;
+  IK_Point *pm = pa->next;
+  IK_Point *pb = box->last_point;
+
+  Vec2F32 ps[3] = {pa->position, pm->position, pb->position};
+  for(U64 i = 0; i < ArrayCount(ps); i++)
+  {
+    Vec2F32 *pos = &ps[i];
+    pos->x *= box->point_scale.x;
+    pos->y *= box->point_scale.y;
+  }
+
+  Vec2F32 a = ps[0];
+  Vec2F32 m = ps[1];
+  Vec2F32 b = ps[2];
+
+  F32 stroke_size = box->stroke_size;
+  F32 half_stroke_size = box->stroke_size*0.5;
+  Vec4F32 stroke_clr = box->stroke_color;
+  F32 edge_softness = 1.0 * ik_state->world_to_screen_ratio.x;
+
+  // draw a
+  {
+    Rng2F32 rect = {.p0 = a, .p1 = a};
+    rect = pad_2f32(rect, half_stroke_size*1.3);
+    d_rect(rect, stroke_clr, half_stroke_size*1.3, 0, edge_softness);
+  }
+
+  // draw b
+  {
+    Rng2F32 rect = {.p0 = b, .p1 = b};
+    rect = pad_2f32(rect, half_stroke_size*1.3);
+    d_rect(rect, stroke_clr, half_stroke_size*1.3, 0, edge_softness);
+
+    // draw arrow direction
+    Vec2F32 dir = normalize_2f32(sub_2f32(b, m));
+    Vec2F32 dir_inv = {-dir.x, -dir.y};
+    F32 angle_turns = 0.08;
+    F32 arrow_length = stroke_size * 12;
+
+    // up
+    Vec2F32 up =
+    {
+      dir_inv.x*cos_f32(angle_turns)-dir_inv.y*sin_f32(angle_turns),
+      dir_inv.x*sin_f32(angle_turns)+dir_inv.y*cos_f32(angle_turns)
+    };
+    Vec2F32 up_end = add_2f32(b, scale_2f32(up, arrow_length));
+    d_line(b, up_end, stroke_clr, stroke_size, edge_softness);
+
+    // down
+    Vec2F32 down = 
+    {
+      dir_inv.x*cos_f32(-angle_turns)-dir_inv.y*sin_f32(-angle_turns),
+      dir_inv.x*sin_f32(-angle_turns)+dir_inv.y*cos_f32(-angle_turns)
+    };
+    Vec2F32 down_end = add_2f32(b, scale_2f32(down, arrow_length));
+    d_line(b, down_end, stroke_clr, stroke_size, edge_softness);
+  }
+
+  // FIXME: m won't line on the curve, we should study a little more about bezier curve
+  // draw a line between a and b, m as control point
+  {
+    Vec2F32 p0 = a;
+    Vec2F32 p1 = m;
+    Vec2F32 p2 = b;
+    U64 steps = 10;
+
+    Vec2F32 prev = p0;
+    for(U64 i = 0; i <= steps; i++)
+    {
+      F32 t = (F32)i / (F32)steps;
+      F32 u = 1.0f - t;
+
+      Vec2F32 pt = {
+        u*u*p0.x + 2*u*t*p1.x + t*t*p2.x,
+        u*u*p0.y + 2*u*t*p1.y + t*t*p2.y
+      };
+
+      // draw line segment (prev → pt) with thickness
+      d_line(prev, pt, stroke_clr, stroke_size, edge_softness);
+      prev = pt;
+    }
+  }
+}
+
+internal IK_Box *
+ik_arrow()
+{
+  IK_Box *box = ik_build_box_from_stringf(0, "arrow###%I64u", os_now_microseconds());
+  box->flags = IK_BoxFlag_MouseClickable|
+               IK_BoxFlag_ClickToFocus|
+               IK_BoxFlag_DragToPosition|
+               IK_BoxFlag_DrawArrow|
+               IK_BoxFlag_DragPoint|
+               IK_BoxFlag_DragToScaleStrokeSize;
+  box->hover_cursor = OS_Cursor_UpDownLeftRight;
+  box->ratio = 1.0;
+  // NOTE(k): it's a hack, in this case relative point pos is just absolute pos
+  // after commited, we set box position based on bounds, then convert point pos to relative space 
+  box->position = v2f32(0,0);
+
+  // alloc 3 points a, m, b
+  for(U64 i = 0; i < 3; i++)
+  {
+    IK_Point *p = ik_point_alloc();
+    p->position = ik_state->mouse_in_world;
+    DLLPushBack(box->first_point, box->last_point, p);
+    box->point_count++;
+  }
+  return box;
+}
+
 /////////////////////////////////
 //~ Box Manipulation Functions
 
@@ -4770,8 +4982,7 @@ ik_ui_toolbar(void)
       str8_lit("!"),
       str8_lit("\""),
       str8_lit("#"),
-      // str8_lit("I"),
-      // str8_lit("E"),
+      str8_lit(","),
       str8_lit("&"),
     };
 
@@ -4849,9 +5060,7 @@ ik_ui_selection(void)
 
     Rng2F32 rect = r2f32p(p0.x, p0.y, p1.x, p1.y);
     Vec2F32 center = center_2f32(rect);
-    rect.p0 = mix_2f32(center, rect.p0, 1.0-box->disabled_t);
-    rect.p1 = mix_2f32(center, rect.p1, 1.0-box->disabled_t);
-    F32 padding_px = mix_1f32(0, ui_top_font_size()*0.5, box->focus_hot_t);
+    F32 padding_px =  ui_top_font_size()*0.5;
     rect = pad_2f32(rect, padding_px);
     Vec2F32 rect_dim = dim_2f32(rect);
 
@@ -4871,40 +5080,59 @@ ik_ui_selection(void)
     Vec4F32 background_clr = ik_rgba_from_theme_color(IK_ThemeColor_BaseBackground);
 
     UI_Parent(container)
+      UI_Squish(box->disabled_t*1.0)
       UI_Palette(ui_build_palette(ui_top_palette(), .border = clr, .background = background_clr))
     {
       /////////////////////////////////
       //~ Corners
 
-      // TODO(Next): rename to corner_length
-      F32 corner_size = mix_1f32(0, 30, box->focus_hot_t);
-      UI_BoxFlags flags = UI_BoxFlag_DrawBackground|UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_Floating;
-
+      F32 corner_thickness = ui_top_font_size()*0.28;
+      F32 edge_thickness = corner_thickness;
+      F32 edge_length = ui_top_font_size()*2.0;
       // top left
       {
         // anchor
-        UI_Box *anchor;
-        UI_Rect(r2f32p(0,0, padding_px, padding_px))
-          UI_Flags(flags|UI_BoxFlag_DrawSideTop|UI_BoxFlag_DrawSideLeft)
-          UI_HoverCursor(OS_Cursor_UpLeft)
-          anchor = ui_build_box_from_stringf(0, "###top_left -> anchor");
-        UI_Signal sig1 = ui_signal_from_box(anchor);
+        UI_Signal sig1;
+        {
+          Rng2F32 rect = {0};
+          rect = pad_2f32(rect, corner_thickness);
+          UI_Box *b;
+          UI_Rect(rect)
+            UI_Flags(UI_BoxFlag_DrawSideLeft|UI_BoxFlag_DrawSideTop|UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects)
+            UI_HoverCursor(OS_Cursor_UpLeft)
+            b = ui_build_box_from_stringf(0, "###top_left -> anchor");
+          b->hot_t += hot_t;
+          b->active_t += active_t;
+          sig1 = ui_signal_from_box(b);
+        }
 
-        // => right
-        UI_Box *right;
-        UI_Rect(r2f32p(padding_px,0, padding_px+corner_size, padding_px))
-          UI_Flags(flags|UI_BoxFlag_DrawSideTop|UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideRight)
-          UI_HoverCursor(OS_Cursor_UpLeft)
-          right = ui_build_box_from_stringf(0, "###top_left -> right");
-        UI_Signal sig2 = ui_signal_from_box(right);
+        // => right edge
+        UI_Signal sig2;
+        {
+          Rng2F32 rect = {corner_thickness, -edge_thickness, corner_thickness+edge_length, edge_thickness};
+          UI_Box *b;
+          UI_Rect(rect)
+            UI_Flags(UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawSideTop|UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideRight|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects)
+            UI_HoverCursor(OS_Cursor_UpLeft)
+            b = ui_build_box_from_stringf(0, "###top_left -> right");
+          b->hot_t += hot_t;
+          b->active_t += active_t;
+          sig2 = ui_signal_from_box(b);
+        }
 
         // => down
-        UI_Box *down;
-        UI_Rect(r2f32p(0,padding_px, padding_px, padding_px+corner_size))
-          UI_Flags(flags|UI_BoxFlag_DrawSideLeft|UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideRight)
-          UI_HoverCursor(OS_Cursor_UpLeft)
-          down = ui_build_box_from_stringf(0, "##top_left -> down");
-        UI_Signal sig3 = ui_signal_from_box(down);
+        UI_Signal sig3;
+        {
+          Rng2F32 rect = {-edge_thickness, corner_thickness, edge_thickness, corner_thickness+edge_length};
+          UI_Box *b;
+          UI_Rect(rect)
+            UI_Flags(UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawSideLeft|UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideRight|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects)
+            UI_HoverCursor(OS_Cursor_UpLeft)
+            b = ui_build_box_from_stringf(0, "##top_left -> down");
+          b->hot_t += hot_t;
+          b->active_t += active_t;
+          sig3 = ui_signal_from_box(b);
+        }
 
         // dragging
         UI_SignalFlags f = sig1.f|sig2.f|sig3.f;
@@ -4947,7 +5175,7 @@ ik_ui_selection(void)
               Vec2F32 box_rect_dim = box->rect_size;
               Vec2F32 scale_delta = v2f32(new_rect_size.x/box_rect_dim.x, new_rect_size.y/box_rect_dim.y);
 
-              if(scale_delta.x > 0 || scale_delta.y > 0)
+              if(scale_delta.x > 0 && scale_delta.y > 0)
               {
                 ik_box_do_scale(box, scale_delta, box->position);
               }
@@ -4963,29 +5191,61 @@ ik_ui_selection(void)
 
       // bottom right
       {
+        Vec2F32 origin = {rect_dim.x, rect_dim.y};
         // anchor
-        UI_Box *anchor;
-        UI_Rect(r2f32p(rect_dim.x-padding_px,rect_dim.y-padding_px, rect_dim.x, rect_dim.y))
-          UI_Flags(flags|UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideRight)
-          UI_HoverCursor(OS_Cursor_DownRight)
-          anchor = ui_build_box_from_stringf(0, "##bottom_right -> anchor");
-        UI_Signal sig1 = ui_signal_from_box(anchor);
+        UI_Signal sig1;
+        {
+          Rng2F32 rect = {.p0 = origin, .p1 = origin};
+          rect = pad_2f32(rect, corner_thickness);
+          UI_Box *b;
+          UI_Rect(rect)
+            UI_Flags(UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideRight|UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects)
+            UI_HoverCursor(OS_Cursor_DownRight)
+            b = ui_build_box_from_stringf(0, "###bottom_right -> anchor");
+          b->hot_t += hot_t;
+          b->active_t += active_t;
+          sig1 = ui_signal_from_box(b);
+        }
 
         // => left
-        UI_Box *left;
-        UI_Rect(r2f32p(rect_dim.x-corner_size-padding_px, rect_dim.y-padding_px, rect_dim.x-padding_px, rect_dim.y))
-          UI_Flags(flags|UI_BoxFlag_DrawSideLeft|UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideTop)
-          UI_HoverCursor(OS_Cursor_DownRight)
-          left = ui_build_box_from_stringf(0, "##bottom_right -> left");
-        UI_Signal sig2 = ui_signal_from_box(left);
+        UI_Signal sig2;
+        {
+          Rng2F32 rect =
+          {
+            origin.x-corner_thickness-edge_length,
+            origin.y-edge_thickness,
+            origin.x-corner_thickness,
+            origin.y+edge_thickness,
+          };
+          UI_Box *b;
+          UI_Rect(rect)
+            UI_Flags(UI_BoxFlag_DrawSideLeft|UI_BoxFlag_DrawSideBottom|UI_BoxFlag_DrawSideTop|UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects)
+            UI_HoverCursor(OS_Cursor_DownRight)
+            b = ui_build_box_from_stringf(0, "##bottom_right -> left");
+          b->hot_t += hot_t;
+          b->active_t += active_t;
+          sig2 = ui_signal_from_box(b);
+        }
 
         // => up
-        UI_Box *up;
-        UI_Rect(r2f32p(rect_dim.x-padding_px, rect_dim.y-padding_px-corner_size, rect_dim.x, rect_dim.y-padding_px))
-          UI_Flags(flags|UI_BoxFlag_DrawSideTop|UI_BoxFlag_DrawSideLeft|UI_BoxFlag_DrawSideRight)
-          UI_HoverCursor(OS_Cursor_DownRight)
-          up = ui_build_box_from_stringf(0, "##bottom_right -> up");
-        UI_Signal sig3 = ui_signal_from_box(up);
+        UI_Signal sig3;
+        {
+          Rng2F32 rect =
+          {
+            origin.x-edge_thickness,
+            origin.y-corner_thickness-edge_length,
+            origin.x+edge_thickness,
+            origin.y-corner_thickness,
+          };
+          UI_Box *b;
+          UI_Rect(rect)
+            UI_Flags(UI_BoxFlag_DrawSideTop|UI_BoxFlag_DrawSideLeft|UI_BoxFlag_DrawSideRight|UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects)
+            UI_HoverCursor(OS_Cursor_DownRight)
+            b = ui_build_box_from_stringf(0, "##bottom_right -> up");
+          b->hot_t += hot_t;
+          b->active_t += active_t;
+          sig3 = ui_signal_from_box(b);
+        }
 
         // dragging
         UI_SignalFlags f = sig1.f|sig2.f|sig3.f;
@@ -5029,7 +5289,7 @@ ik_ui_selection(void)
               Vec2F32 box_rect_dim = box->rect_size;
               Vec2F32 scale_delta = v2f32(new_rect_size.x/box_rect_dim.x, new_rect_size.y/box_rect_dim.y);
 
-              if(scale_delta.x > 0 || scale_delta.y > 0)
+              if(scale_delta.x > 0 && scale_delta.y > 0)
               {
                 ik_box_do_scale(box, scale_delta, box->position);
               }
@@ -5042,15 +5302,55 @@ ik_ui_selection(void)
         }
       }
 
-      /////////////////////////////////
-      //~ Border
+    }
 
+    /////////////////////////////////
+    //~ Borders
+
+    UI_Rect(rect)
+      UI_Flags(UI_BoxFlag_DrawBorder)
+      UI_CornerRadius(4.f)
+      ui_build_box_from_stringf(0, "###border");
+
+    /////////////////////////////////
+    //~ Drag Point
+
+    if(box->flags&IK_BoxFlag_DragPoint)
+    {
+      for(IK_Point *p = box->first_point; p != 0; p = p->next)
       {
-        UI_BoxFlags flags = UI_BoxFlag_DrawBorder|UI_BoxFlag_Floating;
-        Rng2F32 border_rect = {0,0, rect_dim.x, rect_dim.y};
-        UI_Rect(pad_2f32(border_rect, -padding_px/2.0))
-          UI_Flags(flags)
-          ui_build_box_from_stringf(0, "##border");
+        Vec2F32 pos = p->position;
+        pos = ik_screen_pos_from_world(pos);
+
+        F32 r = ui_top_font_size()*0.5;
+        Rng2F32 rect = {.p0 = pos, .p1 = pos};
+        rect = pad_2f32(rect, r);
+
+        UI_Rect(rect)
+          UI_CornerRadius(r)
+          UI_Flags(UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects)
+        {
+          UI_Box *b = ui_build_box_from_stringf(0, "###%p", p);
+          UI_Signal sig = ui_signal_from_box(b);
+          if(ui_dragging(sig))
+          {
+            if(ui_pressed(sig))
+            {
+              ui_store_drag_struct(&p->position);
+            }
+            else
+            {
+              Vec2F32 drag_start_pos = *ui_get_drag_struct(Vec2F32);
+              Vec2F32 delta = sub_2f32(ui_mouse(), ui_state->drag_start_mouse);
+              delta.x *= ik_state->world_to_screen_ratio.x;
+              delta.y *= ik_state->world_to_screen_ratio.y;
+              delta.x /= box->point_scale.x;
+              delta.y /= box->point_scale.y;
+              p->position.x = drag_start_pos.x + delta.x;
+              p->position.y = drag_start_pos.y + delta.y;
+            }
+          }
+        }
       }
     }
   }
@@ -5131,18 +5431,6 @@ ik_ui_inspector(void)
           ui_spacer(ui_pct(1.0, 0.0));
           ik_ui_color_palette(str8_lit("stroke_clr"), stroke_colors, 3, &cfg->stroke_color);
         }
-
-        // UI_WidthFill
-        // UI_Row
-        // {
-        //   F32 transparency = 0.5;
-        //   UI_PrefWidth(ui_text_dim(1, 1.0))
-        //     ui_labelf("transparency");
-        //   ui_spacer(ui_pct(1.0, 0.0));
-        //   UI_PrefWidth(ui_em(9.0, 0.0))
-        //     ik_ui_range_slider_f32(str8_lit("transparency"), &transparency, 1.0, 0.0);
-        // }
-        // ui_spacer(ui_em(0.1, 0.0));
       }
 
       ////////////////////////////////

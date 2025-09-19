@@ -21,6 +21,7 @@ typedef enum IK_ToolKind
   IK_ToolKind_Selection,
   IK_ToolKind_Rectangle,
   IK_ToolKind_Draw,
+  IK_ToolKind_Arrow,
   // IK_ToolKind_InsertImage,
   // IK_ToolKind_Eraser,
   IK_ToolKind_Man,
@@ -402,17 +403,23 @@ typedef U64 IK_BoxFlags;
 // TODO(Next): move these into size section
 # define IK_BoxFlag_ClampBotTextDimX      (IK_BoxFlags)(1ull<<28)
 # define IK_BoxFlag_ClampBotTextDimY      (IK_BoxFlags)(1ull<<29)
+// TODO(Next): move these into drawing section
+# define IK_BoxFlag_DrawArrow             (IK_BoxFlags)(1ull<<30)
+// TODO(Next): move these into dragging section
+# define IK_BoxFlag_DragPoint             (IK_BoxFlags)(1ull<<31)
 
 typedef struct IK_Box IK_Box;
 //- draw functions
 #define IK_BOX_DRAW(name) void Glue(ik_draw_, name)(IK_Box *box)
 IK_BOX_DRAW(text);
 IK_BOX_DRAW(stroke);
+IK_BOX_DRAW(arrow);
 
 //- update update
 #define IK_BOX_UPDATE(name) void Glue(ik_update_, name)(IK_Box *box)
 IK_BOX_UPDATE(text);
 IK_BOX_UPDATE(stroke);
+IK_BOX_UPDATE(arrow);
 
 typedef struct IK_Frame IK_Frame;
 struct IK_Box
@@ -932,6 +939,7 @@ internal String8 ik_box_equip_display_string(IK_Box *box, String8 string);
 internal IK_Box* ik_text(String8 string, Vec2F32 pos);
 internal IK_Box* ik_image(IK_BoxFlags flags, Vec2F32 pos, Vec2F32 rect_size, IK_Image *image);
 internal IK_Box* ik_stroke(void);
+internal IK_Box* ik_arrow(void);
 
 /////////////////////////////////
 //~ Box Manipulation Functions
