@@ -1315,13 +1315,6 @@ ik_frame(void)
   ////////////////////////////////
   //- box interaction
 
-  typedef struct IK_BoxDrag IK_BoxDrag;
-  struct IK_BoxDrag
-  {
-    Vec2F32 drag_start_position;
-    Vec2F32 drag_start_mouse_in_world;
-  };
-
   {
     IK_Box *roots[3] = {frame->select, frame->box_list.last, frame->blank};
 
@@ -1414,7 +1407,7 @@ ik_frame(void)
         {
           if(box->sig.f & IK_SignalFlag_Pressed)
           {
-            IK_BoxDrag drag = {box->position, ik_state->mouse_in_world};
+            IK_BoxDrag drag = {ik_rect_from_box(box), ik_state->mouse, ik_state->mouse_in_world, 0};
             ik_store_drag_struct(&drag);
             ik_state->action_slot = IK_ActionSlot_Center;
           }
@@ -1422,15 +1415,17 @@ ik_frame(void)
           {
             IK_BoxDrag drag = *ik_get_drag_struct(IK_BoxDrag);
             // NOTE(k): camera rect could be animating, casuing world mouse delta change even mouse in screen didn't change
-            F32 epsilon = (ik_state->dpi/96.f)*1.5;
-            F32 drag_px = length_2f32(ik_drag_delta());
-            if(drag_px > epsilon)
+            F32 epsilon = (ik_state->dpi/96.f)*2.f;
+            F32 drag_px = length_2f32(sub_2f32(drag.drag_start_mouse, ik_state->mouse));
+            if(drag.drag_started ? 1 : drag_px > epsilon)
             {
               Vec2F32 delta = sub_2f32(ik_state->mouse_in_world, drag.drag_start_mouse_in_world);
-              Vec2F32 position = add_2f32(drag.drag_start_position, delta);
+              Vec2F32 position = add_2f32(drag.drag_start_rect.p0, delta);
               Vec2F32 position_delta = sub_2f32(position, box->position);
-
               ik_box_do_translate(box, position_delta);
+
+              drag.drag_started = 1;
+              ik_store_drag_struct(&drag);
             }
           }
         }
@@ -1813,10 +1808,11 @@ ik_frame(void)
       ik_state->active_box_key[IK_MouseButtonKind_Left] = box->key;
       ik_state->action_slot = IK_ActionSlot_DownRight;
 
-      IK_BoxResizeDrag drag =
+      IK_BoxDrag drag =
       {
-        .drag_start_mouse_in_world = ik_state->mouse_in_world,
         .drag_start_rect = ik_rect_from_box(box),
+        .drag_start_mouse = ik_state->mouse,
+        .drag_start_mouse_in_world = ik_state->mouse_in_world,
       };
       ui_store_drag_struct(&drag);
 
@@ -5073,7 +5069,7 @@ ik_ui_selection(void)
 
     UI_Box *container;
     UI_Rect(rect)
-      UI_Flags(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
+      UI_Flags(UI_BoxFlag_DrawBackground)
       UI_Palette(ui_build_palette(ui_top_palette(), .background = v4f32(0,0,0,0.15)))
       UI_Squish(1.0-box->focus_hot_t)
       container = ui_build_box_from_stringf(0, "###selection_box");
@@ -5151,10 +5147,11 @@ ik_ui_selection(void)
           {
             if(f&UI_SignalFlag_LeftPressed)
             {
-              IK_BoxResizeDrag drag =
+              IK_BoxDrag drag =
               {
-                .drag_start_mouse_in_world = ik_state->mouse_in_world,
                 .drag_start_rect = ik_rect_from_box(box),
+                .drag_start_mouse = ik_state->mouse,
+                .drag_start_mouse_in_world = ik_state->mouse_in_world,
               };
               ui_store_drag_struct(&drag);
               ik_state->hot_box_key = box->key;
@@ -5163,7 +5160,7 @@ ik_ui_selection(void)
             }
             else
             {
-              IK_BoxResizeDrag drag = *ui_get_drag_struct(IK_BoxResizeDrag);
+              IK_BoxDrag drag = *ui_get_drag_struct(IK_BoxDrag);
               Vec2F32 delta = sub_2f32(ik_state->mouse_in_world, drag.drag_start_mouse_in_world);
               Rng2F32 old_rect = drag.drag_start_rect;
               Rng2F32 new_rect = old_rect;
@@ -5264,10 +5261,11 @@ ik_ui_selection(void)
           { 
             if(f&UI_SignalFlag_LeftPressed)
             {
-              IK_BoxResizeDrag drag =
+              IK_BoxDrag drag =
               {
-                .drag_start_mouse_in_world = ik_state->mouse_in_world,
                 .drag_start_rect = ik_rect_from_box(box),
+                .drag_start_mouse = ik_state->mouse,
+                .drag_start_mouse_in_world = ik_state->mouse_in_world,
               };
               ui_store_drag_struct(&drag);
               ik_state->hot_box_key = box->key;
@@ -5276,7 +5274,7 @@ ik_ui_selection(void)
             }
             else
             {
-              IK_BoxResizeDrag drag = *ui_get_drag_struct(IK_BoxResizeDrag);
+              IK_BoxDrag drag = *ui_get_drag_struct(IK_BoxDrag);
 
               Vec2F32 delta = sub_2f32(ik_state->mouse_in_world, drag.drag_start_mouse_in_world);
               Rng2F32 old_rect = drag.drag_start_rect;
@@ -5505,6 +5503,8 @@ ik_ui_inspector(void)
             ui_labelf("%.2f %.2f", b->position.x, b->position.y);
         }
 
+        ui_spacer(ui_em(0.2, 0.0));
+
         UI_WidthFill
         UI_Row
         {
@@ -5514,6 +5514,8 @@ ik_ui_inspector(void)
           UI_PrefWidth(ui_text_dim(1, 1.0))
             ui_labelf("%.2f %.2f", b->rect_size.x, b->rect_size.y);
         }
+
+        ui_spacer(ui_em(0.2, 0.0));
 
         UI_WidthFill
         UI_Row
@@ -5525,6 +5527,8 @@ ik_ui_inspector(void)
             ui_labelf("%.2f", b->ratio);
         }
 
+        ui_spacer(ui_em(0.2, 0.0));
+
         UI_WidthFill
         UI_Row
         {
@@ -5534,6 +5538,8 @@ ik_ui_inspector(void)
           UI_PrefWidth(ui_text_dim(1, 1.0))
             ik_ui_slider_f32(str8_lit("stroke_size_val"), &b->stroke_size, 0.1);
         }
+
+        ui_spacer(ui_em(0.2, 0.0));
 
         if(!(b->flags&IK_BoxFlag_Orphan))
         UI_WidthFill
@@ -5721,6 +5727,8 @@ ik_ui_inspector(void)
               ui_labelf("%I64u", b->string.size);
           }
 
+          ui_spacer(ui_em(0.2, 0.0));
+
           UI_WidthFill
           UI_NamedRow(str8_lit("font_size"))
           {
@@ -5730,6 +5738,8 @@ ik_ui_inspector(void)
             UI_PrefWidth(ui_text_dim(1, 1.0))
               ik_ui_slider_f32(str8_lit("font_size_val"), &b->font_size, 0.1);
           }
+
+          ui_spacer(ui_em(0.2, 0.0));
 
           UI_WidthFill
           UI_NamedRow(str8_lit("font_slot"))
@@ -5766,6 +5776,8 @@ ik_ui_inspector(void)
               }
             }
           }
+
+          ui_spacer(ui_em(0.2, 0.0));
 
           UI_WidthFill
           UI_NamedRow(str8_lit("text_align"))
@@ -5821,6 +5833,8 @@ ik_ui_inspector(void)
             }
           }
 
+          ui_spacer(ui_em(0.2, 0.0));
+
           UI_WidthFill
           UI_Row
           {
@@ -5830,6 +5844,8 @@ ik_ui_inspector(void)
             UI_PrefWidth(ui_text_dim(1, 1.0))
               ui_labelf("%.2f", b->text_padding);
           }
+
+          ui_spacer(ui_em(0.2, 0.0));
 
           UI_WidthFill
           UI_Row

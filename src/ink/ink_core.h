@@ -264,11 +264,13 @@ typedef enum IK_ActionSlot
 ////////////////////////////////
 //~ Drag State
 
-typedef struct IK_BoxResizeDrag IK_BoxResizeDrag;
-struct IK_BoxResizeDrag
+typedef struct IK_BoxDrag IK_BoxDrag;
+struct IK_BoxDrag
 {
   Rng2F32 drag_start_rect;
+  Vec2F32 drag_start_mouse;
   Vec2F32 drag_start_mouse_in_world;
+  B32 drag_started;
 };
 
 ////////////////////////////////
