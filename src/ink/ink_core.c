@@ -1106,6 +1106,7 @@ ik_frame(void)
   ik_push_background_color(frame->cfg.background_color);
   ik_push_stroke_size(frame->cfg.stroke_size);
   ik_push_stroke_color(frame->cfg.stroke_color);
+  ik_push_font_slot(frame->cfg.text_font_slot);
 
   ////////////////////////////////
   //~ Unpack camera
@@ -2327,6 +2328,7 @@ ik_frame(void)
   ik_pop_background_color();
   ik_pop_stroke_size();
   ik_pop_stroke_color();
+  ik_pop_font_slot();
 
   /////////////////////////////////
   //~ End
@@ -2895,6 +2897,7 @@ ik_cfg_default()
   cfg.stroke_size = ik_bottom_stroke_size();
   cfg.stroke_color = ik_bottom_stroke_color();
   cfg.background_color = ik_bottom_background_color();
+  cfg.text_font_slot = IK_FontSlot_HandWrite;
   return cfg;
 }
 
@@ -2926,8 +2929,8 @@ ik_build_box_from_key_(IK_BoxFlags flags, IK_Key key, B32 pre_order)
   box->key = key;
   box->flags = flags;
   box->frame = frame;
-  box->font = ik_top_font();
   box->font_size = ik_top_font_size();
+  box->font_slot = ik_top_font_slot();
   box->tab_size = ik_top_tab_size();
   box->text_raster_flags = ik_top_text_raster_flags();
   box->stroke_size = ik_top_stroke_size();
@@ -3187,7 +3190,7 @@ IK_BOX_UPDATE(text)
         D_FancyStringList fancy_strings = {0};
 
         D_FancyString fstr = {0};
-        fstr.font = ik_font_from_slot(IK_FontSlot_HandWrite);
+        fstr.font = ik_font_from_slot(box->font_slot);
         fstr.string = string;
         fstr.color = box->text_color;
         fstr.size = M_1;
@@ -3253,7 +3256,7 @@ IK_BOX_UPDATE(text)
       D_FancyStringList fancy_strings = {0};
 
       D_FancyString fstr = {0};
-      fstr.font = box->font;
+      fstr.font = ik_font_from_slot(box->font_slot);
       fstr.string = str8_lit("  ");
       fstr.color = box->text_color;
       fstr.size = M_1;
@@ -3876,6 +3879,10 @@ IK_BOX_DRAW(arrow)
   Vec2F32 m = pm->position;
   Vec2F32 b = pb->position;
 
+  // calc control point
+  // C = 2*P1 - (P0+P2)/2
+  Vec2F32 c = sub_2f32(scale_2f32(m, 2), scale_2f32(add_2f32(a, b), 0.5));
+
   F32 stroke_size = box->stroke_size;
   F32 half_stroke_size = box->stroke_size*0.5;
   Vec4F32 stroke_clr = box->stroke_color;
@@ -3923,7 +3930,7 @@ IK_BOX_DRAW(arrow)
   // draw a line between a and b, m as control point
   {
     Vec2F32 p0 = a;
-    Vec2F32 p1 = m;
+    Vec2F32 p1 = c;
     Vec2F32 p2 = b;
     U64 steps = 10;
 
@@ -5068,6 +5075,7 @@ ik_ui_selection(void)
     UI_Rect(rect)
       UI_Flags(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
       UI_Palette(ui_build_palette(ui_top_palette(), .background = v4f32(0,0,0,0.15)))
+      UI_Squish(1.0-box->focus_hot_t)
       container = ui_build_box_from_stringf(0, "###selection_box");
 
     B32 is_hot = contains_2f32(rect, ui_state->mouse);
@@ -5082,7 +5090,6 @@ ik_ui_selection(void)
     Vec4F32 background_clr = ik_rgba_from_theme_color(IK_ThemeColor_BaseBackground);
 
     UI_Parent(container)
-      UI_Squish(box->disabled_t*1.0)
       UI_Palette(ui_build_palette(ui_top_palette(), .border = clr, .background = background_clr))
     {
       /////////////////////////////////
@@ -5722,6 +5729,42 @@ ik_ui_inspector(void)
             ui_spacer(ui_pct(1.0, 0.0));
             UI_PrefWidth(ui_text_dim(1, 1.0))
               ik_ui_slider_f32(str8_lit("font_size_val"), &b->font_size, 0.1);
+          }
+
+          UI_WidthFill
+          UI_NamedRow(str8_lit("font_slot"))
+          {
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("font");
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_PrefWidth(ui_children_sum(1.0))
+            UI_Row
+            {
+              IK_FontSlot slots[3] = {IK_FontSlot_Main, IK_FontSlot_Code, IK_FontSlot_HandWrite};
+              char *displays[3] = {"normal", "code", "hand"};
+
+              UI_PrefWidth(ui_text_dim(1, 1.0))
+              for(U64 i = 0; i < ArrayCount(slots); i++)
+              {
+                char *display = displays[i];
+                IK_FontSlot font_slot = slots[i];
+                UI_BoxFlags flags = UI_BoxFlag_MouseClickable|UI_BoxFlag_DrawText|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects;
+                if(b->font_slot == font_slot)
+                {
+                  flags |= UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow;
+                }
+
+                UI_Signal sig;
+                UI_Flags(flags)
+                UI_Palette(ui_build_palette(ui_top_palette(), .background = ik_rgba_from_theme_color(IK_ThemeColor_Breakpoint)))
+                sig = ui_signal_from_box(ui_build_box_from_string(0, str8_cstring(display)));
+
+                if(ui_clicked(sig))
+                {
+                  b->font_slot = font_slot;
+                }
+              }
+            }
           }
 
           UI_WidthFill
@@ -6786,6 +6829,7 @@ ik_frame_to_tyml(IK_Frame *frame)
 
           if(box->string.size > 0) se_multiline_str_with_tag(str8_lit("string"), box->string);
           se_f32_with_tag(str8_lit("font_size"), box->font_size);
+          se_u64_with_tag(str8_lit("font_slot"), box->font_slot);
           se_f32_with_tag(str8_lit("tab_size"), box->tab_size);
           se_u64_with_tag(str8_lit("text_raster_flags"), box->text_raster_flags);
           se_f32_with_tag(str8_lit("text_padding"), box->text_padding);
@@ -6996,6 +7040,7 @@ ik_frame_from_tyml(String8 path)
         box->string = ik_push_str8_copy(string_joined);
       }
       box->font_size = se_f32_from_tag(n, str8_lit("font_size"));
+      box->font_slot = se_u64_from_tag(n, str8_lit("font_slot"));
       box->tab_size = se_f32_from_tag(n, str8_lit("tab_size"));
       box->text_raster_flags = se_u64_from_tag(n, str8_lit("text_raster_flags"));
       box->text_padding = se_f32_from_tag(n, str8_lit("text_padding"));

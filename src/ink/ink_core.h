@@ -143,6 +143,19 @@ struct IK_SettingVal
 };
 
 ////////////////////////////////
+//~ Font slot
+
+typedef enum IK_FontSlot
+{
+  IK_FontSlot_Main,
+  IK_FontSlot_Code,
+  IK_FontSlot_Icons,
+  IK_FontSlot_IconsExtra,
+  IK_FontSlot_HandWrite,
+  IK_FontSlot_COUNT
+} IK_FontSlot;
+
+////////////////////////////////
 //~ Cfg
 
 typedef struct IK_Cfg IK_Cfg;
@@ -151,7 +164,7 @@ struct IK_Cfg
   F32 stroke_size;
   Vec4F32 stroke_color;
   Vec4F32 background_color;
-  // IK_FontSlot text_font_slot;
+  IK_FontSlot text_font_slot;
 };
 
 ////////////////////////////////
@@ -472,7 +485,7 @@ struct IK_Box
   IK_Image *image;
   // text
   String8 string;
-  F_Tag font;
+  IK_FontSlot font_slot;
   F32 font_size;
   F32 tab_size;
   F_RasterFlags text_raster_flags;
@@ -575,16 +588,6 @@ struct IK_Theme
 {
   Vec4F32 colors[IK_ThemeColor_COUNT];
 };
-
-typedef enum IK_FontSlot
-{
-  IK_FontSlot_Main,
-  IK_FontSlot_Code,
-  IK_FontSlot_Icons,
-  IK_FontSlot_IconsExtra,
-  IK_FontSlot_HandWrite,
-  IK_FontSlot_COUNT
-} IK_FontSlot;
 
 typedef enum IK_PaletteCode
 {
