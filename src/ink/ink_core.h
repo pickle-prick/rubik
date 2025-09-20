@@ -21,6 +21,7 @@ typedef enum IK_ToolKind
   IK_ToolKind_Selection,
   IK_ToolKind_Rectangle,
   IK_ToolKind_Draw,
+  IK_ToolKind_Text,
   IK_ToolKind_Arrow,
   // IK_ToolKind_InsertImage,
   // IK_ToolKind_Eraser,

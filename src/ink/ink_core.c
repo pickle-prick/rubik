@@ -1823,17 +1823,9 @@ ik_frame(void)
       tool = IK_ToolKind_Selection;
     }
 
-    //- arrow tool
-    if(tool == IK_ToolKind_Arrow && ik_pressed(blank->sig))
-    {
-      IK_Box *b = ik_arrow();
-      ik_kill_action();
-      ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = b->key;
-      ik_state->focus_active_box_key = b->key;
-    }
-
-    //- edit string (double clicked on the blank)
-    if(tool == IK_ToolKind_Selection && blank->sig.f&IK_SignalFlag_LeftDoubleClicked)
+    //- text tool (tool or double click on blank to trigger)
+    if((tool == IK_ToolKind_Text && ik_pressed(blank->sig)) ||
+       (tool == IK_ToolKind_Selection && blank->sig.f&IK_SignalFlag_LeftDoubleClicked))
     {
       IK_Box *box = ik_text(str8_lit(""), ik_state->mouse_in_world);
       box->draw_frame_index = ik_state->frame_index+1;
@@ -1841,6 +1833,16 @@ ik_frame(void)
       ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = box->key;
       ik_state->focus_active_box_key = box->key;
       ik_kill_action();
+      ik_state->tool = IK_ToolKind_Selection;
+    }
+
+    //- arrow tool
+    if(tool == IK_ToolKind_Arrow && ik_pressed(blank->sig))
+    {
+      IK_Box *b = ik_arrow();
+      ik_kill_action();
+      ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = b->key;
+      ik_state->focus_active_box_key = b->key;
     }
 
     //- file drop
@@ -2023,6 +2025,12 @@ ik_frame(void)
     if(ik_tool() == IK_ToolKind_Hand)
     {
       next_cursor = OS_Cursor_HandPoint;
+      cursor_override = 1;
+    }
+
+    if(ik_tool() == IK_ToolKind_Text)
+    {
+      next_cursor = OS_Cursor_IBar;
       cursor_override = 1;
     }
   }
@@ -4953,12 +4961,13 @@ ik_ui_toolbar(void)
   {
     String8 strs[IK_ToolKind_COUNT] =
     {
-      str8_lit(" "),
-      str8_lit("!"),
-      str8_lit("\""),
-      str8_lit("#"),
-      str8_lit(","),
-      str8_lit("&"),
+      str8_lit(" "),  // hand
+      str8_lit("!"),  // selection
+      str8_lit("\""), // rectangle
+      str8_lit("#"),  // draw
+      str8_lit("3"),  // text
+      str8_lit("4"),  // arrow
+      str8_lit("&"),  // man
     };
 
     for(U64 i = 0; i < IK_ToolKind_COUNT; i++)
