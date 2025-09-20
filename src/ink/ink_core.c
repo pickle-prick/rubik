@@ -3995,6 +3995,7 @@ ik_box_do_scale(IK_Box *box, Vec2F32 scale, Vec2F32 origin)
   // stroke_size
   if(box->flags&IK_BoxFlag_DragToScaleStrokeSize)
   {
+    // FIXME: this won't cut it, stroke and arrow are fixed-ratio
     box->stroke_size *= scale.y;
   }
 
@@ -4011,10 +4012,10 @@ ik_box_do_scale(IK_Box *box, Vec2F32 scale, Vec2F32 origin)
   {
     for(IK_Point *p = box->first_point; p != 0; p = p->next)
     {
-      Vec2F32 pos_next = sub_2f32(p->position, box->position);
+      Vec2F32 pos_next = sub_2f32(p->position, origin);
       pos_next.x *= scale.x;
       pos_next.y *= scale.y;
-      pos_next = add_2f32(pos_next, box->position);
+      pos_next = add_2f32(pos_next, origin);
       p->position = pos_next;
     }
   }
@@ -5065,6 +5066,8 @@ ik_ui_selection(void)
 
     UI_Box *container;
     UI_Rect(rect)
+      UI_Flags(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawDropShadow)
+      UI_Palette(ui_build_palette(ui_top_palette(), .background = v4f32(0,0,0,0.15)))
       container = ui_build_box_from_stringf(0, "###selection_box");
 
     B32 is_hot = contains_2f32(rect, ui_state->mouse);
@@ -5085,9 +5088,10 @@ ik_ui_selection(void)
       /////////////////////////////////
       //~ Corners
 
-      F32 corner_thickness = ui_top_font_size()*0.28;
+      F32 dpi_scale = ik_state->dpi/96.f;
+      F32 corner_thickness = dpi_scale*2.25;
       F32 edge_thickness = corner_thickness;
-      F32 edge_length = ui_top_font_size()*2.0;
+      F32 edge_length = dpi_scale*14;
       // top left
       {
         // anchor
