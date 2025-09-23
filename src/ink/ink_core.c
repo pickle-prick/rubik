@@ -6296,7 +6296,7 @@ ik_ui_checkbox(String8 key_string, B32 b)
   UI_Signal sig;
 
   UI_Box *container;
-    UI_CornerRadius(ui_top_font_size()/16.f)
+    UI_CornerRadius(1.0)
     UI_Flags(UI_BoxFlag_DrawBorder|
              UI_BoxFlag_DrawBackground|
              UI_BoxFlag_DrawDropShadow|
@@ -6313,10 +6313,10 @@ ik_ui_checkbox(String8 key_string, B32 b)
       UI_WidthFill
       UI_HeightFill
       UI_Column
-      UI_Padding(ui_em(0.20,1.0))
+      UI_Padding(ui_px(3.5,1.0))
       UI_Row
-      UI_Padding(ui_em(0.20,1.0))
-      UI_CornerRadius(ui_top_font_size()/16.f)
+      UI_Padding(ui_px(3.5,1.0))
+      UI_CornerRadius(1.0)
       UI_Flags(UI_BoxFlag_MouseClickable|
                UI_BoxFlag_DrawBorder|
                UI_BoxFlag_DrawBackground|
@@ -6340,9 +6340,9 @@ ik_ui_button(String8 string)
 { 
   UI_Signal sig;
   UI_Size pref_width = ui_top_pref_width();
-  F32 padding_em = 0.15f;
-  F32 font_size = ui_top_font_size() * (1.f-padding_em*2);
-  F32 corner_radius = 1.f;
+  F32 padding_px = 3.f;
+  F32 font_size = ui_top_font_size() - padding_px;
+  F32 corner_radius = 1.0;
 
   UI_Box *container;
   UI_CornerRadius(corner_radius)
@@ -6355,9 +6355,9 @@ ik_ui_button(String8 string)
     UI_PrefWidth(ui_children_sum(1.0))
     UI_HeightFill
     UI_Column
-    UI_Padding(ui_em(padding_em,1.0))
+    UI_Padding(ui_px(padding_px,1))
     UI_Row
-    UI_Padding(ui_em(padding_em,1.0))
+    UI_Padding(ui_px(padding_px,1))
     UI_CornerRadius(corner_radius)
     UI_Flags(UI_BoxFlag_MouseClickable|
              UI_BoxFlag_DrawBorder|
@@ -6367,8 +6367,8 @@ ik_ui_button(String8 string)
              UI_BoxFlag_DrawActiveEffects|
              UI_BoxFlag_DrawDropShadow)
     UI_Palette(ui_state->widget_palette_info.scrollbar_palette)
-    UI_PrefWidth(pref_width)
     UI_FontSize(font_size)
+    UI_PrefWidth(pref_width)
     body = ui_build_box_from_string(0, string);
 
   sig = ui_signal_from_box(body);

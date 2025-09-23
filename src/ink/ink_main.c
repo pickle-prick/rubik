@@ -114,8 +114,9 @@ entry_point(CmdLine *cmd_line)
   while(open)
   {
     ProfTick(0);
-    U64 global_tick = update_tick_idx();
+    // FIXME: the order matters, it has something to do with frame index sync
     fnt_frame();
+    update_tick_idx();
     open = ik_frame();
   }
 

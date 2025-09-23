@@ -207,6 +207,8 @@ r_vulkan_stage_init()
   R_Vulkan_PhysicalDevice *pdevice = r_vulkan_pdevice();
   R_Vulkan_LogicalDevice *ldevice = r_vulkan_ldevice();
   VkDevice device = ldevice->h;
+  // NOTE(k): can't set it to 0 on startup, it will causing conflict on first frame
+  stage->last_touch_frame_index = max_U64;
 
   // command pool & buffer
   VkCommandPool cp;
@@ -273,6 +275,7 @@ internal R_Vulkan_StagingSlice
 r_vulkan_staging_slice_from_size(U64 size, U64 alignment)
 {
   R_Vulkan_StagingSlice ret = {0};
+
   R_Vulkan_StagingRing *ring = &r_vulkan_state->stage.ring;
   U64 aligned_head = AlignPow2(ring->head, alignment);
   if(ring->tail <= aligned_head)
@@ -308,14 +311,204 @@ r_vulkan_staging_slice_from_size(U64 size, U64 alignment)
       ring->head = aligned_head+size;
     }
   }
-
   return ret;
+}
+
+internal U64
+r_vulkan_free_size_from_staging_ring(U64 alignment)
+{
+  U64 size = 0;
+
+  R_Vulkan_StagingRing *ring = &r_vulkan_state->stage.ring;
+  U64 aligned_head = AlignPow2(ring->head, alignment);
+
+  // two free segments: [algined_head, cap] and [0, tail]
+  if(ring->tail <= aligned_head)
+  {
+    size = Max(ring->cap-aligned_head, ring->tail);
+  }
+  // single free segments: [aligned_head, tail]
+  else
+  {
+    size = ring->tail - aligned_head;
+  }
+  return size;
+}
+
+internal void
+r_vulkan_stage_begin()
+{
+  R_Vulkan_Stage *stage = &r_vulkan_state->stage;
+  R_Vulkan_StagingBatch *batch = &stage->batches[stage->idx];
+  VkCommandBuffer cmd = stage->cmds[stage->idx];
+
+  // wait for current batch to be ready
+  do
+  {
+    r_vulkan_stage_bump();
+  } while(batch->size != 0);
+
+  // begin recording
+  VkCommandBufferBeginInfo begin_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+  begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+  begin_info.pInheritanceInfo = 0;
+  // if the command buffer was already recorded once, then a call to vkBeginCommandBuffer will implicity reset it
+  VK_Assert(vkBeginCommandBuffer(cmd, &begin_info));
+
+  // bump stage frame index
+  stage->last_touch_frame_index = r_vulkan_state->frame_index;
+}
+
+internal void
+r_vulkan_stage_end()
+{
+  R_Vulkan_Stage *stage = &r_vulkan_state->stage;
+
+  // unpack stage batch
+  R_Vulkan_StagingBatch *batch = &stage->batches[stage->idx];
+  VkCommandBuffer cmd = stage->cmds[stage->idx];
+  VkFence fence = stage->fences[stage->idx];
+
+  // check all images, transfer them into shader read stage
+  for(U64 i = 0; i < darray_size(batch->images); i++)
+  {
+    R_Vulkan_Image *image = batch->images[i];
+    Assert(image->gpu_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    // transfer image layout to shader read
+    r_vulkan_image_transition(cmd, image->h,
+                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
+                              VK_IMAGE_ASPECT_COLOR_BIT);
+    image->gpu_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  }
+
+  // end command buffer & submit
+  {
+    VkSubmitInfo si = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    si.commandBufferCount = 1;
+    si.pCommandBuffers = &cmd;
+    VK_Assert(vkEndCommandBuffer(cmd));
+    VK_Assert(vkResetFences(r_vulkan_ldevice()->h, 1, &fence));
+    VK_Assert(vkQueueSubmit(r_vulkan_state->logical_device.gfx_queue, 1, &si, fence));
+  }
+
+  Assert(batch->size > 0);
+  // flag batch
+  batch->submitted = 1;
+  // rotate stage idx
+  stage->idx = stage->idx%R_VULKAN_STAGING_IN_FLIGHT_COUNT;
+}
+
+internal void
+r_vulkan_stage_bump()
+{
+  // unpack stage buffer
+  R_Vulkan_Stage *stage = &r_vulkan_state->stage;
+  VkCommandBuffer cmd = stage->cmds[stage->idx];
+  R_Vulkan_StagingBatch *batch = &stage->batches[stage->idx];
+
+  // bump tail
+  for(U64 stage_idx = stage->idx, i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; stage_idx = (stage_idx+1)%R_VULKAN_STAGING_IN_FLIGHT_COUNT, i++)
+  {
+    R_Vulkan_StagingBatch *batch = &stage->batches[stage_idx];
+
+    // if-flight/dirty? -> check fence
+    if(batch->submitted)
+    {
+      VkFence fence = stage->fences[stage_idx];
+      VkResult r = vkGetFenceStatus(r_vulkan_ldevice()->h, fence);
+
+      // stage batch done? -> move tail & reset status
+      if(r == VK_SUCCESS)
+      {
+        stage->ring.tail = batch->end;
+
+        // reset batch state
+        MemoryZeroStruct(batch);
+      }
+      else
+      {
+        break;
+      }
+    }
+  }
+}
+
+internal void
+r_vulkan_stage_copy_image(void *src, U64 size, R_Vulkan_Image *dst, Vec3S32 offset, Vec3S32 extent)
+{
+  B32 touched_this_frame = r_vulkan_state->stage.last_touch_frame_index == r_vulkan_state->frame_index;
+  if(!touched_this_frame)
+  {
+    r_vulkan_stage_begin();
+  }
+
+  // unpack batch
+  R_Vulkan_Stage *stage = &r_vulkan_state->stage;
+  VkBuffer staging_buffer = r_vulkan_state->stage.ring.buffer;
+  R_Vulkan_StagingBatch *batch = &stage->batches[stage->idx];
+  VkCommandBuffer cmd = stage->cmds[stage->idx];
+
+  // alloc a ring slice
+  R_Vulkan_StagingSlice slice = r_vulkan_staging_slice_from_size(size, 4);
+  // FIXME: keep bumping if more space is needed, we may need to submit early for works this frame
+  // also assert the size if smaller than the total size of ring
+  AssertAlways(slice.size == size);
+
+  // copy data to stage buffer
+  MemoryCopy(slice.ptr, src, size);
+
+  // fill batch
+  B32 batch_touched_this_frame = batch->size != 0;
+  if(batch_touched_this_frame) batch->start = slice.offset;
+  batch->end = slice.offset+slice.size;
+  batch->size += slice.size;
+
+  B32 image_first_copy_this_frame = dst->gpu_layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+  // issue copy command
+  { 
+    if(image_first_copy_this_frame)
+    {
+      // There is actually a special type of image layout that supports all operations, VK_IMAGE_LAYOUT_GENERAL
+      // The problem with it, of course, is that it doesn't necessarily offer the best performance for any operation
+      // It is required for some special cases, like using an image as both input and output, or for reading an image after it has left the preinitialized layout
+      r_vulkan_image_transition(cmd, dst->h,
+                                dst->gpu_layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+                                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                VK_IMAGE_ASPECT_COLOR_BIT);
+      dst->gpu_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    }
+
+    VkBufferImageCopy region =
+    {
+      .bufferOffset = slice.offset,
+      // These two fields specify how the pixels are laid out in memory
+      // For example, you could have some padding bytes between rows of the image
+      // Specifying 0 for both indicates that the pixels are simply tightly packed like they are in our case
+      // The imageSubresource, imageOffset and imageExtent fields indicate to which part of the image we want to copy the pixels
+      .bufferRowLength = 0,
+      .bufferImageHeight = 0,
+      .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+      .imageSubresource.mipLevel = 0,
+      .imageSubresource.baseArrayLayer = 0,
+      .imageSubresource.layerCount = 1,
+      .imageOffset = {offset.x, offset.y, offset.z}, // These two fields indicate to which part of the image we want to copy the pixels
+      .imageExtent = {extent.x, extent.y, extent.z},
+    };
+
+    // it's possible to specify an array of VkBufferImageCopy to perform many different copies from this buffer to the image in on operation 
+    vkCmdCopyBufferToImage(cmd, staging_buffer, dst->h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+  }
+
+  // push image list
+  if(image_first_copy_this_frame) darray_push(r_vulkan_state->frame_arena, batch->images, dst);
 }
 
 ////////////////////////////////
 //~ Vulkan Resource Allocation
 //
-
 
 //- swapchain
 
@@ -3356,6 +3549,7 @@ r_init(OS_Handle window, B32 debug)
   Arena *arena = arena_alloc();
   r_vulkan_state = push_array(arena, R_Vulkan_State, 1);
   r_vulkan_state->arena = arena;
+  r_vulkan_state->frame_arena = arena_alloc();
   r_vulkan_state->debug = debug;
   r_vulkan_state->device_rw_mutex = rw_mutex_alloc();
   Temp scratch = scratch_begin(0,0);
@@ -4467,6 +4661,8 @@ r_hook R_Handle
 r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, R_Tex2DFormat format, void *data)
 {
   ProfBeginFunction();
+
+  // alloc
   R_Vulkan_Tex2D *texture = 0;
   {
     texture = r_vulkan_state->first_free_tex2d;
@@ -4486,9 +4682,9 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
   texture->image.extent.height = size.y;
   texture->format = format;
 
+  // decide image bytes size
   VkDeviceSize vk_image_size = size.x * size.y;
   VkFormat vk_image_format = 0;
-
   switch(format)
   {
     case R_Tex2DFormat_R8:    {vk_image_format = VK_FORMAT_R8_UNORM;}break;
@@ -4496,95 +4692,11 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
     default:                  {InvalidPath;}break;
   }
   texture->image.format = vk_image_format;
-
-  R_Vulkan_Stage *stage = &r_vulkan_state->stage;
-  VkCommandBuffer cmd = stage->cmds[stage->idx];
-  VkFence fence = stage->fences[stage->idx];
-  ProfScope("wait fence") VK_Assert(vkWaitForFences(r_vulkan_ldevice()->h, 1, &fence, VK_TRUE, UINT64_MAX));
+  texture->image.gpu_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
   ////////////////////////////////
-  //~ Unpack staging batch
+  //~ Create the gpu device local buffer
 
-  R_Vulkan_StagingBatch *batch = &stage->batches[stage->idx];
-
-  B32 first_upload_this_frame = 0;
-  // start stage command buffer recording if not already
-  if(stage->last_touch_frame_index != r_vulkan_state->frame_index || batch->size == 0) ProfScope("begin record & pump tail")
-  {
-    first_upload_this_frame = 1;
-    stage->last_touch_frame_index = r_vulkan_state->frame_index;
-    cmd = stage->cmds[stage->idx];
-
-    // begin recording
-    VkCommandBufferBeginInfo begin_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-    begin_info.pInheritanceInfo = 0;
-    // if the command buffer was already recorded once, then a call to vkBeginCommandBuffer will implicity reset it
-    VK_Assert(vkBeginCommandBuffer(cmd, &begin_info));
-
-    // pump head or tail
-    R_Vulkan_StagingBatch *batches[R_VULKAN_STAGING_IN_FLIGHT_COUNT] = {0};
-    for(U64 i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; i++)
-    {
-      batches[i] = &stage->batches[i];
-    }
-    // intersection sort
-    for(U64 i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; i++)
-    {
-      R_Vulkan_StagingBatch *batch = batches[i];
-      int j = i-1;
-      while(j >= 0 && batches[j]->size != 0 && batches[j]->start > batch->start)
-      {
-        batches[j+1] = batches[j];
-        j--;
-      }
-      batches[j+1] = batch;
-    }
-
-    // TODO(Next): move pump to the beginning of frame
-    // TODO(Next): if we want to be percise, we want to wait on fence from 2 frames ago to ensure image uploaded 2 frames ago can be used in this frame
-    for(U64 i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; i++)
-    {
-      R_Vulkan_StagingBatch *batch = batches[i];
-      // if-flight? -> check fence
-      if(batch->size != 0)
-      {
-        VkFence fence = stage->fences[batch->fence_idx];
-        VkResult r = vkGetFenceStatus(r_vulkan_ldevice()->h, fence);
-        // done? -> move tail & reset status
-        if(r == VK_SUCCESS)
-        {
-          stage->ring.tail = batch->end;
-          batch->size = 0;
-        }
-        else
-        {
-          break;
-        }
-      }
-    }
-  }
-
-  ////////////////////////////////
-  //~ Alloc a ring slice
-
-  // FIXME: just alloc a gpu local buffer, if there is no data
-
-  R_Vulkan_StagingSlice slice = r_vulkan_staging_slice_from_size(vk_image_size, 4);
-  Assert(slice.size == vk_image_size);
-  // copy data
-  ProfScope("copy data")
-  // FIXME: just a hack for now
-  if(data) MemoryCopy(slice.ptr, data, vk_image_size);
-  VkBuffer staging_buffer = r_vulkan_state->stage.ring.buffer;
-
-  // fill batch
-  batch->size += slice.size;
-  if(first_upload_this_frame) batch->start = slice.offset;
-  batch->end = slice.offset+slice.size;
-  batch->fence_idx = stage->idx;
-
-  // Create the gpu device local buffer
   ProfScope("create gpu local buffer")
   {
 
@@ -4653,7 +4765,9 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
     VK_Assert(vkBindImageMemory(r_vulkan_state->logical_device.h, texture->image.h, texture->image.memory, 0));
   }
 
-  // Create image view
+  ////////////////////////////////
+  //~ Create image view
+
   VkImageViewCreateInfo ivci = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
   ivci.image                           = texture->image.h;
   ivci.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
@@ -4666,47 +4780,13 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
   VK_Assert(vkCreateImageView(r_vulkan_state->logical_device.h, &ivci, NULL, &texture->image.view));
 
   ////////////////////////////////
-  //~ Recording
+  //~ Has initial data? -> copy
 
+  if(data != 0)
   {
-    // Transition image layout 
-    // We don't care about its contents before performing the copy creation
-    // There is actually a special type of image layout that supports all operations, VK_IMAGE_LAYOUT_GENERAL
-    // The problem with it, of course, is that it doesn't necessarily offer the best performance for any operation
-    // It is required for some special cases, like using an image as both input and output, or for reading an image after it has left the preinitialized layout
-    r_vulkan_image_transition(cmd, texture->image.h,
-                              VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                              VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-                              VK_IMAGE_ASPECT_COLOR_BIT);
-
-    // Copy buffer to image
-    VkBufferImageCopy region =
-    {
-      .bufferOffset = slice.offset,
-      // These two fields specify how the pixels are laid out in memory
-      // For example, you could have some padding bytes between rows of the image
-      // Specifying 0 for both indicates that the pixels are simply tightly packed like they are in our case
-      // The imageSubresource, imageOffset and imageExtent fields indicate to which part of the image we want to copy the pixels
-      .bufferRowLength = 0,
-      .bufferImageHeight = 0,
-      .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-      .imageSubresource.mipLevel = 0,
-      .imageSubresource.baseArrayLayer = 0,
-      .imageSubresource.layerCount = 1,
-      // These two fields indicate to which part of the image we want to copy the pixels
-      .imageOffset = {0, 0, 0},
-      .imageExtent = {size.x, size.y, 1},
-    };
-
-    // it's possible to specify an array of VkBufferImageCopy to perform many different copies from this buffer to the image in on operation 
-    vkCmdCopyBufferToImage(cmd, staging_buffer, texture->image.h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-
-    r_vulkan_image_transition(cmd, texture->image.h,
-                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
-                              VK_IMAGE_ASPECT_COLOR_BIT);
+    Vec3S32 offset = {0,0,0};
+    Vec3S32 extent = {size.x, size.y, 1};
+    r_vulkan_stage_copy_image(data, vk_image_size, &texture->image, offset, extent);
   }
 
   // TODO(k): All of the helper functions that submit commands so far have been set up to execute synchronously by waiting for the queue to become idle
@@ -4714,6 +4794,9 @@ r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, 
   //     especially the transitions and copy in the create_texture_image function
   // We could experiment with this by creating a setup_command_buffer that the helper functions record commands into, and add a finish_setup_commands to execute the 
   //     the commands that have been recorded so far
+
+  ////////////////////////////////
+  //~ Create sampler
 
   // TODO(k): we could create two descriptor set for two types of sampler
   VkSampler *sampler = &r_vulkan_state->samplers[sample_kind];
@@ -4762,74 +4845,7 @@ r_fill_tex2d_region(R_Handle handle, Rng2S32 subrect, void *data)
 {
   R_Vulkan_Tex2D *texture = r_vulkan_tex2d_from_handle(handle);
 
-  // FIXME: move stage bump into a function
-  R_Vulkan_Stage *stage = &r_vulkan_state->stage;
-  VkCommandBuffer cmd = stage->cmds[stage->idx];
-  VkFence fence = stage->fences[stage->idx];
-  VK_Assert(vkWaitForFences(r_vulkan_ldevice()->h, 1, &fence, VK_TRUE, UINT64_MAX));
-
-  R_Vulkan_StagingBatch *batch = &stage->batches[stage->idx];
-  B32 first_upload_this_frame = 0;
-  // start stage command buffer recording if not already
-  if(stage->last_touch_frame_index != r_vulkan_state->frame_index || batch->size == 0) ProfScope("begin record & pump tail")
-  {
-    first_upload_this_frame = 1;
-    stage->last_touch_frame_index = r_vulkan_state->frame_index;
-    cmd = stage->cmds[stage->idx];
-
-    // begin recording
-    VkCommandBufferBeginInfo begin_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-    begin_info.pInheritanceInfo = 0;
-    // if the command buffer was already recorded once, then a call to vkBeginCommandBuffer will implicity reset it
-    VK_Assert(vkBeginCommandBuffer(cmd, &begin_info));
-
-    // pump head or tail
-    R_Vulkan_StagingBatch *batches[R_VULKAN_STAGING_IN_FLIGHT_COUNT] = {0};
-    for(U64 i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; i++)
-    {
-      batches[i] = &stage->batches[i];
-    }
-    // intersection sort
-    for(U64 i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; i++)
-    {
-      R_Vulkan_StagingBatch *batch = batches[i];
-      int j = i-1;
-      while(j >= 0 && batches[j]->size != 0 && batches[j]->start > batch->start)
-      {
-        batches[j+1] = batches[j];
-        j--;
-      }
-      batches[j+1] = batch;
-    }
-
-    // TODO(Next): move pump to the beginning of frame
-    // TODO(Next): if we want to be percise, we want to wait on fence from 2 frames ago to ensure image uploaded 2 frames ago can be used in this frame
-    for(U64 i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; i++)
-    {
-      R_Vulkan_StagingBatch *batch = batches[i];
-      // if-flight? -> check fence
-      if(batch->size != 0)
-      {
-        VkFence fence = stage->fences[batch->fence_idx];
-        VkResult r = vkGetFenceStatus(r_vulkan_ldevice()->h, fence);
-        // done? -> move tail & reset status
-        if(r == VK_SUCCESS)
-        {
-          stage->ring.tail = batch->end;
-          batch->size = 0;
-        }
-        else
-        {
-          break;
-        }
-      }
-    }
-  }
-
-  ////////////////////////////////
-  //~ Alloc a ring slice
-
+  // calc bytes size
   Vec2S32 dim = {subrect.x1-subrect.x0, subrect.y1-subrect.y0};
   U64 size = dim.x*dim.y;
   switch(texture->format)
@@ -4838,55 +4854,9 @@ r_fill_tex2d_region(R_Handle handle, Rng2S32 subrect, void *data)
     case R_Tex2DFormat_RGBA8:{size*=4;}break;
   }
 
-  R_Vulkan_StagingSlice slice = r_vulkan_staging_slice_from_size(size, 4);
-
-  // copy data
-  MemoryCopy(slice.ptr, data, size);
-  VkBuffer staging_buffer = r_vulkan_state->stage.ring.buffer;
-
-  // fill batch
-  batch->size += slice.size;
-  if(first_upload_this_frame) batch->start = slice.offset;
-  batch->end = slice.offset+slice.size;
-  batch->fence_idx = stage->idx;
-
-  ////////////////////////////////
-  //~ Issue copy command
-
-  // FIXME: this is not optimal, we could upload many times to one texture per frame
-  // we don't want to change it's layout back and forth
-  {
-    r_vulkan_image_transition(cmd, texture->image.h,
-                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-                              VK_IMAGE_ASPECT_COLOR_BIT);
-
-    // Copy buffer to image
-    VkBufferImageCopy region =
-    {
-      .bufferOffset = slice.offset,
-      .bufferRowLength = 0,
-      .bufferImageHeight = 0,
-      .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-      .imageSubresource.mipLevel = 0,
-      .imageSubresource.baseArrayLayer = 0,
-      .imageSubresource.layerCount = 1,
-      // These two fields indicate to which part of the image we want to copy the pixels
-      .imageOffset = {subrect.x0, subrect.y0, 0},
-      .imageExtent = {dim.x, dim.y, 1},
-    };
-
-    // it's possible to specify an array of VkBufferImageCopy to perform many different copies from this buffer to the image in on operation 
-    vkCmdCopyBufferToImage(cmd, staging_buffer, texture->image.h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-
-    r_vulkan_image_transition(cmd, texture->image.h,
-                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
-                              VK_IMAGE_ASPECT_COLOR_BIT);
-
-  }
+  Vec3S32 offset = {subrect.x0, subrect.y0, 0};
+  Vec3S32 extent = {dim.x, dim.y, 1};
+  r_vulkan_stage_copy_image(data, size, &texture->image, offset, extent);
 }
 
 //- rjf: buffers
@@ -5325,22 +5295,9 @@ r_hook void
 r_begin_frame(void)
 {
   // submit any stage works to gfx queue
+  if(r_vulkan_state->stage.last_touch_frame_index == r_vulkan_state->frame_index)
   {
-    R_Vulkan_Stage *stage = &r_vulkan_state->stage;
-    R_Vulkan_StagingBatch *batch = &stage->batches[stage->idx%R_VULKAN_STAGING_IN_FLIGHT_COUNT];
-    // submit if we have any stage works to do
-    if(stage->last_touch_frame_index == r_vulkan_state->frame_index)
-    {
-      VkCommandBuffer cmd = stage->cmds[stage->idx%R_VULKAN_STAGING_IN_FLIGHT_COUNT];
-      VkFence fence = stage->fences[stage->idx%R_VULKAN_STAGING_IN_FLIGHT_COUNT];
-      VkSubmitInfo si = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
-      si.commandBufferCount = 1;
-      si.pCommandBuffers = &cmd;
-      VK_Assert(vkEndCommandBuffer(cmd));
-      VK_Assert(vkResetFences(r_vulkan_ldevice()->h, 1, &fence));
-      VK_Assert(vkQueueSubmit(r_vulkan_state->logical_device.gfx_queue, 1, &si, fence));
-      stage->idx = stage->idx%R_VULKAN_STAGING_IN_FLIGHT_COUNT;
-    }
+    r_vulkan_stage_end();
   }
 }
 
@@ -5348,6 +5305,7 @@ r_hook void
 r_end_frame(void)
 {
   r_vulkan_state->frame_index++;
+  arena_clear(r_vulkan_state->frame_arena);
 }
 
 r_hook void

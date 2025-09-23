@@ -314,6 +314,7 @@ struct R_Vulkan_Image
   VkDeviceMemory memory;
   VkImageView view;
   VkExtent2D extent;
+  VkImageLayout gpu_layout;
 };
 
 typedef struct R_Vulkan_Swapchain R_Vulkan_Swapchain;
@@ -566,13 +567,17 @@ struct R_Vulkan_StagingSlice
   void *ptr; // mapped + offset
 };
 
+// per frame
 typedef struct R_Vulkan_StagingBatch R_Vulkan_StagingBatch;
 struct R_Vulkan_StagingBatch
 {
-  U64 fence_idx;
+  // per-upload state
   U64 size;
   U64 start;
   U64 end;
+  B32 submitted;
+  // per-frame artifacts (darray)
+  R_Vulkan_Image **images;
 };
 
 typedef struct R_Vulkan_Stage R_Vulkan_Stage;
@@ -582,7 +587,7 @@ struct R_Vulkan_Stage
   VkCommandBuffer cmds[R_VULKAN_STAGING_IN_FLIGHT_COUNT];
   VkFence fences[R_VULKAN_STAGING_IN_FLIGHT_COUNT];
   R_Vulkan_StagingBatch batches[R_VULKAN_STAGING_IN_FLIGHT_COUNT];
-  U64 idx; // in-flight index
+  U64 idx; // in-flight rotation index
   U64 last_touch_frame_index;
 };
 
@@ -597,6 +602,7 @@ struct R_Vulkan_State
   PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT;
 
   Arena                               *arena;
+  Arena                               *frame_arena;
   R_Vulkan_Window                     *first_free_window;
   R_Vulkan_Tex2D                      *first_free_tex2d;
   R_Vulkan_Buffer                     *first_free_buffer;
@@ -677,8 +683,13 @@ internal R_Handle         r_vulkan_handle_from_buffer(R_Vulkan_Buffer *buffer);
 ////////////////////////////////
 //~ Stage Ring Buffer Functions
 
-internal void r_vulkan_stage_init();
+internal void                  r_vulkan_stage_init();
 internal R_Vulkan_StagingSlice r_vulkan_staging_slice_from_size(U64 size, U64 alignment);
+internal U64                   r_vulkan_free_size_from_staging_ring(U64 alignment);
+internal void                  r_vulkan_stage_begin();
+internal void                  r_vulkan_stage_end();
+internal void                  r_vulkan_stage_bump();
+internal void                  r_vulkan_stage_copy_image(void *src, U64 size, R_Vulkan_Image *dst, Vec3S32 offset, Vec3S32 extent);
 
 ////////////////////////////////
 //~ Vulkan Resource Allocation
@@ -718,7 +729,7 @@ internal R_Vulkan_Pipeline       r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kin
 internal VkSampler               r_vulkan_sampler2d(R_Tex2DSampleKind kind);
 
 //- helpers
-internal S32 r_vulkan_memory_index_from_type_filer(U32 type_bits, VkMemoryPropertyFlags properties);
+internal S32                     r_vulkan_memory_index_from_type_filer(U32 type_bits, VkMemoryPropertyFlags properties);
 
 //- instance buffers
 
