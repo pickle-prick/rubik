@@ -24,7 +24,7 @@ UI_IconKind;
 typedef struct UI_IconInfo UI_IconInfo;
 struct UI_IconInfo
 {
-  F_Tag   icon_font;
+  FNT_Tag icon_font;
   String8 icon_kind_text_map[UI_IconKind_COUNT];
 };
 
@@ -402,23 +402,23 @@ struct UI_Box
   UI_Size                      pref_size[Axis2_COUNT];
   Axis2                        child_layout_axis;
   U64                          child_count;
-  F_Tag                        font;
+  FNT_Tag                      font;
   U64                          font_size;
   U64                          tab_size;
-  F_RasterFlags                text_raster_flags;
+  FNT_RasterFlags              text_raster_flags;
   F32                          corner_radii[Corner_COUNT];
   F32                          transparency;
   F32                          squish;
   F32                          text_padding;
   UI_Palette                   *palette;
-  D_Bucket                     *draw_bucket;
+  DR_Bucket                    *draw_bucket;
   UI_BoxCustomDrawFunctionType *custom_draw;
   void                         *custom_draw_user_data;
   OS_Cursor                    hover_cursor;
 
   // Per-build artifacts
   Rng2F32                      rect;
-  D_FancyRunList               display_string_runs;
+  DR_FRunList                  display_string_runs;
   Vec2F32                      fixed_position_animated;
   Vec2F32                      position_delta;
   R_Handle                     albedo_tex;
@@ -826,7 +826,7 @@ internal void     ui_select_state(UI_State *state);
 internal Arena             *ui_build_arena(void);
 internal OS_Handle         ui_window(void);
 internal UI_EventList      *ui_events(void);
-internal F_Tag             ui_icon_font(void);
+internal FNT_Tag           ui_icon_font(void);
 internal String8           ui_icon_string_from_kind(UI_IconKind icon_kind);
 internal Vec2F32           ui_mouse(void);
 internal F32               ui_dt(void);
@@ -885,7 +885,7 @@ internal UI_Box *ui_build_box_from_stringf(UI_BoxFlags flags, char *fmt, ...);
 
 //- rjf: box node equipment
 internal inline void       ui_box_equip_display_string(UI_Box *box, String8 string);
-internal inline void       ui_box_equip_draw_bucket(UI_Box *box, D_Bucket *bucket);
+internal inline void       ui_box_equip_draw_bucket(UI_Box *box, DR_Bucket *bucket);
 internal inline void       ui_box_equip_custom_draw(UI_Box *box, UI_BoxCustomDrawFunctionType *custom_draw, void *user_data);
 
 //- rjf: box accessors / queries

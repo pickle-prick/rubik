@@ -1,22 +1,29 @@
 #ifndef RENDER_CORE_H
 #define RENDER_CORE_H
 
+#define r_hook C_LINKAGE
+
 ////////////////////////////////
-//~ some limits/constants
+//~ rjf: Generated Code
+
+#include "generated/render.meta.h"
+
+////////////////////////////////
+//~ Limits & Constants
 
 // support max 2 rect pass per frame
-#define MAX_RECT_PASS 2
-#define MAX_RECT_GROUPS 3000
-#define MAX_GEO2D_PASS 1
+#define R_MAX_RECT_PASS 2
+#define R_MAX_RECT_GROUPS 6000
+#define R_MAX_GEO2D_PASS 1
 // support max 3 geo3d pass per frame
-#define MAX_GEO3D_PASS 3
-#define MAX_JOINTS_PER_PASS 3000
-#define MAX_LIGHTS_PER_PASS 3000
-#define MAX_MATERIALS_PER_PASS 30000
+#define R_MAX_GEO3D_PASS 2
+#define R_MAX_JOINTS_PER_PASS 3000
+#define R_MAX_LIGHTS_PER_PASS 3000
+#define R_MAX_MATERIALS_PER_PASS 3000
 // inst count limits
-#define MAX_RECT_INSTANCES 90000
-#define MAX_MESH2D_INSTANCES 60000
-#define MAX_MESH3D_INSTANCES 60000
+#define R_MAX_RECT_INSTANCES 90000
+#define R_MAX_MESH2D_INSTANCES 3000
+#define R_MAX_MESH3D_INSTANCES 3000
 
 ////////////////////////////////
 //~ rjf: Enums
@@ -30,78 +37,6 @@ enum
   R_GeoVertexFlag_RGBA     = (1 << 3),
 };
 
-typedef enum R_Tex2DFormat
-{
-  R_Tex2DFormat_R8,
-  R_Tex2DFormat_RG8,
-  R_Tex2DFormat_RGBA8,
-  R_Tex2DFormat_BGRA8,
-  R_Tex2DFormat_R16,
-  R_Tex2DFormat_RGBA16,
-  R_Tex2DFormat_R32,
-  R_Tex2DFormat_RG32,
-  R_Tex2DFormat_RGBA32,
-  R_Tex2DFormat_COUNT,
-} R_Tex2DFormat;
-
-typedef enum R_ResourceKind
-{
-  R_ResourceKind_Static,
-  R_ResourceKind_Dynamic,
-  R_ResourceKind_Stream,
-  R_ResourceKind_COUNT,
-} R_ResourceKind;
-
-typedef enum R_Tex2DSampleKind
-{
-  R_Tex2DSampleKind_Nearest,
-  R_Tex2DSampleKind_Linear,
-  R_Tex2DSampleKind_COUNT,
-} R_Tex2DSampleKind;
-
-typedef enum R_GeoTopologyKind
-{
-  R_GeoTopologyKind_Lines,
-  R_GeoTopologyKind_LineStrip,
-  R_GeoTopologyKind_Triangles,
-  R_GeoTopologyKind_TriangleStrip,
-  R_GeoTopologyKind_COUNT,
-} R_GeoTopologyKind;
-
-typedef enum R_GeoPolygonKind
-{
-  R_GeoPolygonKind_Fill,
-  R_GeoPolygonKind_Line,
-  R_GeoPolygonKind_Point,
-  R_GeoPolygonKind_COUNT,
-} R_GeoPolygonKind;
-
-typedef enum R_GeoTexKind
-{
-  R_GeoTexKind_Ambient,
-  R_GeoTexKind_Emissive,
-  R_GeoTexKind_Diffuse,
-  R_GeoTexKind_Specular,
-  R_GeoTexKind_SpecularPower,
-  R_GeoTexKind_Normal,
-  R_GeoTexKind_Bump,
-  R_GeoTexKind_Opacity,
-  R_GeoTexKind_COUNT,
-} R_GeoTexKind;
-
-// NOTE(k): whenever you change this enum, you will also need to change r_pass_kind_batch_table & r_pass_kind_params_size_table
-typedef enum R_PassKind
-{
-  R_PassKind_UI,
-  R_PassKind_Blur,
-  R_PassKind_Noise,
-  R_PassKind_Edge,
-  R_PassKind_Crt,
-  R_PassKind_Geo2D,
-  R_PassKind_Geo3D,
-  R_PassKind_COUNT,
-} R_PassKind;
-
 ////////////////////////////////
 //~ rjf: Handle Type
 
@@ -114,9 +49,23 @@ union R_Handle
 };
 
 ////////////////////////////////
-//~ rjf: Primitive Types
-typedef struct R_Vertex R_Vertex; 
-struct R_Vertex
+//~ k: Geo3D Types
+
+typedef enum R_Geo3D_TexKind
+{
+  R_Geo3D_TexKind_Ambient,
+  R_Geo3D_TexKind_Emissive,
+  R_Geo3D_TexKind_Diffuse,
+  R_Geo3D_TexKind_Specular,
+  R_Geo3D_TexKind_SpecularPower,
+  R_Geo3D_TexKind_Normal,
+  R_Geo3D_TexKind_Bump,
+  R_Geo3D_TexKind_Opacity,
+  R_Geo3D_TexKind_COUNT,
+} R_Geo3D_TexKind;
+
+typedef struct R_Geo3D_Vertex R_Geo3D_Vertex; 
+struct R_Geo3D_Vertex
 {
   Vec3F32 pos;  
   Vec3F32 nor;
@@ -127,57 +76,8 @@ struct R_Vertex
   Vec4F32 weights; // morph target weights
 };
 
-////////////////////////////////
-//~ rjf: Instance Types
-
-typedef struct R_Rect2DInst R_Rect2DInst;
-struct R_Rect2DInst
-{
-  Rng2F32 dst;
-  Rng2F32 src;
-  Vec4F32 colors[Corner_COUNT];
-  F32 corner_radii[Corner_COUNT];
-  F32 border_thickness;
-  F32 edge_softness;
-  F32 white_texture_override;
-  F32 omit_texture;
-  Vec4F32 line;
-};
-
-typedef struct R_Mesh2DInst R_Mesh2DInst;
-struct R_Mesh2DInst
-{
-  Mat4x4F32 xform;
-  Mat4x4F32 xform_inv;
-  U64       key;
-  B32       has_texture;
-  Vec4F32   color;
-  B32       has_color;
-  B32       draw_edge;
-};
-
-typedef struct R_Mesh3DInst R_Mesh3DInst;
-struct R_Mesh3DInst
-{
-  // TODO(k): kind a mess here, some attributes were sent to instance buffer, some were copied to storage buffer 
-  Mat4x4F32 xform;
-  Mat4x4F32 xform_inv;
-  U64       key;
-  U32       material_idx;
-  B32       draw_edge;
-  // NOTE(k): joint_xforms is stored in storage buffer instead of instance buffer
-  Mat4x4F32 *joint_xforms;
-  U32       joint_count;
-  U32       first_joint;
-  B32       depth_test;
-  B32       omit_light;
-};
-
-////////////////////////////////
-//~ k: Some basic types
-
-typedef struct R_Light3D R_Light3D;
-struct R_Light3D
+typedef struct R_Geo3D_Light R_Geo3D_Light;
+struct R_Geo3D_Light
 {
   // position for point and spot lights (world space)
   Vec4F32 position_ws;
@@ -199,8 +99,8 @@ struct R_Light3D
   U32 kind;
 };
 
-typedef struct R_Material3D R_Material3D;
-struct R_Material3D
+typedef struct R_Geo3D_Material R_Geo3D_Material;
+struct R_Geo3D_Material
 {
   // textures
   B32 has_ambient_texture;
@@ -233,10 +133,56 @@ struct R_Material3D
   F32 _padding_0[2];
 };
 
-typedef struct R_PackedTextures R_PackedTextures;
-struct R_PackedTextures
+typedef struct R_Geo3D_PackedTextures R_Geo3D_PackedTextures;
+struct R_Geo3D_PackedTextures
 {
-  R_Handle array[R_GeoTexKind_COUNT];
+  R_Handle array[R_Geo3D_TexKind_COUNT];
+};
+
+////////////////////////////////
+//~ rjf: Instance Types
+
+typedef struct R_Rect2DInst R_Rect2DInst;
+struct R_Rect2DInst
+{
+  Rng2F32 dst;
+  Rng2F32 src;
+  Vec4F32 colors[Corner_COUNT];
+  F32 corner_radii[Corner_COUNT];
+  F32 border_thickness;
+  F32 edge_softness;
+  F32 white_texture_override;
+  F32 omit_texture;
+  Vec4F32 line;
+};
+
+typedef struct R_Mesh2DInst R_Mesh2DInst;
+struct R_Mesh2DInst
+{
+  Mat4x4F32 xform;
+  Mat4x4F32 xform_inv;
+  U64 key;
+  B32 has_texture;
+  Vec4F32 color;
+  B32 has_color;
+  B32 draw_edge;
+};
+
+typedef struct R_Mesh3DInst R_Mesh3DInst;
+struct R_Mesh3DInst
+{
+  // TODO(k): kind a mess here, some attributes were sent to instance buffer, some were copied to storage buffer 
+  Mat4x4F32 xform;
+  Mat4x4F32 xform_inv;
+  U64 key;
+  U32 material_idx;
+  B32 draw_edge;
+  // NOTE(k): joint_xforms is stored in storage buffer instead of instance buffer
+  Mat4x4F32 *joint_xforms;
+  U32 joint_count;
+  U32 first_joint;
+  B32 depth_test;
+  B32 omit_light;
 };
 
 ////////////////////////////////
@@ -297,37 +243,33 @@ struct R_BatchGroupRectList
 typedef struct R_BatchGroup3DParams R_BatchGroup3DParams;
 struct R_BatchGroup3DParams
 {
-  R_Handle          mesh_vertices;
-  R_Handle          mesh_indices;
-  U64               vertex_buffer_offset;
-  U64               indice_buffer_offset;
-  U64               indice_count;
+  R_Handle mesh_vertices;
+  R_Handle mesh_indices;
+  U64 vertex_buffer_offset;
+  U64 indice_buffer_offset;
+  U64 indice_count;
   R_GeoTopologyKind mesh_geo_topology;
-  R_GeoPolygonKind  mesh_geo_polygon;
-  R_GeoVertexFlags  mesh_geo_vertex_flags;
-  F32               line_width;
-
-  // material index
-  U64               mat_idx;
-  // NOTE(k): do we need sample kind for other texture (e.g. normal, emissive)
-  // textures
+  R_GeoPolygonKind mesh_geo_polygon;
+  R_GeoVertexFlags mesh_geo_vertex_flags;
+  F32 line_width;
+  U64 mat_idx;
   R_Tex2DSampleKind diffuse_tex_sample_kind;
+  // Mat4x4F32 xform;
 };
 
 typedef struct R_BatchGroup2DParams R_BatchGroup2DParams;
 struct R_BatchGroup2DParams
 {
-  R_Handle          vertices;
-  R_Handle          indices;
-  U64               vertex_buffer_offset;
-  U64               indice_buffer_offset;
-  U64               indice_count;
+  R_Handle vertices;
+  R_Handle indices;
+  U64 vertex_buffer_offset;
+  U64 indice_buffer_offset;
+  U64 indice_count;
   R_GeoTopologyKind topology;
-  R_GeoPolygonKind  polygon;
-  R_GeoVertexFlags  vertex_flags;
-  F32               line_width;
-
-  R_Handle          tex;
+  R_GeoPolygonKind polygon;
+  R_GeoVertexFlags vertex_flags;
+  F32 line_width;
+  R_Handle tex;
   R_Tex2DSampleKind tex_sample_kind;
 };
 
@@ -335,6 +277,7 @@ typedef struct R_BatchGroup2DMapNode R_BatchGroup2DMapNode;
 struct R_BatchGroup2DMapNode
 {
   R_BatchGroup2DMapNode *next;
+  // FIXME: insertion order?
   R_BatchGroup2DMapNode *insert_next;
   R_BatchGroup2DMapNode *insert_prev;
   U64 hash;
@@ -345,10 +288,9 @@ struct R_BatchGroup2DMapNode
 typedef struct R_BatchGroup2DMap R_BatchGroup2DMap;
 struct R_BatchGroup2DMap
 {
-  // hashmap
   R_BatchGroup2DMapNode **slots;
   U64 slots_count;
-
+  // FIXME
   // NOTE(k): list in insertion order
   R_BatchGroup2DMapNode *first;
   R_BatchGroup2DMapNode *last;
@@ -359,6 +301,7 @@ typedef struct R_BatchGroup3DMapNode R_BatchGroup3DMapNode;
 struct R_BatchGroup3DMapNode
 {
   R_BatchGroup3DMapNode *next;
+  // FIXME: insertion order?
   R_BatchGroup3DMapNode *insert_next;
   R_BatchGroup3DMapNode *insert_prev;
   U64 hash;
@@ -372,7 +315,7 @@ struct R_BatchGroup3DMap
   // hashmap
   R_BatchGroup3DMapNode **slots;
   U64 slots_count;
-
+  // FIXME
   // NOTE(k): list in insertion order
   R_BatchGroup3DMapNode *first;
   R_BatchGroup3DMapNode *last;
@@ -382,8 +325,8 @@ struct R_BatchGroup3DMap
 ////////////////////////////////
 //~ rjf: Pass Types
 
-typedef struct R_PassParams_UI R_PassParams_UI;
-struct R_PassParams_UI
+typedef struct R_PassParams_Rect R_PassParams_Rect;
+struct R_PassParams_Rect
 {
   R_BatchGroupRectList rects;
 };
@@ -422,10 +365,10 @@ struct R_PassParams_Crt
 typedef struct R_PassParams_Geo2D R_PassParams_Geo2D;
 struct R_PassParams_Geo2D
 {
-  Rng2F32           viewport;
-  Rng2F32           clip;
-  Mat4x4F32         view;
-  Mat4x4F32         projection;
+  Rng2F32 viewport;
+  Rng2F32 clip;
+  Mat4x4F32 view;
+  Mat4x4F32 projection;
 
   R_BatchGroup2DMap batches;
 };
@@ -433,22 +376,18 @@ struct R_PassParams_Geo2D
 typedef struct R_PassParams_Geo3D R_PassParams_Geo3D;
 struct R_PassParams_Geo3D
 {
-  Rng2F32           viewport;
-  Rng2F32           clip;
-  Mat4x4F32         view;
-  Mat4x4F32         projection;
+  Rng2F32 viewport;
+  Rng2F32 clip;
+  Mat4x4F32 view;
+  Mat4x4F32 projection;
   R_BatchGroup3DMap mesh_batches;
-  B32               omit_light;
-
-  R_Light3D         *lights;
-  U64               light_count;
-
-  R_PackedTextures  *textures;
-  R_Material3D      *materials;
-  U64               material_count;
-
-  // Debug purpose
-  B32               omit_grid;
+  B32 omit_light;
+  R_Geo3D_Light *lights;
+  U64 light_count;
+  R_Geo3D_PackedTextures *textures;
+  R_Geo3D_Material *materials;
+  U64 material_count;
+  B32 omit_grid;
 };
 
 typedef struct R_Pass R_Pass;
@@ -458,7 +397,7 @@ struct R_Pass
     union
     {
       void *params;
-      R_PassParams_UI *params_ui;
+      R_PassParams_Rect *params_rect;
       R_PassParams_Blur *params_blur;
       R_PassParams_Noise *params_noise;
       R_PassParams_Edge *params_edge;
@@ -484,54 +423,57 @@ struct R_PassList
 };
 
 ////////////////////////////////
+//~ rjf: Helpers
+
+internal Mat4x4F32 r_sample_channel_map_from_tex2dformat(R_Tex2DFormat fmt);
+
+////////////////////////////////
 //~ rjf: Handle Type Functions
 
 internal R_Handle r_handle_zero(void);
-internal B32      r_handle_match(R_Handle a, R_Handle b);
+internal B32 r_handle_match(R_Handle a, R_Handle b);
 
 ////////////////////////////////
 //~ rjf: Batch Type Functions
 
 internal R_BatchList r_batch_list_make(U64 instance_size);
-internal void        *r_batch_list_push_inst(Arena *arena, R_BatchList *list, U64 batch_inst_cap);
+internal void *r_batch_list_push_inst(Arena *arena, R_BatchList *list, U64 batch_inst_cap);
 
 ////////////////////////////////
 //~ rjf: Pass Type Functions
 
-internal R_Pass *r_pass_from_kind(Arena *arena, R_PassList *list, R_PassKind kind, B32 merge_pass);
+internal R_Pass *r_pass_from_kind(Arena *arena, R_PassList *list, R_PassKind kind);
 
 ////////////////////////////////
 //~ rjf: Backend Hooks
 
 //- rjf: top-level layer initialization
-internal void r_init(const char* app_name, OS_Handle window, bool debug);
+r_hook void              r_init(OS_Handle window, B32 debug);
 
 //- rjf: window setup/teardown
-internal R_Handle r_window_equip(OS_Handle os_wnd);
-internal void r_window_unequip(OS_Handle os_wnd, R_Handle window_equip);
+r_hook R_Handle          r_window_equip(OS_Handle window);
+r_hook void              r_window_unequip(OS_Handle window, R_Handle window_equip);
 
 //- rjf: textures
-// TODO(k): support calling within a r_frame boundary
-internal R_Handle r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, R_Tex2DFormat format, void *data);
-internal void     r_tex2d_release(R_Handle texture);
-// internal R_ResourceKind r_kind_from_tex2d(R_Handle texture);
-// internal Vec2S32 r_size_from_tex2d(R_Handle texture);
-// internal R_Tex2DFormat r_format_from_tex2d(R_Handle texture);
-// internal void r_fill_tex2d_region(R_Handle texture, Rng2S32 subrect, void *data);
+r_hook R_Handle          r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, R_Tex2DFormat format, void *data);
+r_hook void              r_tex2d_release(R_Handle texture);
+r_hook R_ResourceKind    r_kind_from_tex2d(R_Handle texture);
+r_hook Vec2S32           r_size_from_tex2d(R_Handle texture);
+r_hook R_Tex2DFormat     r_format_from_tex2d(R_Handle texture);
+r_hook void              r_fill_tex2d_region(R_Handle texture, Rng2S32 subrect, void *data);
 
 //- rjf: buffers
-internal R_Handle r_buffer_alloc(R_ResourceKind kind, U64 size, void *data, U64 data_size);
-internal void     r_buffer_release(R_Handle buffer);
-// NOTE(k): this function should be called within r_frame boundary
-internal void     r_buffer_copy(R_Handle buffer, void *data, U64 size);
+r_hook R_Handle          r_buffer_alloc(R_ResourceKind kind, U64 cap, void *data, U64 data_size);
+r_hook internal void     r_buffer_copy(R_Handle buffer, void *data, U64 size);
+r_hook void              r_buffer_release(R_Handle buffer);
 
 //- rjf: frame markers
-internal void r_begin_frame(void);
-internal void r_end_frame(void);
-internal void r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip);
-internal U64  r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr);
+r_hook void              r_begin_frame(void);
+r_hook void              r_end_frame(void);
+r_hook void              r_window_begin_frame(OS_Handle window, R_Handle window_equip);
+r_hook U64               r_window_end_frame(OS_Handle window, R_Handle window_equip, Vec2F32 mouse_ptr);
 
 //- rjf: render pass submission
-internal void r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes);
+r_hook void              r_window_submit(OS_Handle window, R_Handle window_equip, R_PassList *passes);
 
 #endif // RENDER_CORE_H

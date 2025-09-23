@@ -1,60 +1,65 @@
-// Copyright (c) 2024 Epic Games Tools
-// Licensed under the MIT license (https://opensource.org/license/mit/)
-
 #ifndef DRAW_H
 #define DRAW_H
 
 ////////////////////////////////
 //~ rjf: Fancy String Types
 
-typedef struct D_FancyString D_FancyString;
-struct D_FancyString
+typedef struct DR_FStrParams DR_FStrParams;
+struct DR_FStrParams
 {
-  F_Tag font;
-  String8 string;
+  FNT_Tag font;
+  FNT_RasterFlags raster_flags;
   Vec4F32 color;
   F32 size;
   F32 underline_thickness;
   F32 strikethrough_thickness;
 };
 
-typedef struct D_FancyStringNode D_FancyStringNode;
-struct D_FancyStringNode
+typedef struct DR_FStr DR_FStr;
+struct DR_FStr
 {
-  D_FancyStringNode *next;
-  D_FancyString v;
+  String8 string;
+  DR_FStrParams params;
 };
 
-typedef struct D_FancyStringList D_FancyStringList;
-struct D_FancyStringList
+typedef struct DR_FStrNode DR_FStrNode;
+struct DR_FStrNode
 {
-  D_FancyStringNode *first;
-  D_FancyStringNode *last;
+  DR_FStrNode *next;
+  DR_FStr v;
+};
+
+typedef struct DR_FStrList DR_FStrList;
+struct DR_FStrList
+{
+  DR_FStrNode *first;
+  DR_FStrNode *last;
   U64 node_count;
   U64 total_size;
 };
 
-typedef struct D_FancyRun D_FancyRun;
-struct D_FancyRun
+typedef struct DR_FRun DR_FRun;
+struct DR_FRun
 {
-  F_Run run;
+  FNT_Run run;
   Vec4F32 color;
   F32 underline_thickness;
   F32 strikethrough_thickness;
+  B32 icon;
 };
 
-typedef struct D_FancyRunNode D_FancyRunNode;
-struct D_FancyRunNode
+typedef struct DR_FRunNode DR_FRunNode;
+struct DR_FRunNode
 {
-  D_FancyRunNode *next;
-  D_FancyRun v;
+  DR_FRunNode *next;
+  DR_FRun v;
 };
 
-typedef struct D_FancyRunList D_FancyRunList;
-struct D_FancyRunList
+typedef struct DR_FRunList DR_FRunList;
+struct DR_FRunList
 {
-  D_FancyRunNode *first;
-  D_FancyRunNode *last;
+  DR_FRunNode *first;
+  DR_FRunNode *last;
   U64 node_count;
   Vec2F32 dim;
 };
@@ -67,95 +72,99 @@ struct D_FancyRunList
 ////////////////////////////////
 //~ rjf: Draw Bucket Types
 
-typedef struct D_Bucket D_Bucket;
-struct D_Bucket
+typedef struct DR_Bucket DR_Bucket;
+struct DR_Bucket
 {
   R_PassList passes;
   U64 stack_gen;
   U64 last_cmd_stack_gen;
-  D_BucketStackDecls;
+  DR_BucketStackDecls;
 };
 
 ////////////////////////////////
 //~ rjf: Thread Context
 
-typedef struct D_BucketSelectionNode D_BucketSelectionNode;
-struct D_BucketSelectionNode
+typedef struct DR_BucketSelectionNode DR_BucketSelectionNode;
+struct DR_BucketSelectionNode
 {
-  D_BucketSelectionNode *next;
-  D_Bucket *bucket;
+  DR_BucketSelectionNode *next;
+  DR_Bucket *bucket;
 };
 
-typedef struct D_ThreadCtx D_ThreadCtx;
-struct D_ThreadCtx
+typedef struct DR_ThreadCtx DR_ThreadCtx;
+struct DR_ThreadCtx
 {
   Arena *arena;
   U64 arena_frame_start_pos;
-  D_BucketSelectionNode *top_bucket;
-  D_BucketSelectionNode *free_bucket_selection;
+  DR_BucketSelectionNode *top_bucket;
+  DR_BucketSelectionNode *free_bucket_selection;
 };
 
 ////////////////////////////////
 //~ rjf: Globals
 
-thread_static D_ThreadCtx *d_thread_ctx = 0;
+thread_static DR_ThreadCtx *dr_thread_ctx = 0;
 
 ////////////////////////////////
 //~ rjf: Basic Helpers
 
-internal U64 d_hash_from_string(String8 string);
+internal U64 dr_hash_from_string(String8 string);
 
 ////////////////////////////////
 //~ rjf: Fancy String Type Functions
 
-internal void d_fancy_string_list_push(Arena *arena, D_FancyStringList *list, D_FancyString *str);
-internal void d_fancy_string_list_concat_in_place(D_FancyStringList *dst, D_FancyStringList *to_push);
-internal String8 d_string_from_fancy_string_list(Arena *arena, D_FancyStringList *list);
-internal D_FancyRunList d_fancy_run_list_from_fancy_string_list(Arena *arena, F32 tab_size_px, F_RasterFlags flags, D_FancyStringList *strs);
-internal D_FancyRunList d_fancy_run_list_copy(Arena *arena, D_FancyRunList *src);
+internal void dr_fstrs_push(Arena *arena, DR_FStrList *list, DR_FStr *str);
+internal void dr_fstrs_push_new_(Arena *arena, DR_FStrList *list, DR_FStrParams *params, DR_FStrParams *overrides, String8 string);
+#define dr_fstrs_push_new(arena, list, params, string, ...) dr_fstrs_push_new_((arena), (list), (params), &(DR_FStrParams){.size = 0, __VA_ARGS__}, (string))
+internal void dr_fstrs_concat_in_place(DR_FStrList *dst, DR_FStrList *to_push);
+internal DR_FStrList dr_fstrs_copy(Arena *arena, DR_FStrList *src);
+internal String8 dr_string_from_fstrs(Arena *arena, DR_FStrList *list);
+internal FuzzyMatchRangeList dr_fuzzy_match_find_from_fstrs(Arena *arena, DR_FStrList *fstrs, String8 needle);
+internal DR_FRunList dr_fruns_from_fstrs(Arena *arena, F32 tab_size_px, DR_FStrList *strs);
+internal Vec2F32 dr_dim_from_fstrs(F32 tab_size_px, DR_FStrList *fstrs);
 
 ////////////////////////////////
 //~ rjf: Top-Level API
 //
 // (Frame boundaries & bucket submission)
 
-internal void d_begin_frame(void);
-internal void d_submit_bucket(OS_Handle os_window, R_Handle r_window, D_Bucket *bucket);
+internal void dr_begin_frame(void);
+internal void dr_submit_bucket(OS_Handle os_window, R_Handle r_window, DR_Bucket *bucket);
 
 ////////////////////////////////
 //~ rjf: Bucket Construction & Selection API
 //
 // (Bucket: Handle to sequence of many render passes, constructed by this layer)
 
-internal D_Bucket *d_bucket_make(void);
-internal B32 d_bucket_is_empty(D_Bucket *bucket);
-internal void d_push_bucket(D_Bucket *bucket);
-internal void d_pop_bucket(void);
-internal D_Bucket *d_top_bucket(void);
-#define D_BucketScope(b) DeferLoop(d_push_bucket(b), d_pop_bucket())
+internal DR_Bucket *dr_bucket_make(void);
+internal void dr_push_bucket(DR_Bucket *bucket);
+internal void dr_pop_bucket(void);
+internal DR_Bucket *dr_top_bucket(void);
+internal B32 dr_bucket_is_empty(DR_Bucket *bucket);
+#define DR_BucketScope(b) DeferLoop(dr_push_bucket(b), dr_pop_bucket())
 
 ////////////////////////////////
 //~ rjf: Bucket Stacks
 //
 // (Pushing/popping implicit draw parameters)
 
-internal R_Tex2DSampleKind          d_push_tex2d_sample_kind(R_Tex2DSampleKind v);
-internal Mat3x3F32                  d_push_xform2d(Mat3x3F32 v);
-internal Rng2F32                    d_push_clip(Rng2F32 v);
-internal F32                        d_push_transparency(F32 v);
-internal R_Tex2DSampleKind          d_pop_tex2d_sample_kind(void);
-internal Mat3x3F32                  d_pop_xform2d(void);
-internal Rng2F32                    d_pop_clip(void);
-internal F32                        d_pop_transparency(void);
-internal R_Tex2DSampleKind          d_top_tex2d_sample_kind(void);
-internal Mat3x3F32                  d_top_xform2d(void);
-internal Rng2F32                    d_top_clip(void);
-internal F32                        d_top_transparency(void);
+internal R_Tex2DSampleKind          dr_push_tex2d_sample_kind(R_Tex2DSampleKind v);
+internal Mat3x3F32                  dr_push_xform2d(Mat3x3F32 v);
+internal Rng2F32                    dr_push_clip(Rng2F32 v);
+internal F32                        dr_push_transparency(F32 v);
+internal R_Tex2DSampleKind          dr_pop_tex2d_sample_kind(void);
+internal Mat3x3F32                  dr_pop_xform2d(void);
+internal Rng2F32                    dr_pop_clip(void);
+internal F32                        dr_pop_transparency(void);
+internal R_Tex2DSampleKind          dr_top_tex2d_sample_kind(void);
+internal Mat3x3F32                  dr_top_xform2d(void);
+internal Rng2F32                    dr_top_clip(void);
+internal F32                        dr_top_transparency(void);
 
-#define D_Tex2DSampleKindScope(v)   DeferLoop(d_push_tex2d_sample_kind(v), d_pop_tex2d_sample_kind())
-#define D_XForm2DScope(v)           DeferLoop(d_push_xform2d(v), d_pop_xform2d())
-#define D_ClipScope(v)              DeferLoop(d_push_clip(v), d_pop_clip())
-#define D_TransparencyScope(v)      DeferLoop(d_push_transparency(v), d_pop_transparency())
+#define DR_Tex2DSampleKindScope(v)   DeferLoop(dr_push_tex2d_sample_kind(v), dr_pop_tex2d_sample_kind())
+#define DR_XForm2DScope(v)           DeferLoop(dr_push_xform2d(v), dr_pop_xform2d())
+#define DR_ClipScope(v)              DeferLoop(dr_push_clip(v), dr_pop_clip())
+#define DR_TransparencyScope(v)      DeferLoop(dr_push_transparency(v), dr_pop_transparency())
 
 ////////////////////////////////
 //~ rjf: Core Draw Calls
@@ -163,16 +172,16 @@ internal F32                        d_top_transparency(void);
 // (Apply to the calling thread's currently selected bucket)
 
 //- rjf: rectangles
-internal inline R_Rect2DInst* d_rect(Rng2F32 dst, Vec4F32 color, F32 corner_radius, F32 border_thickness, F32 edge_softness);
-
-//- rjf: lines
-internal inline R_Rect2DInst* d_line(Vec2F32 a, Vec2F32 b, Vec4F32 color, F32 line_thickness, F32 edge_softness);
+internal inline R_Rect2DInst *dr_rect(Rng2F32 dst, Vec4F32 color, F32 corner_radius, F32 border_thickness, F32 edge_softness);
 
 //- rjf: images
-internal inline R_Rect2DInst* d_img(Rng2F32 dst, Rng2F32 src, R_Handle texture, Vec4F32 color, F32 corner_radius, F32 border_thickness, F32 edge_softness);
+internal inline R_Rect2DInst *dr_img(Rng2F32 dst, Rng2F32 src, R_Handle texture, Vec4F32 color, F32 corner_radius, F32 border_thickness, F32 edge_softness);
+
+//- k: lines
+internal inline R_Rect2DInst* dr_line(Vec2F32 a, Vec2F32 b, Vec4F32 color, F32 line_thickness, F32 edge_softness);
 
 //- rjf: blurs
-internal R_PassParams_Blur *d_blur(Rng2F32 rect, F32 blur_size, F32 corner_radius);
+internal R_PassParams_Blur *dr_blur(Rng2F32 rect, F32 blur_size, F32 corner_radius);
 
 //- k: noise
 internal R_PassParams_Noise *d_noise(Rng2F32 rect, F32 elapsed_secs);
@@ -184,27 +193,27 @@ internal R_PassParams_Edge *d_edge(F32 elapsed_secs);
 internal R_PassParams_Crt *d_crt(F32 warp, F32 scan, F32 elapsed_secs);
 
 //- rjf: 3d rendering pass params
-internal R_PassParams_Geo3D* d_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection);
-
-//- k: 2d rendering pass params
-internal R_PassParams_Geo2D* d_geo2d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection);
+internal R_PassParams_Geo3D *dr_geo3d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection);
 
 //- rjf: meshes
-internal R_Mesh3DInst* d_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, U64 vertex_buffer_offset, U64 indice_buffer_offset, U64 indice_count, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags, Mat4x4F32 *joint_xforms, U64 joint_count, U64 mat_idx, F32 line_width, B32 retain_order);
+internal R_Mesh3DInst* dr_mesh(R_Handle mesh_vertices, R_Handle mesh_indices, U64 vertex_buffer_offset, U64 indice_buffer_offset, U64 indice_count, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags mesh_geo_vertex_flags, Mat4x4F32 *joint_xforms, U64 joint_count, U64 mat_idx, F32 line_width, B32 retain_order);
+
+//- k: 2d rendering pass params
+internal R_PassParams_Geo2D* dr_geo2d_begin(Rng2F32 viewport, Mat4x4F32 view, Mat4x4F32 projection);
 
 //- k: sprite(2d)
-internal R_Mesh2DInst* d_sprite(R_Handle mesh_vertices, R_Handle mesh_indices, U64 vertex_buffer_offset, U64 indice_buffer_offset, U64 indice_count, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags vertex_flags, R_Handle tex, F32 line_width);
+internal R_Mesh2DInst* dr_sprite(R_Handle mesh_vertices, R_Handle mesh_indices, U64 vertex_buffer_offset, U64 indice_buffer_offset, U64 indice_count, R_GeoTopologyKind mesh_geo_topology, R_GeoPolygonKind mesh_geo_polygon, R_GeoVertexFlags vertex_flags, R_Handle tex, F32 line_width);
 
-//- rjf: collating one pre-prepped bucket into parent bucket
-internal void d_sub_bucket(D_Bucket *bucket, B32 merge_pass);
+//- k: collating one pre-prepped bucket into parent bucket
+internal void dr_sub_bucket(DR_Bucket *bucket);
 
 ////////////////////////////////
 //~ rjf: Draw Call Helpers
 
 //- rjf: text
-internal void d_truncated_fancy_run_list(Vec2F32 p, D_FancyRunList *list, F32 max_x, F_Run trailer_run);
-internal void d_truncated_fancy_run_fuzzy_matches(Vec2F32 p, D_FancyRunList *list, F32 max_x, FuzzyMatchRangeList *ranges, Vec4F32 color);
-internal void d_text_run(Vec2F32 p, Vec4F32 color, F_Run run);
-internal void d_text(F_Tag font, F32 size, F32 base_align_px, F32 tab_size_px, F_RasterFlags flags, Vec2F32 p, Vec4F32 color, String8 string);
+internal void dr_truncated_fancy_run_list(Vec2F32 p, DR_FRunList *list, F32 max_x, FNT_Run trailer_run);
+internal void dr_truncated_fancy_run_fuzzy_matches(Vec2F32 p, DR_FRunList *list, F32 max_x, FuzzyMatchRangeList *ranges, Vec4F32 color);
+internal void dr_text_run(Vec2F32 p, Vec4F32 color, FNT_Run run);
+internal void dr_text(FNT_Tag font, F32 size, F32 base_align_px, F32 tab_size_px, FNT_RasterFlags flags, Vec2F32 p, Vec4F32 color, String8 string);
 
 #endif // DRAW_H

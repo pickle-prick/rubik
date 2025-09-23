@@ -177,7 +177,7 @@ ui_build_arena(void)
 
 internal OS_Handle ui_window(void) { return ui_state->os_wnd; }
 internal UI_EventList *ui_events(void) { return ui_state->events; }
-internal F_Tag ui_icon_font(void) { return ui_state->icon_info.icon_font; }
+internal FNT_Tag ui_icon_font(void) { return ui_state->icon_info.icon_font; }
 internal String8 ui_icon_string_from_kind(UI_IconKind icon_kind) { return ui_state->icon_info.icon_kind_text_map[icon_kind]; }
 internal Vec2F32 ui_mouse(void) { return ui_state->mouse; }
 internal F32 ui_dt(void) { return ui_state->animation_dt; }
@@ -1394,20 +1394,22 @@ ui_box_equip_display_string(UI_Box *box, String8 string)
   if(box->flags & UI_BoxFlag_DrawText)
   {
     String8 display_string = ui_box_display_string(box);
-    D_FancyStringNode fancy_string_n = {0};
-    fancy_string_n.next = 0;
-    fancy_string_n.v.font = box->font;
-    fancy_string_n.v.string = display_string;
-    fancy_string_n.v.color = box->palette->colors[text_color_code];
-    fancy_string_n.v.size = box->font_size;
-    fancy_string_n.v.underline_thickness     = 0;
-    fancy_string_n.v.strikethrough_thickness = 0;
+    DR_FStrNode fstr_node = {0};
+    fstr_node.next = 0;
+    fstr_node.v.string = display_string;
+    fstr_node.v.params.font = box->font;
+    fstr_node.v.params.raster_flags = box->text_raster_flags;
 
-    D_FancyStringList fancy_strings = {0};
-    fancy_strings.first = &fancy_string_n;
-    fancy_strings.last = &fancy_string_n;
-    fancy_strings.node_count = 1;
-    box->display_string_runs = d_fancy_run_list_from_fancy_string_list(ui_build_arena(), box->tab_size, box->text_raster_flags, &fancy_strings);
+    fstr_node.v.params.color = box->palette->colors[text_color_code];
+    fstr_node.v.params.size = box->font_size;
+    fstr_node.v.params.underline_thickness     = 0;
+    fstr_node.v.params.strikethrough_thickness = 0;
+
+    DR_FStrList fstrs = {0};
+    fstrs.first = &fstr_node;
+    fstrs.last = &fstr_node;
+    fstrs.node_count = 1;
+    box->display_string_runs = dr_fruns_from_fstrs(ui_build_arena(), box->tab_size, &fstrs);
   }
   ProfEnd();
 }
@@ -1416,14 +1418,10 @@ internal Vec2F32
 ui_box_text_position(UI_Box *box)
 {
   Vec2F32 result = {0};
-
-  F_Tag font = box->font;
+  FNT_Tag font = box->font;
   F32 font_size = box->font_size;
-  F_Metrics font_metrics = f_metrics_from_tag_size(font, font_size);
-  result.y = floor_f32((box->rect.p0.y+box->rect.p1.y)/2.0f);
-  result.y += font_metrics.ascent/2.0f;
-  result.y -= font_metrics.descent/2.0f;
-
+  FNT_Metrics font_metrics = fnt_metrics_from_tag_size(font, font_size);
+  result.y = floor_f32((box->rect.p0.y + box->rect.p1.y)/2.f + font_metrics.ascent/2.f - font_metrics.descent/2.f);
   switch(box->text_align)
   {
     default:
@@ -1434,26 +1432,27 @@ ui_box_text_position(UI_Box *box)
     case UI_TextAlign_Center:
     {
       Vec2F32 text_dim = box->display_string_runs.dim;
-      result.x = (box->rect.p0.x + box->rect.p1.x)/2.0f - text_dim.x/2.0f;
-      result.x = ClampBot(result.x, box->rect.x0 + box->text_padding);
+      result.x = round_f32((box->rect.p0.x + box->rect.p1.x)/2 - text_dim.x/2);
+      result.x = ClampBot(result.x, box->rect.x0);
     }break;
     case UI_TextAlign_Right:
     {
       Vec2F32 text_dim = box->display_string_runs.dim;
-      result.x = box->rect.p1.x - box->text_padding - text_dim.x;
-      result.x = ClampBot(result.x, box->rect.x0 + box->text_padding);
+      result.x = round_f32((box->rect.p1.x) - text_dim.x - box->text_padding);
+      result.x = ClampBot(result.x, box->rect.x0);
     }break;
   }
+  result.x = floor_f32(result.x);
   return result;
 }
 
 internal void
-ui_box_equip_draw_bucket(UI_Box *box, D_Bucket *bucket)
+ui_box_equip_draw_bucket(UI_Box *box, DR_Bucket *bucket)
 {
   box->flags |= UI_BoxFlag_DrawBucket;
   if(box->draw_bucket != 0)
   {
-    D_BucketScope(box->draw_bucket) d_sub_bucket(bucket, 1);
+    DR_BucketScope(box->draw_bucket) dr_sub_bucket(bucket);
   }
   else
   {
@@ -1471,10 +1470,10 @@ ui_box_equip_custom_draw(UI_Box *box, UI_BoxCustomDrawFunctionType *custom_draw,
 internal U64
 ui_box_char_pos_from_xy(UI_Box *box, Vec2F32 xy)
 {
-  F_Tag font = box->font;
+  FNT_Tag font = box->font;
   F32 font_size = box->font_size;
   String8 line = ui_box_display_string(box);
-  U64 result = f_char_pos_from_tag_size_string_p(font, font_size, 0, box->tab_size, line, xy.x - ui_box_text_position(box).x);
+  U64 result = fnt_char_pos_from_tag_size_string_p(font, font_size, 0, box->tab_size, line, xy.x - ui_box_text_position(box).x);
   return result;
 }
 

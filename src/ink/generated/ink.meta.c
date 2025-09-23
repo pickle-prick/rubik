@@ -21,10 +21,10 @@
 #define IK_TextAlignment_Scope(v) DeferLoop(ik_push_text_alignment(v), ik_pop_text_alignment())
 #endif
 internal IK_Frame * ik_top_frame(void) { IK_StackTopImpl(ik_state, Frame, frame) }
-internal F_Tag ik_top_font(void) { IK_StackTopImpl(ik_state, Font, font) }
+internal FNT_Tag ik_top_font(void) { IK_StackTopImpl(ik_state, Font, font) }
 internal IK_FontSlot ik_top_font_slot(void) { IK_StackTopImpl(ik_state, FontSlot, font_slot) }
 internal F32 ik_top_font_size(void) { IK_StackTopImpl(ik_state, FontSize, font_size) }
-internal F_RasterFlags ik_top_text_raster_flags(void) { IK_StackTopImpl(ik_state, TextRasterFlags, text_raster_flags) }
+internal FNT_RasterFlags ik_top_text_raster_flags(void) { IK_StackTopImpl(ik_state, TextRasterFlags, text_raster_flags) }
 internal F32 ik_top_tab_size(void) { IK_StackTopImpl(ik_state, TabSize, tab_size) }
 internal Vec4F32 ik_top_background_color(void) { IK_StackTopImpl(ik_state, BackgroundColor, background_color) }
 internal F32 ik_top_stroke_size(void) { IK_StackTopImpl(ik_state, StrokeSize, stroke_size) }
@@ -36,10 +36,10 @@ internal OS_Cursor ik_top_hover_cursor(void) { IK_StackTopImpl(ik_state, HoverCu
 internal F32 ik_top_text_padding(void) { IK_StackTopImpl(ik_state, TextPadding, text_padding) }
 internal IK_TextAlign ik_top_text_alignment(void) { IK_StackTopImpl(ik_state, TextAlignment, text_alignment) }
 internal IK_Frame * ik_bottom_frame(void) { IK_StackBottomImpl(ik_state, Frame, frame) }
-internal F_Tag ik_bottom_font(void) { IK_StackBottomImpl(ik_state, Font, font) }
+internal FNT_Tag ik_bottom_font(void) { IK_StackBottomImpl(ik_state, Font, font) }
 internal IK_FontSlot ik_bottom_font_slot(void) { IK_StackBottomImpl(ik_state, FontSlot, font_slot) }
 internal F32 ik_bottom_font_size(void) { IK_StackBottomImpl(ik_state, FontSize, font_size) }
-internal F_RasterFlags ik_bottom_text_raster_flags(void) { IK_StackBottomImpl(ik_state, TextRasterFlags, text_raster_flags) }
+internal FNT_RasterFlags ik_bottom_text_raster_flags(void) { IK_StackBottomImpl(ik_state, TextRasterFlags, text_raster_flags) }
 internal F32 ik_bottom_tab_size(void) { IK_StackBottomImpl(ik_state, TabSize, tab_size) }
 internal Vec4F32 ik_bottom_background_color(void) { IK_StackBottomImpl(ik_state, BackgroundColor, background_color) }
 internal F32 ik_bottom_stroke_size(void) { IK_StackBottomImpl(ik_state, StrokeSize, stroke_size) }
@@ -51,10 +51,10 @@ internal OS_Cursor ik_bottom_hover_cursor(void) { IK_StackBottomImpl(ik_state, H
 internal F32 ik_bottom_text_padding(void) { IK_StackBottomImpl(ik_state, TextPadding, text_padding) }
 internal IK_TextAlign ik_bottom_text_alignment(void) { IK_StackBottomImpl(ik_state, TextAlignment, text_alignment) }
 internal IK_Frame * ik_push_frame(IK_Frame * v) { IK_StackPushImpl(ik_state, Frame, frame, IK_Frame *, v) }
-internal F_Tag ik_push_font(F_Tag v) { IK_StackPushImpl(ik_state, Font, font, F_Tag, v) }
+internal FNT_Tag ik_push_font(FNT_Tag v) { IK_StackPushImpl(ik_state, Font, font, FNT_Tag, v) }
 internal IK_FontSlot ik_push_font_slot(IK_FontSlot v) { IK_StackPushImpl(ik_state, FontSlot, font_slot, IK_FontSlot, v) }
 internal F32 ik_push_font_size(F32 v) { IK_StackPushImpl(ik_state, FontSize, font_size, F32, v) }
-internal F_RasterFlags ik_push_text_raster_flags(F_RasterFlags v) { IK_StackPushImpl(ik_state, TextRasterFlags, text_raster_flags, F_RasterFlags, v) }
+internal FNT_RasterFlags ik_push_text_raster_flags(FNT_RasterFlags v) { IK_StackPushImpl(ik_state, TextRasterFlags, text_raster_flags, FNT_RasterFlags, v) }
 internal F32 ik_push_tab_size(F32 v) { IK_StackPushImpl(ik_state, TabSize, tab_size, F32, v) }
 internal Vec4F32 ik_push_background_color(Vec4F32 v) { IK_StackPushImpl(ik_state, BackgroundColor, background_color, Vec4F32, v) }
 internal F32 ik_push_stroke_size(F32 v) { IK_StackPushImpl(ik_state, StrokeSize, stroke_size, F32, v) }
@@ -66,10 +66,10 @@ internal OS_Cursor ik_push_hover_cursor(OS_Cursor v) { IK_StackPushImpl(ik_state
 internal F32 ik_push_text_padding(F32 v) { IK_StackPushImpl(ik_state, TextPadding, text_padding, F32, v) }
 internal IK_TextAlign ik_push_text_alignment(IK_TextAlign v) { IK_StackPushImpl(ik_state, TextAlignment, text_alignment, IK_TextAlign, v) }
 internal IK_Frame * ik_pop_frame(void) { IK_StackPopImpl(ik_state, Frame, frame) }
-internal F_Tag ik_pop_font(void) { IK_StackPopImpl(ik_state, Font, font) }
+internal FNT_Tag ik_pop_font(void) { IK_StackPopImpl(ik_state, Font, font) }
 internal IK_FontSlot ik_pop_font_slot(void) { IK_StackPopImpl(ik_state, FontSlot, font_slot) }
 internal F32 ik_pop_font_size(void) { IK_StackPopImpl(ik_state, FontSize, font_size) }
-internal F_RasterFlags ik_pop_text_raster_flags(void) { IK_StackPopImpl(ik_state, TextRasterFlags, text_raster_flags) }
+internal FNT_RasterFlags ik_pop_text_raster_flags(void) { IK_StackPopImpl(ik_state, TextRasterFlags, text_raster_flags) }
 internal F32 ik_pop_tab_size(void) { IK_StackPopImpl(ik_state, TabSize, tab_size) }
 internal Vec4F32 ik_pop_background_color(void) { IK_StackPopImpl(ik_state, BackgroundColor, background_color) }
 internal F32 ik_pop_stroke_size(void) { IK_StackPopImpl(ik_state, StrokeSize, stroke_size) }
@@ -81,10 +81,10 @@ internal OS_Cursor ik_pop_hover_cursor(void) { IK_StackPopImpl(ik_state, HoverCu
 internal F32 ik_pop_text_padding(void) { IK_StackPopImpl(ik_state, TextPadding, text_padding) }
 internal IK_TextAlign ik_pop_text_alignment(void) { IK_StackPopImpl(ik_state, TextAlignment, text_alignment) }
 internal IK_Frame * ik_set_next_frame(IK_Frame * v) { IK_StackSetNextImpl(ik_state, Frame, frame, IK_Frame *, v) }
-internal F_Tag ik_set_next_font(F_Tag v) { IK_StackSetNextImpl(ik_state, Font, font, F_Tag, v) }
+internal FNT_Tag ik_set_next_font(FNT_Tag v) { IK_StackSetNextImpl(ik_state, Font, font, FNT_Tag, v) }
 internal IK_FontSlot ik_set_next_font_slot(IK_FontSlot v) { IK_StackSetNextImpl(ik_state, FontSlot, font_slot, IK_FontSlot, v) }
 internal F32 ik_set_next_font_size(F32 v) { IK_StackSetNextImpl(ik_state, FontSize, font_size, F32, v) }
-internal F_RasterFlags ik_set_next_text_raster_flags(F_RasterFlags v) { IK_StackSetNextImpl(ik_state, TextRasterFlags, text_raster_flags, F_RasterFlags, v) }
+internal FNT_RasterFlags ik_set_next_text_raster_flags(FNT_RasterFlags v) { IK_StackSetNextImpl(ik_state, TextRasterFlags, text_raster_flags, FNT_RasterFlags, v) }
 internal F32 ik_set_next_tab_size(F32 v) { IK_StackSetNextImpl(ik_state, TabSize, tab_size, F32, v) }
 internal Vec4F32 ik_set_next_background_color(Vec4F32 v) { IK_StackSetNextImpl(ik_state, BackgroundColor, background_color, Vec4F32, v) }
 internal F32 ik_set_next_stroke_size(F32 v) { IK_StackSetNextImpl(ik_state, StrokeSize, stroke_size, F32, v) }

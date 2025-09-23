@@ -25,7 +25,7 @@ main_thread_base_entry_point(int argc, char **argv)
   sy_init();
 #endif
   fp_init();
-  f_init();
+  fnt_init();
 
   ProfBeginCapture();
   global_time_start_us = os_now_microseconds();

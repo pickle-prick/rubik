@@ -1,0 +1,149 @@
+// Copyright (c) Epic Games Tools
+// Licensed under the MIT license (https://opensource.org/license/mit/)
+
+////////////////////////////////
+//~ rjf: Tables
+
+@table(name, display_string, bytes_per_pixel)
+R_Tex2DFormatTable:
+{
+  {R8       "R8"       1}
+  {RG8      "RG8"      2}
+  {RGBA8    "RGBA8"    4}
+  {BGRA8    "BGRA8"    4}
+  {R16      "R16"      2}
+  {RGBA16   "RGBA16"   8}
+  {R32      "R32"      4}
+  {RG32     "RG32"     8}
+  {RGBA32   "RGBA32"  16}
+}
+
+@table(name, display_string)
+R_ResourceKindTable:
+{
+  // static resource is immutable
+  // initial data must be provided at creation time
+  // GPU can read the resource
+  // CPU is not allowed to read or write
+  {Static   "Static" }
+  
+  // dynamic resource allows resource to be modified
+  // GPU can read & write to it
+  // CPU can write to it using UpdateSubresource
+  {Dynamic  "Dynamic"}
+  
+  // stream resource will be often updated fully overwriting previous data
+  // GPU can only read it
+  // CPU can update via Map (with WRITE_DISCARD flag) + Unmap
+  {Stream   "Stream "} 
+}
+
+@table(name, display_string)
+R_Tex2DSampleKindTable:
+{
+  {Nearest   "Nearest" }
+  {Linear    "Linear"  }
+}
+
+@table(name, display_string)
+R_GeoTopologyKindTable:
+{
+  {Lines          "Lines"          }
+  {LineStrip      "Line Strip"     }
+  {Triangles      "Triangles"      }
+  {TriangleStrip  "Triangle Strip" }
+}
+
+@table(name, display_string)
+R_GeoPolygonKindTable:
+{
+  {Fill           "Fill"           }
+  {Line           "Line"           }
+  {Point          "Point"          }
+}
+
+@table(name, batch, display_string)
+R_PassKindTable:
+{
+  {Rect        1      "Rect"  }
+  {Blur        0      "Blur"  }
+  {Noise       0      "Noise" }
+  {Edge        0      "Edge"  }
+  {Crt         0      "Crt"   }
+  {Geo2D       1      "Geo2D" }
+  {Geo3D       1      "Geo3D" }
+}
+
+////////////////////////////////
+//~ rjf: Generators
+
+@enum R_Tex2DFormat:
+{
+  @expand(R_Tex2DFormatTable a) `$(a.name)`,
+  COUNT,
+}
+
+@enum R_ResourceKind:
+{
+  @expand(R_ResourceKindTable a) `$(a.name)`,
+  COUNT,
+}
+
+@enum R_Tex2DSampleKind:
+{
+  @expand(R_Tex2DSampleKindTable a) `$(a.name)`,
+  COUNT,
+}
+
+@enum R_GeoTopologyKind:
+{
+  @expand(R_GeoTopologyKindTable a) `$(a.name)`,
+  COUNT,
+}
+
+@enum R_GeoPolygonKind:
+{
+  @expand(R_GeoPolygonKindTable a) `$(a.name)`,
+  COUNT,
+}
+
+@enum R_PassKind:
+{
+  @expand(R_PassKindTable a) `$(a.name)`,
+  COUNT,
+}
+
+@data(String8) r_tex2d_format_display_string_table:
+{
+  @expand(R_Tex2DFormatTable a) `str8_lit_comp("$(a.display_string)")`;
+}
+
+@data(U8) r_tex2d_format_bytes_per_pixel_table:
+{
+  @expand(R_Tex2DFormatTable a) `$(a.bytes_per_pixel)`;
+}
+
+@data(String8) r_resource_kind_display_string_table:
+{
+  @expand(R_ResourceKindTable a) `str8_lit_comp("$(a.display_string)")`;
+}
+
+@data(String8) r_tex2d_sample_kind_display_string_table:
+{
+  @expand(R_Tex2DSampleKindTable a) `str8_lit_comp("$(a.display_string)")`;
+}
+
+@data(String8) r_pass_kind_display_string_table:
+{
+  @expand(R_PassKindTable a) `str8_lit_comp("$(a.display_string)")`;
+}
+
+@data(U8) r_pass_kind_batch_table:
+{
+  @expand(R_PassKindTable a) `$(a.batch)`;
+}
+
+@data(U64) @c_file r_pass_kind_params_size_table:
+{
+  @expand(R_PassKindTable a) `sizeof(R_PassParams_$(a.name))`;
+}

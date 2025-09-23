@@ -6,52 +6,52 @@
 #ifndef DRAW_META_H
 #define DRAW_META_H
 
-typedef struct D_ViewportNode D_ViewportNode; struct D_ViewportNode {D_ViewportNode *next; Vec2F32 v;};
-typedef struct D_Tex2DSampleKindNode D_Tex2DSampleKindNode; struct D_Tex2DSampleKindNode {D_Tex2DSampleKindNode *next; R_Tex2DSampleKind v;};
-typedef struct D_XForm2DNode D_XForm2DNode; struct D_XForm2DNode {D_XForm2DNode *next; Mat3x3F32 v;};
-typedef struct D_ClipNode D_ClipNode; struct D_ClipNode {D_ClipNode *next; Rng2F32 v;};
-typedef struct D_TransparencyNode D_TransparencyNode; struct D_TransparencyNode {D_TransparencyNode *next; F32 v;};
-#define D_BucketStackDecls struct{\
-D_ViewportNode *top_viewport;\
-D_Tex2DSampleKindNode *top_tex2d_sample_kind;\
-D_XForm2DNode *top_xform2d;\
-D_ClipNode *top_clip;\
-D_TransparencyNode *top_transparency;\
+typedef struct DR_ViewportNode DR_ViewportNode; struct DR_ViewportNode {DR_ViewportNode *next; Vec2F32 v;};
+typedef struct DR_Tex2DSampleKindNode DR_Tex2DSampleKindNode; struct DR_Tex2DSampleKindNode {DR_Tex2DSampleKindNode *next; R_Tex2DSampleKind v;};
+typedef struct DR_XForm2DNode DR_XForm2DNode; struct DR_XForm2DNode {DR_XForm2DNode *next; Mat3x3F32 v;};
+typedef struct DR_ClipNode DR_ClipNode; struct DR_ClipNode {DR_ClipNode *next; Rng2F32 v;};
+typedef struct DR_TransparencyNode DR_TransparencyNode; struct DR_TransparencyNode {DR_TransparencyNode *next; F32 v;};
+#define DR_BucketStackDecls struct{\
+DR_ViewportNode *top_viewport;\
+DR_Tex2DSampleKindNode *top_tex2d_sample_kind;\
+DR_XForm2DNode *top_xform2d;\
+DR_ClipNode *top_clip;\
+DR_TransparencyNode *top_transparency;\
 }
-read_only global D_ViewportNode d_nil_viewport = {0, {0,0}};
-read_only global D_Tex2DSampleKindNode d_nil_tex2d_sample_kind = {0, R_Tex2DSampleKind_Nearest};
-read_only global D_XForm2DNode d_nil_xform2d = {0, {1, 0, 0, 0, 1, 0, 0, 0, 1}};
-read_only global D_ClipNode d_nil_clip = {0, {0}};
-read_only global D_TransparencyNode d_nil_transparency = {0, 0};
-#define D_BucketStackInits(b) do{\
-(b)->top_viewport = &d_nil_viewport;\
-(b)->top_tex2d_sample_kind = &d_nil_tex2d_sample_kind;\
-(b)->top_xform2d = &d_nil_xform2d;\
-(b)->top_clip = &d_nil_clip;\
-(b)->top_transparency = &d_nil_transparency;\
+read_only global DR_ViewportNode dr_nil_viewport = {0, {0,0}};
+read_only global DR_Tex2DSampleKindNode dr_nil_tex2d_sample_kind = {0, R_Tex2DSampleKind_Nearest};
+read_only global DR_XForm2DNode dr_nil_xform2d = {0, {1, 0, 0, 0, 1, 0, 0, 0, 1}};
+read_only global DR_ClipNode dr_nil_clip = {0, {0}};
+read_only global DR_TransparencyNode dr_nil_transparency = {0, 0};
+#define DR_BucketStackInits(b) do{\
+(b)->top_viewport = &dr_nil_viewport;\
+(b)->top_tex2d_sample_kind = &dr_nil_tex2d_sample_kind;\
+(b)->top_xform2d = &dr_nil_xform2d;\
+(b)->top_clip = &dr_nil_clip;\
+(b)->top_transparency = &dr_nil_transparency;\
 }while(0)
 #if 0
-internal Vec2F32                    d_push_viewport(Vec2F32 v);
-internal R_Tex2DSampleKind          d_push_tex2d_sample_kind(R_Tex2DSampleKind v);
-internal Mat3x3F32                  d_push_xform2d(Mat3x3F32 v);
-internal Rng2F32                    d_push_clip(Rng2F32 v);
-internal F32                        d_push_transparency(F32 v);
-internal Vec2F32                    d_pop_viewport(void);
-internal R_Tex2DSampleKind          d_pop_tex2d_sample_kind(void);
-internal Mat3x3F32                  d_pop_xform2d(void);
-internal Rng2F32                    d_pop_clip(void);
-internal F32                        d_pop_transparency(void);
-internal Vec2F32                    d_top_viewport(void);
-internal R_Tex2DSampleKind          d_top_tex2d_sample_kind(void);
-internal Mat3x3F32                  d_top_xform2d(void);
-internal Rng2F32                    d_top_clip(void);
-internal F32                        d_top_transparency(void);
+internal Vec2F32                    dr_push_viewport(Vec2F32 v);
+internal R_Tex2DSampleKind          dr_push_tex2d_sample_kind(R_Tex2DSampleKind v);
+internal Mat3x3F32                  dr_push_xform2d(Mat3x3F32 v);
+internal Rng2F32                    dr_push_clip(Rng2F32 v);
+internal F32                        dr_push_transparency(F32 v);
+internal Vec2F32                    dr_pop_viewport(void);
+internal R_Tex2DSampleKind          dr_pop_tex2d_sample_kind(void);
+internal Mat3x3F32                  dr_pop_xform2d(void);
+internal Rng2F32                    dr_pop_clip(void);
+internal F32                        dr_pop_transparency(void);
+internal Vec2F32                    dr_top_viewport(void);
+internal R_Tex2DSampleKind          dr_top_tex2d_sample_kind(void);
+internal Mat3x3F32                  dr_top_xform2d(void);
+internal Rng2F32                    dr_top_clip(void);
+internal F32                        dr_top_transparency(void);
 #endif
 #if 0
-#define D_ViewportScope(v)          DeferLoop(d_push_viewport(v), d_pop_viewport())
-#define D_Tex2DSampleKindScope(v)   DeferLoop(d_push_tex2d_sample_kind(v), d_pop_tex2d_sample_kind())
-#define D_XForm2DScope(v)           DeferLoop(d_push_xform2d(v), d_pop_xform2d())
-#define D_ClipScope(v)              DeferLoop(d_push_clip(v), d_pop_clip())
-#define D_TransparencyScope(v)      DeferLoop(d_push_transparency(v), d_pop_transparency())
+#define DR_ViewportScope(v)         DeferLoop(dr_push_viewport(v), dr_pop_viewport())
+#define DR_Tex2DSampleKindScope(v)  DeferLoop(dr_push_tex2d_sample_kind(v), dr_pop_tex2d_sample_kind())
+#define DR_XForm2DScope(v)          DeferLoop(dr_push_xform2d(v), dr_pop_xform2d())
+#define DR_ClipScope(v)             DeferLoop(dr_push_clip(v), dr_pop_clip())
+#define DR_TransparencyScope(v)     DeferLoop(dr_push_transparency(v), dr_pop_transparency())
 #endif
 #endif // DRAW_META_H

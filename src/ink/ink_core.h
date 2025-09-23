@@ -490,7 +490,7 @@ struct IK_Box
   IK_FontSlot font_slot;
   F32 font_size;
   F32 tab_size;
-  F_RasterFlags text_raster_flags;
+  FNT_RasterFlags text_raster_flags;
   F32 text_padding;
   IK_TextAlign text_align;
   TxtPt cursor;
@@ -503,8 +503,8 @@ struct IK_Box
   // Per-frmae artifacts
   String8List display_lines;
   // D_FancyStringList *display_line_fstrs; // TODO: support fancy string
-  D_FancyRunList *display_line_fruns;
-  D_FancyRunList empty_fruns;
+  DR_FRunList *display_line_fruns;
+  DR_FRunList empty_fruns;
   IK_Signal sig;
   U64 draw_frame_index;
   Vec2F32 text_bounds;
@@ -623,7 +623,7 @@ struct IK_DrawNode
 
   // vertex
   // src
-  R_Vertex *vertices_src;
+  R_Geo3D_Vertex *vertices_src;
   U64 vertex_count;
   // dst
   R_Handle vertices;
@@ -678,8 +678,8 @@ struct IK_State
   IK_Frame              *active_frame;
 
   // drawing buckets
-  D_Bucket              *bucket_ui;
-  D_Bucket              *bucket_main;
+  DR_Bucket             *bucket_ui;
+  DR_Bucket             *bucket_main;
 
   // drawlists
   IK_DrawList           *drawlists[2];
@@ -763,7 +763,7 @@ struct IK_State
   // theme
   IK_Theme              cfg_theme_target;
   IK_Theme              cfg_theme;
-  F_Tag                 cfg_font_tags[IK_FontSlot_COUNT];
+  FNT_Tag               cfg_font_tags[IK_FontSlot_COUNT];
 
   // palette
   UI_Palette            cfg_ui_debug_palettes[IK_PaletteCode_COUNT]; // derivative from theme
@@ -856,8 +856,8 @@ internal IK_Palette* ik_palette_from_code(IK_PaletteCode code);
 internal UI_Palette* ik_ui_palette_from_code(IK_PaletteCode code);
 
 //- fonts/size
-internal F_Tag ik_font_from_slot(IK_FontSlot slot);
-internal F32   ik_font_size_from_slot(IK_FontSlot slot);
+internal FNT_Tag ik_font_from_slot(IK_FontSlot slot);
+internal F32     ik_font_size_from_slot(IK_FontSlot slot);
 
 //- box lookup
 internal IK_Box* ik_box_from_key(IK_Key key);
@@ -886,7 +886,7 @@ internal String8List ik_file_drop(Vec2F32 *return_mouse);
 
 //- basic building API
 internal IK_DrawList* ik_drawlist_alloc(Arena *arena, U64 vertex_buffer_cap, U64 indice_buffer_cap);
-internal IK_DrawNode* ik_drawlist_push(Arena *arena, IK_DrawList *drawlist, R_Vertex *vertices_src, U64 vertex_count, U32 *indices_src, U64 indice_count);
+internal IK_DrawNode* ik_drawlist_push(Arena *arena, IK_DrawList *drawlist, R_Geo3D_Vertex *vertices_src, U64 vertex_count, U32 *indices_src, U64 indice_count);
 internal void         ik_drawlist_build(IK_DrawList *drawlist); /* upload buffer from cpu to gpu */
 internal void         ik_drawlist_reset(IK_DrawList *drawlist);
 
@@ -983,7 +983,7 @@ internal IK_Signal ik_signal_from_box(IK_Box *box);
 
 //- text
 
-internal void ik_fancy_run_list(Vec2F32 p, D_FancyRunList *list, F32 max_x);
+internal void ik_fancy_run_list(Vec2F32 p, DR_FRunList *list, F32 max_x);
 
 /////////////////////////////////
 //~ UI Widget

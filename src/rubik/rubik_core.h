@@ -686,7 +686,7 @@ struct RK_Sprite2D
   // string stuffs
   String8 string;
   D_FancyRunList fancy_run_list;
-  F_Tag font;
+  FNT_Tag font;
   F32 font_size;
   Vec4F32 font_color;
   U64 tab_size;

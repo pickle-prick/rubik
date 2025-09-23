@@ -97,7 +97,7 @@ entry_point(CmdLine *cmd_line)
 #endif
 
   // render initialization
-  r_init((char *)window_title.str, os_wnd, BUILD_DEBUG);
+  r_init(os_wnd, BUILD_DEBUG);
   R_Handle r_wnd = r_window_equip(os_wnd);
 
   // init ui state
@@ -115,6 +115,7 @@ entry_point(CmdLine *cmd_line)
   {
     ProfTick(0);
     U64 global_tick = update_tick_idx();
+    fnt_frame();
     open = ik_frame();
   }
 

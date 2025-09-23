@@ -38,7 +38,14 @@ SLLStackPush(state->name_lower##_stack.top, node);\
 state->name_lower##_stack.auto_pop = 1;\
 return old_value;
 
+////////////////////////////////
+// Generated includes
+
 #include "generated/render_vulkan.meta.c"
+
+////////////////////////////////
+// Shader includes
+
 #include "shader/crt_frag.spv.h"
 #include "shader/crt_vert.spv.h"
 #include "shader/edge_frag.spv.h"
@@ -64,1192 +71,8 @@ return old_value;
 #include "shader/rect_frag.spv.h"
 #include "shader/rect_vert.spv.h"
 
-internal void
-r_init(const char* app_name, OS_Handle window, bool debug)
-{
-  Arena *arena = arena_alloc();
-  r_vulkan_state = push_array(arena, R_Vulkan_State, 1);
-  r_vulkan_state->arena = arena;
-  r_vulkan_state->debug = debug;
-  r_vulkan_state->device_rw_mutex = rw_mutex_alloc();
-  Temp scratch = scratch_begin(0,0);
-
-  // api version
-  U32 inst_version = 0;
-  VK_Assert(vkEnumerateInstanceVersion(&inst_version));
-  U32 major = VK_API_VERSION_MAJOR(inst_version);
-  U32 minor = VK_API_VERSION_MINOR(inst_version);
-  U32 patch = VK_API_VERSION_PATCH(inst_version);
-
-  r_vulkan_state->instance_version_major = major;
-  r_vulkan_state->instance_version_minor = minor;
-  r_vulkan_state->instance_version_patch = patch;
-
-  // Dynamic rendering requires at least 1.3
-  AssertAlways(major == 1 && minor >= 3);
-
-  // Now, to create an instance we'll first have to fill in a struct with 
-  //      some information about our application.
-  // This data is technically optional, but it may provide some useful information 
-  //      to the driver in order to optimize our specific application 
-  //      (e.g. because it uses a well-known graphics engine with certain special behavior). 
-  VkApplicationInfo app_info = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
-  app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-  app_info.pApplicationName = app_name;
-  app_info.applicationVersion = VK_MAKE_VERSION(0, 0, 1);
-  app_info.pEngineName = "Custom";
-  app_info.engineVersion = VK_MAKE_VERSION(0, 0, 1);
-  // VK_API_VERSION_1_3
-  app_info.apiVersion = VK_MAKE_API_VERSION(0, major, minor, 0);
-  app_info.pNext = NULL; // point to extension information
-
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // Instance extensions info
-
-  U64 enabled_ext_count;
-  char **enabled_ext_names;
-  {
-    // NOTE(k): instance extensions is not the same as the physical device extensions
-    U32 ext_count;
-    vkEnumerateInstanceExtensionProperties(NULL, &ext_count, NULL);
-    VkExtensionProperties *extensions = push_array(scratch.arena, VkExtensionProperties, ext_count);
-    vkEnumerateInstanceExtensionProperties(NULL, &ext_count, extensions); /* query the extension details */
-
-    printf("%d instance extensions supported\n", ext_count);
-    for(U64 i = 0; i < ext_count; i++)
-    {
-      printf("[%3lu]: %s [%d] is supported\n", (unsigned long)i, extensions[i].extensionName, extensions[i].specVersion);
-    }
-
-    // Required Extensions
-    // Glfw required instance extensions
-    U64 required_inst_ext_count = 2;
-    char **required_inst_exts = push_array(scratch.arena, char*, required_inst_ext_count);
-    required_inst_exts[0] = "VK_KHR_surface";
-    required_inst_exts[1] = os_vulkan_surface_ext();
-
-    // Assert every required extension by glfw is in the supported extensions list
-    U64 found = 0;
-    for(U64 i = 0; i < required_inst_ext_count; i++)
-    {
-      const char *ext = required_inst_exts[i];
-      for(U64 j = 0; j < ext_count; j++)
-      {
-        if(strcmp(ext, extensions[j].extensionName))
-        {
-          found++;
-          break;
-        }
-      }
-    }
-    AssertAlways(found == required_inst_ext_count);
-
-    enabled_ext_count = required_inst_ext_count;
-    // NOTE(k): add one for optional debug extension
-    enabled_ext_names = push_array(scratch.arena, char *, required_inst_ext_count + 1);
-
-    for(U64 i = 0; i < required_inst_ext_count; i++)
-    {
-      enabled_ext_names[i] = (char *)required_inst_exts[i];
-    }
-
-    if(r_vulkan_state->debug)
-    {
-      enabled_ext_names[enabled_ext_count++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-    }
-  }
-
-  ///////////////////////////////////////////////////////////////////////////////////////
-  //~ Validation Layer
-
-  // All of the useful standard validation layer is bundle into a layer included in the SDK that is known as VK_LAYER_KHRONOS_validation 
-  U64 enabled_layer_count = 0;
-  const char *enabled_layers[] = { "VK_LAYER_KHRONOS_validation" };
-
-  if(r_vulkan_state->debug)
-  {
-    enabled_layer_count = 1;
-  }
-
-  // get instance layer info
-  U32 instance_layer_count;
-  VK_Assert(vkEnumerateInstanceLayerProperties(&instance_layer_count, NULL));
-  VkLayerProperties *instance_layers = push_array(scratch.arena, VkLayerProperties, instance_layer_count);
-  VK_Assert(vkEnumerateInstanceLayerProperties(&instance_layer_count, instance_layers));
-
-  // check if all enabled layers are presented
-  for(U64 i = 0; i < enabled_layer_count; i++)
-  {
-    B32 found = 0;
-    for(U64 j = 0; j < instance_layer_count; j++)
-    {
-      if(strcmp(instance_layers[j].layerName, enabled_layers[i]) == 0)
-      {
-        found = 1;
-        break;
-      }
-    }
-
-    if(!found)
-    {
-      fprintf(stderr, "layer '%s' was not found for this instance\n", enabled_layers[i]);
-      Trap();
-    }
-  }
-
-  ///////////////////////////////////////////////////////////////////////////////////////
-  //~ Create vulkan instance (create debug_messenger if needed)
-
-  // It tells the Vulkan driver which global extension and validation layers we want ot use.
-  // Global here means that they apply to the entire program and not a specific device
-  {
-    VkInstanceCreateInfo create_info = {
-      .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-      .pApplicationInfo        = &app_info,
-      .enabledExtensionCount   = enabled_ext_count, /* the last two members of the struct determine the global validation layers to enable */
-      .ppEnabledExtensionNames = (const char **)enabled_ext_names,
-      .enabledLayerCount       = 0,
-      .ppEnabledLayerNames     = NULL,
-      .pNext                   = NULL,
-    };
-    // Although we've now added debugging with validation layers to the
-    //      program we're not covering everything quite yet.
-    // The vkCreateDebugUtilsMessengerEXT call requires a valid instance
-    //      to have been created and vkDestroyDebugUtilsMessengerEXT must be called before the instance is destroyed.
-    // This currently leaves us unable to debug any issues in the vkCreateInstance 
-    //      and vkDestroyInstance calls.
-    // However, if you closely read the extension documentation, you'll see that
-    //      there is a way to create a separate debug utils messenger specifically for those two function calls.
-    // It requires you to simply pass a pointer to a VkDebugUtilsMessengerCreateInfoEXT     
-    //      struct in the pNext extension field of VkInstanceCreateInfo.
-    VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info =
-    {
-      .sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-      .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT    |
-                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-      .messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT     |
-                         VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT  |
-                         VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-      .pfnUserCallback = debug_callback,
-      .pUserData       = NULL, // Optional 
-    };
-
-    create_info.enabledLayerCount   = enabled_layer_count;
-    create_info.ppEnabledLayerNames = enabled_layers;
-
-    if(r_vulkan_state->debug)
-    {
-      create_info.pNext = &debug_messenger_create_info;
-    }
-
-    // create instance
-    VK_Assert(vkCreateInstance(&create_info, NULL, &r_vulkan_state->instance));
-
-    if(r_vulkan_state->debug)
-    {
-      // This struct should be passed to the vkCreateDebugUtilsMessengerEXT function to create the VkDebugUtilsMessengerEXT object
-      // Unfortunately, because this function is an extension function, it is not automatically loaded, we have to load it ourself
-      PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(r_vulkan_state->instance, "vkCreateDebugUtilsMessengerEXT");
-      AssertAlways(vkCreateDebugUtilsMessengerEXT != NULL);
-
-      r_vulkan_state->vkDestroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(r_vulkan_state->instance, "vkDestroyDebugUtilsMessengerEXT");
-      AssertAlways(r_vulkan_state->vkDestroyDebugUtilsMessengerEXT != NULL);
-
-      /* VK_ERROR_EXTENSION_NOT_PRESENT */
-      VK_Assert(vkCreateDebugUtilsMessengerEXT(r_vulkan_state->instance, &debug_messenger_create_info, NULL, &r_vulkan_state->debug_messenger));
-    }
-  }
-
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // Create window surface
-
-  // Since Vulkan is a platform agnostic API, it can not interface directly with the window system on its own
-  // To establish the connection between Vulkan and the window system to present results to the screen, we need to use the WSI (Window System Integration) extensions
-  // The first one is VK_KHR_surface. It exposes a VkSurfaceKHR object that represents
-  //      an abstract type of surface to present rendered images to.
-  //      The surface in our program will be backed by the window that we've already opened with GLFW
-  // The VK_KHR_surface extension is an instance level extension and we've actually already enabled it
-  //      because it's included in the list returned by glfwGetRequiredInstanceExtensions.
-  //      The list also includes some other WSI related extensions
-  //
-  // The window surface needs to be created right after the instance creation, because it can actually influence the physical device selection
-  // It should also be noted that window surfaces are entirely optional component in Vulkan, if you just need off-screen rendering.
-  // Vulkan allows you to do that without hacks like creating an invisible window (necessary for OpenGL)
-  R_Vulkan_Surface surface = {0};
-  surface.h = os_vulkan_surface_from_window(window, r_vulkan_state->instance);
-
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // Pick the physical device
-
-  // NOTE(k)This object will be implicitly destroyed when the VkInstance is destroyed
-  //      so we won't need to do anything new in the "Cleanup" section
-
-  const char *required_pdevice_ext_names[] = {
-    // It should be noted that the availablility of a presentation queue, implies that the swap chain extension must be supported, and vice vesa
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
-  };
-  {
-    U32 pdevice_src_count = 0;
-    VK_Assert(vkEnumeratePhysicalDevices(r_vulkan_state->instance, &pdevice_src_count, NULL));
-    VkPhysicalDevice *pdevices_src = push_array(scratch.arena, VkPhysicalDevice, pdevice_src_count);
-    VK_Assert(vkEnumeratePhysicalDevices(r_vulkan_state->instance, &pdevice_src_count, pdevices_src));
-
-    U64 pdevice_dst_count = 0;
-    R_Vulkan_PhysicalDevice *pdevices_dst = push_array(arena, R_Vulkan_PhysicalDevice, pdevice_src_count);
-
-    for(U64 i = 0; i < pdevice_src_count; i++)
-    {
-      VkPhysicalDeviceProperties properties;
-      VkPhysicalDeviceFeatures features;
-      vkGetPhysicalDeviceProperties(pdevices_src[i], &properties);
-      vkGetPhysicalDeviceFeatures(pdevices_src[i], &features);
-
-      // query physical device supported extensions
-      U32 ext_count;
-      VK_Assert(vkEnumerateDeviceExtensionProperties(pdevices_src[i], NULL, &ext_count, NULL));
-      VkExtensionProperties *extensions = push_array(scratch.arena, VkExtensionProperties, ext_count);
-      VK_Assert(vkEnumerateDeviceExtensionProperties(pdevices_src[i], NULL, &ext_count, extensions));
-
-      // Check if current physical device supports all the required extensions
-      U64 found = 0;
-      for(U64 j = 0; j < ArrayCount(required_pdevice_ext_names); j++)
-      {
-        for(U64 k = 0; k < ext_count; k++)
-        {
-          if(strcmp(extensions[k].extensionName, required_pdevice_ext_names[j]))
-          {
-            found++;
-            break;
-          } 
-        }
-      }
-      if(found != ArrayCount(required_pdevice_ext_names)) continue;
-
-      // If application can't function without geometry shaders, we don't need it for now
-      // if(features.geometryShader == VK_FALSE) continue;
-      // We want Anisotropy
-      if(features.samplerAnisotropy == VK_FALSE) continue;
-      if(features.independentBlend == VK_FALSE)  continue;
-      if(features.fillModeNonSolid == VK_FALSE)  continue;
-      if(features.wideLines == VK_FALSE)         continue;
-
-      R_Vulkan_PhysicalDevice *dst = &pdevices_dst[pdevice_dst_count++];
-      dst->h = pdevices_src[i];
-      dst->properties = properties;
-      dst->features = features;
-      dst->extensions = push_array(arena, VkExtensionProperties, ext_count);
-      MemoryCopy(dst->extensions, extensions, sizeof(VkExtensionProperties)*ext_count);
-      dst->extension_count = ext_count;
-    }
-
-    // pick the most performant physical device
-    S32 pdevice_idx = -1;
-    U64 pdevice_score = 0;
-    for(U64 i = 0; i < pdevice_dst_count; i++)
-    {
-      R_Vulkan_PhysicalDevice *pdevice = &pdevices_dst[i];
-      U64 score = 0;
-
-      if(pdevice->properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {score += 1;}
-      // score += properties.limits.maxImageDimension2D;
-
-      // Querying details of swap chain support
-      // Just checking if a swap chain is avaiable is not sufficient, because it may not actually be compatible with our window surface
-      // Creating a swap chain also involves a lot more settings than instance and device creation
-      //   so we need to query for some more details before we're able to proceed
-      //
-      // There are basically three kinds of properties we need to check:
-      // 1. Basic surface capabilities (min/max number of images in swap chain, min/max width and height of images)
-      // 2. Surface formats (pixel format, color space)
-      // 3. Available presentation modes
-
-      VkSurfaceCapabilitiesKHR surface_caps;
-      // This function takes the specified **VkPhysicalDevice** and **VkSurfaceKHR window surface** into account when determining the supported capabilities.
-      // All of the support querying functions have these two as first parameters, because they are the **core components** of the swap chain
-      VK_Assert(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pdevices_src[i], surface.h, &surface_caps));
-
-      U32 surface_format_count;
-      VK_Assert(vkGetPhysicalDeviceSurfaceFormatsKHR(pdevices_src[i], surface.h, &surface_format_count, NULL));
-      VkSurfaceFormatKHR *surface_formats = push_array(scratch.arena, VkSurfaceFormatKHR, surface_format_count);
-      VK_Assert(vkGetPhysicalDeviceSurfaceFormatsKHR(pdevices_src[i], surface.h, &surface_format_count, surface_formats));
-
-      U32 surface_present_mode_count;
-      VK_Assert(vkGetPhysicalDeviceSurfacePresentModesKHR(pdevices_src[i], surface.h, &surface_present_mode_count, NULL));
-      VkPresentModeKHR *surface_present_modes = push_array(scratch.arena, VkPresentModeKHR, surface_present_mode_count);
-      VK_Assert(vkGetPhysicalDeviceSurfacePresentModesKHR(pdevices_src[i], surface.h, &surface_present_mode_count, surface_present_modes));
-
-      // For now, swap chain support is sufficient if there is at least one supported image format and one supported presentation mode given the window surface we have
-      if(surface_format_count == 0 || surface_present_mode_count == 0) continue;
-      score += 1;
-      if(score > pdevice_score)
-      {
-        pdevice_idx = i;
-        pdevice_score = score;
-
-        surface.caps = surface_caps;
-        AssertAlways(surface_format_count <= MAX_SURFACE_FORMAT_COUNT);
-        surface.format_count = surface_format_count;
-        MemoryCopy(surface.formats, surface_formats, sizeof(VkSurfaceFormatKHR) * surface_format_count);
-        AssertAlways(surface_present_mode_count <= MAX_SURFACE_PRESENT_MODE_COUNT);
-        surface.prest_mode_count = surface_present_mode_count;
-        MemoryCopy(surface.prest_modes, surface_present_modes, sizeof(VkPresentModeKHR) * surface_present_mode_count);
-      }
-    }
-    AssertAlways(pdevice_idx >= 0 && "No suitable physical device was founed");
-
-    R_Vulkan_PhysicalDevice *pdevice = &pdevices_dst[pdevice_idx];
-    vkGetPhysicalDeviceMemoryProperties(pdevice->h, &pdevice->mem_properties);
-    pdevice->depth_image_format = r_vulkan_optimal_depth_format_from_pdevice(pdevice->h);
-
-    r_vulkan_state->physical_devices      = pdevices_dst;
-    r_vulkan_state->physical_device_count = pdevice_dst_count;
-    r_vulkan_state->physical_device_idx   = pdevice_idx;
-  }
-
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // Queue families information
-
-  // Almost every operation in Vulkan, anything from drawing to uploading textures
-  //      requires commands to be submmited to a queue
-  // There are different types of queues that originate from different queue families 
-  //      and each family of queues allows only a subset of commands
-  // For example, there could be a queue family that only allows processing of compute 
-  //      commands or one that only allows memory transfer related commands
-  // We need to check which queue families are supported by the physical device and
-  //      which one of these supports the commands that we want to use
-  // Right now we are only going to look a queue that supports graphics commands
-  // Also we may prefer devices with a dedicated transfer queue family, but not require it
-
-  // The buffer copy command requires a queue family that supports transfer operations,
-  //      which is indicated using VK_QUEUE_TRANSFER_BIT
-  // The good news is that any queue family with VK_QUEUE_GRAPHICS_BIT or VK_QUEUE_COMPUTE_BIT 
-  //      capabilities already implicitly support VK_QUEUE_TRANSFER_BIT operations
-  // The implementation is not required to explicitly list it in queueFlags in those cases
-  // If you like a challenge, then you can still try to use a different queue family specifically for transfer operations
-  // It will require you to make the following modifications to your program
-  // 1. Find the queue family with VK_QUEUE_TRANSFER_BIT bit, but not the VK_QUEUE_GRAPHICS_BIT
-  // 2. Request a handle to the transfer queue
-  // 3. Create a second command pool for command buffers that are submitted on the transfer queue family
-  // 4. Change the sharingMode of resources to be VK_SHARING_MODE_CONCURRENT and specify 
-  //      both the graphics and transfer queue families, since we would copy resources from transfer queue to graphics queue
-  // 5. Submit any transfer commands like vkCmdCopyBuffer to the transfer queue instead of the graphcis queue
-
-  {
-    // Since the presentation is a queue-specific feature, we would need to find a queue
-    //      family that supports presenting to the surface we created
-    // It's actually possible that the queue families supporting drawing commands 
-    //      (aka graphic queue family) and the ones supporting presentation do not overlap
-    // Therefore we have to take into account that there could be a distinct presentation queue
-    B32 has_graphic_and_compute_queue_family = 0;
-    B32 has_present_queue_family = 0;
-
-    U32 queue_family_count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(r_vulkan_pdevice()->h, &queue_family_count, NULL);
-    VkQueueFamilyProperties *queue_family_properties = push_array(scratch.arena, VkQueueFamilyProperties, queue_family_count);
-    vkGetPhysicalDeviceQueueFamilyProperties(r_vulkan_pdevice()->h, &queue_family_count, queue_family_properties);
-
-    for(U64 i = 0; i < queue_family_count; i++)
-    {
-      VkQueueFamilyProperties prop = queue_family_properties[i];
-      VkQueueFlags flags = prop.queueFlags;
-
-      if((flags&VK_QUEUE_GRAPHICS_BIT) && (flags&VK_QUEUE_COMPUTE_BIT))
-      {
-        r_vulkan_pdevice()->gfx_queue_family_index = i;
-        r_vulkan_pdevice()->cmp_queue_family_index = i;
-        has_graphic_and_compute_queue_family = 1;
-      }
-
-      // if((flags&VK_QUEUE_TRANSFER_BIT) && !(flags&VK_QUEUE_GRAPHICS_BIT) && !(flags&VK_QUEUE_COMPUTE_BIT))
-      // {
-      //   has_dedicated_transfer_queue_family = 1;
-      //   r_vulkan_pdevice()->xfer_queue_family_index = i;
-      // }
-
-      VkBool32 present_supported = VK_FALSE;
-      vkGetPhysicalDeviceSurfaceSupportKHR(r_vulkan_pdevice()->h, i, surface.h, &present_supported);
-      if(present_supported == VK_TRUE)
-      {
-        r_vulkan_pdevice()->prest_queue_family_index = i;
-        has_present_queue_family = 1;
-      }
-
-      // Note that it's very likely that these end up being the same queue family after all
-      //      but throughout the program we will treat them as if they were seprate queues for a uniform approach.
-      // TODO(k): Nevertheless, we would prefer a physical device that supports drawing and presentation in the same queue for improved performance.
-      if(has_graphic_and_compute_queue_family && has_present_queue_family) break;
-
-    }
-    AssertAlways(has_graphic_and_compute_queue_family);
-    AssertAlways(has_present_queue_family);
-  }
-
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // Logical device and queues
-
-  // After selecting a physical device to use we need to set up a logical device to interface with it.
-  // The logical device creation process is similar to the instance creation process and describes the features we want to use
-  // We also need to specify which queues to create nwo that we've queried which queue families are available
-  // You can even create multiple logical devices from the same physical device if you have varying requirements
-  // Create one graphic queue
-  // The currently available drivers will only allow you to create a small number of queues for each queue family
-  // And you don't really need more than one. That's because you can create all of the commands buffers on multiple threads and then submit them all at once on the main thread with a single low-overhead call
-  {
-    const F32 gfx_queue_priority = 1.0f;
-    const F32 prest_queue_priority = 1.0f;
-
-    // If a queue family both support drawing and presentation, could we just create one queue
-    U32 num_queues_to_create = r_vulkan_pdevice()->gfx_queue_family_index == r_vulkan_pdevice()->prest_queue_family_index ? 1 : 2;
-    VkDeviceQueueCreateInfo queue_create_infos[3] = {
-      // graphic queue
-      {
-        .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .queueFamilyIndex = r_vulkan_pdevice()->gfx_queue_family_index,
-        .queueCount       = 1,
-        .pQueuePriorities = &gfx_queue_priority,
-      },
-      // present queue, this second create info will be ignored if num_queues_to_create is 1
-      {
-        .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .queueFamilyIndex = r_vulkan_pdevice()->prest_queue_family_index,
-        .queueCount       = 1,
-        .pQueuePriorities = &prest_queue_priority,
-      },
-    };
-
-    // Specifying used device features, don't need anything special for now, leave everything to VK_FALSE
-    VkPhysicalDeviceFeatures device_features = { VK_FALSE };
-    // required
-    device_features.samplerAnisotropy = VK_TRUE;
-    device_features.independentBlend  = VK_TRUE;
-    device_features.fillModeNonSolid  = VK_TRUE;
-    // optional
-    if(r_vulkan_pdevice()->features.wideLines == VK_TRUE)
-    {
-      device_features.wideLines = VK_TRUE;
-    }
-    VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering_feature = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR};
-    dynamic_rendering_feature.dynamicRendering = VK_TRUE;
-
-    // Create the logical device
-    VkDeviceCreateInfo create_info = {
-      .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-      .pNext                   = &dynamic_rendering_feature,
-      .pQueueCreateInfos       = queue_create_infos,
-      .queueCreateInfoCount    = num_queues_to_create,
-      .pEnabledFeatures        = &device_features,
-      .enabledLayerCount       = 0,
-      .enabledExtensionCount   = ArrayCount(required_pdevice_ext_names),
-      .ppEnabledExtensionNames = required_pdevice_ext_names,
-    };
-
-    // Device specific extension VK_KHR_swapchain, which allows you to present rendered images from that device to windows 
-    // It's possible that there are Vulkan devices in the system that lack this ability, for example because they only support compute operations
-    // Previous implementations of Vulkan made a distinction between instance and device specific validation layers, but this is no longer the case
-    // That means that the enabledLayerCount and ppEnabledLayerNames fields of VkDeviceCreateInfo are ignored by up-to-date implementations. 
-    // However, it is still a good idea to set them anyway to be compatible with older implementations
-    create_info.enabledLayerCount = enabled_layer_count;
-    create_info.ppEnabledLayerNames = enabled_layers;
-    VK_Assert(vkCreateDevice(r_vulkan_pdevice()->h, &create_info, NULL, &r_vulkan_state->logical_device.h));
-
-    // Retrieving queue handles
-    // The queues are automatically created along with the logical device, but we don't have a handle to itnerface with them yet
-    // Also, device queues are implicitly cleaned up when the device is destroyed, so we don't need to do anything in cleanup
-    // VkQueue graphics_queue;
-    // The third parameter is queu index, since we're only creating a single queue from this family, we'll simply use index 0
-    vkGetDeviceQueue(r_vulkan_state->logical_device.h, r_vulkan_pdevice()->gfx_queue_family_index, 0, &r_vulkan_state->logical_device.gfx_queue);
-    // VkQueue present_queue;
-    // If the queue families are the same, then those two queue handler will be the same
-    vkGetDeviceQueue(r_vulkan_state->logical_device.h, r_vulkan_pdevice()->prest_queue_family_index, 0, &r_vulkan_state->logical_device.prest_queue);
-  }
-
-  // Create a command pool for gfx queue, can be used to record draw call, image layout transition and copy staging buffer
-  // Create a one-shot command buffer for later use
-  {
-    // Commands in Vulkan, like drawing operations and memory transfers, are not executed directly using function calls
-    // You have to record all of the operations you want to perform in command buffer objects
-    // The advantage of this is that when we are ready to tell the Vulkan what we want to do, all of the commands are submitted together and Vulkan 
-    // can more efficiently process the commands since all of them are available together
-    // In addtion, this allows command recording to happen in multiple threads if so desired
-    // Command pool manage the memory that is used to store the command buffers and command buffers are allocated from them
-    VkCommandPoolCreateInfo create_info = {
-      .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-      // There are two possbile flags for command pools
-      // 1. VK_COMMAND_POOL_CREATE_TRANSIENT_BIT: hint that command buffers are re-recorded with new commands very often (may change memory allocation behavior)
-      // 2. VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT: allow command buffers to be re-recorded individually, without this flag they all have to be reset together
-      // TODO(k): this part don't make too much sense to me
-      // We will be recording a command buffer every frame, so we want to be able to reset and re-record over it
-      // Thus, we need to set the VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT flag bit for our command pool
-      .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-      .queueFamilyIndex = r_vulkan_pdevice()->gfx_queue_family_index,
-    };
-    // Command buffers are executed by submitting them on one of the device queues, like the graphcis and presentation queues we retrieved
-    // Each command pool can only allocate command buffers that are submitted on a single type of queue
-    // We're going to record commands for drawing, which is why we've chosen the graphcis queue family
-    VK_Assert(vkCreateCommandPool(r_vulkan_state->logical_device.h, &create_info, NULL, &r_vulkan_state->cmd_pool));
-
-    VkCommandBufferAllocateInfo alloc_info = {
-      .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-      .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-      .commandPool        = r_vulkan_state->cmd_pool,
-      .commandBufferCount = 1,
-    };
-
-    VK_Assert(vkAllocateCommandBuffers(r_vulkan_state->logical_device.h, &alloc_info, &r_vulkan_state->oneshot_cmd_buf));
-  }
-
-  // Create texture samplers
-  r_vulkan_state->samplers[R_Tex2DSampleKind_Nearest] = r_vulkan_sampler2d(R_Tex2DSampleKind_Nearest);
-  r_vulkan_state->samplers[R_Tex2DSampleKind_Linear]  = r_vulkan_sampler2d(R_Tex2DSampleKind_Linear);
-
-  /////////////////////////////////////////////////////////////////////////////////
-  // Load shader modules
-
-  // Shader modules are just a thin wrapper around the shader bytecode that we've previously loaded from a file and the functions defined in it
-  // The compilation and linking of the SPIR-V bytecode to machine code fro execution by the GPU doesn't happen until the graphics pipeline is created
-  // That means that we're allowed to destroy the shader modules again as soon as pipeline creation is finished
-  // The one catch here is that the size of the bytecode is specified in bytes, but the bytecode pointer is uint32_t pointer rather than a char pointer
-  // You also need to ensure that the data satisfies the alignment requirements of uin32_t 
-#if 1
-  for(U64 kind = 0; kind < R_Vulkan_VShadKind_COUNT; kind++)
-  {
-    VkShaderModule *shad_mo = &r_vulkan_state->vshad_modules[kind];
-    String8 shad_code;
-    switch(kind)
-    {
-      case R_Vulkan_VShadKind_Rect:            {shad_code = str8(rect_vert_spv, rect_vert_spv_len);}break;
-      case R_Vulkan_VShadKind_Noise:           {shad_code = str8(noise_vert_spv, noise_vert_spv_len);}break;
-      case R_Vulkan_VShadKind_Edge:            {shad_code = str8(edge_vert_spv, edge_vert_spv_len);}break;
-      case R_Vulkan_VShadKind_Crt:             {shad_code = str8(crt_vert_spv, crt_vert_spv_len);}break;
-      case R_Vulkan_VShadKind_Geo2D_Forward:   {shad_code = str8(geo2d_forward_vert_spv, geo2d_forward_vert_spv_len);}break;
-      case R_Vulkan_VShadKind_Geo2D_Composite: {shad_code = str8(geo2d_composite_vert_spv, geo2d_composite_vert_spv_len);}break;
-      case R_Vulkan_VShadKind_Geo3D_ZPre:      {shad_code = str8(geo3d_zpre_vert_spv, geo3d_zpre_vert_spv_len);}break;
-      case R_Vulkan_VShadKind_Geo3D_Debug:     {shad_code = str8(geo3d_debug_vert_spv, geo3d_debug_vert_spv_len);}break;
-      case R_Vulkan_VShadKind_Geo3D_Forward:   {shad_code = str8(geo3d_forward_vert_spv, geo3d_forward_vert_spv_len);}break;
-      case R_Vulkan_VShadKind_Geo3D_Composite: {shad_code = str8(geo3d_composite_vert_spv, geo3d_composite_vert_spv_len);}break;
-      case R_Vulkan_VShadKind_Finalize:        {shad_code = str8(finalize_vert_spv, finalize_vert_spv_len);}break;
-      default:                                 {InvalidPath;}break;
-    }
-
-    VkShaderModuleCreateInfo create_info = {
-      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-      .codeSize = shad_code.size,
-      .pCode = (U32 *)shad_code.str,
-    };
-    VK_Assert(vkCreateShaderModule(r_vulkan_state->logical_device.h, &create_info, NULL, shad_mo));
-  }
-
-  for(U64 kind = 0; kind < R_Vulkan_FShadKind_COUNT; kind++)
-  {
-    VkShaderModule *shad_mo = &r_vulkan_state->fshad_modules[kind];
-    String8 shad_code;
-    switch(kind)
-    {
-      case R_Vulkan_FShadKind_Rect:            {shad_code = str8(rect_frag_spv, rect_frag_spv_len);}break;
-      case R_Vulkan_FShadKind_Noise:           {shad_code = str8(noise_frag_spv, noise_frag_spv_len);}break;
-      case R_Vulkan_FShadKind_Edge:            {shad_code = str8(edge_frag_spv, edge_frag_spv_len);}break;
-      case R_Vulkan_FShadKind_Crt:             {shad_code = str8(crt_frag_spv, crt_frag_spv_len);}break;
-      case R_Vulkan_FShadKind_Geo2D_Forward:   {shad_code = str8(geo2d_forward_frag_spv, geo2d_forward_frag_spv_len);}break;
-      case R_Vulkan_FShadKind_Geo2D_Composite: {shad_code = str8(geo2d_composite_frag_spv, geo2d_composite_frag_spv_len);}break;
-      case R_Vulkan_FShadKind_Geo3D_ZPre:      {shad_code = str8(geo3d_zpre_frag_spv, geo3d_zpre_frag_spv_len);}break;
-      case R_Vulkan_FShadKind_Geo3D_Debug:     {shad_code = str8(geo3d_debug_frag_spv, geo3d_debug_frag_spv_len);}break;
-      case R_Vulkan_FShadKind_Geo3D_Forward:   {shad_code = str8(geo3d_forward_frag_spv, geo3d_forward_frag_spv_len);}break;
-      case R_Vulkan_FShadKind_Geo3D_Composite: {shad_code = str8(geo3d_composite_frag_spv, geo3d_composite_frag_spv_len);}break;
-      case R_Vulkan_FShadKind_Finalize:        {shad_code = str8(finalize_frag_spv, finalize_frag_spv_len);}break;
-      default:                                 {InvalidPath;}break;
-    }
-    VkShaderModuleCreateInfo create_info = {
-      .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-      .codeSize = shad_code.size,
-      .pCode    = (U32 *)shad_code.str,
-    };
-    VK_Assert(vkCreateShaderModule(r_vulkan_state->logical_device.h, &create_info, NULL, shad_mo));
-  }
-
-  for(U64 kind = 0; kind < R_Vulkan_CShadKind_COUNT; kind++)
-  {
-    VkShaderModule *shad_mo = &r_vulkan_state->cshad_modules[kind];
-    String8 shad_code;
-    switch(kind)
-    {
-      case R_Vulkan_CShadKind_Geo3D_TileFrustum:  {shad_code = str8(geo3d_tile_frustum_comp_spv, geo3d_tile_frustum_comp_spv_len);}break;
-      case R_Vulkan_CShadKind_Geo3D_LightCulling: {shad_code = str8(geo3d_light_culling_comp_spv, geo3d_light_culling_comp_spv_len);}break;
-      default:                                    {InvalidPath;}break;
-    }
-    VkShaderModuleCreateInfo create_info = {
-      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-      .codeSize = shad_code.size,
-      .pCode = (U32 *)shad_code.str,
-    };
-    VK_Assert(vkCreateShaderModule(r_vulkan_state->logical_device.h, &create_info, NULL, shad_mo));
-  }
-#else
-  for(U64 kind = 0; kind < R_Vulkan_VShadKind_COUNT; kind++)
-  {
-    VkShaderModule *shad_mo = &r_vulkan_state->vshad_modules[kind];
-    String8 shad_path;
-    switch(kind)
-    {
-      case R_Vulkan_VShadKind_Rect:            {shad_path = str8_lit("src/render/vulkan/shader/rect_vert.spv");}break;
-      case R_Vulkan_VShadKind_Noise:           {shad_path = str8_lit("src/render/vulkan/shader/noise_vert.spv");}break;
-      case R_Vulkan_VShadKind_Edge:            {shad_path = str8_lit("src/render/vulkan/shader/edge_vert.spv");}break;
-      case R_Vulkan_VShadKind_Crt:             {shad_path = str8_lit("src/render/vulkan/shader/crt_vert.spv");}break;
-      case R_Vulkan_VShadKind_Geo2D_Forward:   {shad_path = str8_lit("src/render/vulkan/shader/geo2d_forward_vert.spv");}break;
-      case R_Vulkan_VShadKind_Geo2D_Composite: {shad_path = str8_lit("src/render/vulkan/shader/geo2d_composite_vert.spv");}break;
-      case R_Vulkan_VShadKind_Geo3D_ZPre:      {shad_path = str8_lit("src/render/vulkan/shader/geo3d_zpre_vert.spv");}break;
-      case R_Vulkan_VShadKind_Geo3D_Debug:     {shad_path = str8_lit("src/render/vulkan/shader/geo3d_debug_vert.spv");}break;
-      case R_Vulkan_VShadKind_Geo3D_Forward:   {shad_path = str8_lit("src/render/vulkan/shader/geo3d_forward_vert.spv");}break;
-      case R_Vulkan_VShadKind_Geo3D_Composite: {shad_path = str8_lit("src/render/vulkan/shader/geo3d_composite_vert.spv");}break;
-      case R_Vulkan_VShadKind_Finalize:        {shad_path = str8_lit("src/render/vulkan/shader/finalize_vert.spv");}break;
-      default:                                 {InvalidPath;}break;
-    }
-    long shad_size = 0;
-    U8 *shad_code  = 0;
-    FileReadAll(scratch.arena, shad_path, &shad_code, &shad_size);
-
-    Assert(shad_size != 0); Assert(shad_code != NULL);
-    VkShaderModuleCreateInfo create_info = {
-      .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-      .codeSize = shad_size,
-      .pCode    = (U32 *)shad_code,
-    };
-    VK_Assert(vkCreateShaderModule(r_vulkan_state->logical_device.h, &create_info, NULL, shad_mo));
-  }
-
-  for(U64 kind = 0; kind < R_Vulkan_FShadKind_COUNT; kind++)
-  {
-    VkShaderModule *shad_mo = &r_vulkan_state->fshad_modules[kind];
-    String8 shad_path;
-    switch(kind)
-    {
-      case R_Vulkan_FShadKind_Rect:            {shad_path = str8_lit("src/render/vulkan/shader/rect_frag.spv");}break;
-      case R_Vulkan_FShadKind_Noise:           {shad_path = str8_lit("src/render/vulkan/shader/noise_frag.spv");}break;
-      case R_Vulkan_FShadKind_Edge:            {shad_path = str8_lit("src/render/vulkan/shader/edge_frag.spv");}break;
-      case R_Vulkan_FShadKind_Crt:             {shad_path = str8_lit("src/render/vulkan/shader/crt_frag.spv");}break;
-      case R_Vulkan_FShadKind_Geo2D_Forward:   {shad_path = str8_lit("src/render/vulkan/shader/geo2d_forward_frag.spv");}break;
-      case R_Vulkan_FShadKind_Geo2D_Composite: {shad_path = str8_lit("src/render/vulkan/shader/geo2d_composite_frag.spv");}break;
-      case R_Vulkan_FShadKind_Geo3D_ZPre:      {shad_path = str8_lit("src/render/vulkan/shader/geo3d_zpre_frag.spv");}break;
-      case R_Vulkan_FShadKind_Geo3D_Debug:     {shad_path = str8_lit("src/render/vulkan/shader/geo3d_debug_frag.spv");}break;
-      case R_Vulkan_FShadKind_Geo3D_Forward:   {shad_path = str8_lit("src/render/vulkan/shader/geo3d_forward_frag.spv");}break;
-      case R_Vulkan_FShadKind_Geo3D_Composite: {shad_path = str8_lit("src/render/vulkan/shader/geo3d_composite_frag.spv");}break;
-      case R_Vulkan_FShadKind_Finalize:        {shad_path = str8_lit("src/render/vulkan/shader/finalize_frag.spv");}break;
-      default:                                 {InvalidPath;}break;
-    }
-    long shad_size = 0;
-    U8 *shad_code  = 0;
-    FileReadAll(scratch.arena, shad_path, &shad_code, &shad_size);
-    Assert(shad_size != 0); Assert(shad_code != NULL);
-    VkShaderModuleCreateInfo create_info = {
-      .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-      .codeSize = shad_size,
-      .pCode    = (U32 *)shad_code,
-    };
-    VK_Assert(vkCreateShaderModule(r_vulkan_state->logical_device.h, &create_info, NULL, shad_mo));
-  }
-
-  for(U64 kind = 0; kind < R_Vulkan_CShadKind_COUNT; kind++)
-  {
-    VkShaderModule *shad_mo = &r_vulkan_state->cshad_modules[kind];
-    String8 shad_path;
-    switch(kind)
-    {
-      case R_Vulkan_CShadKind_Geo3D_TileFrustum:  {shad_path = str8_lit("src/render/vulkan/shader/geo3d_tile_frustum_comp.spv");}break;
-      case R_Vulkan_CShadKind_Geo3D_LightCulling: {shad_path = str8_lit("src/render/vulkan/shader/geo3d_light_culling_comp.spv");}break;
-      default:                                    {InvalidPath;}break;
-    }
-    long shad_size = 0;
-    U8 *shad_code  = 0;
-    FileReadAll(scratch.arena, shad_path, &shad_code, &shad_size);
-    Assert(shad_size != 0); Assert(shad_code != NULL);
-    VkShaderModuleCreateInfo create_info = {
-      .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-      .codeSize = shad_size,
-      .pCode    = (U32 *)shad_code,
-    };
-    VK_Assert(vkCreateShaderModule(r_vulkan_state->logical_device.h, &create_info, NULL, shad_mo));
-  }
-#endif
-
-  // Create set layouts
-  /////////////////////////////////////////////////////////////////////////////////
-
-  // R_Vulkan_DescriptorSetKind_UBO_Rect
-  {
-    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Rect];
-    VkDescriptorSetLayoutBinding *bindings   = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
-    set_layout->bindings      = bindings;
-    set_layout->binding_count = 1;
-
-    // The first two fields specify the binding used in the shader and the type of descriptor, which is a uniform buffer object
-    // It is possible for the shader variable to represent an array of uniform buffer objects, and descriptorCount specifies the number of values in the array
-    // This could be used to specify a transformation for each of the bones in a skeleton for skeletal animation
-    // Our MVP transformation is in a single uniform buffer object, so we're using a descriptorCount of 1
-    bindings[0].binding            = 0;
-    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-    bindings[0].descriptorCount    = 1;
-    // We also need to specify in which shader stages the descriptor is going to be referenced
-    // The stageFlags field can be a combination of VkShaderStageFlasBits values or the value VK_SHADER_STAGE_ALL_GRAPHICS
-    bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT;
-    // NOTE(k): The pImmutableSampers field is only relevant for image sampling related descriptors
-    bindings[0].pImmutableSamplers = NULL;
-
-    // All of the descriptor bindings are combined into a single VkDescriptorSetLayout object
-    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-    create_info.bindingCount = 1;
-    create_info.pBindings    = bindings;
-    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
-  }
-  // R_Vulkan_DescriptorSetKind_UBO_Geo2D
-  {
-    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Geo2D];
-    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
-    set_layout->bindings = bindings;
-    set_layout->binding_count = 1;
-
-    bindings[0].binding            = 0;
-    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-    bindings[0].descriptorCount    = 1;
-    bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT;
-    bindings[0].pImmutableSamplers = NULL;
-
-    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-    create_info.bindingCount = 1;
-    create_info.pBindings    = bindings;
-    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
-  }
-  // R_Vulkan_DescriptorSetKind_UBO_Geo3D
-  {
-    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Geo3D];
-    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
-    set_layout->bindings = bindings;
-    set_layout->binding_count = 1;
-
-    bindings[0].binding            = 0;
-    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-    bindings[0].descriptorCount    = 1;
-    bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT;
-    bindings[0].pImmutableSamplers = NULL;
-
-    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-    create_info.bindingCount = 1;
-    create_info.pBindings    = bindings;
-    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
-  }
-  // R_Vulkan_DescriptorSetKind_SBO_Geo3D_Joints
-  {
-    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Geo3D_Joints];
-    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
-    set_layout->bindings = bindings;
-    set_layout->binding_count = 1;
-
-    bindings[0].binding            = 0;
-    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
-    bindings[0].descriptorCount    = 1;
-    bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT;
-    bindings[0].pImmutableSamplers = NULL;
-
-    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-    create_info.bindingCount = 1;
-    create_info.pBindings    = bindings;
-    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
-  }
-  // R_Vulkan_DescriptorSetKind_SBO_Geo3D_Materials
-  {
-    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Geo3D_Materials];
-    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
-    set_layout->bindings = bindings;
-    set_layout->binding_count = 1;
-
-    bindings[0].binding            = 0;
-    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
-    bindings[0].descriptorCount    = 1;
-    bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT;
-    bindings[0].pImmutableSamplers = NULL;
-
-    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-    create_info.bindingCount = 1;
-    create_info.pBindings    = bindings;
-    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
-  }
-  // R_Vulkan_DescriptorSetKind_Tex2D
-  {
-    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D];
-    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
-    set_layout->bindings = bindings;
-    set_layout->binding_count = 1;
-
-    bindings[0].binding            = 0;
-    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    bindings[0].descriptorCount    = 1;
-    bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT|VK_SHADER_STAGE_COMPUTE_BIT;
-    bindings[0].pImmutableSamplers = NULL;
-
-    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-    create_info.bindingCount = 1;
-    create_info.pBindings    = bindings;
-    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
-  }
-  // R_Vulkan_DescriptorSetKind_UBO_Geo3D_TileFrustum
-  {
-    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Geo3D_TileFrustum];
-    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
-    set_layout->bindings = bindings;
-    set_layout->binding_count = 1;
-
-    bindings[0].binding            = 0;
-    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-    bindings[0].descriptorCount    = 1;
-    bindings[0].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
-    bindings[0].pImmutableSamplers = NULL;
-
-    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-    create_info.bindingCount = 1;
-    create_info.pBindings    = bindings;
-    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
-  }
-  // R_Vulkan_DescriptorSetKind_UBO_Geo3D_LightCulling
-  {
-    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Geo3D_LightCulling];
-    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
-    set_layout->bindings = bindings;
-    set_layout->binding_count = 1;
-
-    bindings[0].binding            = 0;
-    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-    bindings[0].descriptorCount    = 1;
-    bindings[0].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
-    bindings[0].pImmutableSamplers = NULL;
-
-    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-    create_info.bindingCount = 1;
-    create_info.pBindings    = bindings;
-    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
-  }
-  // R_Vulkan_DescriptorSetKind_SBO_Geo3D_Tiles
-  {
-    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Geo3D_Tiles];
-    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
-    set_layout->bindings = bindings;
-    set_layout->binding_count = 1;
-
-    bindings[0].binding            = 0;
-    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
-    bindings[0].descriptorCount    = 1;
-    bindings[0].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
-    bindings[0].pImmutableSamplers = NULL;
-
-    VkDescriptorSetLayoutCreateInfo create_info = {0};
-    create_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    create_info.bindingCount = 1;
-    create_info.pBindings    = bindings;
-    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
-  }
-  // R_Vulkan_DescriptorSetKind_SBO_Geo3D_Lights
-  {
-    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Geo3D_Lights];
-    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
-    set_layout->bindings = bindings;
-    set_layout->binding_count = 1;
-
-    bindings[0].binding            = 0;
-    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
-    bindings[0].descriptorCount    = 1;
-    bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT|VK_SHADER_STAGE_COMPUTE_BIT;
-    bindings[0].pImmutableSamplers = NULL;
-
-    VkDescriptorSetLayoutCreateInfo create_info = {0};
-    create_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    create_info.bindingCount = 1;
-    create_info.pBindings    = bindings;
-    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
-  }
-  // R_Vulkan_DescriptorSetKind_SBO_Geo3D_LightIndices
-  {
-    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Geo3D_LightIndices];
-    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
-    set_layout->bindings = bindings;
-    set_layout->binding_count = 1;
-
-    bindings[0].binding            = 0;
-    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
-    bindings[0].descriptorCount    = 1;
-    bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT|VK_SHADER_STAGE_COMPUTE_BIT;
-    bindings[0].pImmutableSamplers = NULL;
-
-    VkDescriptorSetLayoutCreateInfo create_info = {0};
-    create_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    create_info.bindingCount = 1;
-    create_info.pBindings    = bindings;
-    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
-  }
-  // R_Vulkan_DescriptorSetKind_SBO_Geo3D_TileLights
-  {
-    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Geo3D_TileLights];
-    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
-    set_layout->bindings = bindings;
-    set_layout->binding_count = 1;
-
-    bindings[0].binding            = 0;
-    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
-    bindings[0].descriptorCount    = 1;
-    bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT|VK_SHADER_STAGE_COMPUTE_BIT;
-    bindings[0].pImmutableSamplers = NULL;
-
-    VkDescriptorSetLayoutCreateInfo create_info = {0};
-    create_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    create_info.bindingCount = 1;
-    create_info.pBindings    = bindings;
-    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
-  }
-
-  // init stage state
-  r_vulkan_stage_init();
-
-  // create backup/default texture
-  U32 backup_texture_data[] = {
-    0xFFFF00FF, 0xFF330033,
-    0xFF330033, 0xFFFF00FF,
-  };
-  r_vulkan_state->backup_texture = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Nearest, v2s32(2,2), R_Tex2DFormat_RGBA8, backup_texture_data);
-  scratch_end(scratch);
-  R_Vulkan_InitStacks(r_vulkan_state);
-  R_Vulkan_InitStackNils(r_vulkan_state);
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////
-// Window
-
-// TODO(k): implement window_release
-internal R_Handle
-r_window_equip(OS_Handle os_wnd)
-{
-  ProfBeginFunction();
-  R_Vulkan_Window *ret = r_vulkan_state->first_free_window;
-
-  if(ret == 0)
-  {
-    ret = push_array(r_vulkan_state->arena, R_Vulkan_Window, 1);
-  }
-  else
-  {
-    U64 gen = ret->generation;
-    SLLStackPop(r_vulkan_state->first_free_window);
-    MemoryZeroStruct(ret);
-    ret->generation = gen;
-  }
-
-  // create surface
-  R_Vulkan_Surface surface = {0};
-  surface.h = os_vulkan_surface_from_window(os_wnd, r_vulkan_state->instance);
-  r_vulkan_surface_update(&surface);
-
-  // create render targets
-  R_Vulkan_RenderTargets *render_targets = r_vulkan_render_targets_alloc(os_wnd, &surface, 0);
-
-  // create frames
-  {
-    // Command buffers will be automatically freed when their command pool is destroyed, so we don't need explicit cleanup
-    // Command buffers are allocated with the vkAllocateCommandBuffers function which takes a VkCommandBufferAllocateInfo struct as parameter that specifies the command pool and number of buffers to allcoate
-    VkCommandBuffer command_buffers[MAX_FRAMES_IN_FLIGHT];
-    VkCommandBufferAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-    alloc_info.commandPool        = r_vulkan_state->cmd_pool;
-    // The level parameter specifies if the allcoated command buffers are primary or secondary command buffers
-    // 1. VK_COMMAND_BUFFER_LEVEL_PRIMARY:   can be submitted to a queue for execution, but cannot be called from other command buffers
-    // 2. VK_COMMAND_BUFFER_LEVEL_SECONDARY: cannot be submitted directly, but can be called from primary command buffers, useful to reuse common operations
-    alloc_info.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    alloc_info.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
-    VK_Assert(vkAllocateCommandBuffers(r_vulkan_state->logical_device.h, &alloc_info, command_buffers));
-
-    for(U64 i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-    {
-      ret->frames[i].cmd_buf = command_buffers[i];
-
-      // Create the synchronization objects for frames
-
-      // One semaphore to signal that an image has been acquired from the swapchain and is ready for rendering
-      // Another one to signal that rendering has finished and presentation can happen
-      // One fence to make sure only one frame is rendering at a time
-      ret->frames[i].img_acq_sem = r_vulkan_semaphore(r_vulkan_state->logical_device.h);
-      ret->frames[i].inflt_fence = r_vulkan_fence();
-
-      // Create all uniform buffers
-      for(U64 kind = 0; kind < R_Vulkan_UBOTypeKind_COUNT; kind++)
-      {
-        U64 unit_count;
-        switch(kind)
-        {
-          default:                                      {InvalidPath;}break;
-          case R_Vulkan_UBOTypeKind_Rect:               {unit_count = MAX_RECT_PASS*MAX_RECT_GROUPS;}break;
-          case R_Vulkan_UBOTypeKind_Geo2D:              {unit_count = MAX_GEO2D_PASS;}break;
-          case R_Vulkan_UBOTypeKind_Geo3D:              {unit_count = MAX_GEO3D_PASS;}break;
-          case R_Vulkan_UBOTypeKind_Geo3D_TileFrustum:  {unit_count = MAX_GEO3D_PASS;}break;
-          case R_Vulkan_UBOTypeKind_Geo3D_LightCulling: {unit_count = MAX_GEO3D_PASS;}break;
-        }
-        ret->frames[i].ubo_buffers[kind] = r_vulkan_ubo_buffer_alloc(kind, unit_count);
-      }
-
-      // Create all storage buffers
-      for(U64 kind = 0; kind < R_Vulkan_SBOTypeKind_COUNT; kind++)
-      {
-        U64 unit_count;
-        switch(kind)
-        {
-          default:                                      {InvalidPath;}break;
-          case R_Vulkan_SBOTypeKind_Geo3D_Joints:       {unit_count = MAX_GEO3D_PASS;}break;
-          case R_Vulkan_SBOTypeKind_Geo3D_Materials:    {unit_count = MAX_GEO3D_PASS;}break;
-          case R_Vulkan_SBOTypeKind_Geo3D_Lights:       {unit_count = MAX_GEO3D_PASS;}break;
-          case R_Vulkan_SBOTypeKind_Geo3D_Tiles:        {unit_count = MAX_GEO3D_PASS;}break;
-          case R_Vulkan_SBOTypeKind_Geo3D_LightIndices: {unit_count = MAX_GEO3D_PASS;}break;
-          case R_Vulkan_SBOTypeKind_Geo3D_TileLights:   {unit_count = MAX_GEO3D_PASS;}break;
-        }
-        ret->frames[i].sbo_buffers[kind] = r_vulkan_sbo_buffer_alloc(kind, unit_count);
-      }
-
-      ///////////////////////////////////////////////////////////////////////////////////
-      // Create instance buffers for rect and geo3d
-
-      // TODO(k): just remember to free this
-      // create inst buffer for rect
-      for(U64 j = 0; j < MAX_RECT_PASS; j++)
-      {
-        R_Vulkan_Buffer *buffer = &ret->frames[i].inst_buffer_rect[j];
-        VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-        create_info.size        = sizeof(R_Rect2DInst)*MAX_RECT_INSTANCES;
-        create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &buffer->h));
-
-        VkMemoryRequirements mem_requirements;
-        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, buffer->h, &mem_requirements);
-
-        buffer->kind = R_ResourceKind_Static;
-        buffer->size = mem_requirements.size;
-        buffer->cap  = mem_requirements.size;
-
-        VkMemoryAllocateInfo alloc_info = {0};
-        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        alloc_info.allocationSize = mem_requirements.size;
-        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &buffer->memory));
-        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, buffer->h, buffer->memory, 0));
-        VK_Assert(vkMapMemory(r_vulkan_state->logical_device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped));
-      }
-
-      // TODO(k): just remember to free this
-      for(U64 j = 0; j < MAX_GEO2D_PASS; j++)
-      {
-        R_Vulkan_Buffer *buffer = &ret->frames[i].inst_buffer_mesh2d[j];
-        VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-        create_info.size        = sizeof(R_Mesh2DInst)*MAX_MESH2D_INSTANCES;
-        create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &buffer->h));
-
-        VkMemoryRequirements mem_requirements;
-        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, buffer->h, &mem_requirements);
-
-        buffer->kind = R_ResourceKind_Static;
-        buffer->size = mem_requirements.size;
-        buffer->cap  = mem_requirements.size;
-
-        VkMemoryAllocateInfo alloc_info = {0};
-        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        alloc_info.allocationSize = mem_requirements.size;
-        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &buffer->memory));
-        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, buffer->h, buffer->memory, 0));
-        VK_Assert(vkMapMemory(r_vulkan_state->logical_device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped));
-      }
-
-      // TODO(k): just remember to free this
-      // create inst buffer for rect
-      for(U64 j = 0; j < MAX_GEO3D_PASS; j++)
-      {
-        R_Vulkan_Buffer *buffer = &ret->frames[i].inst_buffer_mesh3d[j];
-        VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-        create_info.size        = sizeof(R_Mesh3DInst)*MAX_MESH3D_INSTANCES;
-        create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &buffer->h));
-
-        VkMemoryRequirements mem_requirements;
-        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, buffer->h, &mem_requirements);
-
-        buffer->kind = R_ResourceKind_Static;
-        buffer->size = mem_requirements.size;
-        buffer->cap  = mem_requirements.size;
-
-        VkMemoryAllocateInfo alloc_info = {0};
-        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        alloc_info.allocationSize = mem_requirements.size;
-        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &buffer->memory));
-        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, buffer->h, buffer->memory, 0));
-        VK_Assert(vkMapMemory(r_vulkan_state->logical_device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped));
-      }
-    }
-  }
-
-  // create pipelines
-  {
-    // rect
-    ret->pipelines.rect = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Rect, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
-
-    // blur
-
-    // noise
-    ret->pipelines.noise = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Noise, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
-
-    // edge
-    ret->pipelines.edge = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Edge, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
-
-    // crt
-    ret->pipelines.crt = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Crt, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
-
-    // geo2d
-    for(U64 i = 0; i < R_GeoTopologyKind_COUNT; i++)
-    {
-      for(U64 j = 0; j < R_GeoPolygonKind_COUNT; j++)
-      {
-        ret->pipelines.geo2d.forward[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo2D_Forward, i, j, render_targets->swapchain.format, 0);
-      }
-    }
-    ret->pipelines.geo2d.composite = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo2D_Composite, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
-
-    // geo3d
-    ret->pipelines.geo3d.tile_frustum = r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind_CMP_Geo3D_TileFrustum);
-    ret->pipelines.geo3d.light_culling = r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind_CMP_Geo3D_LightCulling);
-    for(U64 i = 0; i < R_GeoTopologyKind_COUNT; i++)
-    {
-      for(U64 j = 0; j < R_GeoPolygonKind_COUNT; j++)
-      {
-        ret->pipelines.geo3d.z_pre[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo3D_ZPre, i, j, render_targets->swapchain.format, 0);
-        ret->pipelines.geo3d.debug[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo3D_Debug, i, j, render_targets->swapchain.format, 0);
-        ret->pipelines.geo3d.forward[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo3D_Forward, i, j, render_targets->swapchain.format, 0);
-      }
-    }
-    ret->pipelines.geo3d.composite = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo3D_Composite, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
-
-    // finalize
-    ret->pipelines.finalize = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Finalize, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
-  }
-
-  // fill
-  ret->os_wnd = os_wnd;
-  ret->render_targets = render_targets;
-  ret->surface = surface;
-  ProfEnd();
-  return r_vulkan_handle_from_window(ret);
-}
+////////////////////////////////
+//~ Window Functions
 
 internal R_Handle
 r_vulkan_handle_from_window(R_Vulkan_Window *window)
@@ -1263,17 +86,13 @@ r_vulkan_handle_from_window(R_Vulkan_Window *window)
 internal R_Vulkan_Window *
 r_vulkan_window_from_handle(R_Handle handle)
 {
-  R_Vulkan_Window *wnd = (R_Vulkan_Window *)handle.u64[0];
-  // TODO(k): do we need this?
-  // if(wnd->generation != handle.u64[1]) {
-  //         return NULL;
-  // }
-  AssertAlways(wnd->generation == handle.u64[1]);
-  return wnd;
+  R_Vulkan_Window *window = (R_Vulkan_Window *)handle.u64[0];
+  if(window && window->generation != handle.u64[1]) window = 0;
+  return window;
 }
 
-internal
-void r_vulkan_window_resize(R_Vulkan_Window *window)
+internal void
+r_vulkan_window_resize(R_Vulkan_Window *window)
 {
   ProfBeginFunction();
   // Unpack some variables
@@ -1334,507 +153,18 @@ void r_vulkan_window_resize(R_Vulkan_Window *window)
   // }
   // // create framebuffers for this bag
   // r_vulkan_rendpass_grp_submit(window->bag, window->rendpass_grp);
+
   ProfEnd();
 }
 
-internal R_Handle
-r_tex2d_alloc_old(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, R_Tex2DFormat format, void *data)
-{
-  ProfBeginFunction();
-  R_Vulkan_Tex2D *texture = 0;
-  {
-    texture = r_vulkan_state->first_free_tex2d;
-    if(texture == 0)
-    {
-      texture = push_array(r_vulkan_state->arena, R_Vulkan_Tex2D, 1);
-    }
-    else
-    {
-      U64 gen = texture->generation;
-      SLLStackPop(r_vulkan_state->first_free_tex2d);
-      MemoryZeroStruct(texture);
-      texture->generation = gen;
-    }
-  }
-  texture->image.extent.width  = size.x;
-  texture->image.extent.height = size.y;
-  texture->format = format;
-
-  VkDeviceSize vk_image_size = size.x * size.y;
-  VkFormat vk_image_format   = 0;
-
-  switch(format)
-  {
-    case R_Tex2DFormat_R8:    {vk_image_format = VK_FORMAT_R8_UNORM;}break;
-    case R_Tex2DFormat_RGBA8: {vk_image_format = VK_FORMAT_R8G8B8A8_SRGB; vk_image_size *= 4;}break;
-    default:                  {InvalidPath;}break;
-  }
-  texture->image.format = vk_image_format;
-
-  AssertAlways(kind == R_ResourceKind_Static && "Only static texture is supoorted for now");
-  AssertAlways(data != 0);
-
-  // Staging buffer
-  VkBuffer       staging_buffer;
-  VkDeviceMemory staging_memory;
-  // TODO: this is very expensive, we may reuse this staging buffer for later tex2d allocation
-  ProfScope("create staging buffer")
-  {
-    VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-    create_info.size        = vk_image_size;
-    create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &staging_buffer));
-
-    VkMemoryRequirements mem_requirements;
-    vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, staging_buffer, &mem_requirements);
-
-    VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-    VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    alloc_info.allocationSize = mem_requirements.size;
-    alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-    VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &staging_memory));
-    VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, staging_buffer, staging_memory, 0));
-
-    void *mapped;
-    VK_Assert(vkMapMemory(r_vulkan_state->logical_device.h, staging_memory, 0, mem_requirements.size, 0, &mapped));
-    MemoryCopy(mapped, data, vk_image_size);
-  }
-
-  // Create the gpu device local buffer
-  ProfScope("create gpu local buffer")
-  {
-
-    // Although we could set up the shader to access the pixel values in the buffer, it's better to use image objects in Vulkan for this purpose
-    // Image objects will make it easier and faster to retrieve colors by allowing us to use 2D coordinates, for one
-    // Pixels within an image object are known as texels and we'll use that name from this point on
-    VkImageCreateInfo create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
-    // Tells Vulkan with what kind of coordinate system the texels in the image are going to be addressed
-    // It's possbiel to create 1D, 2D and 3D images
-    // One dimensional images can be used to store an array of data or gradient
-    // Two dimensional images are mainly used for textures, and three dimensional images can be used to store voxel volumes, for example
-    // The extent field specifies the dimensions of the image, basically how many texels there are on each axis
-    // That's why depth must be 1 instead of 0
-    create_info.imageType     = VK_IMAGE_TYPE_2D;
-    create_info.extent.width  = size.x;
-    create_info.extent.height = size.y;
-    create_info.extent.depth  = 1;
-    create_info.mipLevels     = 1;
-    create_info.arrayLayers   = 1;
-    // Vulkan supports many possible image formats, but we should use the same format for the texels as the pixels in the buffer, otherwise the copy operations will fail
-    // It is possible that the VK_FORMAT_R8G8B8A8_SRGB is not supported by the graphics hardware
-    // You should have a list of acceptable alternatives and go with the best one that is supported
-    // However, support for this particular for this particular format is so widespread that we'll skip this step
-    // Using different formats would also require annoying conversions
-    // .format = VK_FORMAT_R8G8B8A8_SRGB,
-    create_info.format = vk_image_format;
-    // The tiling field can have one of two values:
-    // 1.  VK_IMAGE_TILING_LINEAR: texels are laid out in row-major order like our pixels array
-    // 2. VK_IMAGE_TILING_OPTIMAL: texels are laid out in an implementation defined order for optimal access 
-    // Unlike the layout of an image, the tiling mode cannot be changed at a later time 
-    // If you want to be able to directly access texels in the memory of the image, then you must use VK_IMAGE_TILING_LINEAR layout
-    // We will be using a staging buffer instead of staging image, so this won't be necessary, we will be using VK_IMAGE_TILING_OPTIMAL for efficient access from the shader
-    create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    // There are only two possbile values for the initialLayout of an image
-    // 1.      VK_IMAGE_LAYOUT_UNDEFINED: not usable by the GPU and the very first transition will discard the texels
-    // 2. VK_IMAGE_LAYOUT_PREINITIALIZED: not usable by the GPU, but the first transition will preserve the texels
-    // There are few situations where it is necessary for the texels to be preserved during the first transition
-    // One example, however, would be if you wanted to use an image as staging image in combination with VK_IMAGE_TILING_LINEAR layout
-    // In that case, you'd want to upload the texel data to it and then transition the image to be transfer source without losing the data
-    // In out case, however, we're first going to transition the image to be transfer destination and then copy texel data to it from a buffer object
-    // So we don't need this property and can safely use VK_IMAGE_LAYOUT_UNDEFINED
-    create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    // The image is going to be used as destination for the buffer copy
-    // We also want to be able to access the image from the shader to color our mesh
-    create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    // The image will only be used by one queue family: the one that supports graphics (and therefor also) transfer operations
-    create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    // The samples flag is related to multisampling
-    // This is only relevant for images that will be used as attachments, so stick to one sample
-    create_info.samples = VK_SAMPLE_COUNT_1_BIT;
-    // There are some optional flags for images that are related to sparse images
-    // Sparse images are images where only certain regions are actually backed by memory
-    // If you were using a 3D texture for a voxel terrain, for example, then you could use this avoid allocating memory to storage large volumes of "air" values
-    create_info.flags = 0; // Optional
-    VK_Assert(vkCreateImage(r_vulkan_state->logical_device.h, &create_info, NULL, &texture->image.h));
-
-    VkMemoryRequirements mem_requirements;
-    vkGetImageMemoryRequirements(r_vulkan_state->logical_device.h, texture->image.h, &mem_requirements);
-
-    VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-    VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    alloc_info.allocationSize = mem_requirements.size;
-    alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-    VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &texture->image.memory));
-    VK_Assert(vkBindImageMemory(r_vulkan_state->logical_device.h, texture->image.h, texture->image.memory, 0));
-  }
-
-  // Create image view
-  {
-    VkImageViewCreateInfo create_info =
-    {
-      .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-      .image                           = texture->image.h,
-      .viewType                        = VK_IMAGE_VIEW_TYPE_2D,
-      .format                          = vk_image_format,
-      .subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-      .subresourceRange.baseMipLevel   = 0,
-      .subresourceRange.levelCount     = 1,
-      .subresourceRange.baseArrayLayer = 0,
-      .subresourceRange.layerCount     = 1,
-    };
-    VK_Assert(vkCreateImageView(r_vulkan_state->logical_device.h, &create_info, NULL, &texture->image.view));
-  }
-
-  // TODO: we should not use this oneshot command if we are within a frame
-  VkCommandBuffer cmd_buf = r_vulkan_state->oneshot_cmd_buf;
-
-  CmdScope(cmd_buf)
-  {
-    // Transition image layout 
-    // We don't care about its contents before performing the copy creation
-    // There is actually a special type of image layout that supports all operations, VK_IMAGE_LAYOUT_GENERAL
-    // The problem with it, of course, is that it doesn't necessarily offer the best performance for any operation
-    // It is required for some special cases, like using an image as both input and output, or for reading an image after it has left the preinitialized layout
-    r_vulkan_image_transition(cmd_buf,texture->image.h, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                              VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
-
-    // Copy buffer to image
-    VkBufferImageCopy region =
-    {
-      // Specify the byte offset in the buffer at which the pixel values start
-      .bufferOffset                    = 0,
-      // These two fields specify how the pixels are laid out in memory
-      // For example, you could have some padding bytes between rows of the image
-      // Specifying 0 for both indicates that the pixels are simply tightly packed like they are in our case
-      // The imageSubresource, imageOffset and imageExtent fields indicate to which part of the image we want to copy the pixels
-      .bufferRowLength                 = 0,
-      .bufferImageHeight               = 0,
-      .imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-      .imageSubresource.mipLevel       = 0,
-      .imageSubresource.baseArrayLayer = 0,
-      .imageSubresource.layerCount     = 1,
-      // These two fields indicate to which part of the image we want to copy the pixels
-      .imageOffset                     = {0, 0, 0},
-      .imageExtent                     = {size.x, size.y, 1},
-    };
-    // The fourth parameter indicates which layout the image is currently using
-    // We are assuming here that the image has already been transitioned to the layout that is optimal for copying pixels to
-    // Right now we're only copying one chunk of pixels to the whole image, but it's possible to specify an array of VkBufferImageCopy to perform many different copies from this buffer to the image in on operation 
-    vkCmdCopyBufferToImage(cmd_buf, staging_buffer, texture->image.h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-
-    r_vulkan_image_transition(cmd_buf, texture->image.h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
-  }
-
-  // Free staging buffer and memory
-  // TODO: this is very expensive
-  ProfScope("free staging buffer and it's memory")
-  {
-    VK_Assert(vkQueueWaitIdle(r_vulkan_state->logical_device.gfx_queue));
-    vkDestroyBuffer(r_vulkan_state->logical_device.h, staging_buffer, 0);
-    vkUnmapMemory(r_vulkan_state->logical_device.h, staging_memory);
-    vkFreeMemory(r_vulkan_state->logical_device.h, staging_memory, 0);
-  }
-
-  // TODO(k): All of the helper functions that submit commands so far have been set up to execute synchronously by waiting for the queue to become idle
-  // For practical applications it is recommended to combine these operations in a single command buffer and execute them asynchronously for higher throughput
-  //     especially the transitions and copy in the create_texture_image function
-  // We could experiment with this by creating a setup_command_buffer that the helper functions record commands into, and add a finish_setup_commands to execute the 
-  //     the commands that have been recorded so far
-
-  // TODO(k): we could create two descriptor set for two types of sampler
-  VkSampler *sampler = &r_vulkan_state->samplers[sample_kind];
-  r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind_Tex2D, 1, 64, NULL, &texture->image.view, sampler, &texture->desc_set);
-
-  R_Handle ret = r_vulkan_handle_from_tex2d(texture);
-  ProfEnd();
-  return ret;
-}
-
-internal R_Handle
-r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, R_Tex2DFormat format, void *data)
-{
-  ProfBeginFunction();
-  R_Vulkan_Tex2D *texture = 0;
-  {
-    texture = r_vulkan_state->first_free_tex2d;
-    if(texture == 0)
-    {
-      texture = push_array(r_vulkan_state->arena, R_Vulkan_Tex2D, 1);
-    }
-    else
-    {
-      U64 gen = texture->generation;
-      SLLStackPop(r_vulkan_state->first_free_tex2d);
-      MemoryZeroStruct(texture);
-      texture->generation = gen;
-    }
-  }
-  texture->image.extent.width  = size.x;
-  texture->image.extent.height = size.y;
-  texture->format = format;
-
-  VkDeviceSize vk_image_size = size.x * size.y;
-  VkFormat vk_image_format = 0;
-
-  switch(format)
-  {
-    case R_Tex2DFormat_R8:    {vk_image_format = VK_FORMAT_R8_UNORM;}break;
-    case R_Tex2DFormat_RGBA8: {vk_image_format = VK_FORMAT_R8G8B8A8_SRGB; vk_image_size *= 4;}break;
-    default:                  {InvalidPath;}break;
-  }
-  texture->image.format = vk_image_format;
-
-  AssertAlways(kind == R_ResourceKind_Static && "Only static texture is supoorted for now");
-  AssertAlways(data != 0);
-
-  R_Vulkan_Stage *stage = &r_vulkan_state->stage;
-  VkCommandBuffer cmd = stage->cmds[stage->idx];
-  VkFence fence = stage->fences[stage->idx];
-  ProfScope("wait fence") VK_Assert(vkWaitForFences(r_vulkan_ldevice()->h, 1, &fence, VK_TRUE, UINT64_MAX));
-
-  ////////////////////////////////
-  //~ Unpack staging batch
-
-  R_Vulkan_StagingBatch *batch = &stage->batches[stage->idx];
-
-  B32 first_upload_this_frame = 0;
-  // start stage command buffer recording if not already
-  if(stage->last_touch_frame_index != r_vulkan_state->frame_index || batch->size == 0) ProfScope("begin record & pump tail")
-  {
-    first_upload_this_frame = 1;
-    stage->last_touch_frame_index = r_vulkan_state->frame_index;
-    cmd = stage->cmds[stage->idx];
-
-    // begin recording
-    VkCommandBufferBeginInfo begin_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-    begin_info.pInheritanceInfo = 0;
-    // if the command buffer was already recorded once, then a call to vkBeginCommandBuffer will implicity reset it
-    VK_Assert(vkBeginCommandBuffer(cmd, &begin_info));
-
-    // pump head or tail
-    R_Vulkan_StagingBatch *batches[STAGING_IN_FLIGHT_COUNT] = {0};
-    for(U64 i = 0; i < STAGING_IN_FLIGHT_COUNT; i++)
-    {
-      batches[i] = &stage->batches[i];
-    }
-    // intersection sort
-    for(U64 i = 0; i < STAGING_IN_FLIGHT_COUNT; i++)
-    {
-      R_Vulkan_StagingBatch *batch = batches[i];
-      int j = i-1;
-      while(j >= 0 && batches[j]->size != 0 && batches[j]->start > batch->start)
-      {
-        batches[j+1] = batches[j];
-        j--;
-      }
-      batches[j+1] = batch;
-    }
-
-    // TODO(Next): move pump to the beginning of frame
-    // TODO(Next): if we want to be percise, we want to wait on fence from 2 frames ago to ensure image uploaded 2 frames ago can be used in this frame
-    for(U64 i = 0; i < STAGING_IN_FLIGHT_COUNT; i++)
-    {
-      R_Vulkan_StagingBatch *batch = batches[i];
-      // if-flight? -> check fence
-      if(batch->size != 0)
-      {
-        VkFence fence = stage->fences[batch->fence_idx];
-        VkResult r = vkGetFenceStatus(r_vulkan_ldevice()->h, fence);
-        // done? -> move tail & reset status
-        if(r == VK_SUCCESS)
-        {
-          stage->ring.tail = batch->end;
-          batch->size = 0;
-        }
-        else
-        {
-          break;
-        }
-      }
-    }
-  }
-
-  ////////////////////////////////
-  //~ Alloc a ring slice
-
-  R_Vulkan_StagingSlice slice = r_vulkan_staging_slice_from_size(vk_image_size, 4);
-  Assert(slice.size == vk_image_size);
-  // copy data
-  ProfScope("copy data")
-  MemoryCopy(slice.ptr, data, vk_image_size);
-  VkBuffer staging_buffer = r_vulkan_state->stage.ring.buffer;
-
-  // fill batch
-  batch->size += slice.size;
-  if(first_upload_this_frame) batch->start = slice.offset;
-  batch->end = slice.offset+slice.size;
-  batch->fence_idx = stage->idx;
-
-  // Create the gpu device local buffer
-  ProfScope("create gpu local buffer")
-  {
-
-    // Although we could set up the shader to access the pixel values in the buffer, it's better to use image objects in Vulkan for this purpose
-    // Image objects will make it easier and faster to retrieve colors by allowing us to use 2D coordinates, for one
-    // Pixels within an image object are known as texels and we'll use that name from this point on
-    VkImageCreateInfo create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
-    // Tells Vulkan with what kind of coordinate system the texels in the image are going to be addressed
-    // It's possbiel to create 1D, 2D and 3D images
-    // One dimensional images can be used to store an array of data or gradient
-    // Two dimensional images are mainly used for textures, and three dimensional images can be used to store voxel volumes, for example
-    // The extent field specifies the dimensions of the image, basically how many texels there are on each axis
-    // That's why depth must be 1 instead of 0
-    create_info.imageType     = VK_IMAGE_TYPE_2D;
-    create_info.extent.width  = size.x;
-    create_info.extent.height = size.y;
-    create_info.extent.depth  = 1;
-    create_info.mipLevels     = 1;
-    create_info.arrayLayers   = 1;
-    // Vulkan supports many possible image formats, but we should use the same format for the texels as the pixels in the buffer, otherwise the copy operations will fail
-    // It is possible that the VK_FORMAT_R8G8B8A8_SRGB is not supported by the graphics hardware
-    // You should have a list of acceptable alternatives and go with the best one that is supported
-    // However, support for this particular for this particular format is so widespread that we'll skip this step
-    // Using different formats would also require annoying conversions
-    // .format = VK_FORMAT_R8G8B8A8_SRGB,
-    create_info.format = vk_image_format;
-    // The tiling field can have one of two values:
-    // 1.  VK_IMAGE_TILING_LINEAR: texels are laid out in row-major order like our pixels array
-    // 2. VK_IMAGE_TILING_OPTIMAL: texels are laid out in an implementation defined order for optimal access 
-    // Unlike the layout of an image, the tiling mode cannot be changed at a later time 
-    // If you want to be able to directly access texels in the memory of the image, then you must use VK_IMAGE_TILING_LINEAR layout
-    // We will be using a staging buffer instead of staging image, so this won't be necessary, we will be using VK_IMAGE_TILING_OPTIMAL for efficient access from the shader
-    create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    // There are only two possbile values for the initialLayout of an image
-    // 1.      VK_IMAGE_LAYOUT_UNDEFINED: not usable by the GPU and the very first transition will discard the texels
-    // 2. VK_IMAGE_LAYOUT_PREINITIALIZED: not usable by the GPU, but the first transition will preserve the texels
-    // There are few situations where it is necessary for the texels to be preserved during the first transition
-    // One example, however, would be if you wanted to use an image as staging image in combination with VK_IMAGE_TILING_LINEAR layout
-    // In that case, you'd want to upload the texel data to it and then transition the image to be transfer source without losing the data
-    // In out case, however, we're first going to transition the image to be transfer destination and then copy texel data to it from a buffer object
-    // So we don't need this property and can safely use VK_IMAGE_LAYOUT_UNDEFINED
-    create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    // The image is going to be used as destination for the buffer copy
-    // We also want to be able to access the image from the shader to color our mesh
-    create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    // The image will only be used by one queue family: the one that supports graphics (and therefor also) transfer operations
-    create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    // The samples flag is related to multisampling
-    // This is only relevant for images that will be used as attachments, so stick to one sample
-    create_info.samples = VK_SAMPLE_COUNT_1_BIT;
-    // There are some optional flags for images that are related to sparse images
-    // Sparse images are images where only certain regions are actually backed by memory
-    // If you were using a 3D texture for a voxel terrain, for example, then you could use this avoid allocating memory to storage large volumes of "air" values
-    create_info.flags = 0;
-    VK_Assert(vkCreateImage(r_vulkan_state->logical_device.h, &create_info, NULL, &texture->image.h));
-
-    VkMemoryRequirements mem_requirements;
-    vkGetImageMemoryRequirements(r_vulkan_state->logical_device.h, texture->image.h, &mem_requirements);
-
-    VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-    VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    alloc_info.allocationSize = mem_requirements.size;
-    alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-    VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &texture->image.memory));
-    VK_Assert(vkBindImageMemory(r_vulkan_state->logical_device.h, texture->image.h, texture->image.memory, 0));
-  }
-
-  // Create image view
-  VkImageViewCreateInfo ivci = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-  ivci.image                           = texture->image.h;
-  ivci.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
-  ivci.format                          = vk_image_format;
-  ivci.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-  ivci.subresourceRange.baseMipLevel   = 0;
-  ivci.subresourceRange.levelCount     = 1;
-  ivci.subresourceRange.baseArrayLayer = 0;
-  ivci.subresourceRange.layerCount     = 1;
-  VK_Assert(vkCreateImageView(r_vulkan_state->logical_device.h, &ivci, NULL, &texture->image.view));
-
-  ////////////////////////////////
-  //~ Recording
-
-  {
-    // Transition image layout 
-    // We don't care about its contents before performing the copy creation
-    // There is actually a special type of image layout that supports all operations, VK_IMAGE_LAYOUT_GENERAL
-    // The problem with it, of course, is that it doesn't necessarily offer the best performance for any operation
-    // It is required for some special cases, like using an image as both input and output, or for reading an image after it has left the preinitialized layout
-    r_vulkan_image_transition(cmd, texture->image.h,
-                              VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                              VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
-                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-                              VK_IMAGE_ASPECT_COLOR_BIT);
-
-    // Copy buffer to image
-    VkBufferImageCopy region =
-    {
-      .bufferOffset = slice.offset,
-      // These two fields specify how the pixels are laid out in memory
-      // For example, you could have some padding bytes between rows of the image
-      // Specifying 0 for both indicates that the pixels are simply tightly packed like they are in our case
-      // The imageSubresource, imageOffset and imageExtent fields indicate to which part of the image we want to copy the pixels
-      .bufferRowLength = 0,
-      .bufferImageHeight = 0,
-      .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-      .imageSubresource.mipLevel = 0,
-      .imageSubresource.baseArrayLayer = 0,
-      .imageSubresource.layerCount = 1,
-      // These two fields indicate to which part of the image we want to copy the pixels
-      .imageOffset = {0, 0, 0},
-      .imageExtent = {size.x, size.y, 1},
-    };
-
-    // it's possible to specify an array of VkBufferImageCopy to perform many different copies from this buffer to the image in on operation 
-    vkCmdCopyBufferToImage(cmd, staging_buffer, texture->image.h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-
-    r_vulkan_image_transition(cmd, texture->image.h,
-                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
-                              VK_IMAGE_ASPECT_COLOR_BIT);
-  }
-
-  // TODO(k): All of the helper functions that submit commands so far have been set up to execute synchronously by waiting for the queue to become idle
-  // For practical applications it is recommended to combine these operations in a single command buffer and execute them asynchronously for higher throughput
-  //     especially the transitions and copy in the create_texture_image function
-  // We could experiment with this by creating a setup_command_buffer that the helper functions record commands into, and add a finish_setup_commands to execute the 
-  //     the commands that have been recorded so far
-
-  // TODO(k): we could create two descriptor set for two types of sampler
-  VkSampler *sampler = &r_vulkan_state->samplers[sample_kind];
-  r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind_Tex2D, 1, 64, NULL, &texture->image.view, sampler, &texture->desc_set);
-
-  R_Handle ret = r_vulkan_handle_from_tex2d(texture);
-  ProfEnd();
-  return ret;
-}
-
-internal void
-r_tex2d_release(R_Handle handle)
-{
-  R_Vulkan_Tex2D *tex2d = r_vulkan_tex2d_from_handle(handle);
-
-  // view->image->ds->memory
-  vkDestroyImageView(r_vulkan_state->logical_device.h, tex2d->image.view, NULL);
-  vkDestroyImage(r_vulkan_state->logical_device.h, tex2d->image.h, NULL);
-  r_vulkan_descriptor_set_destroy(&tex2d->desc_set);
-  vkFreeMemory(r_vulkan_state->logical_device.h, tex2d->image.memory, NULL);
-
-  SLLStackPush(r_vulkan_state->first_free_tex2d, tex2d);
-  tex2d->generation++;
-}
+////////////////////////////////
+//~ Tex2D Functions
 
 internal R_Vulkan_Tex2D *
 r_vulkan_tex2d_from_handle(R_Handle handle)
 {
   R_Vulkan_Tex2D *texture = (R_Vulkan_Tex2D *)handle.u64[0];
-  Assert(texture != 0 && texture->generation == handle.u64[1]);
+  if(texture && texture->generation != handle.u64[1]) texture = 0;
   return texture;
 }
 
@@ -1847,457 +177,147 @@ r_vulkan_handle_from_tex2d(R_Vulkan_Tex2D *texture)
   return handle;
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
-// Buffer
-
-internal R_Handle
-r_buffer_alloc(R_ResourceKind kind, U64 size, void *data, U64 data_size)
-{
-  R_Vulkan_Buffer *ret = 0;
-  ret = r_vulkan_state->first_free_buffer;
-  if(ret == 0)
-  {
-    ret = push_array(r_vulkan_state->arena, R_Vulkan_Buffer, 1);
-  }
-  else
-  {
-    U64 gen = ret->generation;
-    SLLStackPop(r_vulkan_state->first_free_buffer);
-    MemoryZeroStruct(ret);
-    ret->generation = gen;
-  }
-
-  // Fill basics
-  ret->kind = kind;
-  ret->size = data_size;
-  ret->cap = size;
-
-  // It should be noted that in a real world application, you're not supposed to actually call vkAllocateMemory for every individual buffer
-  // The maximum number of simultaneous memory allocations is limited by the maxMemoryAllocationCount physical device limit
-  // which may be as low as 4096 even on high end hardward like an NVIDIA GTX1080
-  // The right way to allocate memory for a large number of objects at the same time is to create a custom allocator that splits
-  //      up a single allocation among many different objects by using the offset parameters that we've seen in many functions
-  // We can either implement such an allocator ourself, or use the VulkanMemoryAllocator library provided by the GPUOpen initiative
-
-  switch(kind)
-  {
-    case R_ResourceKind_Static:
-    {
-      // Create staging buffer
-      VkBuffer staging_buffer;
-      VkDeviceMemory staging_memory;
-      {
-        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        create_info.size        = size;
-        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &staging_buffer));
-
-        VkMemoryRequirements mem_requirements;
-        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, staging_buffer, &mem_requirements);
-
-        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        alloc_info.allocationSize = mem_requirements.size;
-        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &staging_memory));
-        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, staging_buffer, staging_memory, 0));
-
-        AssertAlways(data != 0 && data_size > 0);
-        void *mapped;
-        VK_Assert(vkMapMemory(r_vulkan_state->logical_device.h, staging_memory, 0, mem_requirements.size, 0, &mapped));
-        MemoryCopy(mapped, data, data_size);
-        vkUnmapMemory(r_vulkan_state->logical_device.h, staging_memory);
-      }
-
-      VkBuffer buffer;
-      VkDeviceMemory buffer_memory;
-      // Create buffer <GPU Device Local> 
-      {
-        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        create_info.size        = size;
-        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &buffer));
-
-        VkMemoryRequirements mem_requirements;
-        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, buffer, &mem_requirements);
-
-        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        alloc_info.allocationSize = mem_requirements.size;
-        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &buffer_memory));
-        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, buffer, buffer_memory, 0));
-      }
-
-      // Copy buffer
-      VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
-      CmdScope(cmd)
-      {
-        VkBufferCopy copy_region = {
-          .srcOffset = 0, // Optional
-          .dstOffset = 0, // Optional
-          .size      = data_size,
-        };
-
-        // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
-        vkCmdCopyBuffer(cmd, staging_buffer, buffer, 1, &copy_region);
-
-        // TODO(k): we should bind a barrier here
-      }
-
-      // TODO(k) it's not effecient to use vkQueueWaitIdle, maybe we could add a to_free queue, and use some sync primitive to do this
-      // index Semaphore could be a good idea
-      VK_Assert(vkQueueWaitIdle(r_vulkan_state->logical_device.gfx_queue));
-
-      // Free staging buffer and memory
-      vkDestroyBuffer(r_vulkan_state->logical_device.h, staging_buffer, NULL);
-      vkFreeMemory(r_vulkan_state->logical_device.h, staging_memory, NULL);
-
-      // fill result
-      ret->h = buffer; 
-      ret->memory = buffer_memory;
-    }break;
-    case R_ResourceKind_Dynamic:
-    {
-      // double buffer setup (host_visiable/staging+device_local)
-      VkBuffer staging_buffer;
-      VkDeviceMemory staging_memory;
-      void *mapped;
-      {
-        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        create_info.size        = size;
-        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &staging_buffer));
-
-        VkMemoryRequirements mem_requirements;
-        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, staging_buffer, &mem_requirements);
-
-        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        alloc_info.allocationSize = mem_requirements.size;
-        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &staging_memory));
-        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, staging_buffer, staging_memory, 0));
-
-        VK_Assert(vkMapMemory(r_vulkan_state->logical_device.h, staging_memory, 0, mem_requirements.size, 0, &mapped));
-        if(data != 0 && data_size >0)
-        {
-          MemoryCopy(mapped, data, size);
-        }
-      }
-
-      // create buffer
-      VkBuffer buffer;
-      VkDeviceMemory buffer_memory;
-      // Create buffer <GPU Device Local> 
-      {
-        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        create_info.size        = size;
-        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &buffer));
-
-        VkMemoryRequirements mem_requirements;
-        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, buffer, &mem_requirements);
-
-        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        alloc_info.allocationSize = mem_requirements.size;
-        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &buffer_memory));
-        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, buffer, buffer_memory, 0));
-
-        // Copy buffer if data is provided
-        if(data != 0 && data_size > 0)
-        {
-          VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
-          CmdScope(cmd)
-          {
-            VkBufferCopy copy_region = {
-              .srcOffset = 0, // Optional
-              .dstOffset = 0, // Optional
-              .size      = data_size,
-            };
-
-            // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
-            vkCmdCopyBuffer(cmd, staging_buffer, buffer, 1, &copy_region);
-
-            // create a buffer barrier
-            VkBufferMemoryBarrier barrier = 
-            {
-              .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-              // If you are using the barrier to transfer queue family ownership, then these two fields should be the indices of the queue families
-              // They must be set to VK_QUEUE_FAMILY_IGNORED if you don't want to do this (not the default value)
-              .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-              .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-              .srcAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
-              .dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
-              .buffer = buffer,
-              .offset = 0,
-              .size = data_size,
-            };
-            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0,0, NULL, 1, &barrier, 0, 0);
-          }
-        }
-      }
-
-      // fill result
-      ret->h = buffer; 
-      ret->memory = buffer_memory;
-      ret->staging = staging_buffer;
-      ret->staging_memory = staging_memory;
-      ret->mapped = mapped;
-    }break;
-    case R_ResourceKind_Stream:
-    {
-      // NOTE(k): don't make too much difference in here after profling double buffer and single host visiable buffer
-#if 1
-      VkBuffer buffer;
-      VkDeviceMemory buffer_memory;
-      void *mapped;
-      {
-        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        create_info.size        = size;
-        create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &buffer));
-
-        VkMemoryRequirements mem_requirements;
-        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, buffer, &mem_requirements);
-
-        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        // TODO(k): some device provide 256MB host_visiable and device local memory, find out if we can make use of that conditionally
-        // VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        alloc_info.allocationSize = mem_requirements.size;
-        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &buffer_memory));
-        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, buffer, buffer_memory, 0));
-        VK_Assert(vkMapMemory(r_vulkan_state->logical_device.h, buffer_memory, 0, size, 0, &mapped));
-      }
-
-      if(data != 0 && data_size > 0)
-      {
-        MemoryCopy(mapped, data, data_size);
-      }
-
-      // fill result
-      ret->h = buffer;
-      ret->memory = buffer_memory;
-      ret->mapped = mapped;
-#else
-      // double buffer setup (host_visiable/staging+device_local)
-      VkBuffer staging_buffer;
-      VkDeviceMemory staging_memory;
-      void *mapped;
-      {
-        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        create_info.size        = size;
-        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &staging_buffer));
-
-        VkMemoryRequirements mem_requirements;
-        vkGetBufferMemoryRequirements(r_vulkan_state->device.h, staging_buffer, &mem_requirements);
-
-        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        alloc_info.allocationSize = mem_requirements.size;
-        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &staging_memory));
-        VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, staging_buffer, staging_memory, 0));
-
-        VK_Assert(vkMapMemory(r_vulkan_state->device.h, staging_memory, 0, mem_requirements.size, 0, &mapped));
-        if(data != 0 && data_size >0)
-        {
-          MemoryCopy(mapped, data, size);
-        }
-      }
-
-      // create buffer
-      VkBuffer buffer;
-      VkDeviceMemory buffer_memory;
-      // Create buffer <GPU Device Local> 
-      {
-        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        create_info.size        = size;
-        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer));
-
-        VkMemoryRequirements mem_requirements;
-        vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer, &mem_requirements);
-
-        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        alloc_info.allocationSize = mem_requirements.size;
-        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer_memory));
-        VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer, buffer_memory, 0));
-
-        // Copy buffer if data is provided
-        if(data != 0 && data_size > 0)
-        {
-          VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
-          CmdScope(cmd)
-          {
-            VkBufferCopy copy_region = {
-              .srcOffset = 0, // Optional
-              .dstOffset = 0, // Optional
-              .size      = data_size,
-            };
-
-            // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
-            vkCmdCopyBuffer(cmd, staging_buffer, buffer, 1, &copy_region);
-
-            // create a buffer barrier
-            VkBufferMemoryBarrier barrier = 
-            {
-              .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-              // If you are using the barrier to transfer queue family ownership, then these two fields should be the indices of the queue families
-              // They must be set to VK_QUEUE_FAMILY_IGNORED if you don't want to do this (not the default value)
-              .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-              .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-              .srcAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
-              .dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
-              .buffer = buffer,
-              .offset = 0,
-              .size = data_size,
-            };
-            vkCmdPipelineBarrier(cmd,
-                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
-                0,0, NULL, 1, &barrier, 0, 0);
-          }
-        }
-      }
-
-      // fill result
-      ret->h = buffer; 
-      ret->memory = buffer_memory;
-      ret->staging = staging_buffer;
-      ret->stating_memory = staging_memory;
-      ret->mapped = mapped;
-#endif
-    }break;
-    default: {InvalidPath;}break;
-  }
-
-  return r_vulkan_handle_from_buffer(ret);
-}
-
-internal void
-r_buffer_release(R_Handle handle)
-{
-  R_Vulkan_Buffer *buffer = r_vulkan_buffer_from_handle(handle);
-
-  vkDestroyBuffer(r_vulkan_state->logical_device.h, buffer->h, NULL);
-  vkFreeMemory(r_vulkan_state->logical_device.h, buffer->memory, NULL);
-
-  switch(buffer->kind)
-  {
-    case R_ResourceKind_Dynamic:
-    {
-      vkUnmapMemory(r_vulkan_state->logical_device.h, buffer->memory);
-      vkDestroyBuffer(r_vulkan_state->logical_device.h, buffer->staging, NULL);
-      vkFreeMemory(r_vulkan_state->logical_device.h, buffer->staging_memory, NULL);
-    }break;
-    case R_ResourceKind_Static:
-    case R_ResourceKind_Stream:
-    {
-      // noop
-    }break;
-    default:{InvalidPath;}break;
-  }
-
-  SLLStackPush(r_vulkan_state->first_free_buffer, buffer);
-  // NOTE(k): we should increase generation in release instead of alloc
-  buffer->generation++;
-}
-
-// NOTE(k): this function can only be called within a frame boundary
-internal void
-r_buffer_copy(R_Handle handle, void *data, U64 size)
-{
-  R_Vulkan_Buffer *buffer = r_vulkan_buffer_from_handle(handle);
-  buffer->size = size;
-
-  VkCommandBuffer cmd = r_vulkan_top_cmd();
-  switch(buffer->kind)
-  {
-    case R_ResourceKind_Dynamic:
-    // case R_ResourceKind_Stream:
-    {
-      MemoryCopy(buffer->mapped, data, size);
-
-      // copy staging buffer to device local buffer
-      // NOTE(k): we can't use oneshot_cmd_buf, since we didn't wait for the oneshot cmd buffer, maybe we should use frame cmd buffer
-      // VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
-      VkBufferCopy copy_region = {
-        .srcOffset = 0, // Optional
-        .dstOffset = 0, // Optional
-        .size      = size,
-      };
-
-      // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
-      vkCmdCopyBuffer(cmd, buffer->staging, buffer->h, 1, &copy_region);
-
-      // create a buffer barrier
-      VkBufferMemoryBarrier barrier = 
-      {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        // If you are using the barrier to transfer queue family ownership, then these two fields should be the indices of the queue families
-        // They must be set to VK_QUEUE_FAMILY_IGNORED if you don't want to do this (not the default value)
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
-        .buffer = buffer->h,
-        .offset = 0,
-        .size = size,
-      };
-      vkCmdPipelineBarrier(cmd,
-          VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
-          0,0, NULL, 1, &barrier, 0, 0);
-    }break;
-    case R_ResourceKind_Stream:
-    {
-      MemoryCopy(buffer->mapped, data, size);
-    }break;
-    default: {InvalidPath;}break;
-  }
-}
+////////////////////////////////
+//~ Buffer Functions
 
 internal R_Vulkan_Buffer *
 r_vulkan_buffer_from_handle(R_Handle handle)
 {
-  U64 generation = handle.u64[1];
   R_Vulkan_Buffer *buffer = (R_Vulkan_Buffer *)handle.u64[0];
-  AssertAlways(buffer->generation == generation);
+  if(buffer && buffer->generation != handle.u64[1]) buffer = 0;
   return buffer;
 }
 
 internal R_Handle
 r_vulkan_handle_from_buffer(R_Vulkan_Buffer *buffer)
 {
-    R_Handle handle = {0};
-    handle.u64[0] = (U64)buffer;
-    handle.u64[1] = buffer->generation;
-    return handle;
+  R_Handle handle = {0};
+  handle.u64[0] = (U64)buffer;
+  handle.u64[1] = buffer->generation;
+  return handle;
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
-// Swapchain&Surface
+////////////////////////////////
+//~ Stage Ring Buffer Functions
+
+internal void
+r_vulkan_stage_init()
+{
+  R_Vulkan_Stage *stage = &r_vulkan_state->stage;
+  R_Vulkan_PhysicalDevice *pdevice = r_vulkan_pdevice();
+  R_Vulkan_LogicalDevice *ldevice = r_vulkan_ldevice();
+  VkDevice device = ldevice->h;
+
+  // command pool & buffer
+  VkCommandPool cp;
+  VkCommandPoolCreateInfo cpci = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
+  cpci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+  cpci.queueFamilyIndex = pdevice->gfx_queue_family_index;
+  VK_Assert(vkCreateCommandPool(device, &cpci, NULL, &cp));
+
+  // commands
+  for(U64 i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; i++)
+  {
+    VkCommandBuffer cmd;
+    VkCommandBufferAllocateInfo cbai = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+    cbai.commandPool = cp;
+    cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cbai.commandBufferCount = 1;
+    VK_Assert(vkAllocateCommandBuffers(device, &cbai, &cmd));
+    stage->cmds[i] = cmd;
+  }
+
+  // fences
+  for(U64 i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; i++)
+  {
+    stage->fences[i] = r_vulkan_fence();
+  }
+
+  // init staging ring buffer
+  {
+    U64 size = MB(512);
+    R_Vulkan_StagingRing *ring = &stage->ring;
+
+    VkBuffer buffer;
+    VkBufferCreateInfo bci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    bci.size = size;
+    bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    VK_Assert(vkCreateBuffer(device, &bci, NULL, &buffer));
+
+    VkMemoryRequirements mem_requirements;
+    vkGetBufferMemoryRequirements(device, buffer, &mem_requirements);
+
+    VkMemoryAllocateInfo mai = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    mai.allocationSize = mem_requirements.size;
+    mai.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+    VkDeviceMemory memory;
+    VK_Assert(vkAllocateMemory(device, &mai, NULL, &memory));
+    VK_Assert(vkBindBufferMemory(device, buffer, memory, 0));
+
+    void *mapped;
+    VK_Assert(vkMapMemory(device, memory, 0, mem_requirements.size, 0, &mapped));
+
+    ring->buffer = buffer; 
+    ring->memory = memory; 
+    ring->mapped = mapped;
+    ring->cap = size;
+    ring->head = 0;
+    ring->tail = 0;
+  }
+}
+
+internal R_Vulkan_StagingSlice
+r_vulkan_staging_slice_from_size(U64 size, U64 alignment)
+{
+  R_Vulkan_StagingSlice ret = {0};
+  R_Vulkan_StagingRing *ring = &r_vulkan_state->stage.ring;
+  U64 aligned_head = AlignPow2(ring->head, alignment);
+  if(ring->tail <= aligned_head)
+  {
+    // two free segments: [algined_head, cap] and [0, tail]
+    if((ring->cap-aligned_head) >= size)
+    {
+      ret.offset = aligned_head;
+      ret.size = size;
+      ret.ptr = (U8*)(ring->mapped) + aligned_head;
+
+      // update head
+      ring->head = aligned_head+size;
+      if(ring->head == ring->cap) ring->head = 0; // wrap if exact end
+    }
+    else if(ring->tail >= size)
+    {
+      // wrap
+      ret.offset = 0;
+      ret.size = size;
+      ret.ptr = ring->mapped;
+      ring->head = size;
+    }
+  }
+  else
+  {
+    // single free segments: [aligned_head, tail]
+    if(size <= (ring->tail-aligned_head))
+    {
+      ret.offset = aligned_head;
+      ret.size = size;
+      ret.ptr = (U8*)(ring->mapped)+aligned_head;
+      ring->head = aligned_head+size;
+    }
+  }
+
+  return ret;
+}
+
+////////////////////////////////
+//~ Vulkan Resource Allocation
+//
+
+
+//- swapchain
 
 internal R_Vulkan_Swapchain
 r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format, VkColorSpaceKHR color_space, R_Vulkan_Swapchain *old_swapchain)
@@ -2335,7 +355,9 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
     }
   }
 
-  // Swap extent
+  ////////////////////////////////
+  //~ Swap extent
+
   // The swap extent is the resolution of the swap chain images and it's almost always exactly equal to the resolution of the window that we're drawing to in *pixels*.
   // The range of the possbile resolutions is defined in the VkSurfaceCapabilitiesKHR structure
   // Vulkan tells us to match the resolution of the window by setting the width and height in the currentExtent member. However, some window managers do allow use to
@@ -2372,6 +394,9 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
   U32 min_swapchain_image_count = surface->caps.minImageCount + 1;
   // We should also make sure to not exceed the maximum number of images while doing this, where 0 is special value that means that there is no maximum
   if(surface->caps.maxImageCount > 0 && min_swapchain_image_count > surface->caps.maxImageCount) min_swapchain_image_count = surface->caps.maxImageCount;
+
+  ////////////////////////////////
+  //~ Create swapchain
 
   // *imageArrayLayers*
   // The imageArrayLayers specifies the amount of layers each image consists of
@@ -2436,14 +461,22 @@ r_vulkan_swapchain(R_Vulkan_Surface *surface, OS_Handle os_wnd, VkFormat format,
 
   VK_Assert(vkCreateSwapchainKHR(r_vulkan_state->logical_device.h, &create_info, NULL, &swapchain.h));
 
-  // Retrieving the swap chain images
+  ////////////////////////////////
+  //~ Retrieving the swap chain images
+
   // The swapchain has been created now, so all the remains is retrieving the handles of the [VkImage]s in it
   // We will reference these during rendering operations
-  VK_Assert(vkGetSwapchainImagesKHR(r_vulkan_state->logical_device.h, swapchain.h, &swapchain.image_count, NULL));
-  Assert(swapchain.image_count <= MAX_IMAGE_COUNT);
-  VK_Assert(vkGetSwapchainImagesKHR(r_vulkan_state->logical_device.h, swapchain.h, &swapchain.image_count, swapchain.images));
+  {
+    U32 image_count = 0;
+    VK_Assert(vkGetSwapchainImagesKHR(r_vulkan_state->logical_device.h, swapchain.h, &image_count, NULL));
+    image_count = ClampBot(image_count, ArrayCount(swapchain.images));
+    swapchain.image_count = image_count;
+    VK_Assert(vkGetSwapchainImagesKHR(r_vulkan_state->logical_device.h, swapchain.h, &swapchain.image_count, swapchain.images));
+  }
 
-  // Create image views
+  ////////////////////////////////
+  //~ Create image views
+
   // To use any VkImage, including those in the swap chain, in the render pipeline we have to a VkImageView object
   // An image view is quite literally a view into an image.
   // It describes how to access the image and which part of the image to access
@@ -2557,6 +590,8 @@ r_vulkan_optimal_depth_format_from_pdevice(VkPhysicalDevice pdevice)
   return format_candidates[the_one];
 }
 
+//- surface
+
 internal void
 r_vulkan_surface_update(R_Vulkan_Surface *surface)
 {
@@ -2567,8 +602,8 @@ r_vulkan_surface_update(R_Vulkan_Surface *surface)
   VK_Assert(vkGetPhysicalDeviceSurfacePresentModesKHR(r_vulkan_pdevice()->h, surface->h, &surface->prest_mode_count, surface->prest_modes));
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
-// UBO, SBO
+
+//- UBO, SBO
 
 internal R_Vulkan_UBOBuffer
 r_vulkan_ubo_buffer_alloc(R_Vulkan_UBOTypeKind kind, U64 unit_count)
@@ -2672,25 +707,25 @@ r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
     case R_Vulkan_SBOTypeKind_Geo3D_Joints:
     {
       auto_mapped = 1;
-      U64 array_size = sizeof(R_Vulkan_SBO_Geo3D_Joint) * MAX_JOINTS_PER_PASS;
+      U64 array_size = sizeof(R_Vulkan_SBO_Geo3D_Joint) * R_MAX_JOINTS_PER_PASS;
       stride = AlignPow2(array_size, r_vulkan_pdevice()->properties.limits.minStorageBufferOffsetAlignment);
     }break;
     case R_Vulkan_SBOTypeKind_Geo3D_Materials:
     {
       auto_mapped = 1;
-      U64 array_size = sizeof(R_Vulkan_SBO_Geo3D_Material) * MAX_MATERIALS_PER_PASS;
+      U64 array_size = sizeof(R_Vulkan_SBO_Geo3D_Material) * R_MAX_MATERIALS_PER_PASS;
       stride = AlignPow2(array_size, r_vulkan_pdevice()->properties.limits.minStorageBufferOffsetAlignment);
     }break;
     case R_Vulkan_SBOTypeKind_Geo3D_Tiles:
     {
       device_local = 1;
-      U64 array_size = sizeof(R_Vulkan_SBO_Geo3D_Tile) * MAX_TILES_PER_PASS;
+      U64 array_size = sizeof(R_Vulkan_SBO_Geo3D_Tile) * R_VULKAN_MAX_TILES_PER_PASS;
       stride = AlignPow2(array_size, r_vulkan_pdevice()->properties.limits.minStorageBufferOffsetAlignment);
     }break;
     case R_Vulkan_SBOTypeKind_Geo3D_Lights:
     {
       auto_mapped = 1;
-      U64 array_size = sizeof(R_Vulkan_SBO_Geo3D_Light) * MAX_LIGHTS_PER_PASS;
+      U64 array_size = sizeof(R_Vulkan_SBO_Geo3D_Light) * R_MAX_LIGHTS_PER_PASS;
       stride = AlignPow2(array_size, r_vulkan_pdevice()->properties.limits.minStorageBufferOffsetAlignment);
     }break;
     case R_Vulkan_SBOTypeKind_Geo3D_LightIndices:
@@ -2698,13 +733,13 @@ r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
       device_local = 1;
       // NOTE(k): we need to use vkFillBuffer to clear this buffer, hense this flag
       flags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-      U64 array_size = sizeof(R_Vulkan_SBO_Geo3D_LightIndice) * MAX_LIGHTS_PER_TILE * MAX_TILES_PER_PASS;
+      U64 array_size = sizeof(R_Vulkan_SBO_Geo3D_LightIndice) * R_VULKAN_MAX_LIGHTS_PER_TILE * R_VULKAN_MAX_TILES_PER_PASS;
       stride = AlignPow2(array_size, r_vulkan_pdevice()->properties.limits.minStorageBufferOffsetAlignment);
     }break;
     case R_Vulkan_SBOTypeKind_Geo3D_TileLights:
     {
       device_local = 1;
-      U64 array_size = sizeof(R_Vulkan_SBO_Geo3D_TileLights) * MAX_TILES_PER_PASS;
+      U64 array_size = sizeof(R_Vulkan_SBO_Geo3D_TileLights) * R_VULKAN_MAX_TILES_PER_PASS;
       stride = AlignPow2(array_size, r_vulkan_pdevice()->properties.limits.minStorageBufferOffsetAlignment);
     }break;
     default:{InvalidPath;}break;
@@ -2762,123 +797,7 @@ r_vulkan_sbo_buffer_alloc(R_Vulkan_SBOTypeKind kind, U64 unit_count)
   return ret;
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
-// Stage
-
-internal void
-r_vulkan_stage_init()
-{
-  R_Vulkan_Stage *stage = &r_vulkan_state->stage;
-  R_Vulkan_PhysicalDevice *pdevice = r_vulkan_pdevice();
-  R_Vulkan_LogicalDevice *ldevice = r_vulkan_ldevice();
-  VkDevice device = ldevice->h;
-
-  // command pool & buffer
-  VkCommandPool cp;
-  VkCommandPoolCreateInfo cpci = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
-  cpci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-  cpci.queueFamilyIndex = pdevice->gfx_queue_family_index;
-  VK_Assert(vkCreateCommandPool(device, &cpci, NULL, &cp));
-
-  // commands
-  for(U64 i = 0; i < STAGING_IN_FLIGHT_COUNT; i++)
-  {
-    VkCommandBuffer cmd;
-    VkCommandBufferAllocateInfo cbai = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-    cbai.commandPool = cp;
-    cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VK_Assert(vkAllocateCommandBuffers(device, &cbai, &cmd));
-    stage->cmds[i] = cmd;
-  }
-
-  // fences
-  for(U64 i = 0; i < STAGING_IN_FLIGHT_COUNT; i++)
-  {
-    stage->fences[i] = r_vulkan_fence();
-  }
-
-  // init staging ring buffer
-  {
-    U64 size = MB(512);
-    R_Vulkan_StagingRing *ring = &stage->ring;
-
-    VkBuffer buffer;
-    VkBufferCreateInfo bci = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-    bci.size = size;
-    bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    VK_Assert(vkCreateBuffer(device, &bci, NULL, &buffer));
-
-    VkMemoryRequirements mem_requirements;
-    vkGetBufferMemoryRequirements(device, buffer, &mem_requirements);
-
-    VkMemoryAllocateInfo mai = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-    VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    mai.allocationSize = mem_requirements.size;
-    mai.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
-
-    VkDeviceMemory memory;
-    VK_Assert(vkAllocateMemory(device, &mai, NULL, &memory));
-    VK_Assert(vkBindBufferMemory(device, buffer, memory, 0));
-
-    void *mapped;
-    VK_Assert(vkMapMemory(device, memory, 0, mem_requirements.size, 0, &mapped));
-
-    ring->buffer = buffer; 
-    ring->memory = memory; 
-    ring->mapped = mapped;
-    ring->cap = size;
-    ring->head = 0;
-    ring->tail = 0;
-  }
-}
-
-internal R_Vulkan_StagingSlice
-r_vulkan_staging_slice_from_size(U64 size, U64 alignment)
-{
-  R_Vulkan_StagingSlice ret = {0};
-  R_Vulkan_StagingRing *ring = &r_vulkan_state->stage.ring;
-  U64 aligned_head = AlignPow2(ring->head, alignment);
-  if(ring->tail <= aligned_head)
-  {
-    // two free segments: [algined_head, cap] and [0, tail]
-    if((ring->cap-aligned_head) >= size)
-    {
-      ret.offset = aligned_head;
-      ret.size = size;
-      ret.ptr = (U8*)(ring->mapped) + aligned_head;
-
-      // update head
-      ring->head = aligned_head+size;
-      if(ring->head == ring->cap) ring->head = 0; // wrap if exact end
-    }
-    else if(ring->tail >= size)
-    {
-      // wrap
-      ret.offset = 0;
-      ret.size = size;
-      ret.ptr = ring->mapped;
-      ring->head = size;
-    }
-  }
-  else
-  {
-    // single free segments: [aligned_head, tail]
-    if(size <= (ring->tail-aligned_head))
-    {
-      ret.offset = aligned_head;
-      ret.size = size;
-      ret.ptr = (U8*)(ring->mapped)+aligned_head;
-      ring->head = aligned_head+size;
-    }
-  }
-
-  return ret;
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////
-// RenderTargets
+//- render targets
 
 internal R_Vulkan_RenderTargets *
 r_vulkan_render_targets_alloc(OS_Handle os_wnd, R_Vulkan_Surface *surface, R_Vulkan_RenderTargets *old)
@@ -3539,15 +1458,11 @@ r_vulkan_render_targets_destroy(R_Vulkan_RenderTargets *render_targets)
   vkFreeMemory(r_vulkan_state->logical_device.h, render_targets->geo3d_pre_depth_image.memory, NULL);
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
-// Descriptor
+//- descriptor
 
 // TODO(k): ugly, split into alloc and update
 internal void
-r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
-                              U64 set_count, U64 cap, VkBuffer *buffers,
-                              VkImageView *image_views, VkSampler *samplers,
-                              R_Vulkan_DescriptorSet *sets)
+r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind, U64 set_count, U64 cap, VkBuffer *buffers, VkImageView *image_views, VkSampler *samplers, R_Vulkan_DescriptorSet *sets)
 {
   ProfBeginFunction();
   Temp scratch = scratch_begin(0,0);
@@ -3695,7 +1610,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           // NOTE: we want to access it as an array of R_Vulkan_Storage_Mesh 
-          buffer_info->range  = MAX_JOINTS_PER_PASS*sizeof(R_Vulkan_SBO_Geo3D_Joint);
+          buffer_info->range  = R_MAX_JOINTS_PER_PASS*sizeof(R_Vulkan_SBO_Geo3D_Joint);
 
           writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
           writes[set_idx].dstSet           = sets[i].h;
@@ -3713,7 +1628,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           // NOTE: we want to access it as an array of R_Vulkan_Storage_Mesh 
-          buffer_info->range  = MAX_MATERIALS_PER_PASS*sizeof(R_Vulkan_SBO_Geo3D_Material);
+          buffer_info->range  = R_MAX_MATERIALS_PER_PASS*sizeof(R_Vulkan_SBO_Geo3D_Material);
 
           writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
           writes[set_idx].dstSet           = sets[i].h;
@@ -3781,7 +1696,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
           VkDescriptorBufferInfo *buffer_info = push_array(scratch.arena, VkDescriptorBufferInfo, 1);
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
-          buffer_info->range  = MAX_TILES_PER_PASS*sizeof(R_Vulkan_SBO_Geo3D_Tile);
+          buffer_info->range  = R_VULKAN_MAX_TILES_PER_PASS*sizeof(R_Vulkan_SBO_Geo3D_Tile);
 
           writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
           writes[set_idx].dstSet           = sets[i].h;
@@ -3799,7 +1714,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           // NOTE: we want to access it as an array of R_Vulkan_SBO_Lights
-          buffer_info->range  = MAX_LIGHTS_PER_PASS*sizeof(R_Vulkan_SBO_Geo3D_Light);
+          buffer_info->range  = R_MAX_LIGHTS_PER_PASS*sizeof(R_Vulkan_SBO_Geo3D_Light);
 
           writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
           writes[set_idx].dstSet           = sets[i].h;
@@ -3817,7 +1732,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
           // NOTE: we want to access it as an array of U32
-          buffer_info->range  = MAX_LIGHTS_PER_TILE*MAX_TILES_PER_PASS*sizeof(R_Vulkan_SBO_Geo3D_LightIndice);
+          buffer_info->range  = R_VULKAN_MAX_LIGHTS_PER_TILE*R_VULKAN_MAX_TILES_PER_PASS*sizeof(R_Vulkan_SBO_Geo3D_LightIndice);
 
           writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
           writes[set_idx].dstSet           = sets[i].h;
@@ -3834,7 +1749,7 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
           VkDescriptorBufferInfo *buffer_info = push_array(scratch.arena, VkDescriptorBufferInfo, 1);
           buffer_info->buffer = buffers[i];
           buffer_info->offset = 0;
-          buffer_info->range  = MAX_TILES_PER_PASS*sizeof(R_Vulkan_SBO_Geo3D_TileLights);
+          buffer_info->range  = R_VULKAN_MAX_TILES_PER_PASS*sizeof(R_Vulkan_SBO_Geo3D_TileLights);
 
           writes[set_idx].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
           writes[set_idx].dstSet           = sets[i].h;
@@ -3859,7 +1774,8 @@ r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind kind,
   ProfEnd();
 }
 
-void r_vulkan_descriptor_set_destroy(R_Vulkan_DescriptorSet *set)
+internal void
+r_vulkan_descriptor_set_destroy(R_Vulkan_DescriptorSet *set)
 {
   VK_Assert(vkFreeDescriptorSets(r_vulkan_state->logical_device.h, set->pool->h, 1, &set->h));
   set->pool->cmt -= 1;
@@ -3869,8 +1785,7 @@ void r_vulkan_descriptor_set_destroy(R_Vulkan_DescriptorSet *set)
   }
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
-// Sync
+//- sync primitives
 
 internal VkFence
 r_vulkan_fence()
@@ -3896,6 +1811,8 @@ r_vulkan_semaphore(VkDevice device)
   VK_Assert(vkCreateSemaphore(device, &create_info, NULL, &sem));
   return sem;
 }
+
+//- sync helpers
 
 /*
  * Using image memory barrier to transition image layout
@@ -3962,8 +1879,7 @@ r_vulkan_image_transition(VkCommandBuffer cmd_buf, VkImage image, VkImageLayout 
   ProfEnd();
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
-// Pipeline
+//- pipeline
 
 internal R_Vulkan_Pipeline
 r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_GeoPolygonKind polygon, VkFormat swapchain_format, R_Vulkan_Pipeline *old)
@@ -4159,43 +2075,43 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       vtx_attr_desc_cnt = 20;
 
       vtx_binding_desc[0].binding   = 0;
-      vtx_binding_desc[0].stride    = sizeof(R_Vertex);
+      vtx_binding_desc[0].stride    = sizeof(R_Geo3D_Vertex);
       vtx_binding_desc[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
       vtx_attr_descs[0].binding = 0;
       vtx_attr_descs[0].location = 0;
       vtx_attr_descs[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-      vtx_attr_descs[0].offset = offsetof(R_Vertex, pos);
+      vtx_attr_descs[0].offset = offsetof(R_Geo3D_Vertex, pos);
 
       vtx_attr_descs[1].binding  = 0;
       vtx_attr_descs[1].location = 1;
       vtx_attr_descs[1].format   = VK_FORMAT_R32G32B32_SFLOAT;
-      vtx_attr_descs[1].offset   = offsetof(R_Vertex, nor);
+      vtx_attr_descs[1].offset   = offsetof(R_Geo3D_Vertex, nor);
 
       vtx_attr_descs[2].binding  = 0;
       vtx_attr_descs[2].location = 2;
       vtx_attr_descs[2].format   = VK_FORMAT_R32G32_SFLOAT;
-      vtx_attr_descs[2].offset   = offsetof(R_Vertex, tex);
+      vtx_attr_descs[2].offset   = offsetof(R_Geo3D_Vertex, tex);
 
       vtx_attr_descs[3].binding  = 0;
       vtx_attr_descs[3].location = 3;
       vtx_attr_descs[3].format   = VK_FORMAT_R32G32B32_SFLOAT;
-      vtx_attr_descs[3].offset   = offsetof(R_Vertex, tan);
+      vtx_attr_descs[3].offset   = offsetof(R_Geo3D_Vertex, tan);
 
       vtx_attr_descs[4].binding  = 0;
       vtx_attr_descs[4].location = 4;
       vtx_attr_descs[4].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-      vtx_attr_descs[4].offset   = offsetof(R_Vertex, col);
+      vtx_attr_descs[4].offset   = offsetof(R_Geo3D_Vertex, col);
 
       vtx_attr_descs[5].binding  = 0;
       vtx_attr_descs[5].location = 5;
       vtx_attr_descs[5].format   = VK_FORMAT_R32G32B32A32_UINT;
-      vtx_attr_descs[5].offset   = offsetof(R_Vertex, joints);
+      vtx_attr_descs[5].offset   = offsetof(R_Geo3D_Vertex, joints);
 
       vtx_attr_descs[6].binding  = 0;
       vtx_attr_descs[6].location = 6;
       vtx_attr_descs[6].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-      vtx_attr_descs[6].offset   = offsetof(R_Vertex, weights);
+      vtx_attr_descs[6].offset   = offsetof(R_Geo3D_Vertex, weights);
 
       // Instance binding xform (vec4 x4)
       vtx_binding_desc[1].binding   = 1;
@@ -4284,7 +2200,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       // This specifies the index of the binding in the array of bindings
       vtx_binding_desc[0].binding   = 0;
       // This specifies the number of bytes from one entry to the next
-      vtx_binding_desc[0].stride    = sizeof(R_Vertex);
+      vtx_binding_desc[0].stride    = sizeof(R_Geo3D_Vertex);
       // The inputRate parameter can have one of the following values
       // 1. VK_VERTEX_INPUT_RATE_VERTEX: move to the next data entry after each vertex
       // 2. VK_VERTEX_INPUT_RATE_INSTANCE: move to the next data entary after each instance
@@ -4315,37 +2231,37 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       // Also the format parameter implicitly defines the byte size of attribtue data
       vtx_attr_descs[0].format = VK_FORMAT_R32G32B32_SFLOAT;
       // The offset parameter specifies the number of bytes since the start of the per-vertex data to read from
-      vtx_attr_descs[0].offset = offsetof(R_Vertex, pos);
+      vtx_attr_descs[0].offset = offsetof(R_Geo3D_Vertex, pos);
 
       vtx_attr_descs[1].binding  = 0;
       vtx_attr_descs[1].location = 1;
       vtx_attr_descs[1].format   = VK_FORMAT_R32G32B32_SFLOAT;
-      vtx_attr_descs[1].offset   = offsetof(R_Vertex, nor);
+      vtx_attr_descs[1].offset   = offsetof(R_Geo3D_Vertex, nor);
 
       vtx_attr_descs[2].binding  = 0;
       vtx_attr_descs[2].location = 2;
       vtx_attr_descs[2].format   = VK_FORMAT_R32G32_SFLOAT;
-      vtx_attr_descs[2].offset   = offsetof(R_Vertex, tex);
+      vtx_attr_descs[2].offset   = offsetof(R_Geo3D_Vertex, tex);
 
       vtx_attr_descs[3].binding  = 0;
       vtx_attr_descs[3].location = 3;
       vtx_attr_descs[3].format   = VK_FORMAT_R32G32B32_SFLOAT;
-      vtx_attr_descs[3].offset   = offsetof(R_Vertex, tan);
+      vtx_attr_descs[3].offset   = offsetof(R_Geo3D_Vertex, tan);
 
       vtx_attr_descs[4].binding  = 0;
       vtx_attr_descs[4].location = 4;
       vtx_attr_descs[4].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-      vtx_attr_descs[4].offset   = offsetof(R_Vertex, col);
+      vtx_attr_descs[4].offset   = offsetof(R_Geo3D_Vertex, col);
 
       vtx_attr_descs[5].binding  = 0;
       vtx_attr_descs[5].location = 5;
       vtx_attr_descs[5].format   = VK_FORMAT_R32G32B32A32_UINT;
-      vtx_attr_descs[5].offset   = offsetof(R_Vertex, joints);
+      vtx_attr_descs[5].offset   = offsetof(R_Geo3D_Vertex, joints);
 
       vtx_attr_descs[6].binding  = 0;
       vtx_attr_descs[6].location = 6;
       vtx_attr_descs[6].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-      vtx_attr_descs[6].offset   = offsetof(R_Vertex, weights);
+      vtx_attr_descs[6].offset   = offsetof(R_Geo3D_Vertex, weights);
 
       // Instance binding xform (vec4 x4)
       vtx_binding_desc[1].binding   = 1;
@@ -5132,8 +3048,8 @@ r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind)
       compute_shader_mo = r_vulkan_state->cshad_modules[R_Vulkan_CShadKind_Geo3D_TileFrustum];
       // spec constants
       Vec2U32 *tile_size = push_array(scratch.arena, Vec2U32, 1);
-      tile_size->x = TILE_SIZE;
-      tile_size->y = TILE_SIZE;
+      tile_size->x = R_VULKAN_TILE_SIZE;
+      tile_size->y = R_VULKAN_TILE_SIZE;
 
       VkSpecializationMapEntry *entries = push_array(scratch.arena, VkSpecializationMapEntry, 2);
       entries[0].constantID = 0;
@@ -5154,8 +3070,8 @@ r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind)
 
       // spec constants
       Vec2U32 *tile_size = push_array(scratch.arena, Vec2U32, 1);
-      tile_size->x = TILE_SIZE;
-      tile_size->y = TILE_SIZE;
+      tile_size->x = R_VULKAN_TILE_SIZE;
+      tile_size->y = R_VULKAN_TILE_SIZE;
 
       VkSpecializationMapEntry *entries = push_array(scratch.arena, VkSpecializationMapEntry, 2);
       entries[0].constantID = 0;
@@ -5232,8 +3148,169 @@ r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind kind)
   return ret;
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
-// Command
+//- sampler
+
+internal VkSampler
+r_vulkan_sampler2d(R_Tex2DSampleKind kind)
+{
+  // It is possible for shaders to read texels directly from iamges, but that is not very common when they are used a textures
+  // Textures are usually accessed through samplers, which will aplly filtering and transformation to compute the final color that is retrieved
+  // These filters are helpful to deal with problems like oversampling (geometry with more fragments than texels, like pixel game or Minecraft)
+  // In this case if you combined the 4 closed texels through linear interpolation, then you would get a smoother result
+  // The linear interpolation in oversampling is preferred in conventional graphics applications
+  // A sampler object automatically applies the filtering for you when reading a color from the texture
+  //
+  // Undersampling is the opposite problem, where you have more texels than fragments
+  // This will lead to artifacts when sampling high frequency patterns like a checkerboard texture at a sharp angle
+  // The solution to this is *anisotropic filtering*, which can also be applied automatically by sampler
+  //
+  // Aside from these filters, a sampler can also take care of transformation
+  // It determines what happens when you try to read texels outside the image through its addressing mode
+  // * Repeat
+  // * Mirrored repeat
+  // * Clamp to edge
+  // * Clamp to border
+  VkSampler sampler;
+
+  VkSamplerCreateInfo create_info = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+  // The magFilter and minFilter fields specify how to interpolate texels that are magnified or minified
+  // Magnification concerns the oversampling proble describes above
+  // Minification concerns undersampling
+  // The choices are VK_FILTER_NEAREST and VK_FILTER_LINEAR render_vulkan
+  switch(kind)
+  {
+    case R_Tex2DSampleKind_Nearest: {create_info.magFilter = VK_FILTER_NEAREST; create_info.minFilter = VK_FILTER_NEAREST;}break;
+    case R_Tex2DSampleKind_Linear:  {create_info.magFilter = VK_FILTER_LINEAR; create_info.minFilter = VK_FILTER_LINEAR;}break;
+    default:                        {InvalidPath;}break;
+  }
+
+  // Note that the axes are called U, V and W instead of X, Y and Z
+  // VK_SAMPLER_ADDRESS_MODE_REPEAT:               repeat the texture when going beyond the image dimension
+  // VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT:      like repeat mode, but inverts the coordinates to mirror the image when going beyond the dimension
+  // VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE:        take the color of the edge cloesest to the coordinate beyond the image dimensions
+  // VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE: like clamp to edge, but instead uses the edge opposite the closest edge
+  // VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER:      return a solid color when sampling beyond the dimensions of the image
+  // It doesn't really matter which addressing mode we use here, because we're not going to sample outside of the image in this tutorial
+  // However, the repeat mode is probably the most common mode, because it can be used to tile textures like floors an walls
+  create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  create_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  create_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  // These two fields specify if anisotropic filtering should be used
+  // There is no reason not to use this unless performance is concern
+  // The maxAnisotropy field limits the amount of texel samples that can be used to calculate the final color
+  // A lower value results in better performance, but lower quality results
+  // To figure out which value we can use, we need to retrieve the properties of the physical device
+  create_info.anisotropyEnable = VK_TRUE;
+  create_info.maxAnisotropy    = r_vulkan_pdevice()->properties.limits.maxSamplerAnisotropy;
+  // The borderColor field specifies which color is returned when sampling beyond the image with clamp to border addressing mode
+  // It is possible to return black, white or transparent in either float or int formats
+  // You cannot specify an arbitrary color
+  create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+  // The unnormalizedCoordinates fields specifies which coordinate system you want to use to address texels in an image
+  // If this field is VK_TRUE, then you can simply use coordinates within the [0, texWidth] and [0, textHeight] range
+  // If this field is VK_FALSE, then the texels are addressed using [0, 1] range on all axes
+  // Real world applications almost always use normalized coordinates, because then it's possible to use textures of varying resolutions with the exact same coordinates
+  create_info.unnormalizedCoordinates = VK_FALSE;
+  // If a comparsion function is enabled, then texels will first be compared to a value, and the result of that comparison is used in filtering operations
+  // TODO(k): This si mainly used for percentage-closer filtering "https://developer.nvidia.com/gpugems/GPUGems/gpugems_ch11.html" on shadow maps
+  // We are not using any of that
+  create_info.compareEnable = VK_FALSE;
+  create_info.compareOp     = VK_COMPARE_OP_ALWAYS;
+  // NOTE(k): These 4 fields apply to mipmapping
+  // We will look at mipmapping in a later chapter, but basically it's another type of filter that can be applied
+  create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+  create_info.mipLodBias = 0.0f;
+  create_info.minLod     = 0.0f;
+  create_info.maxLod     = 0.0f;
+
+  VK_Assert(vkCreateSampler(r_vulkan_state->logical_device.h, &create_info, NULL, &sampler));
+  // Note the sampler does not reference a VkImage anywhere
+  // The sampler is a distinct object that provides an interface to extrat colors from a texture
+  // It can be applied to any image you want, whether it is 1D, 2D or 3D
+  // This is different from many older APIS, which combined texture images and filtering into a single state
+
+  return sampler;
+}
+
+//- helpers
+
+internal S32
+r_vulkan_memory_index_from_type_filer(U32 type_bits, VkMemoryPropertyFlags properties)
+{
+  // The VkMemoryRequirements struct has three fields
+  // 1.           size: the size of the required amount of memory in bytes, may differ from vertex_buffer.size, e.g. (60 requested vs 64 got, alignment is 16)
+  // 2.      alignment: the offset in bytes where the buffer begins in the allocated region of memory, depends on vertex_buffer.usage and vertex_buffer.flags
+  // 3. memoryTypeBits: bit field of the memory types that are suitable for the buffer
+  // Graphics cards can offer different tyeps of memory to allcoate from
+  // Each type of memory varies in terms of allowed operations and performance characteristics
+  // We need to combine the requirements of the buffer and our own application requirements to find the right type of memory to use
+  // First we need to query info about the available types of memory using vkGetPhysicalDeviceMemoryProperties
+  // The VkPhyscicalDeviceMemoryProperties structure has two arrays memoryTypes and memoryHeaps
+  // Memory heaps are distinct memory resources like didicated VRAM and swap space in RAM for when VRAM runs out
+  // The different types of memory exist within these heaps
+  // TODO(k): Right now we'll only concern ourselves with the type of memory and not the heap it comes from, but you can imagine that this can affect performance
+  S64 ret = -1;
+  VkMemoryType *mem_types = r_vulkan_pdevice()->mem_properties.memoryTypes;
+  U64 mem_type_count = r_vulkan_pdevice()->mem_properties.memoryTypeCount;
+  for(U64 i = 0; i < mem_type_count; i++)
+  {
+    // However, we're not just interested in a memory type that is suitable for the vertex buffer
+    // We also need to be able to write our vertex data to that memory
+    // The memoryTypes array consist of VkMemoryType structs that specify the heap and properties of each type of memory
+    // The properties define special features of the memory, like being able to map it so we can write to it from the CPU
+    // This property is indicated with VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, but we also need to the VK_MEMORY_PROPERTY_HOST_COHERENT_BIT property
+    if((type_bits & (1<<i)) && ((mem_types[i].propertyFlags & properties) == properties))
+    {
+      ret = i;
+      break;
+    }
+  }
+  AssertAlways(ret != -1);
+  return ret;
+}
+
+////////////////////////////////
+//- Helper Functions
+
+//- debug
+
+/*
+ * The first parameter specifies the severity of the message, which is one of the following flags
+ * 1. VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: diagnostic message
+ * 2. VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT   : information message like the creation of a resource
+ * 3. VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT: message about behavior that is not necessarily an error, but very likely a bug in your application
+ * 4. VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT  : message about behavior that is invalid and may cause crashes
+ *
+ * The message_type parameter can have the following values
+ * 1. VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT    : some event has happened that is unrelated to the specification or performance
+ * 2. VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT : something has happeded that violates the specification or indicates a possbile mistake
+ * 3. VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT: potential non-optimal use of vulkan
+ *
+ * The p_callback_data parameter refers to a VkDebugUtilsMessengerCallbackDataEXT struct containing the details of the message itself, with the most important members being
+ * 1. pMessage   : the debug message as a null-terminated string
+ * 2. pObjects   : array of vulkan object handles related to the message
+ * 3. objectCount: number of objects in array
+ *
+ * Finally, the p_userdata parameter contains a pointer that was specified during the setup of the callback and allows you to pass your own data to it
+ */
+internal VKAPI_ATTR VkBool32 VKAPI_CALL
+debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
+               VkDebugUtilsMessageTypeFlagsEXT message_type,
+               const VkDebugUtilsMessengerCallbackDataEXT *p_callback_data,
+               void *p_userdata)
+{
+  if(message_severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+  {
+    fprintf(stderr, "validation layer: %s\n", p_callback_data->pMessage);
+  }
+
+  // The callback returns a boolean that indicates if the Vulkan call that triggered the validation layer message should be aborted.
+  // If the callback returns true, then the call is aborted with the VK_ERROR_VALIDATION_FAILED_EXT error.
+  // This is normally only used to test the validation layers themselved, so you should always return VK_FALSE
+  return VK_FALSE;
+}
+
+//- command buffer scope
 
 internal void
 r_vulkan_cmd_begin(VkCommandBuffer cmd_buf)
@@ -5268,39 +3345,2012 @@ r_vulkan_cmd_end(VkCommandBuffer cmd_buf)
   VK_Assert(vkQueueSubmit(r_vulkan_state->logical_device.gfx_queue, 1, &submit_info, VK_NULL_HANDLE));
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////
-// Frame markers
+////////////////////////////////
+//~ rjf: Backend Hooks
 
-internal void
+//- rjf: top-level layer initialization
+
+r_hook void
+r_init(OS_Handle window, B32 debug)
+{
+  Arena *arena = arena_alloc();
+  r_vulkan_state = push_array(arena, R_Vulkan_State, 1);
+  r_vulkan_state->arena = arena;
+  r_vulkan_state->debug = debug;
+  r_vulkan_state->device_rw_mutex = rw_mutex_alloc();
+  Temp scratch = scratch_begin(0,0);
+
+  ////////////////////////////////
+  //~ Api version
+
+  U32 inst_version = 0;
+  VK_Assert(vkEnumerateInstanceVersion(&inst_version));
+  U32 major = VK_API_VERSION_MAJOR(inst_version);
+  U32 minor = VK_API_VERSION_MINOR(inst_version);
+  U32 patch = VK_API_VERSION_PATCH(inst_version);
+
+  r_vulkan_state->instance_version_major = major;
+  r_vulkan_state->instance_version_minor = minor;
+  r_vulkan_state->instance_version_patch = patch;
+
+  // Dynamic rendering requires at least 1.3
+  if(major < 1 || minor < 3)
+  {
+    // VK_API_VERSION_1_3
+    fprintf(stderr, "Vulkan api version >= 1.3 is required\n");
+    exit(1);
+  }
+
+  ////////////////////////////////
+  //~ Application info
+
+  VkApplicationInfo app_info = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
+  {
+    app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    app_info.pApplicationName = "";
+    app_info.applicationVersion = VK_MAKE_VERSION(0, 0, 1);
+    app_info.pEngineName = "";
+    app_info.engineVersion = VK_MAKE_VERSION(0, 0, 1);
+    app_info.apiVersion = VK_MAKE_API_VERSION(0, major, minor, 0);
+    app_info.pNext = NULL; // point to extension information
+  }
+
+  ////////////////////////////////
+  //~ Instance extensions info
+
+  U64 enabled_ext_count;
+  char **enabled_ext_names;
+  {
+    // NOTE(k): instance extensions is not the same as the physical device extensions
+    U32 ext_count;
+    vkEnumerateInstanceExtensionProperties(NULL, &ext_count, NULL);
+    VkExtensionProperties *extensions = push_array(scratch.arena, VkExtensionProperties, ext_count);
+    vkEnumerateInstanceExtensionProperties(NULL, &ext_count, extensions); /* query the extension details */
+
+    printf("%d instance extensions supported\n", ext_count);
+    for(U64 i = 0; i < ext_count; i++)
+    {
+      printf("[%3lu]: %s [%d] is supported\n", (unsigned long)i, extensions[i].extensionName, extensions[i].specVersion);
+    }
+
+    // Required Extensions
+    // Glfw required instance extensions
+    U64 required_inst_ext_count = 2;
+    char **required_inst_exts = push_array(scratch.arena, char*, required_inst_ext_count);
+    required_inst_exts[0] = "VK_KHR_surface";
+    required_inst_exts[1] = os_vulkan_surface_ext();
+
+    // Assert every required extension by glfw is in the supported extensions list
+    U64 found = 0;
+    for(U64 i = 0; i < required_inst_ext_count; i++)
+    {
+      const char *ext = required_inst_exts[i];
+      for(U64 j = 0; j < ext_count; j++)
+      {
+        if(strcmp(ext, extensions[j].extensionName))
+        {
+          found++;
+          break;
+        }
+      }
+    }
+    AssertAlways(found == required_inst_ext_count);
+
+    enabled_ext_count = required_inst_ext_count;
+    // NOTE(k): add one for optional debug extension
+    enabled_ext_names = push_array(scratch.arena, char *, required_inst_ext_count + 1);
+
+    for(U64 i = 0; i < required_inst_ext_count; i++)
+    {
+      enabled_ext_names[i] = (char *)required_inst_exts[i];
+    }
+
+    if(r_vulkan_state->debug)
+    {
+      enabled_ext_names[enabled_ext_count++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+    }
+  }
+
+  ////////////////////////////////
+  //~ Validation Layer
+
+  // All of the useful standard validation layer is bundle into a layer included in the SDK that is known as VK_LAYER_KHRONOS_validation 
+  U64 enabled_layer_count = 0;
+  const char *enabled_layers[] = { "VK_LAYER_KHRONOS_validation" };
+
+  if(r_vulkan_state->debug)
+  {
+    enabled_layer_count = 1;
+  }
+
+  // get instance layer info
+  U32 instance_layer_count;
+  VK_Assert(vkEnumerateInstanceLayerProperties(&instance_layer_count, NULL));
+  VkLayerProperties *instance_layers = push_array(scratch.arena, VkLayerProperties, instance_layer_count);
+  VK_Assert(vkEnumerateInstanceLayerProperties(&instance_layer_count, instance_layers));
+
+  // check if all enabled layers are presented
+  for(U64 i = 0; i < enabled_layer_count; i++)
+  {
+    B32 found = 0;
+    for(U64 j = 0; j < instance_layer_count; j++)
+    {
+      if(strcmp(instance_layers[j].layerName, enabled_layers[i]) == 0)
+      {
+        found = 1;
+        break;
+      }
+    }
+
+    if(!found)
+    {
+      fprintf(stderr, "layer '%s' was not found for this instance\n", enabled_layers[i]);
+      Trap();
+    }
+  }
+
+  ////////////////////////////////
+  //~ Create vulkan instance (create debug_messenger if needed)
+
+  // It tells the Vulkan driver which global extension and validation layers we want ot use.
+  // Global here means that they apply to the entire program and not a specific device
+  {
+    VkInstanceCreateInfo create_info = {
+      .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+      .pApplicationInfo        = &app_info,
+      .enabledExtensionCount   = enabled_ext_count, /* the last two members of the struct determine the global validation layers to enable */
+      .ppEnabledExtensionNames = (const char **)enabled_ext_names,
+      .enabledLayerCount       = 0,
+      .ppEnabledLayerNames     = NULL,
+      .pNext                   = NULL,
+    };
+    // Although we've now added debugging with validation layers to the
+    //      program we're not covering everything quite yet.
+    // The vkCreateDebugUtilsMessengerEXT call requires a valid instance
+    //      to have been created and vkDestroyDebugUtilsMessengerEXT must be called before the instance is destroyed.
+    // This currently leaves us unable to debug any issues in the vkCreateInstance 
+    //      and vkDestroyInstance calls.
+    // However, if you closely read the extension documentation, you'll see that
+    //      there is a way to create a separate debug utils messenger specifically for those two function calls.
+    // It requires you to simply pass a pointer to a VkDebugUtilsMessengerCreateInfoEXT     
+    //      struct in the pNext extension field of VkInstanceCreateInfo.
+    VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info =
+    {
+      .sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+      .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT    |
+                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+      .messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT     |
+                         VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT  |
+                         VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+      .pfnUserCallback = debug_callback,
+      .pUserData       = NULL, // Optional 
+    };
+
+    create_info.enabledLayerCount   = enabled_layer_count;
+    create_info.ppEnabledLayerNames = enabled_layers;
+
+    if(r_vulkan_state->debug)
+    {
+      create_info.pNext = &debug_messenger_create_info;
+    }
+
+    // create instance
+    VK_Assert(vkCreateInstance(&create_info, NULL, &r_vulkan_state->instance));
+
+    if(r_vulkan_state->debug)
+    {
+      // This struct should be passed to the vkCreateDebugUtilsMessengerEXT function to create the VkDebugUtilsMessengerEXT object
+      // Unfortunately, because this function is an extension function, it is not automatically loaded, we have to load it ourself
+      PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(r_vulkan_state->instance, "vkCreateDebugUtilsMessengerEXT");
+      AssertAlways(vkCreateDebugUtilsMessengerEXT != NULL);
+
+      r_vulkan_state->vkDestroyDebugUtilsMessengerEXT = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(r_vulkan_state->instance, "vkDestroyDebugUtilsMessengerEXT");
+      AssertAlways(r_vulkan_state->vkDestroyDebugUtilsMessengerEXT != NULL);
+
+      /* VK_ERROR_EXTENSION_NOT_PRESENT */
+      VK_Assert(vkCreateDebugUtilsMessengerEXT(r_vulkan_state->instance, &debug_messenger_create_info, NULL, &r_vulkan_state->debug_messenger));
+    }
+  }
+
+  ////////////////////////////////
+  //~ Create window surface
+
+  // Since Vulkan is a platform agnostic API, it can not interface directly with the window system on its own
+  // To establish the connection between Vulkan and the window system to present results to the screen, we need to use the WSI (Window System Integration) extensions
+  // The first one is VK_KHR_surface. It exposes a VkSurfaceKHR object that represents
+  //      an abstract type of surface to present rendered images to.
+  //      The surface in our program will be backed by the window that we've already opened with GLFW
+  // The VK_KHR_surface extension is an instance level extension and we've actually already enabled it
+  //      because it's included in the list returned by glfwGetRequiredInstanceExtensions.
+  //      The list also includes some other WSI related extensions
+  //
+  // The window surface needs to be created right after the instance creation, because it can actually influence the physical device selection
+  // It should also be noted that window surfaces are entirely optional component in Vulkan, if you just need off-screen rendering.
+  // Vulkan allows you to do that without hacks like creating an invisible window (necessary for OpenGL)
+  R_Vulkan_Surface surface = {0};
+  surface.h = os_vulkan_surface_from_window(window, r_vulkan_state->instance);
+
+  ////////////////////////////////
+  //~ Pick the physical device
+
+  // NOTE(k)This object will be implicitly destroyed when the VkInstance is destroyed
+  //      so we won't need to do anything new in the "Cleanup" section
+
+  const char *required_pdevice_ext_names[] = {
+    // It should be noted that the availablility of a presentation queue, implies that the swap chain extension must be supported, and vice vesa
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+  };
+  {
+    U32 pdevice_src_count = 0;
+    VK_Assert(vkEnumeratePhysicalDevices(r_vulkan_state->instance, &pdevice_src_count, NULL));
+    VkPhysicalDevice *pdevices_src = push_array(scratch.arena, VkPhysicalDevice, pdevice_src_count);
+    VK_Assert(vkEnumeratePhysicalDevices(r_vulkan_state->instance, &pdevice_src_count, pdevices_src));
+
+    U64 pdevice_dst_count = 0;
+    R_Vulkan_PhysicalDevice *pdevices_dst = push_array(arena, R_Vulkan_PhysicalDevice, pdevice_src_count);
+
+    for(U64 i = 0; i < pdevice_src_count; i++)
+    {
+      VkPhysicalDeviceProperties properties;
+      VkPhysicalDeviceFeatures features;
+      vkGetPhysicalDeviceProperties(pdevices_src[i], &properties);
+      vkGetPhysicalDeviceFeatures(pdevices_src[i], &features);
+
+      // query physical device supported extensions
+      U32 ext_count;
+      VK_Assert(vkEnumerateDeviceExtensionProperties(pdevices_src[i], NULL, &ext_count, NULL));
+      VkExtensionProperties *extensions = push_array(scratch.arena, VkExtensionProperties, ext_count);
+      VK_Assert(vkEnumerateDeviceExtensionProperties(pdevices_src[i], NULL, &ext_count, extensions));
+
+      // Check if current physical device supports all the required extensions
+      U64 found = 0;
+      for(U64 j = 0; j < ArrayCount(required_pdevice_ext_names); j++)
+      {
+        for(U64 k = 0; k < ext_count; k++)
+        {
+          if(strcmp(extensions[k].extensionName, required_pdevice_ext_names[j]))
+          {
+            found++;
+            break;
+          } 
+        }
+      }
+      if(found != ArrayCount(required_pdevice_ext_names)) continue;
+
+      // If application can't function without geometry shaders, we don't need it for now
+      // if(features.geometryShader == VK_FALSE) continue;
+      // We want Anisotropy
+      if(features.samplerAnisotropy == VK_FALSE) continue;
+      if(features.independentBlend == VK_FALSE)  continue;
+      if(features.fillModeNonSolid == VK_FALSE)  continue;
+      if(features.wideLines == VK_FALSE)         continue;
+
+      R_Vulkan_PhysicalDevice *dst = &pdevices_dst[pdevice_dst_count++];
+      dst->h = pdevices_src[i];
+      dst->properties = properties;
+      dst->features = features;
+      dst->extensions = push_array(arena, VkExtensionProperties, ext_count);
+      MemoryCopy(dst->extensions, extensions, sizeof(VkExtensionProperties)*ext_count);
+      dst->extension_count = ext_count;
+    }
+
+    // pick the most performant physical device
+    S32 pdevice_idx = -1;
+    U64 pdevice_score = 0;
+    for(U64 i = 0; i < pdevice_dst_count; i++)
+    {
+      R_Vulkan_PhysicalDevice *pdevice = &pdevices_dst[i];
+      U64 score = 0;
+
+      if(pdevice->properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {score += 1;}
+      // score += properties.limits.maxImageDimension2D;
+
+      // Querying details of swap chain support
+      // Just checking if a swap chain is avaiable is not sufficient, because it may not actually be compatible with our window surface
+      // Creating a swap chain also involves a lot more settings than instance and device creation
+      //   so we need to query for some more details before we're able to proceed
+      //
+      // There are basically three kinds of properties we need to check:
+      // 1. Basic surface capabilities (min/max number of images in swap chain, min/max width and height of images)
+      // 2. Surface formats (pixel format, color space)
+      // 3. Available presentation modes
+
+      VkSurfaceCapabilitiesKHR surface_caps;
+      // This function takes the specified **VkPhysicalDevice** and **VkSurfaceKHR window surface** into account when determining the supported capabilities.
+      // All of the support querying functions have these two as first parameters, because they are the **core components** of the swap chain
+      VK_Assert(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pdevices_src[i], surface.h, &surface_caps));
+
+      U32 surface_format_count;
+      VK_Assert(vkGetPhysicalDeviceSurfaceFormatsKHR(pdevices_src[i], surface.h, &surface_format_count, NULL));
+      VkSurfaceFormatKHR *surface_formats = push_array(scratch.arena, VkSurfaceFormatKHR, surface_format_count);
+      VK_Assert(vkGetPhysicalDeviceSurfaceFormatsKHR(pdevices_src[i], surface.h, &surface_format_count, surface_formats));
+
+      U32 surface_present_mode_count;
+      VK_Assert(vkGetPhysicalDeviceSurfacePresentModesKHR(pdevices_src[i], surface.h, &surface_present_mode_count, NULL));
+      VkPresentModeKHR *surface_present_modes = push_array(scratch.arena, VkPresentModeKHR, surface_present_mode_count);
+      VK_Assert(vkGetPhysicalDeviceSurfacePresentModesKHR(pdevices_src[i], surface.h, &surface_present_mode_count, surface_present_modes));
+
+      // For now, swap chain support is sufficient if there is at least one supported image format and one supported presentation mode given the window surface we have
+      if(surface_format_count == 0 || surface_present_mode_count == 0) continue;
+      score += 1;
+      if(score > pdevice_score)
+      {
+        pdevice_idx = i;
+        pdevice_score = score;
+
+        surface.caps = surface_caps;
+        surface.format_count = ClampBot(surface_format_count, ArrayCount(surface.formats));
+        MemoryCopy(surface.formats, surface_formats, sizeof(VkSurfaceFormatKHR) * surface.format_count);
+
+        surface.prest_mode_count = ClampBot(surface_present_mode_count, ArrayCount(surface.prest_modes));
+        MemoryCopy(surface.prest_modes, surface_present_modes, sizeof(VkPresentModeKHR) * surface.prest_mode_count);
+      }
+    }
+    AssertAlways(pdevice_idx >= 0 && "No suitable physical device was founed");
+
+    R_Vulkan_PhysicalDevice *pdevice = &pdevices_dst[pdevice_idx];
+    vkGetPhysicalDeviceMemoryProperties(pdevice->h, &pdevice->mem_properties);
+    pdevice->depth_image_format = r_vulkan_optimal_depth_format_from_pdevice(pdevice->h);
+
+    r_vulkan_state->physical_devices      = pdevices_dst;
+    r_vulkan_state->physical_device_count = pdevice_dst_count;
+    r_vulkan_state->physical_device_idx   = pdevice_idx;
+  }
+
+  ////////////////////////////////
+  //~ Queue families information
+
+  // Almost every operation in Vulkan, anything from drawing to uploading textures
+  //      requires commands to be submmited to a queue
+  // There are different types of queues that originate from different queue families 
+  //      and each family of queues allows only a subset of commands
+  // For example, there could be a queue family that only allows processing of compute 
+  //      commands or one that only allows memory transfer related commands
+  // We need to check which queue families are supported by the physical device and
+  //      which one of these supports the commands that we want to use
+  // Right now we are only going to look a queue that supports graphics commands
+  // Also we may prefer devices with a dedicated transfer queue family, but not require it
+
+  // The buffer copy command requires a queue family that supports transfer operations,
+  //      which is indicated using VK_QUEUE_TRANSFER_BIT
+  // The good news is that any queue family with VK_QUEUE_GRAPHICS_BIT or VK_QUEUE_COMPUTE_BIT 
+  //      capabilities already implicitly support VK_QUEUE_TRANSFER_BIT operations
+  // The implementation is not required to explicitly list it in queueFlags in those cases
+  // If you like a challenge, then you can still try to use a different queue family specifically for transfer operations
+  // It will require you to make the following modifications to your program
+  // 1. Find the queue family with VK_QUEUE_TRANSFER_BIT bit, but not the VK_QUEUE_GRAPHICS_BIT
+  // 2. Request a handle to the transfer queue
+  // 3. Create a second command pool for command buffers that are submitted on the transfer queue family
+  // 4. Change the sharingMode of resources to be VK_SHARING_MODE_CONCURRENT and specify 
+  //      both the graphics and transfer queue families, since we would copy resources from transfer queue to graphics queue
+  // 5. Submit any transfer commands like vkCmdCopyBuffer to the transfer queue instead of the graphcis queue
+
+  {
+    // Since the presentation is a queue-specific feature, we would need to find a queue
+    //      family that supports presenting to the surface we created
+    // It's actually possible that the queue families supporting drawing commands 
+    //      (aka graphic queue family) and the ones supporting presentation do not overlap
+    // Therefore we have to take into account that there could be a distinct presentation queue
+    B32 has_graphic_and_compute_queue_family = 0;
+    B32 has_present_queue_family = 0;
+
+    U32 queue_family_count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(r_vulkan_pdevice()->h, &queue_family_count, NULL);
+    VkQueueFamilyProperties *queue_family_properties = push_array(scratch.arena, VkQueueFamilyProperties, queue_family_count);
+    vkGetPhysicalDeviceQueueFamilyProperties(r_vulkan_pdevice()->h, &queue_family_count, queue_family_properties);
+
+    for(U64 i = 0; i < queue_family_count; i++)
+    {
+      VkQueueFamilyProperties prop = queue_family_properties[i];
+      VkQueueFlags flags = prop.queueFlags;
+
+      if((flags&VK_QUEUE_GRAPHICS_BIT) && (flags&VK_QUEUE_COMPUTE_BIT))
+      {
+        r_vulkan_pdevice()->gfx_queue_family_index = i;
+        r_vulkan_pdevice()->cmp_queue_family_index = i;
+        has_graphic_and_compute_queue_family = 1;
+      }
+
+      // if((flags&VK_QUEUE_TRANSFER_BIT) && !(flags&VK_QUEUE_GRAPHICS_BIT) && !(flags&VK_QUEUE_COMPUTE_BIT))
+      // {
+      //   has_dedicated_transfer_queue_family = 1;
+      //   r_vulkan_pdevice()->xfer_queue_family_index = i;
+      // }
+
+      VkBool32 present_supported = VK_FALSE;
+      vkGetPhysicalDeviceSurfaceSupportKHR(r_vulkan_pdevice()->h, i, surface.h, &present_supported);
+      if(present_supported == VK_TRUE)
+      {
+        r_vulkan_pdevice()->prest_queue_family_index = i;
+        has_present_queue_family = 1;
+      }
+
+      // Note that it's very likely that these end up being the same queue family after all
+      //      but throughout the program we will treat them as if they were seprate queues for a uniform approach.
+      // TODO(k): Nevertheless, we would prefer a physical device that supports drawing and presentation in the same queue for improved performance.
+      if(has_graphic_and_compute_queue_family && has_present_queue_family) break;
+
+    }
+    AssertAlways(has_graphic_and_compute_queue_family);
+    AssertAlways(has_present_queue_family);
+  }
+
+  ////////////////////////////////
+  //~ Logical device and queues
+
+  // After selecting a physical device to use we need to set up a logical device to interface with it.
+  // The logical device creation process is similar to the instance creation process and describes the features we want to use
+  // We also need to specify which queues to create nwo that we've queried which queue families are available
+  // You can even create multiple logical devices from the same physical device if you have varying requirements
+  // Create one graphic queue
+  // The currently available drivers will only allow you to create a small number of queues for each queue family
+  // And you don't really need more than one. That's because you can create all of the commands buffers on multiple threads and then submit them all at once on the main thread with a single low-overhead call
+  {
+    const F32 gfx_queue_priority = 1.0f;
+    const F32 prest_queue_priority = 1.0f;
+
+    // If a queue family both support drawing and presentation, could we just create one queue
+    U32 num_queues_to_create = r_vulkan_pdevice()->gfx_queue_family_index == r_vulkan_pdevice()->prest_queue_family_index ? 1 : 2;
+    VkDeviceQueueCreateInfo queue_create_infos[3] = {
+      // graphic queue
+      {
+        .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .queueFamilyIndex = r_vulkan_pdevice()->gfx_queue_family_index,
+        .queueCount       = 1,
+        .pQueuePriorities = &gfx_queue_priority,
+      },
+      // present queue, this second create info will be ignored if num_queues_to_create is 1
+      {
+        .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .queueFamilyIndex = r_vulkan_pdevice()->prest_queue_family_index,
+        .queueCount       = 1,
+        .pQueuePriorities = &prest_queue_priority,
+      },
+    };
+
+    // Specifying used device features, don't need anything special for now, leave everything to VK_FALSE
+    VkPhysicalDeviceFeatures device_features = { VK_FALSE };
+    // required
+    device_features.samplerAnisotropy = VK_TRUE;
+    device_features.independentBlend  = VK_TRUE;
+    device_features.fillModeNonSolid  = VK_TRUE;
+    // optional
+    if(r_vulkan_pdevice()->features.wideLines == VK_TRUE)
+    {
+      device_features.wideLines = VK_TRUE;
+    }
+    VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering_feature = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR};
+    dynamic_rendering_feature.dynamicRendering = VK_TRUE;
+
+    // Create the logical device
+    VkDeviceCreateInfo create_info = {
+      .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+      .pNext                   = &dynamic_rendering_feature,
+      .pQueueCreateInfos       = queue_create_infos,
+      .queueCreateInfoCount    = num_queues_to_create,
+      .pEnabledFeatures        = &device_features,
+      .enabledLayerCount       = 0,
+      .enabledExtensionCount   = ArrayCount(required_pdevice_ext_names),
+      .ppEnabledExtensionNames = required_pdevice_ext_names,
+    };
+
+    // Device specific extension VK_KHR_swapchain, which allows you to present rendered images from that device to windows 
+    // It's possible that there are Vulkan devices in the system that lack this ability, for example because they only support compute operations
+    // Previous implementations of Vulkan made a distinction between instance and device specific validation layers, but this is no longer the case
+    // That means that the enabledLayerCount and ppEnabledLayerNames fields of VkDeviceCreateInfo are ignored by up-to-date implementations. 
+    // However, it is still a good idea to set them anyway to be compatible with older implementations
+    create_info.enabledLayerCount = enabled_layer_count;
+    create_info.ppEnabledLayerNames = enabled_layers;
+    VK_Assert(vkCreateDevice(r_vulkan_pdevice()->h, &create_info, NULL, &r_vulkan_state->logical_device.h));
+
+    // Retrieving queue handles
+    // The queues are automatically created along with the logical device, but we don't have a handle to itnerface with them yet
+    // Also, device queues are implicitly cleaned up when the device is destroyed, so we don't need to do anything in cleanup
+    // VkQueue graphics_queue;
+    // The third parameter is queu index, since we're only creating a single queue from this family, we'll simply use index 0
+    vkGetDeviceQueue(r_vulkan_state->logical_device.h, r_vulkan_pdevice()->gfx_queue_family_index, 0, &r_vulkan_state->logical_device.gfx_queue);
+    // VkQueue present_queue;
+    // If the queue families are the same, then those two queue handler will be the same
+    vkGetDeviceQueue(r_vulkan_state->logical_device.h, r_vulkan_pdevice()->prest_queue_family_index, 0, &r_vulkan_state->logical_device.prest_queue);
+  }
+
+  // Create a command pool for gfx queue, can be used to record draw call, image layout transition and copy staging buffer
+  // Create a one-shot command buffer for later use
+  {
+    // Commands in Vulkan, like drawing operations and memory transfers, are not executed directly using function calls
+    // You have to record all of the operations you want to perform in command buffer objects
+    // The advantage of this is that when we are ready to tell the Vulkan what we want to do, all of the commands are submitted together and Vulkan 
+    // can more efficiently process the commands since all of them are available together
+    // In addtion, this allows command recording to happen in multiple threads if so desired
+    // Command pool manage the memory that is used to store the command buffers and command buffers are allocated from them
+    VkCommandPoolCreateInfo create_info = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+      // There are two possbile flags for command pools
+      // 1. VK_COMMAND_POOL_CREATE_TRANSIENT_BIT: hint that command buffers are re-recorded with new commands very often (may change memory allocation behavior)
+      // 2. VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT: allow command buffers to be re-recorded individually, without this flag they all have to be reset together
+      // TODO(k): this part don't make too much sense to me
+      // We will be recording a command buffer every frame, so we want to be able to reset and re-record over it
+      // Thus, we need to set the VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT flag bit for our command pool
+      .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+      .queueFamilyIndex = r_vulkan_pdevice()->gfx_queue_family_index,
+    };
+    // Command buffers are executed by submitting them on one of the device queues, like the graphcis and presentation queues we retrieved
+    // Each command pool can only allocate command buffers that are submitted on a single type of queue
+    // We're going to record commands for drawing, which is why we've chosen the graphcis queue family
+    VK_Assert(vkCreateCommandPool(r_vulkan_state->logical_device.h, &create_info, NULL, &r_vulkan_state->cmd_pool));
+
+    VkCommandBufferAllocateInfo alloc_info = {
+      .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandPool        = r_vulkan_state->cmd_pool,
+      .commandBufferCount = 1,
+    };
+
+    VK_Assert(vkAllocateCommandBuffers(r_vulkan_state->logical_device.h, &alloc_info, &r_vulkan_state->oneshot_cmd_buf));
+  }
+
+  // Create texture samplers
+  r_vulkan_state->samplers[R_Tex2DSampleKind_Nearest] = r_vulkan_sampler2d(R_Tex2DSampleKind_Nearest);
+  r_vulkan_state->samplers[R_Tex2DSampleKind_Linear]  = r_vulkan_sampler2d(R_Tex2DSampleKind_Linear);
+
+  ////////////////////////////////
+  //~ Load shader modules
+
+  // Shader modules are just a thin wrapper around the shader bytecode that we've previously loaded from a file and the functions defined in it
+  // The compilation and linking of the SPIR-V bytecode to machine code fro execution by the GPU doesn't happen until the graphics pipeline is created
+  // That means that we're allowed to destroy the shader modules again as soon as pipeline creation is finished
+  // The one catch here is that the size of the bytecode is specified in bytes, but the bytecode pointer is uint32_t pointer rather than a char pointer
+  // You also need to ensure that the data satisfies the alignment requirements of uin32_t 
+  for(U64 kind = 0; kind < R_Vulkan_VShadKind_COUNT; kind++)
+  {
+    VkShaderModule *shad_mo = &r_vulkan_state->vshad_modules[kind];
+    String8 shad_code;
+    switch(kind)
+    {
+      case R_Vulkan_VShadKind_Rect:            {shad_code = str8(rect_vert_spv, rect_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Noise:           {shad_code = str8(noise_vert_spv, noise_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Edge:            {shad_code = str8(edge_vert_spv, edge_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Crt:             {shad_code = str8(crt_vert_spv, crt_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Geo2D_Forward:   {shad_code = str8(geo2d_forward_vert_spv, geo2d_forward_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Geo2D_Composite: {shad_code = str8(geo2d_composite_vert_spv, geo2d_composite_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Geo3D_ZPre:      {shad_code = str8(geo3d_zpre_vert_spv, geo3d_zpre_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Geo3D_Debug:     {shad_code = str8(geo3d_debug_vert_spv, geo3d_debug_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Geo3D_Forward:   {shad_code = str8(geo3d_forward_vert_spv, geo3d_forward_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Geo3D_Composite: {shad_code = str8(geo3d_composite_vert_spv, geo3d_composite_vert_spv_len);}break;
+      case R_Vulkan_VShadKind_Finalize:        {shad_code = str8(finalize_vert_spv, finalize_vert_spv_len);}break;
+      default:                                 {InvalidPath;}break;
+    }
+
+    VkShaderModuleCreateInfo create_info = {
+      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+      .codeSize = shad_code.size,
+      .pCode = (U32 *)shad_code.str,
+    };
+    VK_Assert(vkCreateShaderModule(r_vulkan_state->logical_device.h, &create_info, NULL, shad_mo));
+  }
+
+  for(U64 kind = 0; kind < R_Vulkan_FShadKind_COUNT; kind++)
+  {
+    VkShaderModule *shad_mo = &r_vulkan_state->fshad_modules[kind];
+    String8 shad_code;
+    switch(kind)
+    {
+      case R_Vulkan_FShadKind_Rect:            {shad_code = str8(rect_frag_spv, rect_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Noise:           {shad_code = str8(noise_frag_spv, noise_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Edge:            {shad_code = str8(edge_frag_spv, edge_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Crt:             {shad_code = str8(crt_frag_spv, crt_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Geo2D_Forward:   {shad_code = str8(geo2d_forward_frag_spv, geo2d_forward_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Geo2D_Composite: {shad_code = str8(geo2d_composite_frag_spv, geo2d_composite_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Geo3D_ZPre:      {shad_code = str8(geo3d_zpre_frag_spv, geo3d_zpre_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Geo3D_Debug:     {shad_code = str8(geo3d_debug_frag_spv, geo3d_debug_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Geo3D_Forward:   {shad_code = str8(geo3d_forward_frag_spv, geo3d_forward_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Geo3D_Composite: {shad_code = str8(geo3d_composite_frag_spv, geo3d_composite_frag_spv_len);}break;
+      case R_Vulkan_FShadKind_Finalize:        {shad_code = str8(finalize_frag_spv, finalize_frag_spv_len);}break;
+      default:                                 {InvalidPath;}break;
+    }
+    VkShaderModuleCreateInfo create_info = {
+      .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+      .codeSize = shad_code.size,
+      .pCode    = (U32 *)shad_code.str,
+    };
+    VK_Assert(vkCreateShaderModule(r_vulkan_state->logical_device.h, &create_info, NULL, shad_mo));
+  }
+
+  for(U64 kind = 0; kind < R_Vulkan_CShadKind_COUNT; kind++)
+  {
+    VkShaderModule *shad_mo = &r_vulkan_state->cshad_modules[kind];
+    String8 shad_code;
+    switch(kind)
+    {
+      case R_Vulkan_CShadKind_Geo3D_TileFrustum:  {shad_code = str8(geo3d_tile_frustum_comp_spv, geo3d_tile_frustum_comp_spv_len);}break;
+      case R_Vulkan_CShadKind_Geo3D_LightCulling: {shad_code = str8(geo3d_light_culling_comp_spv, geo3d_light_culling_comp_spv_len);}break;
+      default:                                    {InvalidPath;}break;
+    }
+    VkShaderModuleCreateInfo create_info = {
+      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+      .codeSize = shad_code.size,
+      .pCode = (U32 *)shad_code.str,
+    };
+    VK_Assert(vkCreateShaderModule(r_vulkan_state->logical_device.h, &create_info, NULL, shad_mo));
+  }
+
+  ////////////////////////////////
+  //~ Create set layouts
+
+  // R_Vulkan_DescriptorSetKind_UBO_Rect
+  {
+    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Rect];
+    VkDescriptorSetLayoutBinding *bindings   = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+    set_layout->bindings      = bindings;
+    set_layout->binding_count = 1;
+
+    // The first two fields specify the binding used in the shader and the type of descriptor, which is a uniform buffer object
+    // It is possible for the shader variable to represent an array of uniform buffer objects, and descriptorCount specifies the number of values in the array
+    // This could be used to specify a transformation for each of the bones in a skeleton for skeletal animation
+    // Our MVP transformation is in a single uniform buffer object, so we're using a descriptorCount of 1
+    bindings[0].binding            = 0;
+    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    bindings[0].descriptorCount    = 1;
+    // We also need to specify in which shader stages the descriptor is going to be referenced
+    // The stageFlags field can be a combination of VkShaderStageFlasBits values or the value VK_SHADER_STAGE_ALL_GRAPHICS
+    bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT;
+    // NOTE(k): The pImmutableSampers field is only relevant for image sampling related descriptors
+    bindings[0].pImmutableSamplers = NULL;
+
+    // All of the descriptor bindings are combined into a single VkDescriptorSetLayout object
+    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    create_info.bindingCount = 1;
+    create_info.pBindings    = bindings;
+    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
+  }
+  // R_Vulkan_DescriptorSetKind_UBO_Geo2D
+  {
+    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Geo2D];
+    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+    set_layout->bindings = bindings;
+    set_layout->binding_count = 1;
+
+    bindings[0].binding            = 0;
+    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    bindings[0].descriptorCount    = 1;
+    bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT;
+    bindings[0].pImmutableSamplers = NULL;
+
+    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    create_info.bindingCount = 1;
+    create_info.pBindings    = bindings;
+    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
+  }
+  // R_Vulkan_DescriptorSetKind_UBO_Geo3D
+  {
+    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Geo3D];
+    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+    set_layout->bindings = bindings;
+    set_layout->binding_count = 1;
+
+    bindings[0].binding            = 0;
+    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    bindings[0].descriptorCount    = 1;
+    bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT;
+    bindings[0].pImmutableSamplers = NULL;
+
+    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    create_info.bindingCount = 1;
+    create_info.pBindings    = bindings;
+    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
+  }
+  // R_Vulkan_DescriptorSetKind_SBO_Geo3D_Joints
+  {
+    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Geo3D_Joints];
+    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+    set_layout->bindings = bindings;
+    set_layout->binding_count = 1;
+
+    bindings[0].binding            = 0;
+    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+    bindings[0].descriptorCount    = 1;
+    bindings[0].stageFlags         = VK_SHADER_STAGE_VERTEX_BIT;
+    bindings[0].pImmutableSamplers = NULL;
+
+    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    create_info.bindingCount = 1;
+    create_info.pBindings    = bindings;
+    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
+  }
+  // R_Vulkan_DescriptorSetKind_SBO_Geo3D_Materials
+  {
+    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Geo3D_Materials];
+    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+    set_layout->bindings = bindings;
+    set_layout->binding_count = 1;
+
+    bindings[0].binding            = 0;
+    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+    bindings[0].descriptorCount    = 1;
+    bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT;
+    bindings[0].pImmutableSamplers = NULL;
+
+    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    create_info.bindingCount = 1;
+    create_info.pBindings    = bindings;
+    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
+  }
+  // R_Vulkan_DescriptorSetKind_Tex2D
+  {
+    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_Tex2D];
+    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+    set_layout->bindings = bindings;
+    set_layout->binding_count = 1;
+
+    bindings[0].binding            = 0;
+    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[0].descriptorCount    = 1;
+    bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT|VK_SHADER_STAGE_COMPUTE_BIT;
+    bindings[0].pImmutableSamplers = NULL;
+
+    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    create_info.bindingCount = 1;
+    create_info.pBindings    = bindings;
+    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
+  }
+  // R_Vulkan_DescriptorSetKind_UBO_Geo3D_TileFrustum
+  {
+    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Geo3D_TileFrustum];
+    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+    set_layout->bindings = bindings;
+    set_layout->binding_count = 1;
+
+    bindings[0].binding            = 0;
+    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    bindings[0].descriptorCount    = 1;
+    bindings[0].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
+    bindings[0].pImmutableSamplers = NULL;
+
+    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    create_info.bindingCount = 1;
+    create_info.pBindings    = bindings;
+    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
+  }
+  // R_Vulkan_DescriptorSetKind_UBO_Geo3D_LightCulling
+  {
+    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_UBO_Geo3D_LightCulling];
+    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+    set_layout->bindings = bindings;
+    set_layout->binding_count = 1;
+
+    bindings[0].binding            = 0;
+    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    bindings[0].descriptorCount    = 1;
+    bindings[0].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
+    bindings[0].pImmutableSamplers = NULL;
+
+    VkDescriptorSetLayoutCreateInfo create_info = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+    create_info.bindingCount = 1;
+    create_info.pBindings    = bindings;
+    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
+  }
+  // R_Vulkan_DescriptorSetKind_SBO_Geo3D_Tiles
+  {
+    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Geo3D_Tiles];
+    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+    set_layout->bindings = bindings;
+    set_layout->binding_count = 1;
+
+    bindings[0].binding            = 0;
+    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+    bindings[0].descriptorCount    = 1;
+    bindings[0].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
+    bindings[0].pImmutableSamplers = NULL;
+
+    VkDescriptorSetLayoutCreateInfo create_info = {0};
+    create_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    create_info.bindingCount = 1;
+    create_info.pBindings    = bindings;
+    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
+  }
+  // R_Vulkan_DescriptorSetKind_SBO_Geo3D_Lights
+  {
+    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Geo3D_Lights];
+    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+    set_layout->bindings = bindings;
+    set_layout->binding_count = 1;
+
+    bindings[0].binding            = 0;
+    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+    bindings[0].descriptorCount    = 1;
+    bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT|VK_SHADER_STAGE_COMPUTE_BIT;
+    bindings[0].pImmutableSamplers = NULL;
+
+    VkDescriptorSetLayoutCreateInfo create_info = {0};
+    create_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    create_info.bindingCount = 1;
+    create_info.pBindings    = bindings;
+    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
+  }
+  // R_Vulkan_DescriptorSetKind_SBO_Geo3D_LightIndices
+  {
+    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Geo3D_LightIndices];
+    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+    set_layout->bindings = bindings;
+    set_layout->binding_count = 1;
+
+    bindings[0].binding            = 0;
+    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+    bindings[0].descriptorCount    = 1;
+    bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT|VK_SHADER_STAGE_COMPUTE_BIT;
+    bindings[0].pImmutableSamplers = NULL;
+
+    VkDescriptorSetLayoutCreateInfo create_info = {0};
+    create_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    create_info.bindingCount = 1;
+    create_info.pBindings    = bindings;
+    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
+  }
+  // R_Vulkan_DescriptorSetKind_SBO_Geo3D_TileLights
+  {
+    R_Vulkan_DescriptorSetLayout *set_layout = &r_vulkan_state->set_layouts[R_Vulkan_DescriptorSetKind_SBO_Geo3D_TileLights];
+    VkDescriptorSetLayoutBinding *bindings = push_array(r_vulkan_state->arena, VkDescriptorSetLayoutBinding, 1);
+    set_layout->bindings = bindings;
+    set_layout->binding_count = 1;
+
+    bindings[0].binding            = 0;
+    bindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+    bindings[0].descriptorCount    = 1;
+    bindings[0].stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT|VK_SHADER_STAGE_COMPUTE_BIT;
+    bindings[0].pImmutableSamplers = NULL;
+
+    VkDescriptorSetLayoutCreateInfo create_info = {0};
+    create_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    create_info.bindingCount = 1;
+    create_info.pBindings    = bindings;
+    VK_Assert(vkCreateDescriptorSetLayout(r_vulkan_state->logical_device.h, &create_info, NULL, &set_layout->h));
+  }
+
+  // init stage state
+  r_vulkan_stage_init();
+
+  // create backup/default texture
+  U32 backup_texture_data[] = {
+    0xFFFF00FF, 0xFF330033,
+    0xFF330033, 0xFFFF00FF,
+  };
+  r_vulkan_state->backup_texture = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Nearest, v2s32(2,2), R_Tex2DFormat_RGBA8, backup_texture_data);
+  scratch_end(scratch);
+  R_Vulkan_InitStacks(r_vulkan_state);
+  R_Vulkan_InitStackNils(r_vulkan_state);
+}
+
+//- rjf: window setup/teardown
+
+r_hook R_Handle
+r_window_equip(OS_Handle os_wnd)
+{
+  ProfBeginFunction();
+  R_Vulkan_Window *ret = r_vulkan_state->first_free_window;
+
+  if(ret == 0)
+  {
+    ret = push_array(r_vulkan_state->arena, R_Vulkan_Window, 1);
+  }
+  else
+  {
+    U64 gen = ret->generation;
+    SLLStackPop(r_vulkan_state->first_free_window);
+    MemoryZeroStruct(ret);
+    ret->generation = gen;
+  }
+
+  // create surface
+  R_Vulkan_Surface surface = {0};
+  surface.h = os_vulkan_surface_from_window(os_wnd, r_vulkan_state->instance);
+  r_vulkan_surface_update(&surface);
+
+  // create render targets
+  R_Vulkan_RenderTargets *render_targets = r_vulkan_render_targets_alloc(os_wnd, &surface, 0);
+
+  // create frames
+  {
+    // Command buffers will be automatically freed when their command pool is destroyed, so we don't need explicit cleanup
+    // Command buffers are allocated with the vkAllocateCommandBuffers function which takes a VkCommandBufferAllocateInfo struct as parameter that specifies the command pool and number of buffers to allcoate
+    VkCommandBuffer command_buffers[R_VULKAN_MAX_FRAMES_IN_FLIGHT];
+    VkCommandBufferAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+    alloc_info.commandPool = r_vulkan_state->cmd_pool;
+    // The level parameter specifies if the allcoated command buffers are primary or secondary command buffers
+    // 1. VK_COMMAND_BUFFER_LEVEL_PRIMARY:   can be submitted to a queue for execution, but cannot be called from other command buffers
+    // 2. VK_COMMAND_BUFFER_LEVEL_SECONDARY: cannot be submitted directly, but can be called from primary command buffers, useful to reuse common operations
+    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc_info.commandBufferCount = R_VULKAN_MAX_FRAMES_IN_FLIGHT;
+    VK_Assert(vkAllocateCommandBuffers(r_vulkan_state->logical_device.h, &alloc_info, command_buffers));
+
+    for(U64 i = 0; i < R_VULKAN_MAX_FRAMES_IN_FLIGHT; i++)
+    {
+      ret->frames[i].cmd_buf = command_buffers[i];
+
+      // Create the synchronization objects for frames
+
+      // One semaphore to signal that an image has been acquired from the swapchain and is ready for rendering
+      // Another one to signal that rendering has finished and presentation can happen
+      // One fence to make sure only one frame is rendering at a time
+      ret->frames[i].img_acq_sem = r_vulkan_semaphore(r_vulkan_state->logical_device.h);
+      ret->frames[i].inflt_fence = r_vulkan_fence();
+
+      // Create all uniform buffers
+      for(U64 kind = 0; kind < R_Vulkan_UBOTypeKind_COUNT; kind++)
+      {
+        U64 unit_count;
+        switch(kind)
+        {
+          default:                                      {InvalidPath;}break;
+          case R_Vulkan_UBOTypeKind_Rect:               {unit_count = R_MAX_RECT_PASS*R_MAX_RECT_GROUPS;}break;
+          case R_Vulkan_UBOTypeKind_Geo2D:              {unit_count = R_MAX_GEO2D_PASS;}break;
+          case R_Vulkan_UBOTypeKind_Geo3D:              {unit_count = R_MAX_GEO3D_PASS;}break;
+          case R_Vulkan_UBOTypeKind_Geo3D_TileFrustum:  {unit_count = R_MAX_GEO3D_PASS;}break;
+          case R_Vulkan_UBOTypeKind_Geo3D_LightCulling: {unit_count = R_MAX_GEO3D_PASS;}break;
+        }
+        ret->frames[i].ubo_buffers[kind] = r_vulkan_ubo_buffer_alloc(kind, unit_count);
+      }
+
+      // Create all storage buffers
+      for(U64 kind = 0; kind < R_Vulkan_SBOTypeKind_COUNT; kind++)
+      {
+        U64 unit_count;
+        switch(kind)
+        {
+          default:                                      {InvalidPath;}break;
+          case R_Vulkan_SBOTypeKind_Geo3D_Joints:       {unit_count = R_MAX_GEO3D_PASS;}break;
+          case R_Vulkan_SBOTypeKind_Geo3D_Materials:    {unit_count = R_MAX_GEO3D_PASS;}break;
+          case R_Vulkan_SBOTypeKind_Geo3D_Lights:       {unit_count = R_MAX_GEO3D_PASS;}break;
+          case R_Vulkan_SBOTypeKind_Geo3D_Tiles:        {unit_count = R_MAX_GEO3D_PASS;}break;
+          case R_Vulkan_SBOTypeKind_Geo3D_LightIndices: {unit_count = R_MAX_GEO3D_PASS;}break;
+          case R_Vulkan_SBOTypeKind_Geo3D_TileLights:   {unit_count = R_MAX_GEO3D_PASS;}break;
+        }
+        ret->frames[i].sbo_buffers[kind] = r_vulkan_sbo_buffer_alloc(kind, unit_count);
+      }
+
+      ////////////////////////////////
+      //~ Create instance buffers for rect and geo3d
+
+      // TODO(k): just remember to free this
+      // create inst buffer for rect
+      for(U64 j = 0; j < R_MAX_RECT_PASS; j++)
+      {
+        R_Vulkan_Buffer *buffer = &ret->frames[i].inst_buffer_rect[j];
+        VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        create_info.size = sizeof(R_Rect2DInst)*R_MAX_RECT_INSTANCES;
+        create_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &buffer->h));
+
+        VkMemoryRequirements mem_requirements;
+        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, buffer->h, &mem_requirements);
+
+        buffer->kind = R_ResourceKind_Static;
+        buffer->size = mem_requirements.size;
+        buffer->cap  = mem_requirements.size;
+
+        VkMemoryAllocateInfo alloc_info = {0};
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &buffer->memory));
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, buffer->h, buffer->memory, 0));
+        VK_Assert(vkMapMemory(r_vulkan_state->logical_device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped));
+      }
+
+      // TODO(k): just remember to free this
+      for(U64 j = 0; j < R_MAX_GEO2D_PASS; j++)
+      {
+        R_Vulkan_Buffer *buffer = &ret->frames[i].inst_buffer_mesh2d[j];
+        VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        create_info.size = sizeof(R_Mesh2DInst)*R_MAX_MESH2D_INSTANCES;
+        create_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &buffer->h));
+
+        VkMemoryRequirements mem_requirements;
+        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, buffer->h, &mem_requirements);
+
+        buffer->kind = R_ResourceKind_Static;
+        buffer->size = mem_requirements.size;
+        buffer->cap  = mem_requirements.size;
+
+        VkMemoryAllocateInfo alloc_info = {0};
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &buffer->memory));
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, buffer->h, buffer->memory, 0));
+        VK_Assert(vkMapMemory(r_vulkan_state->logical_device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped));
+      }
+
+      // TODO(k): just remember to free this
+      // create inst buffer for rect
+      for(U64 j = 0; j < R_MAX_GEO3D_PASS; j++)
+      {
+        R_Vulkan_Buffer *buffer = &ret->frames[i].inst_buffer_mesh3d[j];
+        VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+        create_info.size = sizeof(R_Mesh3DInst)*R_MAX_MESH3D_INSTANCES;
+        create_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &buffer->h));
+
+        VkMemoryRequirements mem_requirements;
+        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, buffer->h, &mem_requirements);
+
+        buffer->kind = R_ResourceKind_Static;
+        buffer->size = mem_requirements.size;
+        buffer->cap  = mem_requirements.size;
+
+        VkMemoryAllocateInfo alloc_info = {0};
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &buffer->memory));
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, buffer->h, buffer->memory, 0));
+        VK_Assert(vkMapMemory(r_vulkan_state->logical_device.h, buffer->memory, 0, buffer->size, 0, &buffer->mapped));
+      }
+    }
+  }
+
+  ////////////////////////////////
+  // ~ Pipeline creation
+
+  {
+    // rect
+    ret->pipelines.rect = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Rect, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
+
+    // blur
+
+    // noise
+    ret->pipelines.noise = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Noise, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
+
+    // edge
+    ret->pipelines.edge = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Edge, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
+
+    // crt
+    ret->pipelines.crt = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Crt, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
+
+    // geo2d
+    for(U64 i = 0; i < R_GeoTopologyKind_COUNT; i++)
+    {
+      for(U64 j = 0; j < R_GeoPolygonKind_COUNT; j++)
+      {
+        ret->pipelines.geo2d.forward[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo2D_Forward, i, j, render_targets->swapchain.format, 0);
+      }
+    }
+    ret->pipelines.geo2d.composite = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo2D_Composite, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
+
+    // geo3d
+    ret->pipelines.geo3d.tile_frustum = r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind_CMP_Geo3D_TileFrustum);
+    ret->pipelines.geo3d.light_culling = r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind_CMP_Geo3D_LightCulling);
+    for(U64 i = 0; i < R_GeoTopologyKind_COUNT; i++)
+    {
+      for(U64 j = 0; j < R_GeoPolygonKind_COUNT; j++)
+      {
+        ret->pipelines.geo3d.z_pre[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo3D_ZPre, i, j, render_targets->swapchain.format, 0);
+        ret->pipelines.geo3d.debug[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo3D_Debug, i, j, render_targets->swapchain.format, 0);
+        ret->pipelines.geo3d.forward[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo3D_Forward, i, j, render_targets->swapchain.format, 0);
+      }
+    }
+    ret->pipelines.geo3d.composite = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo3D_Composite, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
+
+    // finalize
+    ret->pipelines.finalize = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Finalize, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, render_targets->swapchain.format, 0);
+  }
+
+  // fill & return
+  ret->os_wnd = os_wnd;
+  ret->render_targets = render_targets;
+  ret->surface = surface;
+  ProfEnd();
+  return r_vulkan_handle_from_window(ret);
+}
+
+r_hook void
+r_window_unequip(OS_Handle window, R_Handle window_equip)
+{
+  NotImplemented;
+}
+
+//- rjf: textures
+
+r_hook R_Handle
+r_tex2d_alloc(R_ResourceKind kind, R_Tex2DSampleKind sample_kind, Vec2S32 size, R_Tex2DFormat format, void *data)
+{
+  ProfBeginFunction();
+  R_Vulkan_Tex2D *texture = 0;
+  {
+    texture = r_vulkan_state->first_free_tex2d;
+    if(texture == 0)
+    {
+      texture = push_array(r_vulkan_state->arena, R_Vulkan_Tex2D, 1);
+    }
+    else
+    {
+      U64 gen = texture->generation;
+      SLLStackPop(r_vulkan_state->first_free_tex2d);
+      MemoryZeroStruct(texture);
+      texture->generation = gen;
+    }
+  }
+  texture->image.extent.width  = size.x;
+  texture->image.extent.height = size.y;
+  texture->format = format;
+
+  VkDeviceSize vk_image_size = size.x * size.y;
+  VkFormat vk_image_format = 0;
+
+  switch(format)
+  {
+    case R_Tex2DFormat_R8:    {vk_image_format = VK_FORMAT_R8_UNORM;}break;
+    case R_Tex2DFormat_RGBA8: {vk_image_format = VK_FORMAT_R8G8B8A8_SRGB; vk_image_size *= 4;}break;
+    default:                  {InvalidPath;}break;
+  }
+  texture->image.format = vk_image_format;
+
+  R_Vulkan_Stage *stage = &r_vulkan_state->stage;
+  VkCommandBuffer cmd = stage->cmds[stage->idx];
+  VkFence fence = stage->fences[stage->idx];
+  ProfScope("wait fence") VK_Assert(vkWaitForFences(r_vulkan_ldevice()->h, 1, &fence, VK_TRUE, UINT64_MAX));
+
+  ////////////////////////////////
+  //~ Unpack staging batch
+
+  R_Vulkan_StagingBatch *batch = &stage->batches[stage->idx];
+
+  B32 first_upload_this_frame = 0;
+  // start stage command buffer recording if not already
+  if(stage->last_touch_frame_index != r_vulkan_state->frame_index || batch->size == 0) ProfScope("begin record & pump tail")
+  {
+    first_upload_this_frame = 1;
+    stage->last_touch_frame_index = r_vulkan_state->frame_index;
+    cmd = stage->cmds[stage->idx];
+
+    // begin recording
+    VkCommandBufferBeginInfo begin_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+    begin_info.pInheritanceInfo = 0;
+    // if the command buffer was already recorded once, then a call to vkBeginCommandBuffer will implicity reset it
+    VK_Assert(vkBeginCommandBuffer(cmd, &begin_info));
+
+    // pump head or tail
+    R_Vulkan_StagingBatch *batches[R_VULKAN_STAGING_IN_FLIGHT_COUNT] = {0};
+    for(U64 i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; i++)
+    {
+      batches[i] = &stage->batches[i];
+    }
+    // intersection sort
+    for(U64 i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; i++)
+    {
+      R_Vulkan_StagingBatch *batch = batches[i];
+      int j = i-1;
+      while(j >= 0 && batches[j]->size != 0 && batches[j]->start > batch->start)
+      {
+        batches[j+1] = batches[j];
+        j--;
+      }
+      batches[j+1] = batch;
+    }
+
+    // TODO(Next): move pump to the beginning of frame
+    // TODO(Next): if we want to be percise, we want to wait on fence from 2 frames ago to ensure image uploaded 2 frames ago can be used in this frame
+    for(U64 i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; i++)
+    {
+      R_Vulkan_StagingBatch *batch = batches[i];
+      // if-flight? -> check fence
+      if(batch->size != 0)
+      {
+        VkFence fence = stage->fences[batch->fence_idx];
+        VkResult r = vkGetFenceStatus(r_vulkan_ldevice()->h, fence);
+        // done? -> move tail & reset status
+        if(r == VK_SUCCESS)
+        {
+          stage->ring.tail = batch->end;
+          batch->size = 0;
+        }
+        else
+        {
+          break;
+        }
+      }
+    }
+  }
+
+  ////////////////////////////////
+  //~ Alloc a ring slice
+
+  // FIXME: just alloc a gpu local buffer, if there is no data
+
+  R_Vulkan_StagingSlice slice = r_vulkan_staging_slice_from_size(vk_image_size, 4);
+  Assert(slice.size == vk_image_size);
+  // copy data
+  ProfScope("copy data")
+  // FIXME: just a hack for now
+  if(data) MemoryCopy(slice.ptr, data, vk_image_size);
+  VkBuffer staging_buffer = r_vulkan_state->stage.ring.buffer;
+
+  // fill batch
+  batch->size += slice.size;
+  if(first_upload_this_frame) batch->start = slice.offset;
+  batch->end = slice.offset+slice.size;
+  batch->fence_idx = stage->idx;
+
+  // Create the gpu device local buffer
+  ProfScope("create gpu local buffer")
+  {
+
+    // Although we could set up the shader to access the pixel values in the buffer, it's better to use image objects in Vulkan for this purpose
+    // Image objects will make it easier and faster to retrieve colors by allowing us to use 2D coordinates, for one
+    // Pixels within an image object are known as texels and we'll use that name from this point on
+    VkImageCreateInfo create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    // Tells Vulkan with what kind of coordinate system the texels in the image are going to be addressed
+    // It's possbiel to create 1D, 2D and 3D images
+    // One dimensional images can be used to store an array of data or gradient
+    // Two dimensional images are mainly used for textures, and three dimensional images can be used to store voxel volumes, for example
+    // The extent field specifies the dimensions of the image, basically how many texels there are on each axis
+    // That's why depth must be 1 instead of 0
+    create_info.imageType     = VK_IMAGE_TYPE_2D;
+    create_info.extent.width  = size.x;
+    create_info.extent.height = size.y;
+    create_info.extent.depth  = 1;
+    create_info.mipLevels     = 1;
+    create_info.arrayLayers   = 1;
+    // Vulkan supports many possible image formats, but we should use the same format for the texels as the pixels in the buffer, otherwise the copy operations will fail
+    // It is possible that the VK_FORMAT_R8G8B8A8_SRGB is not supported by the graphics hardware
+    // You should have a list of acceptable alternatives and go with the best one that is supported
+    // However, support for this particular for this particular format is so widespread that we'll skip this step
+    // Using different formats would also require annoying conversions
+    // .format = VK_FORMAT_R8G8B8A8_SRGB,
+    create_info.format = vk_image_format;
+    // The tiling field can have one of two values:
+    // 1.  VK_IMAGE_TILING_LINEAR: texels are laid out in row-major order like our pixels array
+    // 2. VK_IMAGE_TILING_OPTIMAL: texels are laid out in an implementation defined order for optimal access 
+    // Unlike the layout of an image, the tiling mode cannot be changed at a later time 
+    // If you want to be able to directly access texels in the memory of the image, then you must use VK_IMAGE_TILING_LINEAR layout
+    // We will be using a staging buffer instead of staging image, so this won't be necessary, we will be using VK_IMAGE_TILING_OPTIMAL for efficient access from the shader
+    create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    // There are only two possbile values for the initialLayout of an image
+    // 1.      VK_IMAGE_LAYOUT_UNDEFINED: not usable by the GPU and the very first transition will discard the texels
+    // 2. VK_IMAGE_LAYOUT_PREINITIALIZED: not usable by the GPU, but the first transition will preserve the texels
+    // There are few situations where it is necessary for the texels to be preserved during the first transition
+    // One example, however, would be if you wanted to use an image as staging image in combination with VK_IMAGE_TILING_LINEAR layout
+    // In that case, you'd want to upload the texel data to it and then transition the image to be transfer source without losing the data
+    // In out case, however, we're first going to transition the image to be transfer destination and then copy texel data to it from a buffer object
+    // So we don't need this property and can safely use VK_IMAGE_LAYOUT_UNDEFINED
+    create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    // The image is going to be used as destination for the buffer copy
+    // We also want to be able to access the image from the shader to color our mesh
+    create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    // The image will only be used by one queue family: the one that supports graphics (and therefor also) transfer operations
+    create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    // The samples flag is related to multisampling
+    // This is only relevant for images that will be used as attachments, so stick to one sample
+    create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    // There are some optional flags for images that are related to sparse images
+    // Sparse images are images where only certain regions are actually backed by memory
+    // If you were using a 3D texture for a voxel terrain, for example, then you could use this avoid allocating memory to storage large volumes of "air" values
+    create_info.flags = 0;
+    VK_Assert(vkCreateImage(r_vulkan_state->logical_device.h, &create_info, NULL, &texture->image.h));
+
+    VkMemoryRequirements mem_requirements;
+    vkGetImageMemoryRequirements(r_vulkan_state->logical_device.h, texture->image.h, &mem_requirements);
+
+    VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    alloc_info.allocationSize = mem_requirements.size;
+    alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+    VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &texture->image.memory));
+    VK_Assert(vkBindImageMemory(r_vulkan_state->logical_device.h, texture->image.h, texture->image.memory, 0));
+  }
+
+  // Create image view
+  VkImageViewCreateInfo ivci = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+  ivci.image                           = texture->image.h;
+  ivci.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+  ivci.format                          = vk_image_format;
+  ivci.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+  ivci.subresourceRange.baseMipLevel   = 0;
+  ivci.subresourceRange.levelCount     = 1;
+  ivci.subresourceRange.baseArrayLayer = 0;
+  ivci.subresourceRange.layerCount     = 1;
+  VK_Assert(vkCreateImageView(r_vulkan_state->logical_device.h, &ivci, NULL, &texture->image.view));
+
+  ////////////////////////////////
+  //~ Recording
+
+  {
+    // Transition image layout 
+    // We don't care about its contents before performing the copy creation
+    // There is actually a special type of image layout that supports all operations, VK_IMAGE_LAYOUT_GENERAL
+    // The problem with it, of course, is that it doesn't necessarily offer the best performance for any operation
+    // It is required for some special cases, like using an image as both input and output, or for reading an image after it has left the preinitialized layout
+    r_vulkan_image_transition(cmd, texture->image.h,
+                              VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                              VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                              VK_IMAGE_ASPECT_COLOR_BIT);
+
+    // Copy buffer to image
+    VkBufferImageCopy region =
+    {
+      .bufferOffset = slice.offset,
+      // These two fields specify how the pixels are laid out in memory
+      // For example, you could have some padding bytes between rows of the image
+      // Specifying 0 for both indicates that the pixels are simply tightly packed like they are in our case
+      // The imageSubresource, imageOffset and imageExtent fields indicate to which part of the image we want to copy the pixels
+      .bufferRowLength = 0,
+      .bufferImageHeight = 0,
+      .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+      .imageSubresource.mipLevel = 0,
+      .imageSubresource.baseArrayLayer = 0,
+      .imageSubresource.layerCount = 1,
+      // These two fields indicate to which part of the image we want to copy the pixels
+      .imageOffset = {0, 0, 0},
+      .imageExtent = {size.x, size.y, 1},
+    };
+
+    // it's possible to specify an array of VkBufferImageCopy to perform many different copies from this buffer to the image in on operation 
+    vkCmdCopyBufferToImage(cmd, staging_buffer, texture->image.h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    r_vulkan_image_transition(cmd, texture->image.h,
+                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
+                              VK_IMAGE_ASPECT_COLOR_BIT);
+  }
+
+  // TODO(k): All of the helper functions that submit commands so far have been set up to execute synchronously by waiting for the queue to become idle
+  // For practical applications it is recommended to combine these operations in a single command buffer and execute them asynchronously for higher throughput
+  //     especially the transitions and copy in the create_texture_image function
+  // We could experiment with this by creating a setup_command_buffer that the helper functions record commands into, and add a finish_setup_commands to execute the 
+  //     the commands that have been recorded so far
+
+  // TODO(k): we could create two descriptor set for two types of sampler
+  VkSampler *sampler = &r_vulkan_state->samplers[sample_kind];
+  r_vulkan_descriptor_set_alloc(R_Vulkan_DescriptorSetKind_Tex2D, 1, 64, NULL, &texture->image.view, sampler, &texture->desc_set);
+
+  R_Handle ret = r_vulkan_handle_from_tex2d(texture);
+  ProfEnd();
+  return ret;
+}
+
+r_hook void
+r_tex2d_release(R_Handle handle)
+{
+  R_Vulkan_Tex2D *tex2d = r_vulkan_tex2d_from_handle(handle);
+
+  // view->image->ds->memory
+  vkDestroyImageView(r_vulkan_state->logical_device.h, tex2d->image.view, NULL);
+  vkDestroyImage(r_vulkan_state->logical_device.h, tex2d->image.h, NULL);
+  r_vulkan_descriptor_set_destroy(&tex2d->desc_set);
+  vkFreeMemory(r_vulkan_state->logical_device.h, tex2d->image.memory, NULL);
+
+  SLLStackPush(r_vulkan_state->first_free_tex2d, tex2d);
+  tex2d->generation++;
+}
+
+r_hook R_ResourceKind
+r_kind_from_tex2d(R_Handle texture)
+{
+  NotImplemented;
+}
+
+r_hook Vec2S32
+r_size_from_tex2d(R_Handle texture)
+{
+  NotImplemented;
+}
+
+r_hook R_Tex2DFormat
+r_format_from_tex2d(R_Handle texture)
+{
+  NotImplemented;
+}
+
+r_hook void
+r_fill_tex2d_region(R_Handle handle, Rng2S32 subrect, void *data)
+{
+  R_Vulkan_Tex2D *texture = r_vulkan_tex2d_from_handle(handle);
+
+  // FIXME: move stage bump into a function
+  R_Vulkan_Stage *stage = &r_vulkan_state->stage;
+  VkCommandBuffer cmd = stage->cmds[stage->idx];
+  VkFence fence = stage->fences[stage->idx];
+  VK_Assert(vkWaitForFences(r_vulkan_ldevice()->h, 1, &fence, VK_TRUE, UINT64_MAX));
+
+  R_Vulkan_StagingBatch *batch = &stage->batches[stage->idx];
+  B32 first_upload_this_frame = 0;
+  // start stage command buffer recording if not already
+  if(stage->last_touch_frame_index != r_vulkan_state->frame_index || batch->size == 0) ProfScope("begin record & pump tail")
+  {
+    first_upload_this_frame = 1;
+    stage->last_touch_frame_index = r_vulkan_state->frame_index;
+    cmd = stage->cmds[stage->idx];
+
+    // begin recording
+    VkCommandBufferBeginInfo begin_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+    begin_info.pInheritanceInfo = 0;
+    // if the command buffer was already recorded once, then a call to vkBeginCommandBuffer will implicity reset it
+    VK_Assert(vkBeginCommandBuffer(cmd, &begin_info));
+
+    // pump head or tail
+    R_Vulkan_StagingBatch *batches[R_VULKAN_STAGING_IN_FLIGHT_COUNT] = {0};
+    for(U64 i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; i++)
+    {
+      batches[i] = &stage->batches[i];
+    }
+    // intersection sort
+    for(U64 i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; i++)
+    {
+      R_Vulkan_StagingBatch *batch = batches[i];
+      int j = i-1;
+      while(j >= 0 && batches[j]->size != 0 && batches[j]->start > batch->start)
+      {
+        batches[j+1] = batches[j];
+        j--;
+      }
+      batches[j+1] = batch;
+    }
+
+    // TODO(Next): move pump to the beginning of frame
+    // TODO(Next): if we want to be percise, we want to wait on fence from 2 frames ago to ensure image uploaded 2 frames ago can be used in this frame
+    for(U64 i = 0; i < R_VULKAN_STAGING_IN_FLIGHT_COUNT; i++)
+    {
+      R_Vulkan_StagingBatch *batch = batches[i];
+      // if-flight? -> check fence
+      if(batch->size != 0)
+      {
+        VkFence fence = stage->fences[batch->fence_idx];
+        VkResult r = vkGetFenceStatus(r_vulkan_ldevice()->h, fence);
+        // done? -> move tail & reset status
+        if(r == VK_SUCCESS)
+        {
+          stage->ring.tail = batch->end;
+          batch->size = 0;
+        }
+        else
+        {
+          break;
+        }
+      }
+    }
+  }
+
+  ////////////////////////////////
+  //~ Alloc a ring slice
+
+  Vec2S32 dim = {subrect.x1-subrect.x0, subrect.y1-subrect.y0};
+  U64 size = dim.x*dim.y;
+  switch(texture->format)
+  {
+    default:break;
+    case R_Tex2DFormat_RGBA8:{size*=4;}break;
+  }
+
+  R_Vulkan_StagingSlice slice = r_vulkan_staging_slice_from_size(size, 4);
+
+  // copy data
+  MemoryCopy(slice.ptr, data, size);
+  VkBuffer staging_buffer = r_vulkan_state->stage.ring.buffer;
+
+  // fill batch
+  batch->size += slice.size;
+  if(first_upload_this_frame) batch->start = slice.offset;
+  batch->end = slice.offset+slice.size;
+  batch->fence_idx = stage->idx;
+
+  ////////////////////////////////
+  //~ Issue copy command
+
+  // FIXME: this is not optimal, we could upload many times to one texture per frame
+  // we don't want to change it's layout back and forth
+  {
+    r_vulkan_image_transition(cmd, texture->image.h,
+                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                              VK_IMAGE_ASPECT_COLOR_BIT);
+
+    // Copy buffer to image
+    VkBufferImageCopy region =
+    {
+      .bufferOffset = slice.offset,
+      .bufferRowLength = 0,
+      .bufferImageHeight = 0,
+      .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+      .imageSubresource.mipLevel = 0,
+      .imageSubresource.baseArrayLayer = 0,
+      .imageSubresource.layerCount = 1,
+      // These two fields indicate to which part of the image we want to copy the pixels
+      .imageOffset = {subrect.x0, subrect.y0, 0},
+      .imageExtent = {dim.x, dim.y, 1},
+    };
+
+    // it's possible to specify an array of VkBufferImageCopy to perform many different copies from this buffer to the image in on operation 
+    vkCmdCopyBufferToImage(cmd, staging_buffer, texture->image.h, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    r_vulkan_image_transition(cmd, texture->image.h,
+                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                              VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT,
+                              VK_IMAGE_ASPECT_COLOR_BIT);
+
+  }
+}
+
+//- rjf: buffers
+
+r_hook R_Handle
+r_buffer_alloc(R_ResourceKind kind, U64 size, void *data, U64 data_size)
+{
+  R_Vulkan_Buffer *ret = 0;
+  ret = r_vulkan_state->first_free_buffer;
+  if(ret == 0)
+  {
+    ret = push_array(r_vulkan_state->arena, R_Vulkan_Buffer, 1);
+  }
+  else
+  {
+    U64 gen = ret->generation;
+    SLLStackPop(r_vulkan_state->first_free_buffer);
+    MemoryZeroStruct(ret);
+    ret->generation = gen;
+  }
+
+  // Fill basics
+  ret->kind = kind;
+  ret->size = data_size;
+  ret->cap = size;
+
+  // It should be noted that in a real world application, you're not supposed to actually call vkAllocateMemory for every individual buffer
+  // The maximum number of simultaneous memory allocations is limited by the maxMemoryAllocationCount physical device limit
+  // which may be as low as 4096 even on high end hardward like an NVIDIA GTX1080
+  // The right way to allocate memory for a large number of objects at the same time is to create a custom allocator that splits
+  //      up a single allocation among many different objects by using the offset parameters that we've seen in many functions
+  // We can either implement such an allocator ourself, or use the VulkanMemoryAllocator library provided by the GPUOpen initiative
+
+  switch(kind)
+  {
+    case R_ResourceKind_Static:
+    {
+      // Create staging buffer
+      VkBuffer staging_buffer;
+      VkDeviceMemory staging_memory;
+      {
+        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        create_info.size        = size;
+        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &staging_buffer));
+
+        VkMemoryRequirements mem_requirements;
+        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, staging_buffer, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &staging_memory));
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, staging_buffer, staging_memory, 0));
+
+        AssertAlways(data != 0 && data_size > 0);
+        void *mapped;
+        VK_Assert(vkMapMemory(r_vulkan_state->logical_device.h, staging_memory, 0, mem_requirements.size, 0, &mapped));
+        MemoryCopy(mapped, data, data_size);
+        vkUnmapMemory(r_vulkan_state->logical_device.h, staging_memory);
+      }
+
+      VkBuffer buffer;
+      VkDeviceMemory buffer_memory;
+      // Create buffer <GPU Device Local> 
+      {
+        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        create_info.size        = size;
+        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &buffer));
+
+        VkMemoryRequirements mem_requirements;
+        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, buffer, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &buffer_memory));
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, buffer, buffer_memory, 0));
+      }
+
+      // Copy buffer
+      VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
+      CmdScope(cmd)
+      {
+        VkBufferCopy copy_region = {
+          .srcOffset = 0, // Optional
+          .dstOffset = 0, // Optional
+          .size      = data_size,
+        };
+
+        // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
+        vkCmdCopyBuffer(cmd, staging_buffer, buffer, 1, &copy_region);
+
+        // TODO(k): we should bind a barrier here
+      }
+
+      // TODO(k) it's not effecient to use vkQueueWaitIdle, maybe we could add a to_free queue, and use some sync primitive to do this
+      // index Semaphore could be a good idea
+      VK_Assert(vkQueueWaitIdle(r_vulkan_state->logical_device.gfx_queue));
+
+      // Free staging buffer and memory
+      vkDestroyBuffer(r_vulkan_state->logical_device.h, staging_buffer, NULL);
+      vkFreeMemory(r_vulkan_state->logical_device.h, staging_memory, NULL);
+
+      // fill result
+      ret->h = buffer; 
+      ret->memory = buffer_memory;
+    }break;
+    case R_ResourceKind_Dynamic:
+    {
+      // double buffer setup (host_visiable/staging+device_local)
+      VkBuffer staging_buffer;
+      VkDeviceMemory staging_memory;
+      void *mapped;
+      {
+        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        create_info.size        = size;
+        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &staging_buffer));
+
+        VkMemoryRequirements mem_requirements;
+        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, staging_buffer, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &staging_memory));
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, staging_buffer, staging_memory, 0));
+
+        VK_Assert(vkMapMemory(r_vulkan_state->logical_device.h, staging_memory, 0, mem_requirements.size, 0, &mapped));
+        if(data != 0 && data_size >0)
+        {
+          MemoryCopy(mapped, data, size);
+        }
+      }
+
+      // create buffer
+      VkBuffer buffer;
+      VkDeviceMemory buffer_memory;
+      // Create buffer <GPU Device Local> 
+      {
+        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        create_info.size        = size;
+        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &buffer));
+
+        VkMemoryRequirements mem_requirements;
+        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, buffer, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &buffer_memory));
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, buffer, buffer_memory, 0));
+
+        // Copy buffer if data is provided
+        if(data != 0 && data_size > 0)
+        {
+          VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
+          CmdScope(cmd)
+          {
+            VkBufferCopy copy_region = {
+              .srcOffset = 0, // Optional
+              .dstOffset = 0, // Optional
+              .size      = data_size,
+            };
+
+            // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
+            vkCmdCopyBuffer(cmd, staging_buffer, buffer, 1, &copy_region);
+
+            // create a buffer barrier
+            VkBufferMemoryBarrier barrier = 
+            {
+              .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+              // If you are using the barrier to transfer queue family ownership, then these two fields should be the indices of the queue families
+              // They must be set to VK_QUEUE_FAMILY_IGNORED if you don't want to do this (not the default value)
+              .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+              .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+              .srcAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+              .dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+              .buffer = buffer,
+              .offset = 0,
+              .size = data_size,
+            };
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0,0, NULL, 1, &barrier, 0, 0);
+          }
+        }
+      }
+
+      // fill result
+      ret->h = buffer; 
+      ret->memory = buffer_memory;
+      ret->staging = staging_buffer;
+      ret->staging_memory = staging_memory;
+      ret->mapped = mapped;
+    }break;
+    case R_ResourceKind_Stream:
+    {
+      // NOTE(k): don't make too much difference in here after profling double buffer and single host visiable buffer
+#if 1
+      VkBuffer buffer;
+      VkDeviceMemory buffer_memory;
+      void *mapped;
+      {
+        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        create_info.size        = size;
+        create_info.usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VK_Assert(vkCreateBuffer(r_vulkan_state->logical_device.h, &create_info, NULL, &buffer));
+
+        VkMemoryRequirements mem_requirements;
+        vkGetBufferMemoryRequirements(r_vulkan_state->logical_device.h, buffer, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        // TODO(k): some device provide 256MB host_visiable and device local memory, find out if we can make use of that conditionally
+        // VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->logical_device.h, &alloc_info, NULL, &buffer_memory));
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->logical_device.h, buffer, buffer_memory, 0));
+        VK_Assert(vkMapMemory(r_vulkan_state->logical_device.h, buffer_memory, 0, size, 0, &mapped));
+      }
+
+      if(data != 0 && data_size > 0)
+      {
+        MemoryCopy(mapped, data, data_size);
+      }
+
+      // fill result
+      ret->h = buffer;
+      ret->memory = buffer_memory;
+      ret->mapped = mapped;
+#else
+      // double buffer setup (host_visiable/staging+device_local)
+      VkBuffer staging_buffer;
+      VkDeviceMemory staging_memory;
+      void *mapped;
+      {
+        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        create_info.size        = size;
+        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &staging_buffer));
+
+        VkMemoryRequirements mem_requirements;
+        vkGetBufferMemoryRequirements(r_vulkan_state->device.h, staging_buffer, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &staging_memory));
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, staging_buffer, staging_memory, 0));
+
+        VK_Assert(vkMapMemory(r_vulkan_state->device.h, staging_memory, 0, mem_requirements.size, 0, &mapped));
+        if(data != 0 && data_size >0)
+        {
+          MemoryCopy(mapped, data, size);
+        }
+      }
+
+      // create buffer
+      VkBuffer buffer;
+      VkDeviceMemory buffer_memory;
+      // Create buffer <GPU Device Local> 
+      {
+        VkBufferCreateInfo create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        create_info.size        = size;
+        create_info.usage       = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VK_Assert(vkCreateBuffer(r_vulkan_state->device.h, &create_info, NULL, &buffer));
+
+        VkMemoryRequirements mem_requirements;
+        vkGetBufferMemoryRequirements(r_vulkan_state->device.h, buffer, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = r_vulkan_memory_index_from_type_filer(mem_requirements.memoryTypeBits, properties);
+
+        VK_Assert(vkAllocateMemory(r_vulkan_state->device.h, &alloc_info, NULL, &buffer_memory));
+        VK_Assert(vkBindBufferMemory(r_vulkan_state->device.h, buffer, buffer_memory, 0));
+
+        // Copy buffer if data is provided
+        if(data != 0 && data_size > 0)
+        {
+          VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
+          CmdScope(cmd)
+          {
+            VkBufferCopy copy_region = {
+              .srcOffset = 0, // Optional
+              .dstOffset = 0, // Optional
+              .size      = data_size,
+            };
+
+            // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
+            vkCmdCopyBuffer(cmd, staging_buffer, buffer, 1, &copy_region);
+
+            // create a buffer barrier
+            VkBufferMemoryBarrier barrier = 
+            {
+              .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+              // If you are using the barrier to transfer queue family ownership, then these two fields should be the indices of the queue families
+              // They must be set to VK_QUEUE_FAMILY_IGNORED if you don't want to do this (not the default value)
+              .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+              .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+              .srcAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+              .dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+              .buffer = buffer,
+              .offset = 0,
+              .size = data_size,
+            };
+            vkCmdPipelineBarrier(cmd,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+                0,0, NULL, 1, &barrier, 0, 0);
+          }
+        }
+      }
+
+      // fill result
+      ret->h = buffer; 
+      ret->memory = buffer_memory;
+      ret->staging = staging_buffer;
+      ret->stating_memory = staging_memory;
+      ret->mapped = mapped;
+#endif
+    }break;
+    default: {InvalidPath;}break;
+  }
+
+  return r_vulkan_handle_from_buffer(ret);
+}
+
+// NOTE(k): this function can only be called within a frame boundary
+r_hook void
+r_buffer_copy(R_Handle handle, void *data, U64 size)
+{
+  R_Vulkan_Buffer *buffer = r_vulkan_buffer_from_handle(handle);
+  buffer->size = size;
+
+  VkCommandBuffer cmd = r_vulkan_top_cmd();
+  switch(buffer->kind)
+  {
+    case R_ResourceKind_Dynamic:
+    // case R_ResourceKind_Stream:
+    {
+      MemoryCopy(buffer->mapped, data, size);
+
+      // copy staging buffer to device local buffer
+      // NOTE(k): we can't use oneshot_cmd_buf, since we didn't wait for the oneshot cmd buffer, maybe we should use frame cmd buffer
+      // VkCommandBuffer cmd = r_vulkan_state->oneshot_cmd_buf;
+      VkBufferCopy copy_region = {
+        .srcOffset = 0, // Optional
+        .dstOffset = 0, // Optional
+        .size      = size,
+      };
+
+      // It is not possible to specify VK_WHOLE_SIZE here unlike the vkMapMemory command
+      vkCmdCopyBuffer(cmd, buffer->staging, buffer->h, 1, &copy_region);
+
+      // create a buffer barrier
+      VkBufferMemoryBarrier barrier = 
+      {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        // If you are using the barrier to transfer queue family ownership, then these two fields should be the indices of the queue families
+        // They must be set to VK_QUEUE_FAMILY_IGNORED if you don't want to do this (not the default value)
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+        .buffer = buffer->h,
+        .offset = 0,
+        .size = size,
+      };
+      vkCmdPipelineBarrier(cmd,
+          VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+          0,0, NULL, 1, &barrier, 0, 0);
+    }break;
+    case R_ResourceKind_Stream:
+    {
+      MemoryCopy(buffer->mapped, data, size);
+    }break;
+    default: {InvalidPath;}break;
+  }
+}
+
+r_hook void
+r_buffer_release(R_Handle handle)
+{
+  R_Vulkan_Buffer *buffer = r_vulkan_buffer_from_handle(handle);
+
+  vkDestroyBuffer(r_vulkan_state->logical_device.h, buffer->h, NULL);
+  vkFreeMemory(r_vulkan_state->logical_device.h, buffer->memory, NULL);
+
+  switch(buffer->kind)
+  {
+    case R_ResourceKind_Dynamic:
+    {
+      vkUnmapMemory(r_vulkan_state->logical_device.h, buffer->memory);
+      vkDestroyBuffer(r_vulkan_state->logical_device.h, buffer->staging, NULL);
+      vkFreeMemory(r_vulkan_state->logical_device.h, buffer->staging_memory, NULL);
+    }break;
+    case R_ResourceKind_Static:
+    case R_ResourceKind_Stream:
+    {
+      // noop
+    }break;
+    default:{InvalidPath;}break;
+  }
+
+  SLLStackPush(r_vulkan_state->first_free_buffer, buffer);
+  // NOTE(k): we should increase generation in release instead of alloc
+  buffer->generation++;
+}
+
+//- rjf: frame markers
+
+r_hook void
 r_begin_frame(void)
 {
   // submit any stage works to gfx queue
   {
     R_Vulkan_Stage *stage = &r_vulkan_state->stage;
-    R_Vulkan_StagingBatch *batch = &stage->batches[stage->idx%STAGING_IN_FLIGHT_COUNT];
+    R_Vulkan_StagingBatch *batch = &stage->batches[stage->idx%R_VULKAN_STAGING_IN_FLIGHT_COUNT];
     // submit if we have any stage works to do
     if(stage->last_touch_frame_index == r_vulkan_state->frame_index)
     {
-      VkCommandBuffer cmd = stage->cmds[stage->idx%STAGING_IN_FLIGHT_COUNT];
-      VkFence fence = stage->fences[stage->idx%STAGING_IN_FLIGHT_COUNT];
+      VkCommandBuffer cmd = stage->cmds[stage->idx%R_VULKAN_STAGING_IN_FLIGHT_COUNT];
+      VkFence fence = stage->fences[stage->idx%R_VULKAN_STAGING_IN_FLIGHT_COUNT];
       VkSubmitInfo si = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
       si.commandBufferCount = 1;
       si.pCommandBuffers = &cmd;
       VK_Assert(vkEndCommandBuffer(cmd));
       VK_Assert(vkResetFences(r_vulkan_ldevice()->h, 1, &fence));
       VK_Assert(vkQueueSubmit(r_vulkan_state->logical_device.gfx_queue, 1, &si, fence));
-      stage->idx = stage->idx%STAGING_IN_FLIGHT_COUNT;
+      stage->idx = stage->idx%R_VULKAN_STAGING_IN_FLIGHT_COUNT;
     }
   }
 }
 
-internal void
+r_hook void
 r_end_frame(void)
 {
   r_vulkan_state->frame_index++;
 }
 
-internal void
+r_hook void
 r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
 {
   ProfBeginFunction();
@@ -5351,7 +5401,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
   for(R_Vulkan_RenderTargets *t = r_vulkan_state->first_to_free_render_targets; t != 0;)
   {
     R_Vulkan_RenderTargets *next = t->next;
-    if(t->rc == 0 && (r_vulkan_state->frame_index-t->deprecated_at_frame) > MAX_FRAMES_IN_FLIGHT)
+    if(t->rc == 0 && (r_vulkan_state->frame_index-t->deprecated_at_frame) > R_VULKAN_MAX_FRAMES_IN_FLIGHT)
     {
       SLLQueuePop(r_vulkan_state->first_to_free_render_targets, r_vulkan_state->last_to_free_render_targets);
       r_vulkan_render_targets_destroy(t);
@@ -5417,32 +5467,30 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
   ProfEnd();
 }
 
-internal U64
-r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
+r_hook U64
+r_window_end_frame(OS_Handle window, R_Handle window_equip, Vec2F32 mouse_ptr)
 {
   ProfBeginFunction();
-  // TODO(k): Should every window have its own thread?
-  //          since different window need to wait on its fence, we don't want to block it for other windows
 
   // unpack params
-  R_Vulkan_Window *wnd              = r_vulkan_window_from_handle(window_equip);
-  R_Vulkan_Frame *frame             = &wnd->frames[wnd->curr_frame_idx];
-  VkCommandBuffer cmd_buf           = frame->cmd_buf;
-  R_Vulkan_Swapchain *swapchain     = &wnd->render_targets->swapchain;
+  R_Vulkan_Window *wnd = r_vulkan_window_from_handle(window_equip);
+  R_Vulkan_Frame *frame = &wnd->frames[wnd->curr_frame_idx];
+  VkCommandBuffer cmd_buf = frame->cmd_buf;
+  R_Vulkan_Swapchain *swapchain = &wnd->render_targets->swapchain;
 
-  // Get point entity id
-  // NOTE(k): return entity id at the end of frame, stage_id_cpu buffer could be lagged by several frames
-  // U64 w = wnd->bag->geo3d_color_image.extent.width;
+  // NOTE(k): stage_id_cpu buffer could be lagged by several frames
+  // get point entity id
   void *ids = wnd->render_targets->stage_id_cpu.mapped;
   // U64 id = ((U64 *)ids)[(U64)(ptr.y*w+ptr.x)];
   U64 id = ((U64 *)ids)[0];
 
-  // increase render_targets rc
+  // increase render_targets ref counter
   frame->render_targets_ref = wnd->render_targets;
   frame->render_targets_ref->rc++;
 
-  // copy stage id image to stage id buffer (cpu)
-  ProfScope("copy stage id image to cpu")
+  ////////////////////////////////
+  //~ Copy stage id image to stage id buffer (cpu)
+
   {
     VkImageMemoryBarrier barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     // NOTE(k): weird here, it's alreay in src optimal, but we need to wait for the writing
@@ -5486,8 +5534,9 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
     vkCmdCopyImageToBuffer(cmd_buf, wnd->render_targets->stage_id_image.h, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, wnd->render_targets->stage_id_cpu.h, 1, &region);
   }
 
-  // Copy stage buffer to swapchain image
-  ProfScope("copy stage buffer to swapchain image")
+  ////////////////////////////////
+  //~ Copy stage buffer to swapchain image for present
+
   {
     VkClearValue clear_color = {0};
     clear_color.color = (VkClearColorValue){{ 0.0f, 0.0f, 0.0f, 0.0f }}; /* black with 100% opacity */
@@ -5516,10 +5565,10 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
     // begin
     vkCmdBeginRendering(cmd_buf, &render_info);
 
-    // Bind pipeline
+    // bind pipeline
     vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, wnd->pipelines.finalize.h);
 
-    // Viewport and scissor
+    // viewport and scissor
     VkViewport viewport = {0};
     viewport.x        = 0.0f;
     viewport.y        = 0.0f;
@@ -5529,29 +5578,30 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
     viewport.maxDepth = 1.0f;
     vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
 
-    // Setup scissor rect
+    // setup scissor rect
     VkRect2D scissor = {0};
     scissor.offset = (VkOffset2D){0, 0};
     scissor.extent = swapchain->extent;
     vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
 
-    // Bind stage color descriptor
+    // bind stage color descriptor
     vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, wnd->pipelines.finalize.layout, 0, 1, &wnd->render_targets->stage_color_ds.h, 0, NULL);
 
-    // Draw the quad
+    // draw the quad
     vkCmdDraw(cmd_buf, 4, 1, 0, 0);
 
-    // end
     vkCmdEndRendering(cmd_buf);
   }
   r_vulkan_image_transition(frame->cmd_buf, swapchain->images[frame->img_idx], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
 
-  // End and submit command buffer
+  ////////////////////////////////
+  //~ Submit gfx command buffer
+
   VK_Assert(vkEndCommandBuffer(cmd_buf));
-  VkSemaphore wait_sems[1]            = { frame->img_acq_sem };
+  VkSemaphore wait_sems[1] = { frame->img_acq_sem };
   VkPipelineStageFlags wait_stages[1] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-  VkSemaphore signal_sems[1]          = { swapchain->submit_semaphores[frame->img_idx] };
+  VkSemaphore signal_sems[1] = { swapchain->submit_semaphores[frame->img_idx] };
 
   // submit
   VkSubmitInfo submit_info = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
@@ -5563,21 +5613,23 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
   submit_info.signalSemaphoreCount = 1;
   submit_info.pSignalSemaphores    = signal_sems;
   ProfScope("queue submit")
+  {
     VK_Assert(vkQueueSubmit(r_vulkan_state->logical_device.gfx_queue, 1, &submit_info, frame->inflt_fence));
+  }
 
-  // Present
-  // TODO(k): should we move this to r_end_frame? we could submit to all swapchains at once
+  ////////////////////////////////
+  //~ Present
+
   VkSwapchainKHR target_swapchains[1] = { swapchain->h };
   VkPresentInfoKHR prest_info = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
   prest_info.waitSemaphoreCount = 1;
-  prest_info.pWaitSemaphores    = signal_sems;
-  prest_info.swapchainCount     = 1;
-  prest_info.pSwapchains        = target_swapchains;
-  prest_info.pImageIndices      = &frame->img_idx;
-  // There is one last optional parameter called pResults
+  prest_info.pWaitSemaphores = signal_sems;
+  prest_info.swapchainCount = 1;
+  prest_info.pSwapchains = target_swapchains;
+  prest_info.pImageIndices = &frame->img_idx;
   // It allows you to specify an array of VkResult values to check for every individual swapchain if presentation was successful
   // It's not necessary if you're only using a single swapchain, because you can simply use the return value of the present function
-  prest_info.pResults           = NULL;
+  prest_info.pResults = NULL; // Optional
 
   VkResult prest_ret = 0;
   ProfScope("queue present")
@@ -5593,19 +5645,21 @@ r_window_end_frame(R_Handle window_equip, Vec2F32 mouse_ptr)
   } 
   else { AssertAlways(prest_ret == VK_SUCCESS); }
 
-  // Update curr_frame_idx
-  wnd->curr_frame_idx = (wnd->curr_frame_idx + 1) % MAX_FRAMES_IN_FLIGHT;
+  // bump window frame index
+  wnd->curr_frame_idx = (wnd->curr_frame_idx + 1) % R_VULKAN_MAX_FRAMES_IN_FLIGHT;
   r_vulkan_pop_cmd();
   ProfEnd();
   return id;
 }
 
-internal void
-r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
+//- rjf: render pass submission
+
+r_hook void
+r_window_submit(OS_Handle window, R_Handle window_equip, R_PassList *passes)
 {
   ProfBeginFunction();
-  R_Vulkan_Window *wnd = r_vulkan_window_from_handle(window_equip);
 
+  R_Vulkan_Window *wnd = r_vulkan_window_from_handle(window_equip);
   R_Vulkan_Frame *frame = &wnd->frames[wnd->curr_frame_idx];
   R_Vulkan_RenderTargets *render_targets = wnd->render_targets;
   VkCommandBuffer cmd_buf = frame->cmd_buf;
@@ -5643,10 +5697,10 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
     R_Pass *pass = &pass_n->v;
     switch(pass->kind)
     {
-      case R_PassKind_UI:
+      case R_PassKind_Rect:
       {
         ProfBegin("ui_pass");
-        Assert(ui_pass_index < MAX_RECT_PASS);
+        Assert(ui_pass_index < R_MAX_RECT_PASS);
         VkRenderingAttachmentInfo color_attachment_infos[1] = {0};
 
         color_attachment_infos[0].sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -5674,13 +5728,13 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
         vkCmdBeginRendering(cmd_buf, &render_info);
 
         // Unpack params 
-        R_PassParams_UI *params = pass->params_ui;
+        R_PassParams_Rect *params = pass->params_rect;
         R_BatchGroupRectList *rect_batch_groups = &params->rects;
 
         // Unpack uniform buffer
         R_Vulkan_UBOBuffer *uniform_buffer = &frame->ubo_buffers[R_Vulkan_UBOTypeKind_Rect];
         // TODO(k): dynamic allocate uniform buffer if needed
-        AssertAlways(rect_batch_groups->count <= 900);
+        AssertAlways((ui_group_index+rect_batch_groups->count) < R_MAX_RECT_GROUPS);
 
         // Bind pipeline
         // The second parameter specifies if the pipeline object is a graphics or compute pipelinVK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BITe
@@ -5707,9 +5761,9 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
             inst_idx += batch->v.byte_count / sizeof(R_Rect2DInst);
           }
 
-          if(inst_idx > MAX_RECT_INSTANCES)
+          if(inst_idx > R_MAX_RECT_INSTANCES)
           {
-            fprintf(stderr, "too many rects, %lu > %d\n", inst_idx, MAX_RECT_INSTANCES);
+            fprintf(stderr, "too many rects, %lu > %d\n", inst_idx, R_MAX_RECT_INSTANCES);
             exit(1);
           }
 
@@ -6146,7 +6200,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
       case R_PassKind_Geo2D:
       {
         ProfBegin("geo2d pass");
-        Assert(geo2d_pass_index < MAX_GEO2D_PASS);
+        Assert(geo2d_pass_index < R_MAX_GEO2D_PASS);
 
         // unpack params
         R_PassParams_Geo2D *params = pass->params_geo2d;
@@ -6361,7 +6415,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
       case R_PassKind_Geo3D: 
       {
         ProfBegin("geo3d pass");
-        Assert(geo3d_pass_index < MAX_GEO3D_PASS);
+        Assert(geo3d_pass_index < R_MAX_GEO3D_PASS);
 
         // Unpack params
         R_PassParams_Geo3D *params = pass->params_geo3d;
@@ -6417,12 +6471,12 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
 
         // joints sbo
         R_Vulkan_SBOBuffer *joints_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_Joints];
-        U32 joints_sbo_buffer_off = geo3d_pass_index*MAX_JOINTS_PER_PASS * sizeof(R_Vulkan_SBO_Geo3D_Joint);
+        U32 joints_sbo_buffer_off = geo3d_pass_index*R_MAX_JOINTS_PER_PASS * sizeof(R_Vulkan_SBO_Geo3D_Joint);
         U8 *joints_sbo_dst = (U8*)(joints_sbo_buffer->buffer.mapped) + joints_sbo_buffer_off;
 
         // materials sbo
         R_Vulkan_SBOBuffer *materials_sbo_buffer = &frame->sbo_buffers[R_Vulkan_SBOTypeKind_Geo3D_Materials];
-        U32 materials_sbo_buffer_off = geo3d_pass_index*MAX_MATERIALS_PER_PASS * sizeof(R_Vulkan_SBO_Geo3D_Material); 
+        U32 materials_sbo_buffer_off = geo3d_pass_index*R_MAX_MATERIALS_PER_PASS * sizeof(R_Vulkan_SBO_Geo3D_Material); 
         U8 *materials_sbo_dst = (U8*)(materials_sbo_buffer->buffer.mapped) + materials_sbo_buffer_off;
 
         /////////////////////////////////////////////////////////////////////////////////
@@ -6440,13 +6494,13 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
         // upload materials sbo buffer
 
         Temp scratch = scratch_begin(0,0);
-        AssertAlways(params->material_count < MAX_MATERIALS_PER_PASS);
+        AssertAlways(params->material_count < R_MAX_MATERIALS_PER_PASS);
         R_Vulkan_SBO_Geo3D_Material *materials = push_array(scratch.arena, R_Vulkan_SBO_Geo3D_Material, params->material_count);
         for(U64 i = 0; i < params->material_count; i++)
         {
           R_Vulkan_SBO_Geo3D_Material *mat_dst = &materials[i];
-          R_Material3D *mat_src = &params->materials[i];
-          MemoryCopy(mat_dst, mat_src, sizeof(R_Material3D));
+          R_Geo3D_Material *mat_src = &params->materials[i];
+          MemoryCopy(mat_dst, mat_src, sizeof(R_Geo3D_Material));
 
           ///////////////////////////////////////////////////////////////////////////////
           // update sample map
@@ -6456,7 +6510,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
           // diffuse texture
           if(mat_dst->has_diffuse_texture)
           {
-            R_Vulkan_Tex2D *tex = r_vulkan_tex2d_from_handle(params->textures[i].array[R_GeoTexKind_Diffuse]);
+            R_Vulkan_Tex2D *tex = r_vulkan_tex2d_from_handle(params->textures[i].array[R_Geo3D_TexKind_Diffuse]);
             Vec4F32 texture_sample_channel_map[4] = {
               {1, 0, 0, 0},
               {0, 1, 0, 0},
@@ -6645,11 +6699,11 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
               viewport_dim.x = render_targets->stage_color_image.extent.width;
               viewport_dim.y = render_targets->stage_color_image.extent.height;
             }
-            viewport_dim.x = AlignPow2((U64)ceil_f32(viewport_dim.x), TILE_SIZE);
-            viewport_dim.y = AlignPow2((U64)ceil_f32(viewport_dim.y), TILE_SIZE);
+            viewport_dim.x = AlignPow2((U64)ceil_f32(viewport_dim.x), R_VULKAN_TILE_SIZE);
+            viewport_dim.y = AlignPow2((U64)ceil_f32(viewport_dim.y), R_VULKAN_TILE_SIZE);
 
-            grid_size.x = viewport_dim.x / TILE_SIZE;
-            grid_size.y = viewport_dim.y / TILE_SIZE;
+            grid_size.x = viewport_dim.x / R_VULKAN_TILE_SIZE;
+            grid_size.y = viewport_dim.y / R_VULKAN_TILE_SIZE;
 
             /////////////////////////////////////////////////////////////////////////////
             // unpack ubo buffer
@@ -6676,7 +6730,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
             /////////////////////////////////////////////////////////////////////////////
             // compute pass
 
-            Vec2U32 thread_group_size = {TILE_SIZE,TILE_SIZE};
+            Vec2U32 thread_group_size = {R_VULKAN_TILE_SIZE,R_VULKAN_TILE_SIZE};
             vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->h);
             // NOTE(k): shader need to check xy is inboud of grid size
             vkCmdDispatch(cmd_buf, AlignPow2(grid_size.x,thread_group_size.x) / thread_group_size.x, AlignPow2(grid_size.y,thread_group_size.y) / thread_group_size.y, 1);
@@ -6705,7 +6759,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
                                     &light_culling_ubo_buffer->set.h, 1, &light_culling_ubo_buffer_off);
             // global lights
             // upload lights
-            MemoryCopy(lights_sbo_dst, params->lights, params->light_count*sizeof(R_Light3D));
+            MemoryCopy(lights_sbo_dst, params->lights, params->light_count*sizeof(R_Geo3D_Light));
             vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_COMPUTE,
                                     pipeline->layout, 1, 1,
                                     &lights_sbo_buffer->set.h, 1, &lights_sbo_buffer_off);
@@ -6884,7 +6938,7 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
             // Bind texture
             // TODO(XXX): bind other texture (ambient, normal, bump, ...)
             // TODO(XXX): make use of texture sampler kind
-            R_Handle tex_handle = params->textures[group_params->mat_idx].array[R_GeoTexKind_Diffuse];
+            R_Handle tex_handle = params->textures[group_params->mat_idx].array[R_Geo3D_TexKind_Diffuse];
             if(r_handle_match(tex_handle, r_handle_zero()))
             {
               tex_handle = r_vulkan_state->backup_texture;
@@ -6986,727 +7040,3 @@ r_window_submit(OS_Handle os_wnd, R_Handle window_equip, R_PassList *passes)
   wnd->geo3d_pass_index = geo3d_pass_index;
   ProfEnd();
 }
-
-/////////////////////////////////////////////////////////////////////////////////////////
-// Misc
-
-/*
- * The first parameter specifies the severity of the message, which is one of the following flags
- * 1. VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: diagnostic message
- * 2. VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT   : information message like the creation of a resource
- * 3. VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT: message about behavior that is not necessarily an error, but very likely a bug in your application
- * 4. VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT  : message about behavior that is invalid and may cause crashes
- *
- * The message_type parameter can have the following values
- * 1. VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT    : some event has happened that is unrelated to the specification or performance
- * 2. VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT : something has happeded that violates the specification or indicates a possbile mistake
- * 3. VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT: potential non-optimal use of vulkan
- *
- * The p_callback_data parameter refers to a VkDebugUtilsMessengerCallbackDataEXT struct containing the details of the message itself, with the most important members being
- * 1. pMessage   : the debug message as a null-terminated string
- * 2. pObjects   : array of vulkan object handles related to the message
- * 3. objectCount: number of objects in array
- *
- * Finally, the p_userdata parameter contains a pointer that was specified during the setup of the callback and allows you to pass your own data to it
- */
-internal VKAPI_ATTR VkBool32 VKAPI_CALL
-debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
-               VkDebugUtilsMessageTypeFlagsEXT message_type,
-               const VkDebugUtilsMessengerCallbackDataEXT *p_callback_data,
-               void *p_userdata)
-{
-  if(message_severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
-  {
-    fprintf(stderr, "validation layer: %s\n", p_callback_data->pMessage);
-  }
-
-  // The callback returns a boolean that indicates if the Vulkan call that triggered the validation layer message should be aborted.
-  // If the callback returns true, then the call is aborted with the VK_ERROR_VALIDATION_FAILED_EXT error.
-  // This is normally only used to test the validation layers themselved, so you should always return VK_FALSE
-  return VK_FALSE;
-}
-
-// internal void
-// r_vulkan_rendpass_grp_destroy(R_Vulkan_RenderPassGroup *grp)
-// {
-//   for(U64 kind = 0; kind < R_Vulkan_RenderPassKind_COUNT; kind++)
-//   {
-//     R_Vulkan_RenderPass *rendpass = &grp->passes[kind];
-//     for(U64 i = 0; i < rendpass->pipeline_count; i++)
-//     {
-//       vkDestroyPipelineLayout(r_vulkan_state->logical_device.h, rendpass->pipelines.v[i].layout, NULL);
-//       vkDestroyPipeline(r_vulkan_state->logical_device.h, rendpass->pipelines.v[i].h, NULL);
-//     }
-//     vkDestroyRenderPass(r_vulkan_state->logical_device.h, rendpass->h, NULL);
-//   }
-// }
-
-internal VkSampler
-r_vulkan_sampler2d(R_Tex2DSampleKind kind)
-{
-  // It is possible for shaders to read texels directly from iamges, but that is not very common when they are used a textures
-  // Textures are usually accessed through samplers, which will aplly filtering and transformation to compute the final color that is retrieved
-  // These filters are helpful to deal with problems like oversampling (geometry with more fragments than texels, like pixel game or Minecraft)
-  // In this case if you combined the 4 closed texels through linear interpolation, then you would get a smoother result
-  // The linear interpolation in oversampling is preferred in conventional graphics applications
-  // A sampler object automatically applies the filtering for you when reading a color from the texture
-  //
-  // Undersampling is the opposite problem, where you have more texels than fragments
-  // This will lead to artifacts when sampling high frequency patterns like a checkerboard texture at a sharp angle
-  // The solution to this is *anisotropic filtering*, which can also be applied automatically by sampler
-  //
-  // Aside from these filters, a sampler can also take care of transformation
-  // It determines what happens when you try to read texels outside the image through its addressing mode
-  // * Repeat
-  // * Mirrored repeat
-  // * Clamp to edge
-  // * Clamp to border
-  VkSampler sampler;
-
-  VkSamplerCreateInfo create_info = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-  // The magFilter and minFilter fields specify how to interpolate texels that are magnified or minified
-  // Magnification concerns the oversampling proble describes above
-  // Minification concerns undersampling
-  // The choices are VK_FILTER_NEAREST and VK_FILTER_LINEAR render_vulkan
-  switch(kind)
-  {
-    case R_Tex2DSampleKind_Nearest: {create_info.magFilter = VK_FILTER_NEAREST; create_info.minFilter = VK_FILTER_NEAREST;}break;
-    case R_Tex2DSampleKind_Linear:  {create_info.magFilter = VK_FILTER_LINEAR; create_info.minFilter = VK_FILTER_LINEAR;}break;
-    default:                        {InvalidPath;}break;
-  }
-
-  // Note that the axes are called U, V and W instead of X, Y and Z
-  // VK_SAMPLER_ADDRESS_MODE_REPEAT:               repeat the texture when going beyond the image dimension
-  // VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT:      like repeat mode, but inverts the coordinates to mirror the image when going beyond the dimension
-  // VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE:        take the color of the edge cloesest to the coordinate beyond the image dimensions
-  // VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE: like clamp to edge, but instead uses the edge opposite the closest edge
-  // VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER:      return a solid color when sampling beyond the dimensions of the image
-  // It doesn't really matter which addressing mode we use here, because we're not going to sample outside of the image in this tutorial
-  // However, the repeat mode is probably the most common mode, because it can be used to tile textures like floors an walls
-  create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-  create_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-  create_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-  // These two fields specify if anisotropic filtering should be used
-  // There is no reason not to use this unless performance is concern
-  // The maxAnisotropy field limits the amount of texel samples that can be used to calculate the final color
-  // A lower value results in better performance, but lower quality results
-  // To figure out which value we can use, we need to retrieve the properties of the physical device
-  create_info.anisotropyEnable = VK_TRUE;
-  create_info.maxAnisotropy    = r_vulkan_pdevice()->properties.limits.maxSamplerAnisotropy;
-  // The borderColor field specifies which color is returned when sampling beyond the image with clamp to border addressing mode
-  // It is possible to return black, white or transparent in either float or int formats
-  // You cannot specify an arbitrary color
-  create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-  // The unnormalizedCoordinates fields specifies which coordinate system you want to use to address texels in an image
-  // If this field is VK_TRUE, then you can simply use coordinates within the [0, texWidth] and [0, textHeight] range
-  // If this field is VK_FALSE, then the texels are addressed using [0, 1] range on all axes
-  // Real world applications almost always use normalized coordinates, because then it's possible to use textures of varying resolutions with the exact same coordinates
-  create_info.unnormalizedCoordinates = VK_FALSE;
-  // If a comparsion function is enabled, then texels will first be compared to a value, and the result of that comparison is used in filtering operations
-  // TODO(k): This si mainly used for percentage-closer filtering "https://developer.nvidia.com/gpugems/GPUGems/gpugems_ch11.html" on shadow maps
-  // We are not using any of that
-  create_info.compareEnable = VK_FALSE;
-  create_info.compareOp     = VK_COMPARE_OP_ALWAYS;
-  // NOTE(k): These 4 fields apply to mipmapping
-  // We will look at mipmapping in a later chapter, but basically it's another type of filter that can be applied
-  create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-  create_info.mipLodBias = 0.0f;
-  create_info.minLod     = 0.0f;
-  create_info.maxLod     = 0.0f;
-
-  VK_Assert(vkCreateSampler(r_vulkan_state->logical_device.h, &create_info, NULL, &sampler));
-  // Note the sampler does not reference a VkImage anywhere
-  // The sampler is a distinct object that provides an interface to extrat colors from a texture
-  // It can be applied to any image you want, whether it is 1D, 2D or 3D
-  // This is different from many older APIS, which combined texture images and filtering into a single state
-
-  return sampler;
-}
-
-internal S32
-r_vulkan_memory_index_from_type_filer(U32 type_bits, VkMemoryPropertyFlags properties)
-{
-  // The VkMemoryRequirements struct has three fields
-  // 1.           size: the size of the required amount of memory in bytes, may differ from vertex_buffer.size, e.g. (60 requested vs 64 got, alignment is 16)
-  // 2.      alignment: the offset in bytes where the buffer begins in the allocated region of memory, depends on vertex_buffer.usage and vertex_buffer.flags
-  // 3. memoryTypeBits: bit field of the memory types that are suitable for the buffer
-  // Graphics cards can offer different tyeps of memory to allcoate from
-  // Each type of memory varies in terms of allowed operations and performance characteristics
-  // We need to combine the requirements of the buffer and our own application requirements to find the right type of memory to use
-  // First we need to query info about the available types of memory using vkGetPhysicalDeviceMemoryProperties
-  // The VkPhyscicalDeviceMemoryProperties structure has two arrays memoryTypes and memoryHeaps
-  // Memory heaps are distinct memory resources like didicated VRAM and swap space in RAM for when VRAM runs out
-  // The different types of memory exist within these heaps
-  // TODO(k): Right now we'll only concern ourselves with the type of memory and not the heap it comes from, but you can imagine that this can affect performance
-  S64 ret = -1;
-  VkMemoryType *mem_types = r_vulkan_pdevice()->mem_properties.memoryTypes;
-  U64 mem_type_count = r_vulkan_pdevice()->mem_properties.memoryTypeCount;
-  for(U64 i = 0; i < mem_type_count; i++)
-  {
-    // However, we're not just interested in a memory type that is suitable for the vertex buffer
-    // We also need to be able to write our vertex data to that memory
-    // The memoryTypes array consist of VkMemoryType structs that specify the heap and properties of each type of memory
-    // The properties define special features of the memory, like being able to map it so we can write to it from the CPU
-    // This property is indicated with VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, but we also need to the VK_MEMORY_PROPERTY_HOST_COHERENT_BIT property
-    if((type_bits & (1<<i)) && ((mem_types[i].propertyFlags & properties) == properties))
-    {
-      ret = i;
-      break;
-    }
-  }
-  AssertAlways(ret != -1);
-  return ret;
-}
-
-// internal R_Vulkan_RenderPassGroup *
-// r_vulkan_rendpass_grp(R_Vulkan_Window *window, VkFormat color_format, R_Vulkan_RenderPassGroup *old)
-// {
-//   R_Vulkan_RenderPassGroup *rendpass_grp = window->first_free_rendpass_grp;
-// 
-//   if(rendpass_grp == 0)
-//   {
-//     rendpass_grp = push_array_no_zero(window->arena, R_Vulkan_RenderPassGroup, 1);
-//   }
-//   else
-//   {
-//     SLLStackPop(window->first_free_rendpass_grp);
-//   }
-//   MemoryZeroStruct(rendpass_grp);
-// 
-//   for(U64 kind = 0; kind < R_Vulkan_RenderPassKind_COUNT; kind++)
-//   {
-//     R_Vulkan_RenderPass *rendpass = &rendpass_grp->passes[kind];
-//     R_Vulkan_RenderPass *old_rendpass = 0;
-//     if(old) old_rendpass = &old->passes[kind];
-//     switch(kind)
-//     {
-//       case R_Vulkan_RenderPassKind_Rect:
-//       {
-//         // Output to stage_color_att
-//         U64                     attachment_count = 1;
-//         U64                     subpass_count    = 1;
-//         U64                     dep_count        = 1;
-//         VkAttachmentDescription att_descs[attachment_count] = {};
-//         VkSubpassDescription    subpasses[subpass_count] = {};
-//         VkSubpassDependency     deps[dep_count] = {};
-// 
-//         VkRenderPassCreateInfo create_info = {VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
-//         // Before we can finish creating the pipeline, we need to tell Vulkan about the framebuffer attachments that will be used while rendering
-//         // We need specify how many color and depth buffers there will be, how many samples to use for each of them and how their contents should be
-//         // handled throughout the rendering operations
-//         // All of this information is wrapped in a render pass object
-//         // In our case we'll have just a single color buffer attachment represented by one of the images from the swap chain
-// 
-//         // Color attachment
-//         // The format of the color attachment should match the format of the swap chain images, and we're not doing anything with multisampling yet, so we'll stick to 1 sample
-//         att_descs[0].format  = color_format;
-//         att_descs[0].samples = VK_SAMPLE_COUNT_1_BIT;
-//         // The loadOp and storeOp dtermine what to do with the data in the attachment before rendering and after rendering. We have the following choices for loadOp
-//         // 1. VK_ATTACHMENT_LOAD_OP_LOAD:      preserve the existing contents of the attachment
-//         // 2. VK_ATTACHMENT_LOAD_OP_CLEAR:     clear the values to a constant at the start
-//         // 3. VK_ATTACHMENT_LOAD_OP_DONT_CARE: existing contents are undefined; we don't care about them
-//         att_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-//         // There are only two possibilities for the storeOp
-//         // 1. VK_ATTACHMENT_STORE_OP_STORE:     rendered contents will be stored in memory and can be read later
-//         // 2. VK_ATTACHMENT_STORE_OP_DONT_CARE: contents of the framebuffer will be undefined after the rendering operation
-//         att_descs[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-//         // The loadOp and storeOp apply to color and depth data, and stencilLoadOp/stencilStoreOp apply to stencil data
-//         // Out application won't do anything with the stencil buffer, so the resutls of loading and storing are irrelevant
-//         att_descs[0].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-//         att_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-//         // Textures and framebuffers in Vulkan are represented by VkImage objects with a certain pixel format, however the layout of the pixels in memory can
-//         // change based on what you're trying to do with an image
-//         // The important take away is that images need to be transitioned to specific layouts that are sutitable for the operation that they're going to be involved in next
-//         // The initialLayout specifies which layout the image will have before the render pass begins
-//         // The finalLayout specifies the layout to automatically transition to when the render pass finishes
-//         // Some of common layouts are:
-//         // 1. VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: images used as color attachment
-//         // 2. VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:          images to be presented in the swap chain
-//         // 3. VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:     images to be used as destination for a memory copy operation
-//         att_descs[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-//         att_descs[0].finalLayout   = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-// 
-//         VkAttachmentReference refs[attachment_count];
-//         // Subpasses and attachment references
-//         // A single render pass can consist of multiple subpasses
-//         // Subpasses are subsequent rendering operations that depend on the contents of framebuffers in previous passes
-//         // For example a sequence of post-processing effects that are applied one after another
-//         // If you group these rendering operations into one render pass, then Vulkan is able to reorder the operations and conserve memory bandwitdh for possibly better performance
-//         // Every subpass references one or more of the attachments that we've described using the structure in the previous sections
-// 
-//         // The attachment parameter specifies which attachment to reference by its index in the attachment descriptions array
-//         // Our array currently only consists of a single VkAttachmentDescription, so its index is 0
-//         refs[0].attachment = 0;
-//         // The layout specifies which layout we would like the attachment to have during a subpass that uses this reference
-//         // Vulkan will automatically transition the attachment to this layout when the subpass is started
-//         // We intend to use the attachment to function as a color buffer and the VK_IAMGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL layout will give use the best performance as its name implies
-//         refs[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-// 
-//         // Vulkan may also support compute subpasses in the future, so we have to be explicit about this being a graphics subpass
-//         subpasses[0].pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
-//         subpasses[0].colorAttachmentCount    = 1,
-//           subpasses[0].pColorAttachments       = refs;
-//         // Unlike the color attachments, a subpass can only use a single depth (+stencil) attachment
-//         // It wouldn't really make any sense to do depth tests on multiple buffers
-//         subpasses[0].pDepthStencilAttachment = VK_NULL_HANDLE;
-//         // The index of the attachment in this array is directly referenced from the fragment shader with the 
-//         // layout(location = 0) out vec4 outColor directive
-//         // The following other types of attachments can be reference by subpass:
-//         // 1. pInputAttachments: attachments that are read from a shader
-//         // 2. pResolveAttachments: attachments used for multisampling color attachments
-//         // 3. pDepthStencilAttachments: attachments for depth and stencil data
-//         // 4. pPreserveAttachments: attachments that are not used by this subpass, but for which the data must be perserved
-// 
-//         // Subpasses Dependencies
-//         // Remember that the subpasses in a render pass automatically take care of image layout transitions
-//         // These transitions are controlled by subpass dependencies, which specify memory and execution dependencies between subpasses
-//         // We have only a single subpass right now, but the operations right before and right after this subpass also count as implicit "subpasses"
-//         // There are two built-in dependencies that take care of the transition at the start of the render pass and at the end of the render pass, but the former does not 
-//         // occur at the right time. It assumes that the transition occurs at the start of the pipeline, but we haven't accquired the image yet at that point
-//         // There are two ways to deal with this problem
-//         // 1. We could change the waitStages for the imageAvailableSemaphore to VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT(deprecated) (ALL_COMMANDS in newer api) to ensure that render passes
-//         //    don't begin until the image is available
-//         // 2. We can make the render pass wait for the VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT stage
-// 
-//         // The first two fields specify the indices of the dependency and the dependent subpass
-//         // The special value VK_SUBPASS_EXTERNAL refers to the implicit subpass before or after the render pass depending on the whether it is specified in srcSubpass or dstSubpass
-//         // The dstSubpass must always be higher than srcSubpass to prevent the cycles in the dependency graph (unless one of the subpasses is VK_SUBPASS_EXTERNAL)
-//         // The main purpose of external subpass dependencies is to deal with initialLayout and finalLayout of an attachment reference
-//         // If initialLayout != layout used in the first subpass, the render pass is forced to perform a layout transition (by injecting a memory barrier)
-//         deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-//         deps[0].dstSubpass = 0; /* the first subpass */
-//         // The next two fields specify the operations to wait on and the stages in which these operations occur
-//         // We need to wait for the swap chain to finish reading from the image before we can access it
-//         // This can be accomplished by waiting on the color attachment output stage itself
-//         // TODO(k): don't know why we write this in the first time
-//         // deps[0].srcStageMask  = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-//         deps[0].srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-//         deps[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-//         // Basically memory barrier
-//         // The operations that should wait on this are in the color attachment stage and involve the writing of the color attachment
-//         // These settings will prevent the layout transition from happening until it's actually necessary
-//         deps[0].dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-//         deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT|VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-//         // There is a very similar external subpass dependency setup for finalLayout
-//         // If finalLayout differs from the last use in a subpass, driver will transition into the final layout automatically
-//         // Here you get to change dstStageMask/dstAccessMask
-//         // If you do nothing here, you get BOTTOM_OF_PIPE/0, which can actually be just fine
-// 
-//         // Creat render pass
-//         create_info.attachmentCount = attachment_count;
-//         create_info.pAttachments    = att_descs;
-//         create_info.subpassCount    = subpass_count;
-//         create_info.pSubpasses      = subpasses;
-//         create_info.dependencyCount = dep_count;
-//         create_info.pDependencies   = deps;
-//         VK_Assert(vkCreateRenderPass(r_vulkan_state->logical_device.h, &create_info, NULL, &rendpass->h));
-// 
-//         // Create pipelines
-//         R_Vulkan_Pipeline *old_p_rect = 0;
-//         if(old_rendpass) {old_p_rect = &old_rendpass->pipelines.rect;};
-//         rendpass->pipelines.rect = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Rect, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p_rect);
-//         rendpass->pipeline_count = 1;
-//       }break;
-//       case R_Vulkan_RenderPassKind_Geo2D:
-//       {
-//         // Output to geo2d_color buffer
-//         U64                     attachment_count = 2;
-//         U64                     subpass_count    = 1;
-//         U64                     dep_count        = 1;
-//         VkAttachmentDescription att_descs[attachment_count] = {};
-//         VkSubpassDescription    subpasses[subpass_count] = {};
-//         VkSubpassDependency     deps[dep_count] = {};
-// 
-//         VkRenderPassCreateInfo create_info = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
-//         // Geo2d Color attachment
-//         att_descs[0].format         = color_format;
-//         att_descs[0].samples        = VK_SAMPLE_COUNT_1_BIT;
-//         att_descs[0].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
-//         att_descs[0].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-//         att_descs[0].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-//         att_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-//         att_descs[0].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-//         att_descs[0].finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-//         // Stage Id attachment
-//         att_descs[1].format         = VK_FORMAT_R32G32_UINT;
-//         att_descs[1].samples        = VK_SAMPLE_COUNT_1_BIT;
-//         att_descs[1].loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;
-//         att_descs[1].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-//         att_descs[1].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-//         att_descs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-//         att_descs[1].initialLayout  = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-//         att_descs[1].finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-// 
-//         // geo2d pass
-//         VkAttachmentReference refs[attachment_count];
-//         refs[0].attachment = 0;
-//         refs[0].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-//         refs[1].attachment = 1;
-//         refs[1].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-//         subpasses[0].pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
-//         subpasses[0].colorAttachmentCount    = 2;
-//         subpasses[0].pColorAttachments       = refs;
-//         subpasses[0].pDepthStencilAttachment = 0;
-// 
-//         // external -> subpass1
-//         deps[0].srcSubpass    = VK_SUBPASS_EXTERNAL;
-//         deps[0].dstSubpass    = 0; /* the first subpass */
-//         deps[0].srcStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-//         deps[0].srcAccessMask = 0;
-//         deps[0].dstStageMask  = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT|VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-//         deps[0].dstAccessMask = 0;
-// 
-//         // create render pass
-//         create_info.attachmentCount = attachment_count;
-//         create_info.pAttachments    = att_descs;
-//         create_info.subpassCount    = subpass_count;
-//         create_info.pSubpasses      = subpasses;
-//         create_info.dependencyCount = dep_count;
-//         create_info.pDependencies   = deps;
-//         VK_Assert(vkCreateRenderPass(r_vulkan_state->logical_device.h, &create_info, NULL, &rendpass->h));
-// 
-//         // geo2d forward
-//         for(U64 i = 0; i < R_GeoTopologyKind_COUNT; i++)
-//         {
-//           for(U64 j = 0; j < R_GeoPolygonKind_COUNT; j++)
-//           {
-//             R_Vulkan_Pipeline *old_p = 0;
-//             if(old_rendpass) old_p = &old_rendpass->pipelines.geo2d.forward[i*R_GeoPolygonKind_COUNT + j];
-//             rendpass->pipelines.geo2d.forward[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo2D_Forward, i, j, rendpass->h, old_p);
-//           }
-//         }
-//         rendpass->pipeline_count = R_GeoTopologyKind_COUNT*R_GeoPolygonKind_COUNT;
-//       }break;
-//       case R_Vulkan_RenderPassKind_Geo2D_Composite:
-//       {
-//         U64                     attachment_count = 1;
-//         U64                     subpass_count    = 1;
-//         U64                     dep_count        = 1;
-//         VkAttachmentDescription att_descs[attachment_count] = {};
-//         VkSubpassDescription    subpasses[subpass_count] = {};
-//         VkSubpassDependency     deps[dep_count] = {};
-// 
-//         VkRenderPassCreateInfo create_info = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
-//         // Stage Color attachment
-//         att_descs[0].format         = color_format;
-//         att_descs[0].samples        = VK_SAMPLE_COUNT_1_BIT;
-//         att_descs[0].loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;
-//         att_descs[0].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-//         att_descs[0].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-//         att_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-//         att_descs[0].initialLayout  = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-//         att_descs[0].finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-// 
-//         VkAttachmentReference refs[attachment_count];
-//         refs[0].attachment = 0;
-//         refs[0].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-//         subpasses[0].pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
-//         subpasses[0].colorAttachmentCount    = 1;
-//         subpasses[0].pColorAttachments       = &refs[0];
-//         subpasses[0].pDepthStencilAttachment = 0;
-// 
-//         // external -> subpass 1
-//         deps[0].srcSubpass    = VK_SUBPASS_EXTERNAL;
-//         deps[0].dstSubpass    = 0; /* the first subpass */
-//         deps[0].srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-//         deps[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-//         deps[0].dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-//         deps[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-// 
-//         // create render pass
-//         create_info.attachmentCount = attachment_count;
-//         create_info.pAttachments    = att_descs;
-//         create_info.subpassCount    = subpass_count;
-//         create_info.pSubpasses      = subpasses;
-//         create_info.dependencyCount = dep_count;
-//         create_info.pDependencies   = deps;
-//         VK_Assert(vkCreateRenderPass(r_vulkan_state->logical_device.h, &create_info, NULL, &rendpass->h));
-// 
-//         // create pipelines (geo2d_composite)
-//         R_Vulkan_Pipeline *old_p = 0;
-//         if(old_rendpass) old_p = &old_rendpass->pipelines.geo2d_composite;
-//         rendpass->pipelines.geo2d_composite = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo2D_Composite, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p);
-//         rendpass->pipeline_count = 1;
-//       }break;
-//       case R_Vulkan_RenderPassKind_Geo3D_ZPre:
-//       {
-//         U64 attachment_count = 1;
-//         U64 subpass_count = 1;
-//         U64 dep_count = 1;
-//         VkAttachmentDescription att_descs[attachment_count] = {};
-//         VkSubpassDescription subpasses[subpass_count] = {};
-//         VkSubpassDependency deps[dep_count] = {};
-// 
-//         VkRenderPassCreateInfo create_info = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
-// 
-//         // Geo3d Depth attachment
-//         att_descs[0].format         = r_vulkan_pdevice()->depth_image_format;
-//         att_descs[0].samples        = VK_SAMPLE_COUNT_1_BIT;
-//         att_descs[0].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
-//         att_descs[0].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-//         att_descs[0].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-//         att_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-//         att_descs[0].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-//         att_descs[0].finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-// 
-//         // references
-//         VkAttachmentReference refs[attachment_count];
-//         refs[0].attachment = 0;
-//         refs[0].layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-// 
-//         subpasses[0].pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
-//         subpasses[0].colorAttachmentCount    = 0;
-//         subpasses[0].pColorAttachments       = 0;
-//         subpasses[0].pDepthStencilAttachment = &refs[0];
-// 
-//         // external -> subpass1
-//         deps[0].srcSubpass    = VK_SUBPASS_EXTERNAL;
-//         deps[0].dstSubpass    = 0; /* the first subpass */
-//         deps[0].srcStageMask  = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-//         deps[0].srcAccessMask = 0;
-//         deps[0].dstStageMask  = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-//         deps[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-// 
-//         // Creat render pass
-//         create_info.attachmentCount = attachment_count;
-//         create_info.pAttachments    = att_descs;
-//         create_info.subpassCount    = subpass_count;
-//         create_info.pSubpasses      = subpasses;
-//         create_info.dependencyCount = dep_count;
-//         create_info.pDependencies   = deps;
-//         VK_Assert(vkCreateRenderPass(r_vulkan_state->logical_device.h, &create_info, NULL, &rendpass->h));
-// 
-//         // Create pipelines
-//         // geo3d z pre
-//         for(U64 i = 0; i < R_GeoTopologyKind_COUNT; i++)
-//         {
-//           for(U64 j = 0; j < R_GeoPolygonKind_COUNT; j++)
-//           {
-//             R_Vulkan_Pipeline *old_p = 0;
-//             if(old_rendpass) old_p = &old_rendpass->pipelines.z_pre[i*R_GeoPolygonKind_COUNT + j];
-//             rendpass->pipelines.z_pre[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo3D_ZPre, i, j, rendpass->h, old_p);
-//           }
-//         }
-//         rendpass->pipeline_count = R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT;
-//       }break;
-//       case R_Vulkan_RenderPassKind_Geo3D:
-//       {
-//         // Output to geo3d_color buffer, using ge3d_depth
-//         U64                     attachment_count = 4;
-//         U64                     subpass_count    = 1;
-//         U64                     dep_count        = 1;
-//         VkAttachmentDescription att_descs[attachment_count] = {};
-//         VkSubpassDescription    subpasses[subpass_count] = {};
-//         VkSubpassDependency     deps[dep_count] = {};
-// 
-//         VkRenderPassCreateInfo create_info = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
-//         // Geo3d Color attachment
-//         att_descs[0].format         = color_format;
-//         att_descs[0].samples        = VK_SAMPLE_COUNT_1_BIT;
-//         att_descs[0].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
-//         att_descs[0].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-//         att_descs[0].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-//         att_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-//         att_descs[0].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-//         att_descs[0].finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-//         // Geo3d Normal,depth attachment
-//         att_descs[1].format         = VK_FORMAT_R32G32B32A32_SFLOAT;
-//         att_descs[1].samples        = VK_SAMPLE_COUNT_1_BIT;
-//         att_descs[1].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
-//         att_descs[1].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-//         att_descs[1].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-//         att_descs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-//         att_descs[1].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-//         att_descs[1].finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-//         // Geo3d Depth attachment
-//         att_descs[2].format         = r_vulkan_pdevice()->depth_image_format;
-//         att_descs[2].samples        = VK_SAMPLE_COUNT_1_BIT;
-//         att_descs[2].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
-//         att_descs[2].storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-//         att_descs[2].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-//         att_descs[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-//         att_descs[2].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-//         att_descs[2].finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-//         // Stage Id attachment
-//         att_descs[3].format         = VK_FORMAT_R32G32_UINT;
-//         att_descs[3].samples        = VK_SAMPLE_COUNT_1_BIT;
-//         att_descs[3].loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;
-//         att_descs[3].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-//         att_descs[3].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-//         att_descs[3].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-//         att_descs[3].initialLayout  = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-//         att_descs[3].finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-// 
-//         // geo3d pass
-//         VkAttachmentReference refs[attachment_count];
-//         refs[0].attachment = 0;
-//         refs[0].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-//         refs[1].attachment = 1;
-//         refs[1].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-//         refs[2].attachment = 3;
-//         refs[2].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-//         refs[3].attachment = 2;
-//         refs[3].layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-//         subpasses[0].pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
-//         subpasses[0].colorAttachmentCount    = 3;
-//         subpasses[0].pColorAttachments       = &refs[0];
-//         subpasses[0].pDepthStencilAttachment = &refs[3];
-// 
-//         // TODO(k): the subpass dep seem to be global memory barrier, we may could use image/buffer barrier to gain some performance
-//         // external -> subpass1
-//         deps[0].srcSubpass    = VK_SUBPASS_EXTERNAL;
-//         deps[0].dstSubpass    = 0; /* the first subpass */
-//         deps[0].srcStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-//         deps[0].srcAccessMask = 0;
-//         deps[0].dstStageMask  = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT|VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-//         deps[0].dstAccessMask = 0;
-// 
-//         // create render pass
-//         create_info.attachmentCount = attachment_count;
-//         create_info.pAttachments    = att_descs;
-//         create_info.subpassCount    = subpass_count;
-//         create_info.pSubpasses      = subpasses;
-//         create_info.dependencyCount = dep_count;
-//         create_info.pDependencies   = deps;
-//         VK_Assert(vkCreateRenderPass(r_vulkan_state->logical_device.h, &create_info, NULL, &rendpass->h));
-// 
-//         // create pipelines (tile_frustum + light_culling_comp + geo3d_debug + geo3d_forward)
-//         // light culling computing
-// 
-//         rendpass->pipelines.geo3d.tile_frustum = r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind_CMP_Geo3D_TileFrustum);
-//         rendpass->pipelines.geo3d.light_culling = r_vulkan_cmp_pipeline(R_Vulkan_PipelineKind_CMP_Geo3D_LightCulling);
-// 
-//         // geo3d debug
-//         for(U64 i = 0; i < R_GeoTopologyKind_COUNT; i++)
-//         {
-//           for(U64 j = 0; j < R_GeoPolygonKind_COUNT; j++)
-//           {
-//             R_Vulkan_Pipeline *old_p = 0;
-//             if(old_rendpass) old_p = &old_rendpass->pipelines.geo3d.debug[i*R_GeoPolygonKind_COUNT + j];
-//             rendpass->pipelines.geo3d.debug[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo3D_Debug, i, j, rendpass->h, old_p);
-//           }
-//         }
-// 
-//         // geo3d forward
-//         for(U64 i = 0; i < R_GeoTopologyKind_COUNT; i++)
-//         {
-//           for(U64 j = 0; j < R_GeoPolygonKind_COUNT; j++)
-//           {
-//             R_Vulkan_Pipeline *old_p = 0;
-//             if(old_rendpass) old_p = &old_rendpass->pipelines.geo3d.forward[i*R_GeoPolygonKind_COUNT + j];
-//             rendpass->pipelines.geo3d.forward[i*R_GeoPolygonKind_COUNT + j] = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo3D_Forward, i, j, rendpass->h, old_p);
-//           }
-//         }
-//         rendpass->pipeline_count = R_GeoTopologyKind_COUNT * R_GeoPolygonKind_COUNT * 2 + 2;
-//       }break;
-//       case R_Vulkan_RenderPassKind_Geo3D_Composite:
-//       {
-//         // post processing using geo3d color image and geo3d normal depth image
-//         // then copy the result to stage color image
-//         U64                     attachment_count = 1;
-//         U64                     subpass_count    = 1;
-//         U64                     dep_count        = 1;
-//         VkAttachmentDescription att_descs[attachment_count] = {};
-//         VkSubpassDescription    subpasses[subpass_count] = {};
-//         VkSubpassDependency     deps[dep_count] = {};
-// 
-//         VkRenderPassCreateInfo create_info = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO };
-//         // Stage Color attachment
-//         att_descs[0].format         = color_format;
-//         att_descs[0].samples        = VK_SAMPLE_COUNT_1_BIT;
-//         att_descs[0].loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;
-//         att_descs[0].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-//         att_descs[0].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-//         att_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-//         att_descs[0].initialLayout  = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-//         att_descs[0].finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-// 
-//         VkAttachmentReference refs[attachment_count];
-//         refs[0].attachment = 0;
-//         refs[0].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-//         subpasses[0].pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
-//         subpasses[0].colorAttachmentCount    = 1;
-//         subpasses[0].pColorAttachments       = &refs[0];
-//         subpasses[0].pDepthStencilAttachment = 0;
-// 
-//         // external -> subpass 1
-//         deps[0].srcSubpass    = VK_SUBPASS_EXTERNAL;
-//         deps[0].dstSubpass    = 0; /* the first subpass */
-//         deps[0].srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-//         deps[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-//         deps[0].dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-//         deps[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-// 
-//         // Creat render pass
-//         create_info.attachmentCount = attachment_count;
-//         create_info.pAttachments    = att_descs;
-//         create_info.subpassCount    = subpass_count;
-//         create_info.pSubpasses      = subpasses;
-//         create_info.dependencyCount = dep_count;
-//         create_info.pDependencies   = deps;
-//         VK_Assert(vkCreateRenderPass(r_vulkan_state->logical_device.h, &create_info, NULL, &rendpass->h));
-// 
-//         // Create pipelines (geo3d_composite)
-//         R_Vulkan_Pipeline *old_p = 0;
-//         if(old_rendpass) old_p = &old_rendpass->pipelines.geo3d_composite;
-//         rendpass->pipelines.geo3d_composite = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Geo3D_Composite, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p);
-//         rendpass->pipeline_count = 1;
-//       }break;
-//       case R_Vulkan_RenderPassKind_Finalize:
-//       {
-//         // Output to swapchain image, read stage_color as texture 
-//         U64                     attachment_count = 1;
-//         U64                     subpass_count    = 1;
-//         U64                     dep_count        = 1;
-//         VkAttachmentDescription att_descs[attachment_count] = {};
-//         VkSubpassDescription    subpasses[subpass_count]    = {};
-//         VkSubpassDependency     deps[dep_count]             = {};
-//         VkRenderPassCreateInfo  create_info = {VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
-// 
-//         // Color attachment
-//         att_descs[0].format         = color_format;
-//         att_descs[0].samples        = VK_SAMPLE_COUNT_1_BIT;
-//         att_descs[0].loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
-//         att_descs[0].storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-//         att_descs[0].stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-//         att_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-//         att_descs[0].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-//         att_descs[0].finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-// 
-//         VkAttachmentReference refs[attachment_count];
-//         refs[0].attachment = 0;
-//         refs[0].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-// 
-//         subpasses[0].pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
-//         subpasses[0].colorAttachmentCount    = 1;
-//         subpasses[0].pColorAttachments       = refs;
-//         subpasses[0].pDepthStencilAttachment = VK_NULL_HANDLE;
-// 
-//         deps[0].srcSubpass    = VK_SUBPASS_EXTERNAL;
-//         deps[0].dstSubpass    = 0; /* the first subpass */
-//         deps[0].srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-//         deps[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-//         deps[0].dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-//         deps[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-// 
-//         // Creat render pass
-//         create_info.attachmentCount = attachment_count;
-//         create_info.pAttachments    = att_descs;
-//         create_info.subpassCount    = subpass_count;
-//         create_info.pSubpasses      = subpasses;
-//         create_info.dependencyCount = dep_count;
-//         create_info.pDependencies   = deps;
-//         VK_Assert(vkCreateRenderPass(r_vulkan_state->logical_device.h, &create_info, NULL, &rendpass->h));
-// 
-//         // Create pipelines
-//         R_Vulkan_Pipeline *old_p_finalize = 0;
-//         if(old_rendpass) {old_p_finalize = &old_rendpass->pipelines.finalize;};
-//         rendpass->pipelines.finalize = r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind_GFX_Finalize, R_GeoTopologyKind_TriangleStrip, R_GeoPolygonKind_Fill, rendpass->h, old_p_finalize);
-//         rendpass->pipeline_count = 1;
-//       }break;
-//       default: {InvalidPath;}break;
-//     }
-//   }
-//   return rendpass_grp;
-// }
-

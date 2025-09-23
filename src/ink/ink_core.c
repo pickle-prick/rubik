@@ -40,7 +40,8 @@ return old_value;
 
 #include "generated/ink.meta.c"
 
-#define M_1 200
+// FIXME: there may be a bug related to altas allocation
+#define M_1 48
 
 // TODO(Next): maybe we could use metagen
 // Color palette
@@ -52,7 +53,7 @@ ik_ui_draw()
 {
   Temp scratch = scratch_begin(0,0);
   F32 box_squish_epsilon = 0.001f;
-  d_push_viewport(ik_state->window_dim);
+  dr_push_viewport(ik_state->window_dim);
 
   // unpack some settings
   F32 border_softness = 1.f;
@@ -61,7 +62,7 @@ ik_ui_draw()
   // DEBUG mouse
   if(0)
   {
-    R_Rect2DInst *cursor = d_rect(r2f32p(ui_state->mouse.x-15,ui_state->mouse.y-15, ui_state->mouse.x+15,ui_state->mouse.y+15), v4f32(0,0.3,1,0.3), 15, 0.0, 0.7);
+    R_Rect2DInst *cursor = dr_rect(r2f32p(ui_state->mouse.x-15,ui_state->mouse.y-15, ui_state->mouse.x+15,ui_state->mouse.y+15), v4f32(0,0.3,1,0.3), 15, 0.0, 0.7);
   }
 
   // Recusivly drawing boxes
@@ -82,7 +83,7 @@ ik_ui_draw()
     // push transparency
     if(box->transparency != 0)
     {
-      d_push_transparency(box->transparency);
+      dr_push_transparency(box->transparency);
     }
 
     // push squish
@@ -107,8 +108,8 @@ ik_ui_draw()
       Mat3x3F32 xform = mul_3x3f32(origin2box_xform, mul_3x3f32(scale_xform, box2origin_xform));
       // TODO(k): why we may need to tranpose this, should it already column major? check it later
       xform = transpose_3x3f32(xform);
-      d_push_xform2d(xform);
-      d_push_tex2d_sample_kind(R_Tex2DSampleKind_Linear);
+      dr_push_xform2d(xform);
+      dr_push_tex2d_sample_kind(R_Tex2DSampleKind_Linear);
     }
 
     // draw drop_shadw
@@ -116,14 +117,14 @@ ik_ui_draw()
     {
       Rng2F32 drop_shadow_rect = shift_2f32(pad_2f32(box->rect, 8), v2f32(4, 4));
       Vec4F32 drop_shadow_color = ik_rgba_from_theme_color(IK_ThemeColor_DropShadow);
-      d_rect(drop_shadow_rect, drop_shadow_color, 0.8f, 0, 8.f);
+      dr_rect(drop_shadow_rect, drop_shadow_color, 0.8f, 0, 8.f);
     }
 
     // draw background
     if(box->flags & UI_BoxFlag_DrawBackground)
     {
       // main rectangle
-      R_Rect2DInst *inst = d_rect(pad_2f32(box->rect, 1), box->palette->colors[UI_ColorCode_Background], 0, 0, 1.f);
+      R_Rect2DInst *inst = dr_rect(pad_2f32(box->rect, 1), box->palette->colors[UI_ColorCode_Background], 0, 0, 1.f);
       MemoryCopyArray(inst->corner_radii, box->corner_radii);
 
       if(box->flags & UI_BoxFlag_DrawHotEffects)
@@ -146,7 +147,7 @@ ik_ui_draw()
           {
             color.w *= t;
           }
-          R_Rect2DInst *inst = d_rect(pad_2f32(box->rect, 1.f), v4f32(0, 0, 0, 0), 0, 0, border_softness*1.f);
+          R_Rect2DInst *inst = dr_rect(pad_2f32(box->rect, 1.f), v4f32(0, 0, 0, 0), 0, 0, border_softness*1.f);
           inst->colors[Corner_00] = color;
           inst->colors[Corner_10] = color;
           inst->colors[Corner_01] = color;
@@ -155,7 +156,7 @@ ik_ui_draw()
         }
 
         // rjf: soft circle around mouse
-        if(box->hot_t > 0.01f) D_ClipScope(box->rect)
+        if(box->hot_t > 0.01f) DR_ClipScope(box->rect)
         {
           Vec4F32 color = hover_color;
           color.w *= 0.04f;
@@ -168,14 +169,14 @@ ik_ui_draw()
           F32 max_dim = Max(box_dim.x, box_dim.y);
           F32 radius = box->font_size*12.f;
           radius = Min(max_dim, radius);
-          d_rect(pad_2f32(r2f32(center, center), radius), color, radius, 0, radius/3.f);
+          dr_rect(pad_2f32(r2f32(center, center), radius), color, radius, 0, radius/3.f);
         }
 
         // rjf: slight emboss fadeoff
         if(0)
         {
           Rng2F32 rect = r2f32p(box->rect.x0, box->rect.y0, box->rect.x1, box->rect.y1);
-          R_Rect2DInst *inst = d_rect(rect, v4f32(0, 0, 0, 0), 0, 0, 1.f);
+          R_Rect2DInst *inst = dr_rect(rect, v4f32(0, 0, 0, 0), 0, 0, 1.f);
           inst->colors[Corner_00] = v4f32(0.f, 0.f, 0.f, 0.0f*t);
           inst->colors[Corner_01] = v4f32(0.f, 0.f, 0.f, 0.3f*t);
           inst->colors[Corner_10] = v4f32(0.f, 0.f, 0.f, 0.0f*t);
@@ -199,7 +200,7 @@ ik_ui_draw()
 
           // rjf: top -> bottom dark effect
           {
-            R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x0, box->rect.y0, box->rect.x1, box->rect.y0 + shadow_size.y), v4f32(0, 0, 0, 0), 0, 0, 1.f);
+            R_Rect2DInst *inst = dr_rect(r2f32p(box->rect.x0, box->rect.y0, box->rect.x1, box->rect.y0 + shadow_size.y), v4f32(0, 0, 0, 0), 0, 0, 1.f);
             inst->colors[Corner_00] = inst->colors[Corner_10] = shadow_color;
             inst->colors[Corner_01] = inst->colors[Corner_11] = v4f32(0.f, 0.f, 0.f, 0.0f);
             MemoryCopyArray(inst->corner_radii, box_corner_radii);
@@ -207,7 +208,7 @@ ik_ui_draw()
           
           // rjf: bottom -> top light effect
           {
-            R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x0, box->rect.y1 - shadow_size.y, box->rect.x1, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
+            R_Rect2DInst *inst = dr_rect(r2f32p(box->rect.x0, box->rect.y1 - shadow_size.y, box->rect.x1, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
             inst->colors[Corner_00] = inst->colors[Corner_10] = v4f32(0, 0, 0, 0);
             inst->colors[Corner_01] = inst->colors[Corner_11] = v4f32(1.0f, 1.0f, 1.0f, 0.08f*box->active_t);
             MemoryCopyArray(inst->corner_radii, box_corner_radii);
@@ -215,7 +216,7 @@ ik_ui_draw()
           
           // rjf: left -> right dark effect
           {
-            R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x0, box->rect.y0, box->rect.x0 + shadow_size.x, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
+            R_Rect2DInst *inst = dr_rect(r2f32p(box->rect.x0, box->rect.y0, box->rect.x0 + shadow_size.x, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
             inst->colors[Corner_10] = inst->colors[Corner_11] = v4f32(0.f, 0.f, 0.f, 0.f);
             inst->colors[Corner_00] = shadow_color;
             inst->colors[Corner_01] = shadow_color;
@@ -224,7 +225,7 @@ ik_ui_draw()
           
           // rjf: right -> left dark effect
           {
-            R_Rect2DInst *inst = d_rect(r2f32p(box->rect.x1 - shadow_size.x, box->rect.y0, box->rect.x1, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
+            R_Rect2DInst *inst = dr_rect(r2f32p(box->rect.x1 - shadow_size.x, box->rect.y0, box->rect.x1, box->rect.y1), v4f32(0, 0, 0, 0), 0, 0, 1.f);
             inst->colors[Corner_00] = inst->colors[Corner_01] = v4f32(0.f, 0.f, 0.f, 0.f);
             inst->colors[Corner_10] = shadow_color;
             inst->colors[Corner_11] = shadow_color;
@@ -237,27 +238,26 @@ ik_ui_draw()
     // draw image
     if(box->flags & UI_BoxFlag_DrawImage)
     {
-      R_Rect2DInst *inst = d_img(box->rect, box->src, box->albedo_tex, box->albedo_clr, 0., 0., 0.);
+      R_Rect2DInst *inst = dr_img(box->rect, box->src, box->albedo_tex, box->albedo_clr, 0., 0., 0.);
       inst->white_texture_override = box->albedo_white_texture_override ? 1.0 : 0.0;
     }
 
     // draw string
     if(box->flags & UI_BoxFlag_DrawText)
     {
-      // TODO(k): handle font color
       Vec2F32 text_position = ui_box_text_position(box);
 
       // max width
       F32 max_x = 100000.0f;
-      F_Run ellipses_run = {0};
+      FNT_Run ellipses_run = {0};
 
       if(!(box->flags & UI_BoxFlag_DisableTextTrunc))
       {
         max_x = (box->rect.x1-box->text_padding);
-        ellipses_run = f_push_run_from_string(scratch.arena, box->font, box->font_size, 0, box->tab_size, 0, str8_lit("..."));
+        ellipses_run = fnt_run_from_string(box->font, box->font_size, 0, box->tab_size, 0, str8_lit("..."));
       }
 
-      d_truncated_fancy_run_list(text_position, &box->display_string_runs, max_x, ellipses_run);
+      dr_truncated_fancy_run_list(text_position, &box->display_string_runs, max_x, ellipses_run);
     }
 
     // NOTE(k): draw focus viz
@@ -281,18 +281,18 @@ ik_ui_draw()
         {
           color = v4f32(0.8f, 0.3f, 0.3f, 1.f);
         }
-        d_rect(r2f32p(box->rect.x0-6, box->rect.y0-6, box->rect.x0+6, box->rect.y0+6), color, 2, 0, 1);
-        d_rect(box->rect, color, 2, 2, 1);
+        dr_rect(r2f32p(box->rect.x0-6, box->rect.y0-6, box->rect.x0+6, box->rect.y0+6), color, 2, 0, 1);
+        dr_rect(box->rect, color, 2, 2, 1);
       }
       if(box->flags & (UI_BoxFlag_FocusHot|UI_BoxFlag_FocusActive))
       {
         if(box->flags & (UI_BoxFlag_FocusHotDisabled|UI_BoxFlag_FocusActiveDisabled))
         {
-          d_rect(r2f32p(box->rect.x0-6, box->rect.y0-6, box->rect.x0+6, box->rect.y0+6), v4f32(1, 0, 0, 0.2f), 2, 0, 1);
+          dr_rect(r2f32p(box->rect.x0-6, box->rect.y0-6, box->rect.x0+6, box->rect.y0+6), v4f32(1, 0, 0, 0.2f), 2, 0, 1);
         }
         else
         {
-          d_rect(r2f32p(box->rect.x0-6, box->rect.y0-6, box->rect.x0+6, box->rect.y0+6), v4f32(0, 1, 0, 0.2f), 2, 0, 1);
+          dr_rect(r2f32p(box->rect.x0-6, box->rect.y0-6, box->rect.x0+6, box->rect.y0+6), v4f32(0, 1, 0, 0.2f), 2, 0, 1);
         }
       }
     }
@@ -300,22 +300,22 @@ ik_ui_draw()
     // push clip
     if(box->flags & UI_BoxFlag_Clip)
     {
-      Rng2F32 top_clip = d_top_clip();
+      Rng2F32 top_clip = dr_top_clip();
       Rng2F32 new_clip = pad_2f32(box->rect, -1);
       if(top_clip.x1 != 0 || top_clip.y1 != 0)
       {
         new_clip = intersect_2f32(new_clip, top_clip);
       }
-      d_push_clip(new_clip);
+      dr_push_clip(new_clip);
     }
 
     // k: custom draw list
     if(box->flags & UI_BoxFlag_DrawBucket)
     {
       Mat3x3F32 xform = make_translate_3x3f32(box->position_delta);
-      D_XForm2DScope(xform)
+      DR_XForm2DScope(xform)
       {
-        d_sub_bucket(box->draw_bucket, 1);
+        dr_sub_bucket(box->draw_bucket);
       }
     }
 
@@ -336,20 +336,20 @@ ik_ui_draw()
         // k: pop clip
         if(b->flags & UI_BoxFlag_Clip)
         {
-          d_pop_clip();
+          dr_pop_clip();
         }
 
         // rjf: draw overlay
         if(b->flags & UI_BoxFlag_DrawOverlay)
         {
-          R_Rect2DInst *inst = d_rect(b->rect, b->palette->colors[UI_ColorCode_Overlay], 0, 0, 1.f);
+          R_Rect2DInst *inst = dr_rect(b->rect, b->palette->colors[UI_ColorCode_Overlay], 0, 0, 1.f);
           MemoryCopyArray(inst->corner_radii, b->corner_radii);
         }
 
         //- k: draw the border
         if(b->flags & UI_BoxFlag_DrawBorder)
         {
-          R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1.f), b->palette->colors[UI_ColorCode_Border], 0, 1.f, border_softness*1.f);
+          R_Rect2DInst *inst = dr_rect(pad_2f32(b->rect, 1.f), b->palette->colors[UI_ColorCode_Border], 0, 1.f, border_softness*1.f);
           MemoryCopyArray(inst->corner_radii, b->corner_radii);
 
           // rjf: hover effect
@@ -357,7 +357,7 @@ ik_ui_draw()
           {
             Vec4F32 color = ik_rgba_from_theme_color(IK_ThemeColor_Hover);
             color.w *= b->hot_t;
-            R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), color, 0, 1.f, 1.f);
+            R_Rect2DInst *inst = dr_rect(pad_2f32(b->rect, 1), color, 0, 1.f, 1.f);
             inst->colors[Corner_01].w *= 0.2f;
             inst->colors[Corner_11].w *= 0.2f;
             MemoryCopyArray(inst->corner_radii, b->corner_radii);
@@ -367,7 +367,7 @@ ik_ui_draw()
         // k: debug border rendering
         if(0)
         {
-          R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), v4f32(1, 0, 1, 0.25f), 0, 1.f, 1.f);
+          R_Rect2DInst *inst = dr_rect(pad_2f32(b->rect, 1), v4f32(1, 0, 1, 0.25f), 0, 1.f, 1.f);
           MemoryCopyArray(inst->corner_radii, b->corner_radii);
         }
 
@@ -378,19 +378,19 @@ ik_ui_draw()
           F32 softness = 0.5f;
           if(b->flags & UI_BoxFlag_DrawSideTop)
           {
-            d_rect(r2f32p(r.x0, r.y0-half_thickness, r.x1, r.y0+half_thickness), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
+            dr_rect(r2f32p(r.x0, r.y0-half_thickness, r.x1, r.y0+half_thickness), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
           }
           if(b->flags & UI_BoxFlag_DrawSideBottom)
           {
-            d_rect(r2f32p(r.x0, r.y1-half_thickness, r.x1, r.y1+half_thickness), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
+            dr_rect(r2f32p(r.x0, r.y1-half_thickness, r.x1, r.y1+half_thickness), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
           }
           if(b->flags & UI_BoxFlag_DrawSideLeft)
           {
-            d_rect(r2f32p(r.x0-half_thickness, r.y0, r.x0+half_thickness, r.y1), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
+            dr_rect(r2f32p(r.x0-half_thickness, r.y0, r.x0+half_thickness, r.y1), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
           }
           if(b->flags & UI_BoxFlag_DrawSideRight)
           {
-            d_rect(r2f32p(r.x1-half_thickness, r.y0, r.x1+half_thickness, r.y1), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
+            dr_rect(r2f32p(r.x1-half_thickness, r.y0, r.x1+half_thickness, r.y1), b->palette->colors[UI_ColorCode_Border], 0, 0, softness);
           }
         }
 
@@ -399,7 +399,7 @@ ik_ui_draw()
         {
           Vec4F32 color = ik_rgba_from_theme_color(IK_ThemeColor_Focus);
           color.w *= 0.2f*b->focus_hot_t;
-          R_Rect2DInst *inst = d_rect(b->rect, color, 0, 0, 0.f);
+          R_Rect2DInst *inst = dr_rect(b->rect, color, 0, 0, 0.f);
           MemoryCopyArray(inst->corner_radii, b->corner_radii);
         }
 
@@ -408,7 +408,7 @@ ik_ui_draw()
         {
           Vec4F32 color = ik_rgba_from_theme_color(IK_ThemeColor_Focus);
           color.w *= b->focus_active_t;
-          R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 0.f), color, 0, 1.f, 1.f);
+          R_Rect2DInst *inst = dr_rect(pad_2f32(b->rect, 0.f), color, 0, 1.f, 1.f);
           MemoryCopyArray(inst->corner_radii, b->corner_radii);
         }
 
@@ -417,27 +417,27 @@ ik_ui_draw()
         {
           Vec4F32 color = ik_rgba_from_theme_color(IK_ThemeColor_DisabledOverlay);
           color.w *= b->disabled_t;
-          R_Rect2DInst *inst = d_rect(b->rect, color, 0, 0, 1);
+          R_Rect2DInst *inst = dr_rect(b->rect, color, 0, 0, 1);
           MemoryCopyArray(inst->corner_radii, b->corner_radii);
         }
 
         // rjf: pop squish
         if(b->squish > box_squish_epsilon)
         {
-          d_pop_xform2d();
-          d_pop_tex2d_sample_kind();
+          dr_pop_xform2d();
+          dr_pop_tex2d_sample_kind();
         }
 
         // k: pop transparency
         if(b->transparency != 0)
         {
-          d_pop_transparency();
+          dr_pop_transparency();
         }
       }
     }
     box = rec.next;
   }
-  d_pop_viewport();
+  dr_pop_viewport();
   scratch_end(scratch);
 }
 
@@ -588,11 +588,11 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
   String8 font_icons = str8(icons_ttf, icons_ttf_len);
   String8 font_icons_extra = str8(__icons_extra_ttf, __icons_extra_ttf_len);
   String8 font_virgil = str8(__virgil_ttf, __virgil_ttf_len);
-  ik_state->cfg_font_tags[IK_FontSlot_Main] = f_tag_from_static_data_string(&font_mplus);
-  ik_state->cfg_font_tags[IK_FontSlot_Code] = f_tag_from_static_data_string(&font_mplus);
-  ik_state->cfg_font_tags[IK_FontSlot_Icons] = f_tag_from_static_data_string(&font_icons);
-  ik_state->cfg_font_tags[IK_FontSlot_IconsExtra] = f_tag_from_static_data_string(&font_icons_extra);
-  ik_state->cfg_font_tags[IK_FontSlot_HandWrite] = f_tag_from_static_data_string(&font_virgil);
+  ik_state->cfg_font_tags[IK_FontSlot_Main] = fnt_tag_from_static_data_string(&font_mplus);
+  ik_state->cfg_font_tags[IK_FontSlot_Code] = fnt_tag_from_static_data_string(&font_mplus);
+  ik_state->cfg_font_tags[IK_FontSlot_Icons] = fnt_tag_from_static_data_string(&font_icons);
+  ik_state->cfg_font_tags[IK_FontSlot_IconsExtra] = fnt_tag_from_static_data_string(&font_icons_extra);
+  ik_state->cfg_font_tags[IK_FontSlot_HandWrite] = fnt_tag_from_static_data_string(&font_virgil);
 
   // ik_state->cfg_font_tags[IK_FontSlot_Main] = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
   // ik_state->cfg_font_tags[IK_FontSlot_Code] = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
@@ -784,9 +784,9 @@ ik_frame(void)
   /////////////////////////////////
   //~ Remake drawing buckets every frame
 
-  d_begin_frame();
-  ik_state->bucket_ui = d_bucket_make();
-  ik_state->bucket_main = d_bucket_make();
+  dr_begin_frame();
+  ik_state->bucket_ui = dr_bucket_make();
+  ik_state->bucket_main = dr_bucket_make();
 
   /////////////////////////////////
   //~ Get events from os
@@ -1003,9 +1003,9 @@ ik_frame(void)
 
   {
     // gather font info
-    F_Tag main_font = ik_font_from_slot(IK_FontSlot_Main);
+    FNT_Tag main_font = ik_font_from_slot(IK_FontSlot_Main);
     F32 main_font_size = ik_font_size_from_slot(IK_FontSlot_Main);
-    F_Tag icon_font = ik_font_from_slot(IK_FontSlot_Icons);
+    FNT_Tag icon_font = ik_font_from_slot(IK_FontSlot_Icons);
 
     // build icon info
     UI_IconInfo icon_info = {0};
@@ -1045,11 +1045,11 @@ ik_frame(void)
     ui_begin_build(ik_state->os_wnd, &ui_events, &icon_info, &widget_palette_info, &animation_info, ik_state->frame_dt);
 
     ui_push_font(main_font);
-    ui_push_font_size(main_font_size);
-    // ui_push_text_raster_flags(...);
-    ui_push_text_padding(main_font_size*0.2f);
-    ui_push_pref_width(ui_em(20.f, 1.f));
-    ui_push_pref_height(ui_em(1.35f, 1.f));
+    ui_push_font_size(main_font_size*0.8);
+    ui_push_text_raster_flags(FNT_RasterFlag_Smooth);
+    ui_push_text_padding(floor_f32(ui_top_font_size()*0.3f));
+    ui_push_pref_width(ui_px(floor_f32(ui_top_font_size()*20.f), 1.f));
+    ui_push_pref_height(ui_px(floor_f32(ui_top_font_size()*1.55f), 1.f));
     ui_push_palette(ik_ui_palette_from_code(IK_PaletteCode_Base));
   }
 
@@ -1057,9 +1057,9 @@ ik_frame(void)
   //~ Global stacks
 
   // font
-  F_Tag main_font = ik_font_from_slot(IK_FontSlot_Main);
+  FNT_Tag main_font = ik_font_from_slot(IK_FontSlot_Main);
   F32 main_font_size = ik_font_size_from_slot(IK_FontSlot_Main);
-  F_Tag icon_font = ik_font_from_slot(IK_FontSlot_Icons);
+  FNT_Tag icon_font = ik_font_from_slot(IK_FontSlot_Icons);
 
   // widget palette
   IK_WidgetPaletteInfo widget_palette_info = {0};
@@ -2036,7 +2036,7 @@ ik_frame(void)
   //~ Cook UI drawing bucket
 
   ui_end_build();
-  D_BucketScope(ik_state->bucket_ui)
+  DR_BucketScope(ik_state->bucket_ui)
   {
     ik_ui_draw();
   }
@@ -2050,19 +2050,19 @@ ik_frame(void)
   /////////////////////////////////
   //~ Main scene drawing
 
-  D_BucketScope(ik_state->bucket_main)
+  DR_BucketScope(ik_state->bucket_main)
   {
     /////////////////////////////////
     //- screen space drawing (background)
 
-    d_push_viewport(ik_state->window_dim);
+    dr_push_viewport(ik_state->window_dim);
     // draw a background
     {
       Rng2F32 rect = {0,0, ik_state->window_dim.x, ik_state->window_dim.y};
       // Vec4F32 clr = rgba_from_u32(0xFF0F0E0E);
       U32 src = 0x660B05FF;
       Vec4F32 clr = linear_from_srgba(rgba_from_u32(src));
-      d_rect(rect, clr, 0,0,0);
+      dr_rect(rect, clr, 0,0,0);
     }
 
     /////////////////////////////////
@@ -2072,9 +2072,9 @@ ik_frame(void)
     Vec2F32 viewport = dim_2f32(camera->rect);
     Mat3x3F32 xform2d = make_translate_3x3f32(negate_2f32(camera->rect.p0));
 
-    d_push_viewport(viewport);
+    dr_push_viewport(viewport);
     // TODO(Next): what heck? should it be column major?
-    d_push_xform2d(transpose_3x3f32(xform2d));
+    dr_push_xform2d(transpose_3x3f32(xform2d));
 
     IK_Box *roots[2] = {frame->select, frame->box_list.first};
     for(U64 i = 0; i < ArrayCount(roots); i++)
@@ -2097,13 +2097,13 @@ ik_frame(void)
           {
             Rng2F32 drop_shadow_rect = shift_2f32(pad_2f32(dst, 8), v2f32(4, 4));
             Vec4F32 drop_shadow_color = ik_rgba_from_theme_color(IK_ThemeColor_DropShadow);
-            d_rect(drop_shadow_rect, drop_shadow_color, 0.8f, 0, 8.f);
+            dr_rect(drop_shadow_rect, drop_shadow_color, 0.8f, 0, 8.f);
           }
 
           // draw rect background
           if(box->flags & IK_BoxFlag_DrawBackground && !zero_dim)
           {
-            d_rect(dst, box->background_color, 0, 0, 0);
+            dr_rect(dst, box->background_color, 0, 0, 0);
           }
           
           // draw image
@@ -2137,7 +2137,7 @@ ik_frame(void)
             if(image->loaded)
             {
               Rng2F32 src = {0,0, box->image->x, box->image->y};
-              d_img(dst, src, box->image->handle, v4f32(1,1,1,1), 0, 0, 0);
+              dr_img(dst, src, box->image->handle, v4f32(1,1,1,1), 0, 0, 0);
             }
           }
 
@@ -2163,7 +2163,7 @@ ik_frame(void)
           if(box->flags & IK_BoxFlag_DrawBorder && !zero_dim)
           {
             F32 border_thickness = 1.5 * ik_state->world_to_screen_ratio.x;
-            R_Rect2DInst *inst = d_rect(pad_2f32(dst, 2*border_thickness), box->border_color, 0, border_thickness, border_thickness/2.0);
+            R_Rect2DInst *inst = dr_rect(pad_2f32(dst, 2*border_thickness), box->border_color, 0, border_thickness, border_thickness/2.0);
           }
 
           if(box->flags & IK_BoxFlag_DrawHotEffects)
@@ -2175,7 +2175,7 @@ ik_frame(void)
             }
 
             F32 t = box->hot_t * (1.f-effective_active_t);
-            R_Rect2DInst *inst = d_rect(dst, v4f32(0, 0, 0, 0), 0, 0, 1.f);
+            R_Rect2DInst *inst = dr_rect(dst, v4f32(0, 0, 0, 0), 0, 0, 1.f);
             Vec4F32 color = ik_rgba_from_theme_color(IK_ThemeColor_Hover);
             color.w *= t*0.1f;
             inst->colors[Corner_00] = color;
@@ -2190,16 +2190,16 @@ ik_frame(void)
           // draw selection highlight
           if(box->sig.f & IK_SignalFlag_Select && !zero_dim)
           {
-            d_rect(pad_2f32(dst, 0*ik_state->world_to_screen_ratio.x), v4f32(1,1,0,0.1), 0, 0, 0);
+            dr_rect(pad_2f32(dst, 0*ik_state->world_to_screen_ratio.x), v4f32(1,1,0,0.1), 0, 0, 0);
             F32 border_thickness = 3*ik_state->world_to_screen_ratio.x;
-            d_rect(pad_2f32(dst, border_thickness*2), v4f32(0.1,0,1,1), 0, border_thickness, 0);
+            dr_rect(pad_2f32(dst, border_thickness*2), v4f32(0.1,0,1,1), 0, border_thickness, 0);
           }
         }
       }
     }
 
-    d_pop_viewport();
-    d_pop_xform2d();
+    dr_pop_viewport();
+    dr_pop_xform2d();
 
     /////////////////////////////////
     //- screen space drawing (overlay)
@@ -2214,10 +2214,10 @@ ik_frame(void)
       Rng2F32 rect = {.p0 = ik_state->mouse, .p1 = ik_state->mouse};
       F32 stroke_size_px = (ik_top_stroke_size()/ik_state->world_to_screen_ratio.x)*0.5;
       rect = pad_2f32(rect, stroke_size_px);
-      d_rect(pad_2f32(rect, 2.0), v4f32(1,0,0,0.8), stroke_size_px+2.0, 0, 0.f);
-      d_rect(rect, clr, stroke_size_px, 0, 1.f);
+      dr_rect(pad_2f32(rect, 2.0), v4f32(1,0,0,0.8), stroke_size_px+2.0, 0, 0.f);
+      dr_rect(rect, clr, stroke_size_px, 0, 1.f);
     }
-    d_pop_viewport();
+    dr_pop_viewport();
   }
 
   /////////////////////////////////
@@ -2247,19 +2247,19 @@ ik_frame(void)
   {
     r_begin_frame();
     r_window_begin_frame(ik_state->os_wnd, ik_state->r_wnd);
-    if(!d_bucket_is_empty(ik_state->bucket_main))
+    if(!dr_bucket_is_empty(ik_state->bucket_main))
     {
-      d_submit_bucket(ik_state->os_wnd, ik_state->r_wnd, ik_state->bucket_main);
+      dr_submit_bucket(ik_state->os_wnd, ik_state->r_wnd, ik_state->bucket_main);
     }
-    if(!d_bucket_is_empty(ik_state->bucket_ui))
+    if(!dr_bucket_is_empty(ik_state->bucket_ui))
     {
-      D_BucketScope(ik_state->bucket_ui)
+      DR_BucketScope(ik_state->bucket_ui)
       {
-        d_crt(0.25, 1.15, ik_state->time_in_seconds);
+        // dr_crt(0.25, 1.15, ik_state->time_in_seconds);
       }
-      d_submit_bucket(ik_state->os_wnd, ik_state->r_wnd, ik_state->bucket_ui);
+      dr_submit_bucket(ik_state->os_wnd, ik_state->r_wnd, ik_state->bucket_ui);
     }
-    ik_state->hot_pixel_key = r_window_end_frame(ik_state->r_wnd, ik_state->mouse);
+    ik_state->hot_pixel_key = r_window_end_frame(ik_state->os_wnd, ik_state->r_wnd, ik_state->mouse);
     r_end_frame();
   }
 
@@ -2381,7 +2381,7 @@ ik_ui_palette_from_code(IK_PaletteCode code)
 }
 
 //- fonts/sizes
-internal F_Tag
+internal FNT_Tag
 ik_font_from_slot(IK_FontSlot slot)
 {
   return ik_state->cfg_font_tags[slot];
@@ -2573,11 +2573,11 @@ ik_drawlist_alloc(Arena *arena, U64 vertex_buffer_cap, U64 indice_buffer_cap)
 }
 
 internal IK_DrawNode *
-ik_drawlist_push(Arena *arena, IK_DrawList *drawlist, R_Vertex *vertices_src, U64 vertex_count, U32 *indices_src, U64 indice_count)
+ik_drawlist_push(Arena *arena, IK_DrawList *drawlist, R_Geo3D_Vertex *vertices_src, U64 vertex_count, U32 *indices_src, U64 indice_count)
 {
   IK_DrawNode *ret = push_array(arena, IK_DrawNode, 1);
 
-  U64 v_buf_size = sizeof(R_Vertex) * vertex_count;
+  U64 v_buf_size = sizeof(R_Geo3D_Vertex) * vertex_count;
   U64 i_buf_size = sizeof(U32) * indice_count;
   // TODO(XXX): we should use buffer block, we can't just release/realloc a new buffer, since the buffer handle is already handled over to IK_DrawNode
   AssertAlways(v_buf_size + drawlist->vertex_buffer_cmt <= drawlist->vertex_buffer_cap);
@@ -2609,15 +2609,15 @@ ik_drawlist_build(IK_DrawList *drawlist)
 {
   ProfBeginFunction();
   Temp scratch = scratch_begin(0,0);
-  R_Vertex *vertices = (R_Vertex*)push_array(scratch.arena, U8, drawlist->vertex_buffer_cmt);
+  R_Geo3D_Vertex *vertices = (R_Geo3D_Vertex*)push_array(scratch.arena, U8, drawlist->vertex_buffer_cmt);
   U32 *indices = (U32*)push_array(scratch.arena, U8, drawlist->indice_buffer_cmt);
 
   // collect buffer
-  R_Vertex *vertices_dst = vertices;
+  R_Geo3D_Vertex *vertices_dst = vertices;
   U32 *indices_dst = indices;
   for(IK_DrawNode *n = drawlist->first_node; n != 0; n = n->next)  
   {
-    MemoryCopy(vertices_dst, n->vertices_src, sizeof(R_Vertex)*n->vertex_count);
+    MemoryCopy(vertices_dst, n->vertices_src, sizeof(R_Geo3D_Vertex)*n->vertex_count);
     MemoryCopy(indices_dst, n->indices_src, sizeof(U32)*n->indice_count);
 
     vertices_dst += n->vertex_count; 
@@ -2666,7 +2666,7 @@ ik_message_push(String8 string)
 internal IK_DrawNode *
 ik_drawlist_push_rect(Arena *arena, IK_DrawList *drawlist, Rng2F32 dst, Rng2F32 src)
 {
-  R_Vertex *vertices = push_array(arena, R_Vertex, 4);
+  R_Geo3D_Vertex *vertices = push_array(arena, R_Geo3D_Vertex, 4);
   U64 vertex_count = 4;
   U32 indice_count = 6;
   U32 *indices = push_array(arena, U32, 6);
@@ -3096,7 +3096,7 @@ struct IK_EditBoxDrawData
 };
 
 IK_BOX_UPDATE(text)
-{ 
+{
   B32 is_focus_hot = ik_key_match(box->key, ik_state->focus_hot_box_key[IK_MouseButtonKind_Left]);
   B32 is_focus_active = ik_key_match(box->key, ik_state->focus_active_box_key);
 
@@ -3175,7 +3175,7 @@ IK_BOX_UPDATE(text)
     // push line runs
     char *by = "\n";
     String8List lines = str8_split(ik_frame_arena(), box->string, (U8*)by, 1, StringSplitFlag_KeepEmpties);
-    D_FancyRunList *line_fruns = 0;
+    DR_FRunList *line_fruns = 0;
 
     U64 line_index = 0;
     for(String8Node *n = lines.first; n != 0; n = n->next, line_index++)
@@ -3183,29 +3183,29 @@ IK_BOX_UPDATE(text)
       String8 string = n->string;
       for(;;)
       {
-        D_FancyStringList fancy_strings = {0};
-
-        D_FancyString fstr = {0};
-        fstr.font = ik_font_from_slot(box->font_slot);
+        DR_FStrList fstrs = {0};
+        DR_FStr fstr = {0};
         fstr.string = string;
-        fstr.color = box->text_color;
-        fstr.size = M_1;
-        fstr.underline_thickness = 0;
-        fstr.strikethrough_thickness = 0;
-        d_fancy_string_list_push(scratch.arena, &fancy_strings, &fstr);
+        fstr.params.font = ik_font_from_slot(box->font_slot);
+        fstr.params.color = box->text_color;
+        fstr.params.size = M_1;
+        fstr.params.underline_thickness = 0;
+        fstr.params.strikethrough_thickness = 0;
+        dr_fstrs_push(scratch.arena, &fstrs, &fstr);
 
-        D_FancyRunList run = d_fancy_run_list_from_fancy_string_list(ik_frame_arena(), box->tab_size, box->text_raster_flags, &fancy_strings);
+        // TODO(Next): support different fstr
+        DR_FRunList fruns = dr_fruns_from_fstrs(ik_frame_arena(), box->tab_size, &fstrs);
 
         U64 cutoff = 0;
-        Vec2F32 run_dim_px = {run.dim.x*font_size_scale, run.dim.y*font_size_scale};
+        Vec2F32 run_dim_px = {fruns.dim.x*font_size_scale, fruns.dim.y*font_size_scale};
         // text_wrapping
         if((box->flags&IK_BoxFlag_WrapText) && run_dim_px.x > max_x)
         {
-          F_PieceArray pieces = run.first->v.run.pieces;
-          F_Piece *piece_first = pieces.v;
-          F_Piece *piece_opl = piece_first+pieces.count;
+          FNT_PieceArray pieces = fruns.first->v.run.pieces;
+          FNT_Piece *piece_first = pieces.v;
+          FNT_Piece *piece_opl = piece_first+pieces.count;
           F32 cutoff_x = 0;
-          for(F_Piece *piece = piece_opl-1;
+          for(FNT_Piece *piece = piece_opl-1;
               piece > piece_first && run_dim_px.x > max_x;
               piece--)
           {
@@ -3215,33 +3215,33 @@ IK_BOX_UPDATE(text)
           }
 
           // commit new run dim and piece count
-          run.first->v.run.pieces.count -= cutoff;
-          run.dim.x -= cutoff_x;
-          run.first->v.run.dim.x -= cutoff_x;
+          fruns.first->v.run.pieces.count -= cutoff;
+          fruns.dim.x -= cutoff_x;
+          fruns.first->v.run.dim.x -= cutoff_x;
         }
 
         // has next line? -> push a line break piece
         if(cutoff == 0 && n->next != 0)
         {
-          F_Piece *pieces = run.first->v.run.pieces.v;
-          U64 piece_count = run.first->v.run.pieces.count;
+          FNT_Piece *pieces = fruns.first->v.run.pieces.v;
+          U64 piece_count = fruns.first->v.run.pieces.count;
 
           U64 next_piece_count = piece_count+1;
-          F_Piece *next_pieces = push_array(ik_frame_arena(), F_Piece, next_piece_count);
-          MemoryCopy(next_pieces, pieces, sizeof(F_Piece)*piece_count);
+          FNT_Piece *next_pieces = push_array(ik_frame_arena(), FNT_Piece, next_piece_count);
+          MemoryCopy(next_pieces, pieces, sizeof(FNT_Piece)*piece_count);
           next_pieces[next_piece_count-1].decode_size = 1;
 
-          run.first->v.run.pieces.v = next_pieces;
-          run.first->v.run.pieces.count = next_piece_count;
+          fruns.first->v.run.pieces.v = next_pieces;
+          fruns.first->v.run.pieces.count = next_piece_count;
         }
 
         // skip to cutoff
         string.str += (string.size-cutoff);
         string.size = cutoff;
 
-        darray_push(ik_frame_arena(), line_fruns, run);
-        total_text_dim.x = Max(total_text_dim.x, run.dim.x);
-        total_text_dim.y += run.dim.y;
+        darray_push(ik_frame_arena(), line_fruns, fruns);
+        total_text_dim.x = Max(total_text_dim.x, fruns.dim.x);
+        total_text_dim.y += fruns.dim.y;
 
         if(cutoff == 0) break;
       }
@@ -3249,17 +3249,17 @@ IK_BOX_UPDATE(text)
 
     // push a empty run
     {
-      D_FancyStringList fancy_strings = {0};
+      DR_FStrList fstrs = {0};
 
-      D_FancyString fstr = {0};
-      fstr.font = ik_font_from_slot(box->font_slot);
+      DR_FStr fstr = {0};
       fstr.string = str8_lit("  ");
-      fstr.color = box->text_color;
-      fstr.size = M_1;
-      fstr.underline_thickness = 0;
-      fstr.strikethrough_thickness = 0;
-      d_fancy_string_list_push(scratch.arena, &fancy_strings, &fstr);
-      box->empty_fruns = d_fancy_run_list_from_fancy_string_list(ik_frame_arena(), box->tab_size, box->text_raster_flags, &fancy_strings);
+      fstr.params.font = ik_font_from_slot(box->font_slot);
+      fstr.params.color = box->text_color;
+      fstr.params.size = M_1;
+      fstr.params.underline_thickness = 0;
+      fstr.params.strikethrough_thickness = 0;
+      dr_fstrs_push(scratch.arena, &fstrs, &fstr);
+      box->empty_fruns = dr_fruns_from_fstrs(ik_frame_arena(), box->tab_size, &fstrs);
       empty_text_dim = box->empty_fruns.dim;
     }
 
@@ -3286,7 +3286,7 @@ IK_BOX_UPDATE(text)
     IK_TextAlign text_align = box->text_align;
 
     // unpack lines
-    D_FancyRunList *line_fruns = box->string.size > 0 ? box->display_line_fruns : &box->empty_fruns;
+    DR_FRunList *line_fruns = box->string.size > 0 ? box->display_line_fruns : &box->empty_fruns;
     U64 line_count = box->string.size > 0 ? darray_size(box->display_line_fruns) : 1;
     Vec2F32 text_dim = box->string.size > 0 ? total_text_dim : empty_text_dim;
     text_dim.x *= font_size_scale;
@@ -3312,10 +3312,10 @@ IK_BOX_UPDATE(text)
     for(U64 line_index = 0; line_index < line_count; line_index++)
     {
       // one line
-      D_FancyRunList *fruns = &line_fruns[line_index];
-      for(D_FancyRunNode *n = fruns->first; n != 0; n = n->next)
+      DR_FRunList *fruns = &line_fruns[line_index];
+      for(DR_FRunNode *n = fruns->first; n != 0; n = n->next)
       {
-        D_FancyRun run = n->v;
+        DR_FRun run = n->v;
         Vec2F32 line_run_dim = scale_2f32(run.run.dim, font_size_scale);
         text_bounds.x = Max(text_bounds.x, line_run_dim.x+text_padding_x*2);
         text_bounds.y += line_run_dim.y;
@@ -3338,21 +3338,19 @@ IK_BOX_UPDATE(text)
         B32 mouse_in_line_bounds = ik_state->mouse_in_world.y > y && ik_state->mouse_in_world.y < (y+line_run_dim.y);
         Rng2F32 line_cursor = {line_x,y,line_x,y+line_run_dim.y};
 
-        F_Piece *piece_first = run.run.pieces.v;
-        F_Piece *piece_opl = run.run.pieces.v + run.run.pieces.count;
-        for(F_Piece *piece = piece_first; piece < piece_opl; piece++, c_index++)
+        FNT_Piece *piece_first = run.run.pieces.v;
+        FNT_Piece *piece_opl = run.run.pieces.v + run.run.pieces.count;
+        for(FNT_Piece *piece = piece_first; piece < piece_opl; piece++, c_index++)
         {
           F32 this_advance_x = piece->advance*font_size_scale;
-          // NOTE(k): piece rect already computed x offset
-          Rng2F32 dst = r2f32p(piece->rect.x0*font_size_scale + line_x,
-                               piece->rect.y0*font_size_scale + line_y,
-                               piece->rect.x1*font_size_scale + line_x,
-                               piece->rect.y1*font_size_scale + line_y);
-          Rng2F32 src = r2f32p(piece->subrect.x0, piece->subrect.y0, piece->subrect.x1, piece->subrect.y1);
-          Vec2F32 size = dim_2f32(dst);
+          Rng2F32 src = r2f32p((F32)piece->subrect.x0, (F32)piece->subrect.y0, (F32)piece->subrect.x1, (F32)piece->subrect.y1);
+          Vec2F32 size = dim_2f32(src);
+          Rng2F32 dst = r2f32p(piece->offset.x*font_size_scale + line_x + advance_x,
+                               piece->offset.y*font_size_scale + line_y,
+                               (piece->offset.x+size.x)*font_size_scale + line_x + advance_x,
+                               (piece->offset.y+size.y)*font_size_scale + line_y);
 
           // issue draw
-          // if(size.x > 0 && size.y > 0)
           B32 highlight = (c_index+1) >= selection_rng.min.column && (c_index+1) < selection_rng.max.column;
           Rng2F32 parent_rect = {line_x+advance_x, y, line_x+advance_x+piece->advance*font_size_scale, y+line_run_dim.y};
           IK_EditBoxTextRect text_rect = {parent_rect, dst, src, piece->texture, run.color, highlight};
@@ -3438,7 +3436,7 @@ IK_BOX_UPDATE(text)
   }
 
   // focus active and double clicked? -> select current word
-  if(is_focus_active && sig.f&IK_SignalFlag_DoubleClicked)
+  if(is_focus_active && sig.f&IK_SignalFlag_DoubleClicked && box->string.size > 0)
   {
     String8 string = box->string;
     TxtPt cursor = box->cursor;
@@ -3487,7 +3485,7 @@ IK_BOX_UPDATE(text)
   }
 
   // focus active and triple clicked? -> select current line
-  if(is_focus_active && sig.f&IK_SignalFlag_TripleClicked)
+  if(is_focus_active && sig.f&IK_SignalFlag_TripleClicked && box->string.size > 0)
   {
     String8 string = box->string;
     TxtPt cursor = box->cursor;
@@ -3526,11 +3524,16 @@ IK_BOX_DRAW(text)
   for(U64 i = 0; i < darray_size(draw_data->text_rects); i++)
   {
     IK_EditBoxTextRect *text_rect = &draw_data->text_rects[i];
-    d_img(text_rect->dst, text_rect->src, text_rect->tex, text_rect->color, 0,0,0);
+    // NOTE(k): we have \n run which is not renderable, and it will cutoff grouping continuation 
+    if(!r_handle_match(r_handle_zero(), text_rect->tex))
+    {
+      dr_img(text_rect->dst, text_rect->src, text_rect->tex, text_rect->color, 0,0,0);
+    }
+    // dr_rect(text_rect->dst, v4f32(1,0,0,0.5), 0,1,0);
 
     if(text_rect->highlight)
     {
-      d_rect(text_rect->parent_rect, v4f32(0,0,1,0.2), 0, 0, 0);
+      dr_rect(text_rect->parent_rect, v4f32(0,0,1,0.2), 0, 0, 0);
     }
   }
 
@@ -3544,8 +3547,8 @@ IK_BOX_DRAW(text)
   cursor_rect.x1 += cursor_thickness;
   mark_rect.x0 -= cursor_thickness;
   mark_rect.x1 += cursor_thickness;
-  d_rect(cursor_rect, v4f32(0,0,1,0.5), cursor_thickness, 0, 1.0*ik_state->world_to_screen_ratio.x);
-  d_rect(mark_rect, v4f32(0,1,0,0.5), cursor_thickness, 0, 1.0*ik_state->world_to_screen_ratio.x);
+  dr_rect(cursor_rect, v4f32(0,0,1,0.5), cursor_thickness, 0, 1.0*ik_state->world_to_screen_ratio.x);
+  dr_rect(mark_rect, v4f32(0,1,0,0.5), cursor_thickness, 0, 1.0*ik_state->world_to_screen_ratio.x);
 }
 
 internal IK_Box *
@@ -3714,7 +3717,7 @@ IK_BOX_DRAW(stroke)
     Rng2F32 rect = {.p0 = pos, .p1 = pos};
     F32 stroke_size = 30 * ik_state->world_to_screen_ratio.x;
     rect = pad_2f32(rect, stroke_size/2.0);
-    d_rect(rect, v4f32(1,0,0,1), stroke_size/2.0, 0, 1);
+    dr_rect(rect, v4f32(1,0,0,1), stroke_size/2.0, 0, 1);
   }
 #endif
 
@@ -3758,18 +3761,18 @@ IK_BOX_DRAW(stroke)
 
         // draw line segment (prev → pt) with thickness
 #if 1
-        d_line(prev, pt, stroke_color, stroke_size, edge_softness);
+        dr_line(prev, pt, stroke_color, stroke_size, edge_softness);
 
 #else
         {
           Vec2F32 pos = prev;
           Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
-          d_rect(rect, stroke_color, half_stroke_size, 0, edge_softness);
+          dr_rect(rect, stroke_color, half_stroke_size, 0, edge_softness);
         }
         {
           Vec2F32 pos = pt;
           Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
-          d_rect(rect, stroke_color, half_stroke_size, 0, edge_softness);
+          dr_rect(rect, stroke_color, half_stroke_size, 0, edge_softness);
         }
 #endif
 
@@ -3888,14 +3891,14 @@ IK_BOX_DRAW(arrow)
   {
     Rng2F32 rect = {.p0 = a, .p1 = a};
     rect = pad_2f32(rect, half_stroke_size*1.3);
-    d_rect(rect, stroke_clr, half_stroke_size*1.3, 0, edge_softness);
+    dr_rect(rect, stroke_clr, half_stroke_size*1.3, 0, edge_softness);
   }
 
   // draw b
   {
     Rng2F32 rect = {.p0 = b, .p1 = b};
     rect = pad_2f32(rect, half_stroke_size*1.3);
-    d_rect(rect, stroke_clr, half_stroke_size*1.3, 0, edge_softness);
+    dr_rect(rect, stroke_clr, half_stroke_size*1.3, 0, edge_softness);
 
     // draw arrow direction
     Vec2F32 dir = normalize_2f32(sub_2f32(b, m));
@@ -3910,7 +3913,7 @@ IK_BOX_DRAW(arrow)
       dir_inv.x*sin_f32(angle_turns)+dir_inv.y*cos_f32(angle_turns)
     };
     Vec2F32 up_end = add_2f32(b, scale_2f32(up, arrow_length));
-    d_line(b, up_end, stroke_clr, stroke_size, edge_softness);
+    dr_line(b, up_end, stroke_clr, stroke_size, edge_softness);
 
     // down
     Vec2F32 down = 
@@ -3919,7 +3922,7 @@ IK_BOX_DRAW(arrow)
       dir_inv.x*sin_f32(-angle_turns)+dir_inv.y*cos_f32(-angle_turns)
     };
     Vec2F32 down_end = add_2f32(b, scale_2f32(down, arrow_length));
-    d_line(b, down_end, stroke_clr, stroke_size, edge_softness);
+    dr_line(b, down_end, stroke_clr, stroke_size, edge_softness);
   }
 
   // FIXME: m won't line on the curve, we should study a little more about bezier curve
@@ -3942,7 +3945,7 @@ IK_BOX_DRAW(arrow)
       };
 
       // draw line segment (prev → pt) with thickness
-      d_line(prev, pt, stroke_clr, stroke_size, edge_softness);
+      dr_line(prev, pt, stroke_clr, stroke_size, edge_softness);
       prev = pt;
     }
   }
@@ -4486,7 +4489,7 @@ ik_ui_stats(void)
   Vec2F32 viewport_dim = dim_2f32(camera->rect);
 
   UI_Box *container = 0;
-  F32 width = ui_top_font_size()*20;
+  F32 width = ui_top_font_size()*25;
   Rng2F32 rect = {ik_state->window_dim.x-width, 0, ik_state->window_dim.x, ik_state->window_dim.y};
   UI_Rect(rect)
     UI_ChildLayoutAxis(Axis2_Y)
@@ -4989,6 +4992,7 @@ ik_ui_toolbar(void)
         flags |= UI_BoxFlag_DrawDropShadow;
       }
 
+      // icon
       UI_PrefWidth(ui_px(cell_width, 1.0))
         UI_PrefHeight(ui_px(cell_width, 1.0))
         UI_Font(ik_font_from_slot(IK_FontSlot_IconsExtra))
@@ -4997,6 +5001,7 @@ ik_ui_toolbar(void)
         b = ui_build_box_from_string(0, strs[i]);
       UI_Signal sig = ui_signal_from_box(b);
 
+      // hot key indicator
       UI_Parent(b)
         UI_Flags(UI_BoxFlag_Floating|UI_BoxFlag_DisableTextTrunc|UI_BoxFlag_DrawText|UI_BoxFlag_DrawTextWeak)
         UI_FixedPos(v2f32(0,-3))
@@ -5032,7 +5037,7 @@ struct UI_LineDrawData
 internal UI_BOX_CUSTOM_DRAW(ui_line_draw)
 {
   UI_LineDrawData *draw_data = (UI_LineDrawData *)user_data;
-  d_line(draw_data->a, draw_data->b, draw_data->stroke_color, draw_data->stroke_size, 1.0);
+  dr_line(draw_data->a, draw_data->b, draw_data->stroke_color, draw_data->stroke_size, 1.0);
 }
 
 internal void
@@ -5392,7 +5397,7 @@ ik_ui_inspector(void)
   {
     UI_Box *container;
     F32 padding_left = ui_top_font_size()*0.5;
-    F32 width_px = ui_top_font_size() * 18;
+    F32 width_px = ui_top_font_size() * 20;
     Rng2F32 rect = {padding_left, 0, padding_left+width_px, ik_state->window_dim.y};
     UI_Rect(rect)
       container = ui_build_box_from_stringf(0, "###inspector_container");
@@ -5598,6 +5603,8 @@ ik_ui_inspector(void)
           }
         }
 
+        ui_spacer(ui_em(0.2, 0.0));
+
         UI_WidthFill
         UI_Row
         {
@@ -5611,6 +5618,8 @@ ik_ui_inspector(void)
             b->flags ^= flag;
           }
         }
+
+        ui_spacer(ui_em(0.2, 0.0));
 
         UI_WidthFill
         UI_Row
@@ -5626,6 +5635,8 @@ ik_ui_inspector(void)
           }
         }
 
+        ui_spacer(ui_em(0.2, 0.0));
+
         UI_WidthFill
         UI_Row
         {
@@ -5639,6 +5650,8 @@ ik_ui_inspector(void)
             b->flags ^= flag;
           }
         }
+
+        ui_spacer(ui_em(0.2, 0.0));
 
         UI_WidthFill
         UI_Row
@@ -6283,12 +6296,6 @@ ik_ui_checkbox(String8 key_string, B32 b)
   UI_Signal sig;
 
   UI_Box *container;
-    UI_Column
-    UI_WidthFill
-    UI_HeightFill
-    UI_Padding(ui_em(0.1, 1.0))
-    UI_Row
-    UI_Padding(ui_em(0.1, 1.0))
     UI_CornerRadius(ui_top_font_size()/16.f)
     UI_Flags(UI_BoxFlag_DrawBorder|
              UI_BoxFlag_DrawBackground|
@@ -6306,9 +6313,9 @@ ik_ui_checkbox(String8 key_string, B32 b)
       UI_WidthFill
       UI_HeightFill
       UI_Column
-      UI_Padding(ui_em(0.19,1.0))
+      UI_Padding(ui_em(0.20,1.0))
       UI_Row
-      UI_Padding(ui_em(0.19,1.0))
+      UI_Padding(ui_em(0.20,1.0))
       UI_CornerRadius(ui_top_font_size()/16.f)
       UI_Flags(UI_BoxFlag_MouseClickable|
                UI_BoxFlag_DrawBorder|
@@ -6335,7 +6342,7 @@ ik_ui_button(String8 string)
   UI_Size pref_width = ui_top_pref_width();
   F32 padding_em = 0.15f;
   F32 font_size = ui_top_font_size() * (1.f-padding_em*2);
-  F32 corner_radius = font_size/16.0f;
+  F32 corner_radius = 1.f;
 
   UI_Box *container;
   UI_CornerRadius(corner_radius)
@@ -6361,8 +6368,6 @@ ik_ui_button(String8 string)
              UI_BoxFlag_DrawDropShadow)
     UI_Palette(ui_state->widget_palette_info.scrollbar_palette)
     UI_PrefWidth(pref_width)
-    // UI_PrefWidth(ui_text_dim(0.5, 1.0))
-    // UI_PrefHeight(ui_text_dim(0.5, 1.0))
     UI_FontSize(font_size)
     body = ui_build_box_from_string(0, string);
 
@@ -6437,7 +6442,7 @@ internal UI_BOX_CUSTOM_DRAW(ik_ui_palette_current_draw)
   // Vec4F32 src_hsv = hsva_from_rgba(src_clr);
   // Vec4F32 highlight_clr = src_hsv.z > 0.5 ? v4f32(0,0,0,1) : v4f32(1, 1, 1, 1);
   Vec4F32 highlight_clr = v4f32(0,0,0,0.9);
-  d_rect(dst, highlight_clr, 2, 4, 1.f);
+  dr_rect(dst, highlight_clr, 2, 4, 1.f);
 }
 
 internal void
