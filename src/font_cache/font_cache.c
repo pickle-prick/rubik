@@ -1081,8 +1081,8 @@ fnt_metrics_from_tag_size(FNT_Tag tag, F32 size)
   FP_Metrics metrics = fnt_fp_metrics_from_tag(tag);
   FNT_Metrics result = {0};
   {
-    result.ascent   = floor_f32(size) * metrics.ascent / metrics.design_units_per_em;
-    result.descent  = floor_f32(size) * metrics.descent / metrics.design_units_per_em;
+    result.ascent = floor_f32(size) * metrics.ascent / metrics.design_units_per_em;
+    result.descent = floor_f32(size) * metrics.descent / metrics.design_units_per_em;
     result.line_gap = floor_f32(size) * metrics.line_gap / metrics.design_units_per_em;
     result.capital_height = floor_f32(size) * metrics.capital_height / metrics.design_units_per_em;
   }

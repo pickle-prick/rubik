@@ -5,7 +5,7 @@
 #elif FP_BACKEND == FP_BACKEND_FREETYPE
 # include "freetype/font_provider_freetype.c"
 #elif FP_BACKEND == FP_BACKEND_STB_TRUETYPE
-# include "stb_truetype/font_provider_stb_truetype.c"
+# include "stbtt/font_provider_stbtt.c"
 #else
 # error Font provider backend not specified.
 #endif

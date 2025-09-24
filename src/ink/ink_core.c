@@ -1045,11 +1045,11 @@ ik_frame(void)
     ui_begin_build(ik_state->os_wnd, &ui_events, &icon_info, &widget_palette_info, &animation_info, ik_state->frame_dt);
 
     ui_push_font(main_font);
-    ui_push_font_size(main_font_size*0.8);
+    ui_push_font_size(main_font_size*0.85);
     ui_push_text_raster_flags(FNT_RasterFlag_Smooth);
     ui_push_text_padding(floor_f32(ui_top_font_size()*0.3f));
     ui_push_pref_width(ui_px(floor_f32(ui_top_font_size()*20.f), 1.f));
-    ui_push_pref_height(ui_px(floor_f32(ui_top_font_size()*1.55f), 1.f));
+    ui_push_pref_height(ui_px(floor_f32(ui_top_font_size()*1.65f), 1.f));
     ui_push_palette(ik_ui_palette_from_code(IK_PaletteCode_Base));
   }
 
@@ -5397,7 +5397,7 @@ ik_ui_inspector(void)
   {
     UI_Box *container;
     F32 padding_left = ui_top_font_size()*0.5;
-    F32 width_px = ui_top_font_size() * 20;
+    F32 width_px = ui_top_font_size() * 24;
     Rng2F32 rect = {padding_left, 0, padding_left+width_px, ik_state->window_dim.y};
     UI_Rect(rect)
       container = ui_build_box_from_stringf(0, "###inspector_container");

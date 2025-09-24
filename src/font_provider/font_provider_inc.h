@@ -15,8 +15,8 @@
 # if OS_WINDOWS
 #  define FP_BACKEND FP_BACKEND_STB_TRUETYPE
 # elif OS_LINUX
-// #  define FP_BACKEND FP_BACKEND_STB_TRUETYPE
-#  define FP_BACKEND FP_BACKEND_FREETYPE
+#  define FP_BACKEND FP_BACKEND_STB_TRUETYPE
+// #  define FP_BACKEND FP_BACKEND_FREETYPE
 # endif
 #endif
 
@@ -33,7 +33,7 @@
 #elif FP_BACKEND == FP_BACKEND_FREETYPE
 # include "freetype/font_provider_freetype.h"
 #elif FP_BACKEND == FP_BACKEND_STB_TRUETYPE
-# include "stb_truetype/font_provider_stb_truetype.h"
+# include "stbtt/font_provider_stbtt.h"
 #else
 # error Font provider backend not specified.
 #endif
