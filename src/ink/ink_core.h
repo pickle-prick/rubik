@@ -425,6 +425,10 @@ typedef U64 IK_BoxFlags;
 // TODO(Next): find a better name? 
 # define IK_BoxFlag_DragPoint             (IK_BoxFlags)(1ull<<31)
 # define IK_BoxFlag_DragToScaleStrokeSize (IK_BoxFlags)(1ull<<32)
+# define IK_BoxFlag_OmitCtxMenu           (IK_BoxFlags)(1ull<<33)
+
+// compound flags
+#define IK_BoxFlag_Dragable (IK_BoxFlag_DragToScaleFontSize|IK_BoxFlag_DragToScalePoint|IK_BoxFlag_DragToScaleRectSize|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToScaleStrokeSize|IK_BoxFlag_DragToScaleStrokeSize)
 
 typedef struct IK_Box IK_Box;
 //- draw functions
@@ -765,6 +769,9 @@ struct IK_State
   IK_Theme              cfg_theme;
   FNT_Tag               cfg_font_tags[IK_FontSlot_COUNT];
 
+  // post effects
+  B32                   crt_enabled;
+
   // palette
   UI_Palette            cfg_ui_debug_palettes[IK_PaletteCode_COUNT]; // derivative from theme
   IK_Palette            cfg_main_palettes[IK_PaletteCode_COUNT]; // derivative from theme
@@ -996,6 +1003,7 @@ internal void      ik_ui_inspector(void);
 internal void      ik_ui_bottom_bar(void);
 internal void      ik_ui_notification(void);
 internal void      ik_ui_box_ctx_menu(void);
+internal void      ik_ui_g_ctx_menu(void);
 internal UI_Signal ik_ui_checkbox(String8 key_string, B32 b);
 internal UI_Signal ik_ui_button(String8 string);
 internal UI_Signal ik_ui_buttonf(char *fmt, ...);

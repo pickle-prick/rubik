@@ -1155,6 +1155,7 @@ ik_frame(void)
   ik_ui_bottom_bar();
   ik_ui_notification();
   ik_ui_box_ctx_menu();
+  ik_ui_g_ctx_menu();
   ik_ui_selection();
   ik_ui_inspector();
   ik_ui_stats();
@@ -2253,9 +2254,9 @@ ik_frame(void)
     }
     if(!dr_bucket_is_empty(ik_state->bucket_ui))
     {
-      DR_BucketScope(ik_state->bucket_ui)
+      if(ik_state->crt_enabled) DR_BucketScope(ik_state->bucket_ui)
       {
-        // dr_crt(0.25, 1.15, ik_state->time_in_seconds);
+        dr_crt(0.25, 1.15, ik_state->time_in_seconds);
       }
       dr_submit_bucket(ik_state->os_wnd, ik_state->r_wnd, ik_state->bucket_ui);
     }
@@ -2851,6 +2852,8 @@ ik_frame_alloc()
   frame->blank = ik_build_box_from_stringf(IK_BoxFlag_MouseClickable|
                                            IK_BoxFlag_FitViewport|
                                            IK_BoxFlag_Scroll|
+                                           IK_BoxFlag_ClickToFocus|
+                                           IK_BoxFlag_OmitCtxMenu|
                                            IK_BoxFlag_Orphan|
                                            IK_BoxFlag_OmitGroupSelection|
                                            IK_BoxFlag_OmitDeletion,
@@ -4273,6 +4276,12 @@ ik_signal_from_box(IK_Box *box)
       sig.f |= (IK_SignalFlag_LeftPressed<<evt_mouse_button_kind);
       ik_state->drag_start_mouse = evt->pos;
 
+      // reset focus hot keys on mouse button press
+      for EachEnumVal(IK_MouseButtonKind, k)
+      {
+        ik_state->focus_hot_box_key[k] = ik_key_zero();
+      }
+
       if(ik_key_match(box->key, ik_state->press_key_history[evt_mouse_button_kind][0]) &&
          evt->timestamp_us-ik_state->press_timestamp_history_us[evt_mouse_button_kind][0] <= 1000000*os_get_gfx_info()->double_click_time)
       {
@@ -5059,7 +5068,7 @@ ik_ui_selection(void)
   IK_Camera *camera = &frame->camera;
 
   IK_Box *box = ik_box_from_key(ik_state->focus_hot_box_key[IK_MouseButtonKind_Left]);
-  if(box && ik_tool() == IK_ToolKind_Selection)
+  if(box && ik_tool() == IK_ToolKind_Selection && (box->flags&IK_BoxFlag_Dragable))
   {
     Rng2F32 camera_rect = camera->rect;
 
@@ -5507,6 +5516,7 @@ ik_ui_inspector(void)
             ui_labelf("%I64u", b->key.u64[0]);
         }
 
+        UI_WidthFill
         ui_divider(ui_em(0.5, 0.0));
 
         UI_WidthFill
@@ -5595,6 +5605,7 @@ ik_ui_inspector(void)
           }
         }
 
+        UI_WidthFill
         ui_divider(ui_em(0.5, 0.0));
 
         ////////////////////////////////
@@ -5681,6 +5692,7 @@ ik_ui_inspector(void)
         ////////////////////////////////
         //~ Color
 
+        UI_WidthFill
         ui_divider(ui_em(0.5, 0.0));
 
         UI_WidthFill
@@ -5739,6 +5751,7 @@ ik_ui_inspector(void)
 
         if(b->flags & IK_BoxFlag_HasDisplayString)
         {
+          UI_WidthFill
           ui_divider(ui_em(0.5, 0.0));
 
           UI_WidthFill
@@ -5887,6 +5900,7 @@ ik_ui_inspector(void)
 
         if(b->flags & IK_BoxFlag_DrawImage && b->image)
         {
+          UI_WidthFill
           ui_divider(ui_em(0.5, 0.0));
 
           UI_WidthFill
@@ -5915,6 +5929,7 @@ ik_ui_inspector(void)
 
         if(b->flags & IK_BoxFlag_DrawStroke)
         {
+          UI_WidthFill
           ui_divider(ui_em(0.5, 0.0));
 
           UI_WidthFill
@@ -5933,6 +5948,7 @@ ik_ui_inspector(void)
 
         if(b->group_children_count > 0)
         {
+          UI_WidthFill
           ui_divider(ui_em(0.5, 0.0));
 
           // align
@@ -6101,7 +6117,9 @@ ik_ui_inspector(void)
         ////////////////////////////////
         //~ Actions
 
+        UI_WidthFill
         ui_divider(ui_em(0.5, 0.0));
+
         UI_WidthFill
         UI_Row
         {
@@ -6241,7 +6259,7 @@ ik_ui_box_ctx_menu(void)
   IK_Key key = ik_state->focus_hot_box_key[IK_MouseButtonKind_Right];
   IK_Box *box = ik_box_from_key(key);
   B32 deleted = 0;
-  if(box)
+  if(box && !(box->flags&IK_BoxFlag_OmitCtxMenu))
   {
     UI_Key key = ui_key_from_stringf(ui_key_zero(), "box_ctx_menu_%I64u", box->key.u64[0]);
     UI_CtxMenu(key)
@@ -6250,7 +6268,6 @@ ik_ui_box_ctx_menu(void)
 
       UI_PrefWidth(ui_children_sum(1.0))
       UI_PrefHeight(ui_children_sum(1.0))
-        // UI_Flags(UI_BoxFlag_DrawBackground)
         UI_ChildLayoutAxis(Axis2_Y)
         UI_Transparency(0.1)
         container = ui_build_box_from_key(0, ui_key_zero());
@@ -6298,6 +6315,91 @@ ik_ui_box_ctx_menu(void)
       //             just a hack for now, find a better way later
       box->deleted = 1;
     }
+  }
+}
+
+internal void
+ik_ui_g_ctx_menu()
+{
+  IK_Frame *frame = ik_top_frame();
+  IK_Box *box = frame->blank;
+  B32 is_focus_hot = ik_key_match(ik_state->focus_hot_box_key[IK_MouseButtonKind_Right], box->key);
+
+  UI_Key key = ui_key_from_stringf(ui_key_zero(), "box_g_ctx_menu");
+  UI_CtxMenu(key)
+  {
+    UI_Box *container;
+
+    UI_PrefWidth(ui_children_sum(1.0))
+    UI_PrefHeight(ui_children_sum(1.0))
+      UI_ChildLayoutAxis(Axis2_Y)
+      UI_Transparency(0.1)
+      container = ui_build_box_from_key(0, ui_key_zero());
+
+    UI_Parent(container)
+      UI_TextPadding(ui_top_font_size()*0.5)
+    {
+      B32 taken = 0;
+
+      // crt
+      {
+        UI_Signal sig;
+        ui_set_next_child_layout_axis(Axis2_X);
+        ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+        UI_Box *b = ui_build_box_from_stringf(UI_BoxFlag_Clickable|
+                                             UI_BoxFlag_DrawBackground|
+                                             UI_BoxFlag_DrawBorder|
+                                             UI_BoxFlag_DrawHotEffects|
+                                             UI_BoxFlag_DrawActiveEffects,
+                                             "###crt");
+        UI_Parent(b)
+        {
+          UI_PrefWidth(ui_text_dim(0.0,1.0))
+          ui_labelf("crt");
+          ui_spacer(ui_pct(1.0,0.0));
+          if(ik_state->crt_enabled)
+          {
+            UI_PrefWidth(ui_text_dim(0.0,1.0))
+            UI_Font(ik_font_from_slot(IK_FontSlot_IconsExtra))
+            ui_labelf("5");
+          }
+        }
+        sig = ui_signal_from_box(b);
+
+        if(ui_clicked(sig))
+        {
+          ik_state->crt_enabled = !ik_state->crt_enabled;
+          taken = 1;
+        }
+      }
+
+      // saving
+      if(ui_clicked(ui_buttonf("save")))
+      {
+        ik_frame_to_tyml(frame);
+        ik_message_push(push_str8f(ik_frame_arena(), "saved: %S", frame->save_path));
+        taken = 1;
+      }
+
+      if(taken)
+      {
+        ui_ctx_menu_close();
+        ik_state->focus_hot_box_key[IK_MouseButtonKind_Right] = ik_key_zero();
+      }
+    }
+  }
+
+  if((!is_focus_hot) && ui_ctx_menu_is_open(key))
+  {
+    ui_ctx_menu_close();
+  }
+  if((is_focus_hot) && ui_ctx_menu_is_open(key) && box->sig.f&IK_SignalFlag_RightPressed)
+  {
+    ui_ctx_menu_close();
+  }
+  if((is_focus_hot) && !ui_ctx_menu_is_open(key))
+  {
+    ui_ctx_menu_open(key, ui_key_zero(), ui_state->mouse);
   }
 }
 
