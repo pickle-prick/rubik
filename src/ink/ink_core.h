@@ -188,10 +188,11 @@ struct IK_Image
 {
   IK_Key key;
   R_Handle handle;
-  // TODO(Next): this could consumes alot memory, we should page it out to file, we only need it when doing saving
+  // TODO(Next): this could consumes alot memory, page it out to a file, we only need it when doing saving
   String8 encoded; // png or whatever
   U64 x;
   U64 y;
+  U64 comp;
   U64 rc;
 
   void *decoded; // pixel data
@@ -1020,8 +1021,12 @@ internal Rng1U64  ik_replace_range_from_txtrng(String8 string, TxtRng txt_rng);
 /////////////////////////////////
 //~ Scene serialization/deserialization
 
+//- frame
 internal String8   ik_frame_to_tyml(IK_Frame *frame);
 internal IK_Frame* ik_frame_from_tyml(String8 path);
+
+//- image
+internal void      ik_image_to_png_file(IK_Image *image, String8 path);
 
 /////////////////////////////////
 //~ Helpers

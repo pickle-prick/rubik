@@ -4203,6 +4203,7 @@ ik_image_decode_thread__entry_point(void *ptr)
     {
       image->x = x;
       image->y = y;
+      image->comp = z;
       image->decoded = data;
     }
 
@@ -6259,7 +6260,8 @@ ik_ui_box_ctx_menu(void)
   IK_Key key = ik_state->focus_hot_box_key[IK_MouseButtonKind_Right];
   IK_Box *box = ik_box_from_key(key);
   B32 deleted = 0;
-  if(box && !(box->flags&IK_BoxFlag_OmitCtxMenu))
+  B32 is_focus_active = ik_key_match(ik_state->focus_active_box_key, key);
+  if(box && !(box->flags&IK_BoxFlag_OmitCtxMenu) && !is_focus_active)
   {
     UI_Key key = ui_key_from_stringf(ui_key_zero(), "box_ctx_menu_%I64u", box->key.u64[0]);
     UI_CtxMenu(key)
@@ -6289,6 +6291,16 @@ ik_ui_box_ctx_menu(void)
         if(ui_clicked(ui_buttonf("delete")))
         {
           deleted = 1;
+          taken = 1;
+        }
+        if(box->flags&IK_BoxFlag_DrawImage && ui_clicked(ui_buttonf("export as png")))
+        {
+          String8 binary_path = os_get_process_info()->binary_path; // only directory
+          String8 default_path = push_str8f(ik_frame_arena(), "%S/%I64u.png", binary_path, box->key.u64[0]);
+
+          IK_Image *image = box->image;
+          ik_image_to_png_file(image, default_path);
+          ik_message_push(push_str8f(ik_frame_arena(), "%S saved", default_path));
           taken = 1;
         }
 
@@ -6378,6 +6390,23 @@ ik_ui_g_ctx_menu()
       {
         ik_frame_to_tyml(frame);
         ik_message_push(push_str8f(ik_frame_arena(), "saved: %S", frame->save_path));
+        taken = 1;
+      }
+
+      if(ui_clicked(ui_buttonf("export all images")))
+      {
+        U64 count = 0;
+        for(U64 slot_idx = 0; slot_idx < ArrayCount(frame->image_cache_table); slot_idx++)
+        {
+          for(IK_ImageCacheNode *n = frame->image_cache_table[slot_idx].first; n != 0; n = n->next, count++)
+          {
+            IK_Image *image = &n->v;
+            String8 binary_path = os_get_process_info()->binary_path; // only directory
+            String8 default_path = push_str8f(ik_frame_arena(), "%S/%I64u.png", binary_path, image->key.u64[0]);
+            ik_image_to_png_file(image, default_path);
+          }
+        }
+        ik_message_push(push_str8f(ik_frame_arena(), "%I64u saved", count));
         taken = 1;
       }
 
@@ -6854,6 +6883,8 @@ ik_replace_range_from_txtrng(String8 string, TxtRng txt_rng)
 /////////////////////////////////
 //~ Scene serialization/deserialization
 
+//- frame 
+
 internal String8
 ik_frame_to_tyml(IK_Frame *frame)
 {
@@ -7194,6 +7225,18 @@ ik_frame_from_tyml(String8 path)
   ik_pop_frame();
   scratch_end(scratch);
   return frame;
+}
+
+//- image
+
+internal void
+ik_image_to_png_file(IK_Image *image, String8 path)
+{
+  // stbi_write_png((char const *)path.str, image->x, image->y, image->comp, (const void*)image->encoded.str, 0);
+  if(image->encoded.size > 0)
+  {
+    os_write_data_to_file_path(path, image->encoded);
+  }
 }
 
 /////////////////////////////////
