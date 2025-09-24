@@ -3177,6 +3177,10 @@ IK_BOX_UPDATE(text)
     String8List lines = str8_split(ik_frame_arena(), box->string, (U8*)by, 1, StringSplitFlag_KeepEmpties);
     DR_FRunList *line_fruns = 0;
 
+    // unpack font params
+    FNT_Tag font = ik_font_from_slot(box->font_slot);
+    FNT_Metrics font_metrics = fnt_metrics_from_tag_size(font, M_1);
+
     U64 line_index = 0;
     for(String8Node *n = lines.first; n != 0; n = n->next, line_index++)
     {
@@ -3186,7 +3190,7 @@ IK_BOX_UPDATE(text)
         DR_FStrList fstrs = {0};
         DR_FStr fstr = {0};
         fstr.string = string;
-        fstr.params.font = ik_font_from_slot(box->font_slot);
+        fstr.params.font = font;
         fstr.params.color = box->text_color;
         fstr.params.size = M_1;
         fstr.params.underline_thickness = 0;
@@ -3195,6 +3199,13 @@ IK_BOX_UPDATE(text)
 
         // TODO(Next): support different fstr
         DR_FRunList fruns = dr_fruns_from_fstrs(ik_frame_arena(), box->tab_size, &fstrs);
+
+        // NOTE(k): for empty line, the dim are all zero, we need to ClampBot dim_y to line height
+        if(string.size == 0)
+        {
+          fruns.first->v.run.dim.y = font_metrics.ascent+font_metrics.descent;
+          fruns.dim.y = fruns.first->v.run.dim.y;
+        }
 
         U64 cutoff = 0;
         Vec2F32 run_dim_px = {fruns.dim.x*font_size_scale, fruns.dim.y*font_size_scale};
