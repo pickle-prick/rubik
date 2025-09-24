@@ -3354,7 +3354,7 @@ IK_BOX_UPDATE(text)
 
         FNT_Piece *piece_first = run.run.pieces.v;
         FNT_Piece *piece_opl = run.run.pieces.v + run.run.pieces.count;
-        for(FNT_Piece *piece = piece_first; piece < piece_opl; piece++, c_index++)
+        for(FNT_Piece *piece = piece_first; piece < piece_opl; piece++)
         {
           F32 this_advance_x = piece->advance*font_size_scale;
           Rng2F32 src = r2f32p((F32)piece->subrect.x0, (F32)piece->subrect.y0, (F32)piece->subrect.x1, (F32)piece->subrect.y1);
@@ -3370,6 +3370,7 @@ IK_BOX_UPDATE(text)
           IK_EditBoxTextRect text_rect = {parent_rect, dst, src, piece->texture, run.color, highlight};
           darray_push(ik_frame_arena(), draw_data->text_rects, text_rect);
 
+          // cursor/mark on this glyph, set mark/cursor rect
           if(mark && mark->column == (c_index+1))
             mark_rect = line_cursor;
           if(cursor && cursor->column == (c_index+1))
@@ -3384,13 +3385,16 @@ IK_BOX_UPDATE(text)
             {
               // TODO(k): if we are handling unicode, we want the utf-8 decode_size too
               best_mouse_offset = dist_to_mouse;
-              mouse_pt.column = abs_f32(ik_state->mouse_in_world.x-dst.x0) <= abs_f32(ik_state->mouse_in_world.x-dst.x0-this_advance_x) ? c_index+1 : c_index+2;
+              mouse_pt.column = abs_f32(ik_state->mouse_in_world.x-dst.x0) <= abs_f32(ik_state->mouse_in_world.x-dst.x0-this_advance_x) ? c_index+1 : c_index+piece->decode_size+1;
             }
           }
 
           advance_x += this_advance_x;
           line_cursor.x1 += this_advance_x;
           line_cursor.x0 += this_advance_x;
+
+          // advance c_index
+          c_index += piece->decode_size;
         }
 
         // NOTE(k): cursor or mark is end of line
@@ -5893,6 +5897,18 @@ ik_ui_inspector(void)
             ui_spacer(ui_pct(1.0, 0.0));
             UI_PrefWidth(ui_text_dim(1, 1.0))
               ui_labelf("%d %d", b->cursor.line, b->cursor.column);
+          }
+
+          ui_spacer(ui_em(0.2, 0.0));
+
+          UI_WidthFill
+          UI_Row
+          {
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("mark");
+            ui_spacer(ui_pct(1.0, 0.0));
+            UI_PrefWidth(ui_text_dim(1, 1.0))
+              ui_labelf("%d %d", b->mark.line, b->mark.column);
           }
         }
 
