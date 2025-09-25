@@ -9,7 +9,7 @@
 
 ![Screenshot of a 2D scene](./screenshots/004.gif)
 
-![Screenshot of Ink](./screenshots/ink.png)
+![Screenshot of Ink](./screenshots/ink.gif)
 
 ## Development Setup Instructions
 

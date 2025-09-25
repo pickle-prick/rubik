@@ -3900,14 +3900,14 @@ IK_BOX_DRAW(arrow)
     dr_rect(rect, stroke_clr, half_stroke_size*1.3, 0, edge_softness);
   }
 
-  // draw b
+  // draw b with arrow
   {
     Rng2F32 rect = {.p0 = b, .p1 = b};
     rect = pad_2f32(rect, half_stroke_size*1.3);
     dr_rect(rect, stroke_clr, half_stroke_size*1.3, 0, edge_softness);
 
     // draw arrow direction
-    Vec2F32 dir = normalize_2f32(sub_2f32(b, m));
+    Vec2F32 dir = normalize_2f32(sub_2f32(b, c));
     Vec2F32 dir_inv = {-dir.x, -dir.y};
     F32 angle_turns = 0.08;
     F32 arrow_length = stroke_size * 12;
