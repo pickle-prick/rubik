@@ -237,6 +237,7 @@ r_vulkan_stage_init()
 
   // init staging ring buffer
   {
+    // TODO(Next): this one will use local mem, and it's not safe to use for large batch 
     U64 size = MB(512);
     R_Vulkan_StagingRing *ring = &stage->ring;
 
@@ -4412,9 +4413,9 @@ r_init(OS_Handle window, B32 debug)
     0xFF330033, 0xFFFF00FF,
   };
   r_vulkan_state->backup_texture = r_tex2d_alloc(R_ResourceKind_Static, R_Tex2DSampleKind_Nearest, v2s32(2,2), R_Tex2DFormat_RGBA8, backup_texture_data);
-  scratch_end(scratch);
   R_Vulkan_InitStacks(r_vulkan_state);
   R_Vulkan_InitStackNils(r_vulkan_state);
+  scratch_end(scratch);
 }
 
 //- rjf: window setup/teardown

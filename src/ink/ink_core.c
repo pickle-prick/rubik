@@ -562,7 +562,7 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
     // frame arena
     for(U64 i = 0; i < ArrayCount(ik_state->frame_arenas); i++)
     {
-      ik_state->frame_arenas[i] = arena_alloc(.reserve_size = MB(128), .commit_size = MB(64));
+      ik_state->frame_arenas[i] = arena_alloc(.reserve_size = MB(128), .commit_size = MB(8));
     }
     // NOTE(k): not needed for now
     // frame drawlists
@@ -3665,51 +3665,53 @@ IK_BOX_UPDATE(stroke)
   }
   if(is_focus_active)
   {
-    Vec2F32 last_position = {0,0};
-    if(box->last_point)
-    {
-      last_position = box->last_point->position;
-    }
-
-#if 0
+    Vec2F32 last_position = box->last_point ? box->last_point->position : v2f32(-1,-1);
     Vec2F32 next_position = ik_state->mouse_in_world;
-    F32 dist = length_2f32(sub_2f32(last_position, next_position));
-    F32 dist_px = dist/ik_state->world_to_screen_ratio.x;
-    if(dist_px > (ik_state->dpi/96.0)*1.5)
+    if(box->point_count < 3 || (last_position.x != next_position.x || last_position.y != next_position.y))
     {
-      IK_Point *p = ik_point_alloc();
-      DLLPushBack(box->first_point, box->last_point, p);
-      p->position = next_position;
-      box->point_count++;
-    }
-#else
-    // always capture points
-    Vec2F32 next_position = ik_state->mouse_in_world;
-    IK_Point *p = ik_point_alloc();
-    DLLPushBack(box->first_point, box->last_point, p);
-    p->position = next_position;
-    box->point_count++;
-
-    // NOTE(k): purge redudant points
-    // e.g. points basically on a line, we can just save two endpoint in this case
-    IK_Point *p2 = p;
-    IK_Point *p1 = p->prev;
-    IK_Point *p0 = p1 ? p1->prev : 0;
-    if(p0)
-    {
-      // area formed by p0p1 and p0p2, we don't need to divide it by 2, since we only compare with epsilon
-      F32 epsilon = 1e-2;
-      Vec2F32 p0p1 = sub_2f32(p1->position, p0->position);
-      Vec2F32 p0p2 = sub_2f32(p2->position, p0->position);
-      F32 area = abs_f32(p0p1.x*p0p2.y - p0p1.y*p0p2.x); // cross product
-      if(area < epsilon)
+      // capture current point
       {
-        DLLRemove(box->first_point, box->last_point, p1);
-        box->point_count--;
-        ik_point_release(p1);
+        IK_Point *p = ik_point_alloc();
+        DLLPushBack(box->first_point, box->last_point, p);
+        p->position = next_position;
+        box->point_count++;
+      }
+
+      // makeup to 3 points, we need at least 3 points to draw a bezer curve
+      if(box->point_count < 3)
+      {
+        U64 makeup = 3-box->point_count;
+        for(U64 i = 0; i < makeup; i++)
+        {
+          IK_Point *p = ik_point_alloc();
+          DLLPushBack(box->first_point, box->last_point, p);
+          p->position = next_position;
+          box->point_count++;
+        }
+      }
+      // purge redudant points
+      else
+      {
+        // e.g. points basically on a line, we can just save two endpoint in this case
+        IK_Point *p2 = box->last_point;
+        IK_Point *p1 = p2->prev;
+        IK_Point *p0 = p1 ? p1->prev : 0;
+        if(p0)
+        {
+          // area formed by p0p1 and p0p2, we don't need to divide it by 2, since we only compare with epsilon
+          F32 epsilon = 1e-2;
+          Vec2F32 p0p1 = sub_2f32(p1->position, p0->position);
+          Vec2F32 p0p2 = sub_2f32(p2->position, p0->position);
+          F32 area = abs_f32(p0p1.x*p0p2.y - p0p1.y*p0p2.x); // cross product
+          if(area < epsilon)
+          {
+            DLLRemove(box->first_point, box->last_point, p1);
+            box->point_count--;
+            ik_point_release(p1);
+          }
+        }
       }
     }
-#endif
   }
 }
 
@@ -3725,20 +3727,6 @@ IK_BOX_DRAW(stroke)
   Vec4F32 stroke_color = linear_from_srgba(box->stroke_color);
   F32 edge_softness = 1.0 * ik_state->world_to_screen_ratio.x;
 
-#if 0
-  // DEBUG(k)
-  if(box->last_point)
-  {
-    IK_Point *p = box->last_point;
-    Vec2F32 pos = p->position;
-    pos = add_2f32(pos, box->position);
-    Rng2F32 rect = {.p0 = pos, .p1 = pos};
-    F32 stroke_size = 30 * ik_state->world_to_screen_ratio.x;
-    rect = pad_2f32(rect, stroke_size/2.0);
-    dr_rect(rect, v4f32(1,0,0,1), stroke_size/2.0, 0, 1);
-  }
-#endif
-
   F32 last_scale = 1.0;
   F32 last_point_drawn = 0;
   while(p2)
@@ -3752,7 +3740,7 @@ IK_BOX_DRAW(stroke)
     F32 dist = length_2f32(sub_2f32(m1, m2));
     F32 t = round_f32(dist/base_stroke_size);
     F32 scale = mix_1f32(1.0, 0.2, t/2.0);
-    scale = last_scale*0.6+0.4*scale;
+    scale = last_scale*0.9+0.1*scale;
     last_scale = scale;
     F32 stroke_size = base_stroke_size*scale;
     stroke_size = ClampBot(stroke_size, min_visiable_stroke_size);
