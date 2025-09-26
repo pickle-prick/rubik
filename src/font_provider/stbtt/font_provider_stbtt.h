@@ -12,7 +12,7 @@ struct FP_STBTT_Font
 {
   FP_STBTT_Font *next;
   stbtt_fontinfo info;
-  U8 *buffer;
+  String8 buffer;
   // metrics
   S32 design_units_per_em;
   S32 ascent;

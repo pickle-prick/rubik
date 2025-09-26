@@ -4,25 +4,21 @@
 #include <stdlib.h>
 #include <time.h>
 
-/////////////////////////////////////////////////////////////////////////////////////////
-// build options
+////////////////////////////////
+//~ Build options
 
-#define BUILD_TITLE          "Rubik"
+#define BUILD_TITLE          str8_lit("Rubik")
 #define OS_FEATURE_GRAPHICAL 1
-// TODO: required for linkage for now
-#define OS_FEATURE_AUDIO     1
+#define OS_FEATURE_AUDIO     0
 
-/////////////////////////////////////////////////////////////////////////////////////////
-// external includes
+////////////////////////////////
+//~ Includes
 
-#define CGLTF_IMPLEMENTATION
-#include "external/cgltf.h"
+//- external
+// #define CGLTF_IMPLEMENTATION
+// #include "external/cgltf.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "external/stb/stb_image.h"
-// #include "external/linmath.h"
-
-/////////////////////////////////////////////////////////////////////////////////////////
-// single unit includes
 
 // [h]
 #include "base/base_inc.h"
@@ -33,12 +29,7 @@
 #include "draw/draw.h"
 #include "ui/ui_inc.h"
 #include "serialize/serialize_inc.h"
-#include "synth/synth.h"
-#include "physics/physics_inc.h"
 #include "rubik_core.h"
-#include "rubik_ui_widget.h"
-#include "rubik_asset.h"
-#include "scenes/rubik_scenes_inc.h"
 
 // [c]
 #include "base/base_inc.c"
@@ -49,18 +40,13 @@
 #include "draw/draw.c"
 #include "ui/ui_inc.c"
 #include "serialize/serialize_inc.c"
-#include "synth/synth.c"
-#include "physics/physics_inc.c"
 #include "rubik_core.c"
-#include "rubik_ui_widget.c"
-#include "rubik_asset.c"
-#include "scenes/rubik_scenes_inc.c"
 
 internal void
 entry_point(CmdLine *cmd_line)
 {
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // init
+  ////////////////////////////////
+  //~ Init
 
   // change working directory
   String8 binary_path = os_get_process_info()->binary_path; // only directory
@@ -74,57 +60,64 @@ entry_point(CmdLine *cmd_line)
     scratch_end(scratch);
   }
 
+  // seeding
   U32 seed = time(NULL);
   srand(seed);
 
-  Vec2F32 window_rect = {900*3, 900*2};
-  String8 window_title = str8_lit("Rubik");
+  // prepare window dim
+  F32 ratio = 16.f/10.f;
+  OS_Handle monitor = os_primary_monitor();
+  Vec2F32 monitor_dim = os_dim_from_monitor(monitor);
+  Vec2F32 center = scale_2f32(monitor_dim, 0.5);
+  Vec2F32 window_dim = {monitor_dim.y*0.6f*ratio, monitor_dim.y*0.6f};
+  Vec2F32 half_window_dim = scale_2f32(window_dim, 0.5);
+  Rng2F32 window_rect = {.p0 = sub_2f32(center, half_window_dim), .p1 = add_2f32(center, half_window_dim)};
+  // TODO(Next): just a hack for linux, we don't have os_dim_from_monitor implemented yet
+  if(window_rect.x1 == 0)
+  {
+    window_rect = r2f32p(0,0, 1600, 1000);
+  }
+  String8 window_title = BUILD_TITLE;
 
   // open window
-  OS_Handle os_wnd = os_window_open(r2f32p(0,0, window_rect.x, window_rect.y), 0, window_title);
+  OS_Handle os_wnd = os_window_open(window_rect, 0, window_title);
   os_window_first_paint(os_wnd);
+  os_window_focus(os_wnd);
 
   // init main audio device
+#if OS_FEATURE_AUDIO
   OS_Handle main_audio_device = os_audio_device_open();
   os_set_main_audio_device(main_audio_device);
   os_audio_device_start(main_audio_device);
-  os_audio_set_master_volume(0.9);
+  os_audio_set_master_volume(1.0);
+#endif
 
-  // render initialization
-  r_init((char *)window_title.str, os_wnd, BUILD_DEBUG);
+  // renderer initialization
+  r_init(os_wnd, BUILD_DEBUG);
   R_Handle r_wnd = r_window_equip(os_wnd);
 
   // init ui state
   UI_State *ui = ui_state_alloc();
   ui_select_state(ui);
 
-  // init game state
+  // init rk_state
   rk_init(os_wnd, r_wnd);
 
-  // load scene function table
-  for(U64 i = 0; i < ArrayCount(rk_scene_function_table); i++)
-  {
-    rk_register_function(rk_scene_function_table[i].name, rk_scene_function_table[i].fn);
-  }
-  // RK_Scene *default_scene = bd_default();
-  RK_Scene *default_scene = zo_default();
-  // RK_Scene *default_scene = rk_scene_from_tscn(str8_lit("./src/rubik/scenes/4/default.tscn"));
-  rk_state->active_scene = default_scene;
-
-
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // main loop
+  ////////////////////////////////
+  //~ Main loop
 
   B32 open = 1;
   while(open)
   {
     ProfTick(0);
+    // FIXME: the order matters, it has something to do with frame index sync
+    fnt_frame();
     U64 global_tick = update_tick_idx();
     open = rk_frame();
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // cleanup
+  ////////////////////////////////
+  //~ Cleanup
 
   os_window_close(os_wnd);
 }

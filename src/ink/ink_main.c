@@ -4,23 +4,21 @@
 #include <stdlib.h>
 #include <time.h>
 
-/////////////////////////////////////////////////////////////////////////////////////////
-// build options
+////////////////////////////////
+//~ Build options
 
-#define BUILD_TITLE          "Ink"
+#define BUILD_TITLE          str8_lit("Ink")
 #define OS_FEATURE_GRAPHICAL 1
 #define OS_FEATURE_AUDIO     0
 
-/////////////////////////////////////////////////////////////////////////////////////////
-// external includes
+////////////////////////////////
+//~ Includes
 
+//- external
 #define STB_IMAGE_IMPLEMENTATION
 #include "external/stb/stb_image.h"
 // #define STB_IMAGE_WRITE_IMPLEMENTATION
 // #include "external/stb/stb_image_write.h"
-
-/////////////////////////////////////////////////////////////////////////////////////////
-// single unit includes
 
 // [h]
 #include "base/base_inc.h"
@@ -52,8 +50,8 @@
 internal void
 entry_point(CmdLine *cmd_line)
 {
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // init
+  ////////////////////////////////
+  //~ Init
 
   // change working directory
   String8 binary_path = os_get_process_info()->binary_path; // only directory
@@ -67,10 +65,11 @@ entry_point(CmdLine *cmd_line)
     scratch_end(scratch);
   }
 
+  // seeding
   U32 seed = time(NULL);
   srand(seed);
 
-  // prepare window
+  // prepare window dim
   F32 ratio = 16.f/10.f;
   OS_Handle monitor = os_primary_monitor();
   Vec2F32 monitor_dim = os_dim_from_monitor(monitor);
@@ -83,7 +82,7 @@ entry_point(CmdLine *cmd_line)
   {
     window_rect = r2f32p(0,0, 1600, 1000);
   }
-  String8 window_title = str8_lit("Ink");
+  String8 window_title = BUILD_TITLE;
 
   // open window
   OS_Handle os_wnd = os_window_open(window_rect, 0, window_title);
@@ -98,7 +97,7 @@ entry_point(CmdLine *cmd_line)
   os_audio_set_master_volume(0.9);
 #endif
 
-  // render initialization
+  // renderer initialization
   r_init(os_wnd, BUILD_DEBUG);
   R_Handle r_wnd = r_window_equip(os_wnd);
 
@@ -109,8 +108,8 @@ entry_point(CmdLine *cmd_line)
   // init ik state
   ik_init(os_wnd, r_wnd);
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // main loop
+  ////////////////////////////////
+  //~ Main loop
 
   B32 open = 1;
   while(open)
@@ -122,8 +121,8 @@ entry_point(CmdLine *cmd_line)
     open = ik_frame();
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // cleanup
+  ////////////////////////////////
+  //~ Cleanup
 
   os_window_close(os_wnd);
 }

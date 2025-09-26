@@ -19,14 +19,12 @@ fp_font_open(String8 path)
   FP_STBTT_Font *font = push_array(arena, FP_STBTT_Font, 1);
 
   // read content from path
-  int read_ret = 0;
   OS_Handle file = os_file_open(OS_AccessFlag_Read, path);
   FileProperties props = os_properties_from_file(file);
-  read_ret = os_file_read(file, rng_1u64(0,props.size), font->buffer);
-  AssertAlways(read_ret > 0);
+  font->buffer = os_string_from_file_range(arena, file, rng_1u64(0,props.size));
 
   // init the font info
-  AssertAlways(stbtt_InitFont(&font->info, font->buffer, 0) != 0);
+  AssertAlways(stbtt_InitFont(&font->info, (const unsigned char*)font->buffer.str, 0) != 0);
 
   // metrics
   int ascent,descent,line_gap = 0;
@@ -49,10 +47,10 @@ fp_font_open_from_static_data_string(String8 *data_ptr)
 { 
   Arena *arena = fp_stbtt_state->arena;
   FP_STBTT_Font *font = push_array(arena, FP_STBTT_Font, 1);
-  font->buffer = data_ptr->str;
+  font->buffer = *data_ptr;
 
   // init the font info
-  AssertAlways(stbtt_InitFont(&font->info, font->buffer, 0) != 0);
+  AssertAlways(stbtt_InitFont(&font->info, (const unsigned char*)font->buffer.str, 0) != 0);
 
   // metrics
   int ascent,descent,line_gap = 0;
