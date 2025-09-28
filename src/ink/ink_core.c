@@ -594,11 +594,6 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
   ik_state->cfg_font_tags[IK_FontSlot_IconsExtra] = fnt_tag_from_static_data_string(&font_icons_extra);
   ik_state->cfg_font_tags[IK_FontSlot_HandWrite] = fnt_tag_from_static_data_string(&font_virgil);
 
-  // ik_state->cfg_font_tags[IK_FontSlot_Main] = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
-  // ik_state->cfg_font_tags[IK_FontSlot_Code] = f_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
-  // ik_state->cfg_font_tags[IK_FontSlot_Icons] = f_tag_from_path(str8_lit("./fonts/icons.ttf"));
-  // ik_state->cfg_font_tags[IK_FontSlot_ToolbarIcons] = f_tag_from_path(str8_lit("./fonts/toolbar_icons.ttf"));
-
   // Theme 
   MemoryCopy(ik_state->cfg_theme_target.colors, ik_theme_preset_colors__handmade_hero, sizeof(ik_theme_preset_colors__handmade_hero));
   MemoryCopy(ik_state->cfg_theme.colors, ik_theme_preset_colors__handmade_hero, sizeof(ik_theme_preset_colors__handmade_hero));

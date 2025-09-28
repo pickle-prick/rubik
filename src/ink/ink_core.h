@@ -138,7 +138,6 @@ typedef struct IK_SettingVal IK_SettingVal;
 struct IK_SettingVal
 {
   B32 set;
-  // TODO(k): we may want to support different number type here later
   S32 s32;
 };
 
@@ -851,7 +850,6 @@ internal Arena*       ik_frame_arena(void);
 internal IK_DrawList* ik_frame_drawlist(void);
 
 //- editor
-
 internal IK_ToolKind ik_tool(void);
 
 //- color

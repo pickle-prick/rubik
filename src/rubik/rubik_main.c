@@ -30,6 +30,7 @@
 #include "ui/ui_inc.h"
 #include "serialize/serialize_inc.h"
 #include "rubik_core.h"
+#include "entries/rubik_entries_inc.h"
 
 // [c]
 #include "base/base_inc.c"
@@ -41,6 +42,7 @@
 #include "ui/ui_inc.c"
 #include "serialize/serialize_inc.c"
 #include "rubik_core.c"
+#include "entries/rubik_entries_inc.c"
 
 internal void
 entry_point(CmdLine *cmd_line)
@@ -102,6 +104,9 @@ entry_point(CmdLine *cmd_line)
 
   // init rk_state
   rk_init(os_wnd, r_wnd);
+
+  // FIXME: TESTING for now
+  rk_state->entry = bd_entry_alloc();
 
   ////////////////////////////////
   //~ Main loop

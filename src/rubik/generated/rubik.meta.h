@@ -6,4 +6,119 @@
 #ifndef RUBIK_META_H
 #define RUBIK_META_H
 
+typedef enum RK_ThemeColor
+{
+RK_ThemeColor_Null,
+RK_ThemeColor_Text,
+RK_ThemeColor_TextPositive,
+RK_ThemeColor_TextNegative,
+RK_ThemeColor_TextNeutral,
+RK_ThemeColor_TextWeak,
+RK_ThemeColor_Cursor,
+RK_ThemeColor_CursorInactive,
+RK_ThemeColor_Focus,
+RK_ThemeColor_Hover,
+RK_ThemeColor_DropShadow,
+RK_ThemeColor_DisabledOverlay,
+RK_ThemeColor_DropSiteOverlay,
+RK_ThemeColor_InactivePanelOverlay,
+RK_ThemeColor_SelectionOverlay,
+RK_ThemeColor_HighlightOverlay,
+RK_ThemeColor_HighlightOverlayError,
+RK_ThemeColor_BaseBackground,
+RK_ThemeColor_BaseBackgroundAlt,
+RK_ThemeColor_BaseBorder,
+RK_ThemeColor_MenuBarBackground,
+RK_ThemeColor_MenuBarBackgroundAlt,
+RK_ThemeColor_MenuBarBorder,
+RK_ThemeColor_FloatingBackground,
+RK_ThemeColor_FloatingBackgroundAlt,
+RK_ThemeColor_FloatingBorder,
+RK_ThemeColor_ImplicitButtonBackground,
+RK_ThemeColor_ImplicitButtonBorder,
+RK_ThemeColor_PlainButtonBackground,
+RK_ThemeColor_PlainButtonBorder,
+RK_ThemeColor_PositivePopButtonBackground,
+RK_ThemeColor_PositivePopButtonBorder,
+RK_ThemeColor_NegativePopButtonBackground,
+RK_ThemeColor_NegativePopButtonBorder,
+RK_ThemeColor_NeutralPopButtonBackground,
+RK_ThemeColor_NeutralPopButtonBorder,
+RK_ThemeColor_ScrollBarButtonBackground,
+RK_ThemeColor_ScrollBarButtonBorder,
+RK_ThemeColor_TabBackground,
+RK_ThemeColor_TabBorder,
+RK_ThemeColor_TabBackgroundInactive,
+RK_ThemeColor_TabBorderInactive,
+RK_ThemeColor_CodeDefault,
+RK_ThemeColor_CodeSymbol,
+RK_ThemeColor_CodeType,
+RK_ThemeColor_CodeLocal,
+RK_ThemeColor_CodeRegister,
+RK_ThemeColor_CodeKeyword,
+RK_ThemeColor_CodeDelimiterOperator,
+RK_ThemeColor_CodeNumeric,
+RK_ThemeColor_CodeNumericAltDigitGroup,
+RK_ThemeColor_CodeString,
+RK_ThemeColor_CodeMeta,
+RK_ThemeColor_CodeComment,
+RK_ThemeColor_CodeLineNumbers,
+RK_ThemeColor_CodeLineNumbersSelected,
+RK_ThemeColor_LineInfoBackground0,
+RK_ThemeColor_LineInfoBackground1,
+RK_ThemeColor_LineInfoBackground2,
+RK_ThemeColor_LineInfoBackground3,
+RK_ThemeColor_LineInfoBackground4,
+RK_ThemeColor_LineInfoBackground5,
+RK_ThemeColor_LineInfoBackground6,
+RK_ThemeColor_LineInfoBackground7,
+RK_ThemeColor_Thread0,
+RK_ThemeColor_Thread1,
+RK_ThemeColor_Thread2,
+RK_ThemeColor_Thread3,
+RK_ThemeColor_Thread4,
+RK_ThemeColor_Thread5,
+RK_ThemeColor_Thread6,
+RK_ThemeColor_Thread7,
+RK_ThemeColor_ThreadUnwound,
+RK_ThemeColor_ThreadError,
+RK_ThemeColor_Breakpoint,
+RK_ThemeColor_CacheLineBoundary,
+RK_ThemeColor_COUNT,
+} RK_ThemeColor;
+
+typedef enum RK_ThemePreset
+{
+RK_ThemePreset_DefaultDark,
+RK_ThemePreset_DefaultLight,
+RK_ThemePreset_VSDark,
+RK_ThemePreset_VSLight,
+RK_ThemePreset_SolarizedDark,
+RK_ThemePreset_SolarizedLight,
+RK_ThemePreset_HandmadeHero,
+RK_ThemePreset_FourCoder,
+RK_ThemePreset_FarManager,
+RK_ThemePreset_COUNT,
+} RK_ThemePreset;
+
+C_LINKAGE_BEGIN
+extern String8 rk_theme_preset_display_string_table[9];
+extern String8 rk_theme_preset_code_string_table[9];
+extern String8 rk_theme_color_version_remap_old_name_table[22];
+extern String8 rk_theme_color_version_remap_new_name_table[22];
+extern Vec4F32 rk_theme_preset_colors__default_dark[76];
+extern Vec4F32 rk_theme_preset_colors__default_light[76];
+extern Vec4F32 rk_theme_preset_colors__vs_dark[76];
+extern Vec4F32 rk_theme_preset_colors__vs_light[76];
+extern Vec4F32 rk_theme_preset_colors__solarized_dark[76];
+extern Vec4F32 rk_theme_preset_colors__solarized_light[76];
+extern Vec4F32 rk_theme_preset_colors__handmade_hero[76];
+extern Vec4F32 rk_theme_preset_colors__four_coder[76];
+extern Vec4F32 rk_theme_preset_colors__far_manager[76];
+extern Vec4F32* rk_theme_preset_colors_table[9];
+extern String8 rk_theme_color_display_string_table[76];
+extern String8 rk_theme_color_cfg_string_table[76];
+
+C_LINKAGE_END
+
 #endif // RUBIK_META_H

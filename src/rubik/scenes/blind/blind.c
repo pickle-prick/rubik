@@ -1815,7 +1815,7 @@ RK_SCENE_DEFAULT(bd_default)
   bd_state->sprites[BD_SpriteKind_FaceDefault] = rk_tex2d_from_path(str8_lit("./src/rubik/scenes/blind/default.png"), 0, rk_key_zero());
   bd_state->sprites[BD_SpriteKind_FaceTiger]   = rk_tex2d_from_path(str8_lit("./src/rubik/scenes/blind/tiger.png"), 0, rk_key_zero());
   bd_state->sprites[BD_SpriteKind_FacePanda]   = rk_tex2d_from_path(str8_lit("./src/rubik/scenes/blind/panda.png"), 0, rk_key_zero());
-  bd_state->sprites[BD_SpriteKind_FaceWolf]   = rk_tex2d_from_path(str8_lit("./src/rubik/scenes/blind/wolf.png"), 0, rk_key_zero());
+  bd_state->sprites[BD_SpriteKind_FaceWolf]    = rk_tex2d_from_path(str8_lit("./src/rubik/scenes/blind/wolf.png"), 0, rk_key_zero());
 
   ///////////////////////////////////////////////////////////////////////////////////////
   // build node tree
