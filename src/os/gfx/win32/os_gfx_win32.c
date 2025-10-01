@@ -1716,3 +1716,22 @@ os_open_in_browser(String8 url)
   ShellExecuteW(0, L"open", (WCHAR *)url16.str, 0, 0, SW_SHOWNORMAL);
   scratch_end(scratch);
 }
+
+////////////////////////////////
+//~ rjf: @os_hooks IME
+
+internal void
+os_set_ime_position(OS_Handle handle, Vec2S32 position)
+{
+  OS_W32_Window *window = os_w32_window_from_handle(handle);
+  HIMC hIMC = ImmGetContext(window->hwnd);
+  if(hIMC)
+  {
+    COMPOSITIONFORM cf;
+    cf.dwStyle = CFS_POINT; // Position by point (caret position)
+    cf.ptCurrentPos.x = position.x;
+    cf.ptCurrentPos.y = position.y;
+    ImmSetCompositionWindow(hIMC, &cf);
+    ImmReleaseContext(window->hwnd, hIMC);
+  }
+}

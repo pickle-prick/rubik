@@ -208,4 +208,9 @@ internal String8        os_graphical_pick_file(Arena *arena, String8 initial_pat
 internal void           os_show_in_filesystem_ui(String8 path);
 internal void           os_open_in_browser(String8 url);
 
+////////////////////////////////
+//~ rjf: @os_hooks IME
+
+internal void           os_set_ime_position(OS_Handle window, Vec2S32 position);
+
 #endif // OS_GFX_H

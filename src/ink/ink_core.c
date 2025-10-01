@@ -3284,6 +3284,8 @@ IK_BOX_UPDATE(text)
   // rendering
 
   TxtPt mouse_pt = {1, 1};
+  Rng2F32 mark_rect = {0};
+  Rng2F32 cursor_rect = {0};
   Vec2F32 text_bounds = {0};
   {
     F32 best_mouse_offset = inf32();
@@ -3315,8 +3317,8 @@ IK_BOX_UPDATE(text)
     }
 
     // unpack mark & cursor
-    Rng2F32 mark_rect = {x, y, x, box_rect.y1};
-    Rng2F32 cursor_rect = {x, y, x, box_rect.y1};
+    mark_rect = (Rng2F32){x, y, x, box_rect.y1};
+    cursor_rect = (Rng2F32){x, y, x, box_rect.y1};
     TxtRng selection_rng = is_focus_active ? txt_rng(*cursor, *mark) : (TxtRng){0};
 
     U64 c_index = 0;
@@ -3448,6 +3450,16 @@ IK_BOX_UPDATE(text)
       *mark = mouse_pt;
     }
     *cursor = mouse_pt;
+  }
+
+  // focus active? -> set ime position to mouse pt
+  if(is_focus_active)
+  {
+    Vec2F32 pos = {cursor_rect.x0, cursor_rect.y1};
+    pos = ik_screen_pos_from_world(pos);
+    pos.x = Clamp(0, pos.x, ik_state->window_dim.x);
+    pos.y = Clamp(0, pos.y, ik_state->window_dim.y);
+    os_set_ime_position(ik_state->os_wnd, v2s32(pos.x, pos.y));
   }
 
   // focus active and double clicked? -> select current word
@@ -6249,7 +6261,8 @@ ik_ui_notification(void)
                                                   .text = v4f32(0,0,0,1.0),
                                                   .background = ik_rgba_from_theme_color(IK_ThemeColor_Breakpoint)))
     UI_Flags(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow)
-      ui_label(msg->string);
+      ui_label(msg->string); // FIXME: text trunc not working
+      // ui_labelf("31290000000000000000000000000000000000000000000000");
 
     if(msg->next) ui_spacer(ui_em(0.5,0.0));
   }
