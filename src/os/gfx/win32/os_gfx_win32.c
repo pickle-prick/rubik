@@ -1727,11 +1727,21 @@ os_set_ime_position(OS_Handle handle, Vec2S32 position)
   HIMC hIMC = ImmGetContext(window->hwnd);
   if(hIMC)
   {
-    COMPOSITIONFORM cf;
-    cf.dwStyle = CFS_POINT; // Position by point (caret position)
+    // composition
+    COMPOSITIONFORM cf = {0};
+    cf.dwStyle = CFS_FORCE_POSITION;
     cf.ptCurrentPos.x = position.x;
     cf.ptCurrentPos.y = position.y;
     ImmSetCompositionWindow(hIMC, &cf);
+
+    // candidate list
+    CANDIDATEFORM cand = {0};
+    cand.dwIndex = 0;
+    cand.dwStyle = CFS_CANDIDATEPOS;
+    cand.ptCurrentPos.x = position.x;
+    cand.ptCurrentPos.y = position.y;
+    ImmSetCandidateWindow(hIMC, &cand);
+
     ImmReleaseContext(window->hwnd, hIMC);
   }
 }
