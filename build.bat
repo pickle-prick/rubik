@@ -126,6 +126,17 @@ if not "%no_meta%"=="1" (
   popd
 )
 
+:: --- Pack Fonts -------------------------------------------------------------
+if not "%no_meta%"=="1" (
+  set font_in_dir=%~dp0fonts
+  set font_out_dir=%~dp0local
+  for %%G in (!font_in_dir!\*.ttf) do (
+    set "name=%%~nG"
+    echo Packing %%G to !font_out_dir!\!name!.h
+    xxd -i -n "ttf_!name!" "%%G" > "!font_out_dir!\font_!name!.h"
+  )
+)
+
 :: --- Build Everything (@build_targets) --------------------------------------
 pushd build
 if "%rubik%"=="1"  set didbuild=1 && %compile% ..\src\rubik\rubik_main.c  %compile_link% %link_icon% %out%rubik.exe || exit /b 1

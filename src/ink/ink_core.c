@@ -584,11 +584,11 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
   ik_state->setting_vals[IK_SettingCode_CodeFontSize].s32 = ClampBot(ik_state->setting_vals[IK_SettingCode_CodeFontSize].s32, ik_setting_code_default_val_table[IK_SettingCode_CodeFontSize].s32);
 
   // Fonts
-  String8 font_mplus = str8(__Mplus1Code_Medium_ttf, __Mplus1Code_Medium_ttf_len);
-  String8 font_icons = str8(icons_ttf, icons_ttf_len);
-  String8 font_icons_extra = str8(__icons_extra_ttf, __icons_extra_ttf_len);
-  String8 font_virgil = str8(__virgil_ttf, __virgil_ttf_len);
-  String8 font_xiaolai = str8(XiaolaiMono_Regular_ttf, XiaolaiMono_Regular_ttf_len);
+  String8 font_mplus = str8(ttf_Mplus1Code_Medium, ttf_Mplus1Code_Medium_len);
+  String8 font_icons = str8(ttf_icons, ttf_icons_len);
+  String8 font_icons_extra = str8(ttf_icons_extra, ttf_icons_extra_len);
+  String8 font_virgil = str8(ttf_Virgil, ttf_Virgil_len);
+  String8 font_xiaolai = str8(ttf_XiaolaiMono_Regular, ttf_XiaolaiMono_Regular_len);
   ik_state->cfg_font_tags[IK_FontSlot_Main] = fnt_tag_from_static_data_string(&font_mplus);
   ik_state->cfg_font_tags[IK_FontSlot_Code] = fnt_tag_from_static_data_string(&font_mplus);
   ik_state->cfg_font_tags[IK_FontSlot_Icons] = fnt_tag_from_static_data_string(&font_icons);

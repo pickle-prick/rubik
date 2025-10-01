@@ -32,9 +32,9 @@
 #include "ink_core.h"
 // fonts
 #include "font_icons.h"
-#include "font_mplus1code_medium.h"
 #include "font_icons_extra.h"
-#include "font_virgil.h"
+#include "font_Mplus1Code-Medium.h"
+#include "font_Virgil.h"
 #include "font_XiaolaiMono-Regular.h"
 
 // [c]

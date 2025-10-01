@@ -2,6 +2,7 @@ build/
 bundle/
 .cache/
 debug/
+local/
 rd.cap
 .gdb_history
 .gdbinit

@@ -61,6 +61,23 @@ then
   cd ..
 fi
 
+# --- Pack Fonts ---------------------------------------------------------------
+if [ ! -v no_meta ]
+then
+  font_in_dir ="./fonts"
+  font_out_dir ="./local"
+  for font in "${font_in_dir}"/*.{ttf}; do
+    if [[ -f "$font" ]]; then
+      path=$(basename -- "$font")
+      extension="${path##*.}"
+      name="${path%.*}"
+      out = "${font_out_dir}/${name}.h"
+      echo "Packing ${path} -> ${out}"
+      xxd -i -n "ttf_${name}" > ${out}
+    fi
+  done
+fi
+
 # --- Compile Shaders ---------------------------------------------------------
 if [ -v no_shader ]; then echo "[skipping shader]"; fi
 if [ ! -v no_shader ]; then
