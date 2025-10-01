@@ -1190,14 +1190,17 @@ ik_frame(void)
 
     if(ik_state->window_res_changed)
     {
-      Vec2F32 camera_dim = dim_2f32(camera->target_rect);
-      F32 area = camera_dim.x*camera_dim.y;
-      F32 ratio = ik_state->window_dim.x/ik_state->window_dim.y;
-      F32 y = sqrt_f32(area/ratio);
-      F32 x = ratio*y;
-      camera->target_rect.y1 = camera->target_rect.y0 + y;
-      camera->target_rect.x1 = camera->target_rect.x0 + x;
-    }
+      if(ik_state->window_dim.x != 0 && ik_state->window_dim.y != 0)
+      {
+        Vec2F32 camera_dim = dim_2f32(camera->target_rect);
+        F32 area = camera_dim.x*camera_dim.y;
+        F32 ratio = ik_state->window_dim.x/ik_state->window_dim.y;
+        F32 y = sqrt_f32(area/ratio);
+        F32 x = ratio*y;
+        camera->target_rect.y1 = camera->target_rect.y0 + y;
+        camera->target_rect.x1 = camera->target_rect.x0 + x;
+      }
+     }
 
     ////////////////////////////////
     //- events related to camera
