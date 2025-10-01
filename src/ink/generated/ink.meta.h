@@ -226,7 +226,7 @@ IK_TextAlignmentNode text_alignment_nil_stack_top;\
 #define IK_InitStackNils(state) \
 state->frame_nil_stack_top.v = 0;\
 state->font_nil_stack_top.v = fnt_tag_zero();\
-state->font_slot_nil_stack_top.v = IK_FontSlot_HandWrite;\
+state->font_slot_nil_stack_top.v = IK_FontSlot_Main;\
 state->font_size_nil_stack_top.v = 24.f;\
 state->text_raster_flags_nil_stack_top.v = FNT_RasterFlag_Hinted;\
 state->tab_size_nil_stack_top.v = 24.f*4.f;\
@@ -262,7 +262,7 @@ struct { IK_TextAlignmentNode *top; IK_TextAlign bottom_val; IK_TextAlignmentNod
 #define IK_InitStacks(state) \
 state->frame_stack.top = &state->frame_nil_stack_top; state->frame_stack.bottom_val = 0; state->frame_stack.free = 0; state->frame_stack.auto_pop = 0;\
 state->font_stack.top = &state->font_nil_stack_top; state->font_stack.bottom_val = fnt_tag_zero(); state->font_stack.free = 0; state->font_stack.auto_pop = 0;\
-state->font_slot_stack.top = &state->font_slot_nil_stack_top; state->font_slot_stack.bottom_val = IK_FontSlot_HandWrite; state->font_slot_stack.free = 0; state->font_slot_stack.auto_pop = 0;\
+state->font_slot_stack.top = &state->font_slot_nil_stack_top; state->font_slot_stack.bottom_val = IK_FontSlot_Main; state->font_slot_stack.free = 0; state->font_slot_stack.auto_pop = 0;\
 state->font_size_stack.top = &state->font_size_nil_stack_top; state->font_size_stack.bottom_val = 24.f; state->font_size_stack.free = 0; state->font_size_stack.auto_pop = 0;\
 state->text_raster_flags_stack.top = &state->text_raster_flags_nil_stack_top; state->text_raster_flags_stack.bottom_val = FNT_RasterFlag_Hinted; state->text_raster_flags_stack.free = 0; state->text_raster_flags_stack.auto_pop = 0;\
 state->tab_size_stack.top = &state->tab_size_nil_stack_top; state->tab_size_stack.bottom_val = 24.f*4.f; state->tab_size_stack.free = 0; state->tab_size_stack.auto_pop = 0;\

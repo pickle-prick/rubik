@@ -588,11 +588,13 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
   String8 font_icons = str8(icons_ttf, icons_ttf_len);
   String8 font_icons_extra = str8(__icons_extra_ttf, __icons_extra_ttf_len);
   String8 font_virgil = str8(__virgil_ttf, __virgil_ttf_len);
+  String8 font_xiaolai = str8(XiaolaiMono_Regular_ttf, XiaolaiMono_Regular_ttf_len);
   ik_state->cfg_font_tags[IK_FontSlot_Main] = fnt_tag_from_static_data_string(&font_mplus);
   ik_state->cfg_font_tags[IK_FontSlot_Code] = fnt_tag_from_static_data_string(&font_mplus);
   ik_state->cfg_font_tags[IK_FontSlot_Icons] = fnt_tag_from_static_data_string(&font_icons);
   ik_state->cfg_font_tags[IK_FontSlot_IconsExtra] = fnt_tag_from_static_data_string(&font_icons_extra);
-  ik_state->cfg_font_tags[IK_FontSlot_HandWrite] = fnt_tag_from_static_data_string(&font_virgil);
+  ik_state->cfg_font_tags[IK_FontSlot_HandWrite1] = fnt_tag_from_static_data_string(&font_virgil);
+  ik_state->cfg_font_tags[IK_FontSlot_HandWrite2] = fnt_tag_from_static_data_string(&font_xiaolai);
 
   // Theme 
   MemoryCopy(ik_state->cfg_theme_target.colors, ik_theme_preset_colors__handmade_hero, sizeof(ik_theme_preset_colors__handmade_hero));
@@ -2891,7 +2893,7 @@ ik_cfg_default()
   cfg.stroke_size = ik_bottom_stroke_size();
   cfg.stroke_color = ik_bottom_stroke_color();
   cfg.background_color = ik_bottom_background_color();
-  cfg.text_font_slot = IK_FontSlot_HandWrite;
+  cfg.text_font_slot = IK_FontSlot_HandWrite2;
   return cfg;
 }
 
@@ -5775,8 +5777,8 @@ ik_ui_inspector(void)
             UI_PrefWidth(ui_children_sum(1.0))
             UI_Row
             {
-              IK_FontSlot slots[3] = {IK_FontSlot_Main, IK_FontSlot_Code, IK_FontSlot_HandWrite};
-              char *displays[3] = {"normal", "code", "hand"};
+              IK_FontSlot slots[] = {IK_FontSlot_Code, IK_FontSlot_HandWrite1, IK_FontSlot_HandWrite2};
+              char *displays[3] = {"code", "hand1", "hand2"};
 
               UI_PrefWidth(ui_text_dim(1, 1.0))
               for(U64 i = 0; i < ArrayCount(slots); i++)
@@ -6652,6 +6654,13 @@ ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, T
     {
       // TODO(k): this should account for multi-byte characters in UTF-8... for now, just assume ASCII now
       // no-op
+      char *first = (char*)string.str;
+      char *opl = (char*)(string.str+string.size);
+      char *curr = (char*)(string.str+cursor.column)-1;
+      char *c = curr;
+      S32 x_abs = abs(event->delta_2s32.x);
+      c = event->delta_2s32.x > 0 ? utf8_step_forward(c, opl, x_abs) : utf8_step_backward(c, first, x_abs);
+      delta.x = c - curr;
     }break;
     case UI_EventDeltaUnit_Word:
     {
@@ -6695,9 +6704,13 @@ ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, T
       char *curr = (char*)(string.str+cursor.column)-1;
       char *c = curr;
 
-      // skip to current line's head
-      for(; c > first && *(c-1) != '\n'; c--);
-      U64 curr_line_column = curr-c;
+      // skip to current line's head, find out current line's codepoint idx
+      U64 line_codepoint_idx = 0;
+      for(; c > first && *(c-1) != '\n';)
+      {
+        c = utf8_step_backward((U8*)c, first, 1);
+        line_codepoint_idx++;
+      }
 
       if(delta.y < 0)
       {
@@ -6707,8 +6720,9 @@ ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, T
         // jump to last line head
         for(; c > first && *(c-1) != '\n'; c--);
     
-        for(U64 i = 0; i < curr_line_column && c < opl; c++, i++)
+        for(U64 i = 0; i < line_codepoint_idx && c < opl; i++)
         {
+          c = utf8_step_forward((U8*)c, opl, 1);
           if(*c == '\n')
           {
             break;
@@ -6729,8 +6743,9 @@ ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, T
               break;
             }
           }
-          for(U64 i = 0; i < curr_line_column && c < opl; c++, i++)
+          for(U64 i = 0; i < line_codepoint_idx && c < opl; i++)
           {
+            c = utf8_step_forward((U8*)c, opl, 1);
             if(*c == '\n')
             {
               break;

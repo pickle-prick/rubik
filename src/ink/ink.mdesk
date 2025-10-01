@@ -8,7 +8,7 @@ IK_StackTable:
 
   //- k: font
   { Font                               font                          FNT_Tag               `fnt_tag_zero()`                   }
-  { FontSlot                           font_slot                     IK_FontSlot           IK_FontSlot_HandWrite              }
+  { FontSlot                           font_slot                     IK_FontSlot           IK_FontSlot_Main                   }
   { FontSize                           font_size                     F32                   24.f                               }
   { TextRasterFlags                    text_raster_flags             FNT_RasterFlags       FNT_RasterFlag_Hinted              }
   { TabSize                            tab_size                      F32                   `24.f*4.f`                         }

@@ -2250,7 +2250,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
   // It specifies the number of bytes between data entries and whether to move to the next data entry after each vertex or after each instance
   VkPipelineVertexInputStateCreateInfo vtx_input_state_create_info = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 
-  VkVertexInputBindingDescription vtx_binding_desc[2] = {};
+  VkVertexInputBindingDescription vtx_binding_desc[2] = {0};
 #define MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT 22
   VkVertexInputAttributeDescription vtx_attr_descs[MAX_VERTEX_ATTRIBUTE_DESCRIPTION_COUNT];
 
@@ -2770,8 +2770,8 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
                                                                     // The last three fields configure stencil buffer operations, which we also won't be using for now
                                                                     // If you want to use these operations, then you will have to make sure that the format of the depth/stencil image contains a stencil component
       depth_stencil_state_create_info.stencilTestEnable     = VK_FALSE;
-      depth_stencil_state_create_info.front                 = (VkStencilOpState){}; // Optional
-      depth_stencil_state_create_info.back                  = (VkStencilOpState){}; // Optional
+      depth_stencil_state_create_info.front                 = (VkStencilOpState){0}; // Optional
+      depth_stencil_state_create_info.back                  = (VkStencilOpState){0}; // Optional
     }break;
     case R_Vulkan_PipelineKind_GFX_Rect:
     // case R_Vulkan_PipelineKind_GFX_Blur:
@@ -2790,8 +2790,8 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       depth_stencil_state_create_info.minDepthBounds        = 0.0f; // Optional
       depth_stencil_state_create_info.maxDepthBounds        = 1.0f; // Optional
       depth_stencil_state_create_info.stencilTestEnable     = VK_FALSE;
-      depth_stencil_state_create_info.front                 = (VkStencilOpState){}; // Optional
-      depth_stencil_state_create_info.back                  = (VkStencilOpState){}; // Optional
+      depth_stencil_state_create_info.front                 = (VkStencilOpState){0}; // Optional
+      depth_stencil_state_create_info.back                  = (VkStencilOpState){0}; // Optional
     }break;
     default: {InvalidPath;}break;
   }

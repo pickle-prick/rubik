@@ -300,6 +300,8 @@ internal String8TxtPtPair str8_txt_pt_pair_from_string(String8 string);
 //~ rjf: UTF-8 & UTF-16 Decoding/Encoding
 
 internal UnicodeDecode utf8_decode(U8 *str, U64 max);
+internal U8 *utf8_step_forward(U8 *str, U8 *opl, U64 steps);
+internal U8 *utf8_step_backward(U8 *str, U8 *first, U64 steps);
 internal UnicodeDecode utf16_decode(U16 *str, U64 max);
 internal U32 utf8_encode(U8 *str, U32 codepoint);
 internal U32 utf16_encode(U16 *str, U32 codepoint);

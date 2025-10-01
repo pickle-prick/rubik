@@ -1347,6 +1347,30 @@ utf8_decode(U8 *str, U64 max){
   return(result);
 }
 
+internal U8 *
+utf8_step_forward(U8 *str, U8 *opl, U64 steps)
+{
+  U8 *c = str;
+  for(U64 i = 0; i < steps; i++)
+  {
+    do { c++; }
+    while((*c & 0xC0) == 0x80 && c < opl);
+  }
+  return c;
+}
+
+internal U8 *
+utf8_step_backward(U8 *str, U8 *first, U64 steps)
+{
+  U8 *c = str;
+  for(U64 i = 0; i < steps; i++)
+  {
+    do { c--; }
+    while((*c & 0xC0) == 0x80 && c > first);
+  }
+  return c;
+}
+
 internal UnicodeDecode
 utf16_decode(U16 *str, U64 max){
   UnicodeDecode result = {1, max_U32};

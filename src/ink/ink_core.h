@@ -150,7 +150,8 @@ typedef enum IK_FontSlot
   IK_FontSlot_Code,
   IK_FontSlot_Icons,
   IK_FontSlot_IconsExtra,
-  IK_FontSlot_HandWrite,
+  IK_FontSlot_HandWrite1,
+  IK_FontSlot_HandWrite2,
   IK_FontSlot_COUNT
 } IK_FontSlot;
 

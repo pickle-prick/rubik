@@ -1300,7 +1300,7 @@ ui_f32_edit(F32 *n, F32 min, F32 max, TxtPt *cursor, TxtPt *mark, U8 *edit_buffe
   {
     // TODO(k): draw pct indicator
     F32 cursor_thickness = ClampBot(4.f, ui_top_font_size()*0.5f);
-    Rng2F32 cursor_rect = {};
+    Rng2F32 cursor_rect = {0};
   }
 
   // Interact

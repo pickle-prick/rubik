@@ -35,6 +35,7 @@
 #include "font_mplus1code_medium.h"
 #include "font_icons_extra.h"
 #include "font_virgil.h"
+#include "font_XiaolaiMono-Regular.h"
 
 // [c]
 #include "base/base_inc.c"
