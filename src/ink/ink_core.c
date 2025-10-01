@@ -1214,7 +1214,8 @@ ik_frame(void)
         rect = shift_2f32(rect, shift);
 
         F32 zoom_step = mix_1f32(camera->min_zoom_step, camera->max_zoom_step, camera->zoom_t);
-        F32 scale = 1 + delta*zoom_step;
+        F32 scale_unit = 1.f+zoom_step;
+        F32 scale = pow_f32(scale_unit, delta);
         rect.x0 *= scale;
         rect.x1 *= scale;
         rect.y0 *= scale;
