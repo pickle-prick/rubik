@@ -1235,3 +1235,12 @@ os_open_in_browser(String8 url)
 {
   // TODO(rjf)
 }
+
+////////////////////////////////
+//~ rjf: @os_hooks IME
+
+internal void
+os_set_ime_position(OS_Handle window, Vec2S32 position)
+{
+  // TODO(k)
+}

@@ -584,6 +584,14 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
   ik_state->setting_vals[IK_SettingCode_CodeFontSize].s32 = ClampBot(ik_state->setting_vals[IK_SettingCode_CodeFontSize].s32, ik_setting_code_default_val_table[IK_SettingCode_CodeFontSize].s32);
 
   // Fonts
+#if BUILD_DEBUG
+  ik_state->cfg_font_tags[IK_FontSlot_Main] = fnt_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
+  ik_state->cfg_font_tags[IK_FontSlot_Code] = fnt_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
+  ik_state->cfg_font_tags[IK_FontSlot_Icons] = fnt_tag_from_path(str8_lit("./fonts/icons.ttf"));
+  ik_state->cfg_font_tags[IK_FontSlot_IconsExtra] = fnt_tag_from_path(str8_lit("./fonts/icons_extra.ttf"));
+  ik_state->cfg_font_tags[IK_FontSlot_HandWrite1] = fnt_tag_from_path(str8_lit("./fonts/Virgil.ttf"));
+  ik_state->cfg_font_tags[IK_FontSlot_HandWrite2] = fnt_tag_from_path(str8_lit("./fonts/XiaolaiMono-Regular.ttf"));
+#else
   String8 font_mplus = str8(ttf_Mplus1Code_Medium, ttf_Mplus1Code_Medium_len);
   String8 font_icons = str8(ttf_icons, ttf_icons_len);
   String8 font_icons_extra = str8(ttf_icons_extra, ttf_icons_extra_len);
@@ -595,6 +603,7 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
   ik_state->cfg_font_tags[IK_FontSlot_IconsExtra] = fnt_tag_from_static_data_string(&font_icons_extra);
   ik_state->cfg_font_tags[IK_FontSlot_HandWrite1] = fnt_tag_from_static_data_string(&font_virgil);
   ik_state->cfg_font_tags[IK_FontSlot_HandWrite2] = fnt_tag_from_static_data_string(&font_xiaolai);
+#endif
 
   // Theme 
   MemoryCopy(ik_state->cfg_theme_target.colors, ik_theme_preset_colors__handmade_hero, sizeof(ik_theme_preset_colors__handmade_hero));
@@ -6670,20 +6679,20 @@ ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, T
     {
       // TODO(k): this should account for multi-byte characters in UTF-8... for now, just assume ASCII now
       // no-op
-      char *first = (char*)string.str;
-      char *opl = (char*)(string.str+string.size);
-      char *curr = (char*)(string.str+cursor.column)-1;
-      char *c = curr;
+      U8 *first = string.str;
+      U8 *opl = (string.str+string.size);
+      U8 *curr = (string.str+cursor.column)-1;
+      U8 *c = curr;
       S32 x_abs = abs(event->delta_2s32.x);
       c = event->delta_2s32.x > 0 ? utf8_step_forward(c, opl, x_abs) : utf8_step_backward(c, first, x_abs);
       delta.x = c - curr;
     }break;
     case UI_EventDeltaUnit_Word:
     {
-      char *first = (char*)string.str;
-      char *opl = (char*)(string.str+string.size);
-      char *curr = (char*)(string.str+cursor.column)-1;
-      char *c = curr;
+      U8 *first = string.str;
+      U8 *opl = (string.str+string.size);
+      U8 *curr = (string.str+cursor.column)-1;
+      U8 *c = curr;
 
       if(delta.x > 0)
       {
@@ -6715,10 +6724,10 @@ ik_multi_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, T
     }break;
     case UI_EventDeltaUnit_Line:
     {
-      char *first = (char*)string.str;
-      char *opl = (char*)(string.str+string.size);
-      char *curr = (char*)(string.str+cursor.column)-1;
-      char *c = curr;
+      U8 *first = string.str;
+      U8 *opl = (string.str+string.size);
+      U8 *curr = (string.str+cursor.column)-1;
+      U8 *c = curr;
 
       // skip to current line's head, find out current line's codepoint idx
       U64 line_codepoint_idx = 0;

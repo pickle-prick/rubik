@@ -108,7 +108,7 @@ fnt_fp_metrics_from_tag(FNT_Tag tag)
 }
 
 internal FNT_Tag
-f_tag_from_path(String8 path)
+fnt_tag_from_path(String8 path)
 {
   ProfBeginFunction();
 

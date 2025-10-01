@@ -31,11 +31,13 @@
 #include "serialize/serialize_inc.h"
 #include "ink_core.h"
 // fonts
+#if !BUILD_DEBUG
 #include "font_icons.h"
 #include "font_icons_extra.h"
 #include "font_Mplus1Code-Medium.h"
 #include "font_Virgil.h"
 #include "font_XiaolaiMono-Regular.h"
+#endif
 
 // [c]
 #include "base/base_inc.c"
