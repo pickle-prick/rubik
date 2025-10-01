@@ -31,13 +31,13 @@
 Within this terminal, `cd` to the root directory of the codebase, and just run the `build.sh` script:
 
 ```
-./build.sh rubik clang
+./build.sh rubik clang release
 ```
 
 or (for ink whiteboard app)
 
 ```
-./build.sh ink clang
+./build.sh ink clang release
 ```
 
 ### Windows Setup
@@ -46,7 +46,7 @@ or (for ink whiteboard app)
 
 In order to work with the codebase, you'll need the [Microsoft C/C++ Build Tools
 v15 (2017) or later](https://aka.ms/vs/17/release/vs_BuildTools.exe), for both
-the Windows SDK and the MSVC/Clang compiler and linker. (**Note**: Currently only clang can be used)
+the Windows SDK and the MSVC/Clang compiler and linker.
 
 Install [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/) for windows
 
@@ -67,13 +67,13 @@ Within this terminal, `cd` to the root directory of the codebase, and just run
 the `build.bat` script:
 
 ```
-build rubik clang
+build rubik msvc release
 ```
 
 or (for ink whiteboard app)
 
 ```
-build ink clang
+build ink msvc release
 ```
 
 If everything worked correctly, there will be a `build` folder in the root

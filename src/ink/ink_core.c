@@ -253,7 +253,7 @@ ik_ui_draw()
 
       if(!(box->flags & UI_BoxFlag_DisableTextTrunc))
       {
-        max_x = (box->rect.x1-box->text_padding);
+        max_x = (box->rect.x1-text_position.x);
         ellipses_run = fnt_run_from_string(box->font, box->font_size, 0, box->tab_size, 0, str8_lit("..."));
       }
 
@@ -3208,6 +3208,7 @@ IK_BOX_UPDATE(text)
         }
 
         U64 cutoff = 0;
+        U64 cutoff_size = 0;
         Vec2F32 run_dim_px = {fruns.dim.x*font_size_scale, fruns.dim.y*font_size_scale};
         // text_wrapping
         if((box->flags&IK_BoxFlag_WrapText) && run_dim_px.x > max_x)
@@ -3221,6 +3222,7 @@ IK_BOX_UPDATE(text)
               piece--)
           {
             cutoff++;
+            cutoff_size += piece->decode_size;
             cutoff_x += piece->advance;
             run_dim_px.x -= piece->advance*font_size_scale;
           }
@@ -3247,8 +3249,8 @@ IK_BOX_UPDATE(text)
         }
 
         // skip to cutoff
-        string.str += (string.size-cutoff);
-        string.size = cutoff;
+        string.str += (string.size-cutoff_size);
+        string.size = cutoff_size;
 
         darray_push(ik_frame_arena(), line_fruns, fruns);
         total_text_dim.x = Max(total_text_dim.x, fruns.dim.x);
@@ -5751,7 +5753,7 @@ ik_ui_inspector(void)
         ////////////////////////////////
         //~ Text 
 
-        if(b->flags & IK_BoxFlag_HasDisplayString)
+        if(b->flags & IK_BoxFlag_DrawText)
         {
           UI_WidthFill
           ui_divider(ui_em(0.5, 0.0));
