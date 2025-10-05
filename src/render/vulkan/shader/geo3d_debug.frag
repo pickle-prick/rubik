@@ -12,7 +12,7 @@ layout(location = 9) in flat mat4  view;
 // Output
 layout(location = 0) out vec4  out_color;
 layout(location = 1) out vec4  out_normal_depth;
-layout(location = 2) out uvec2 out_id;
+layout(location = 2) out vec4 out_id;
 
 #define red      vec3(1.,0.271,0.271)
 #define green    vec3(0.,0.416,0.404)
@@ -105,7 +105,7 @@ void main()
         discard;
     }
 
-    out_id = uvec2(0,0);
+    out_id = vec4(0,0,0,0);
     out_normal_depth = vec4(0,0,0,1);
     out_color = colr;
     gl_FragDepth = depth_ndc;

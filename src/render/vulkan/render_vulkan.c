@@ -1095,7 +1095,7 @@ r_vulkan_render_targets_alloc(OS_Handle os_wnd, R_Vulkan_Surface *surface, R_Vul
 
   // stage_id color image
   {
-    stage_id_image->format        = VK_FORMAT_R32G32_UINT; // Key is U64
+    stage_id_image->format        = VK_FORMAT_R32G32B32A32_SFLOAT;
     stage_id_image->extent.width  = swapchain->extent.width;
     stage_id_image->extent.height = swapchain->extent.height;
 
@@ -1112,7 +1112,7 @@ r_vulkan_render_targets_alloc(OS_Handle os_wnd, R_Vulkan_Surface *surface, R_Vul
     create_info.usage             = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     create_info.sharingMode       = VK_SHARING_MODE_EXCLUSIVE;
     create_info.samples           = VK_SAMPLE_COUNT_1_BIT;
-    create_info.flags             = 0; // Optional
+    create_info.flags             = 0;
 
     VK_Assert(vkCreateImage(r_vulkan_state->logical_device.h, &create_info, NULL, &stage_id_image->h));
 
@@ -1144,7 +1144,7 @@ r_vulkan_render_targets_alloc(OS_Handle os_wnd, R_Vulkan_Surface *surface, R_Vul
   // stage_id_cpu
   {
     // VkDeviceSize size = geo3d_id_image->extent.width * geo3d_id_image->extent.height * sizeof(U64);
-    VkDeviceSize size = 1*1*sizeof(U64);
+    VkDeviceSize size = 1*1*sizeof(Vec4F32);
     VkBufferCreateInfo create_info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     create_info.size = size;
     create_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -2357,7 +2357,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       // key
       vtx_attr_descs[15].binding  = 1;
       vtx_attr_descs[15].location = 15;
-      vtx_attr_descs[15].format   = VK_FORMAT_R32G32_UINT;
+      vtx_attr_descs[15].format   = VK_FORMAT_R32G32_SFLOAT;
       vtx_attr_descs[15].offset   = offsetof(R_Mesh2DInst, key);
 
       // has_texture
@@ -2507,7 +2507,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       // key
       vtx_attr_descs[15].binding  = 1;
       vtx_attr_descs[15].location = 15;
-      vtx_attr_descs[15].format   = VK_FORMAT_R32G32_UINT;
+      vtx_attr_descs[15].format   = VK_FORMAT_R32G32_SFLOAT;
       vtx_attr_descs[15].offset   = offsetof(R_Mesh3DInst, key);
 
       // material_idx
@@ -2549,7 +2549,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
     case(R_Vulkan_PipelineKind_GFX_Rect):
     {
       vtx_binding_desc_count = 1;
-      vtx_attr_desc_cnt = 9;
+      vtx_attr_desc_cnt = 10;
 
       vtx_binding_desc[0].binding   = 0;
       vtx_binding_desc[0].stride    = sizeof(R_Rect2DInst);
@@ -2591,23 +2591,29 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       vtx_attr_descs[5].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
       vtx_attr_descs[5].offset   = offsetof(R_Rect2DInst, colors[3]);
 
-      // crad
+      // corner_radii
       vtx_attr_descs[6].binding  = 0;
       vtx_attr_descs[6].location = 6;
       vtx_attr_descs[6].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
       vtx_attr_descs[6].offset   = offsetof(R_Rect2DInst, corner_radii);
 
-      // sty
+      // sty_1
       vtx_attr_descs[7].binding  = 0;
       vtx_attr_descs[7].location = 7;
       vtx_attr_descs[7].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
       vtx_attr_descs[7].offset   = offsetof(R_Rect2DInst, border_thickness);
 
-      // sty
+      // sty_2
       vtx_attr_descs[8].binding  = 0;
       vtx_attr_descs[8].location = 8;
       vtx_attr_descs[8].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
-      vtx_attr_descs[8].offset   = offsetof(R_Rect2DInst, line);
+      vtx_attr_descs[8].offset   = offsetof(R_Rect2DInst, omit_texture);
+
+      // line
+      vtx_attr_descs[9].binding  = 0;
+      vtx_attr_descs[9].location = 9;
+      vtx_attr_descs[9].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
+      vtx_attr_descs[9].offset   = offsetof(R_Rect2DInst, line);
     }break;
     // case R_Vulkan_PipelineKind_GFX_Blur:
     case R_Vulkan_PipelineKind_GFX_Noise:
@@ -2843,7 +2849,9 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
   // colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
   // colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
   // NOTE(k): mesh pass have two color attachment
-  VkPipelineColorBlendAttachmentState color_blend_attachment_state[3] = {
+  VkPipelineColorBlendAttachmentState color_blend_attachment_state[3] =
+  {
+    // main color attachment
     {
       .colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
       .blendEnable         = VK_TRUE,
@@ -2860,8 +2868,8 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
       .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
       .colorBlendOp        = VK_BLEND_OP_ADD,
-      .srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
-      .dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+      .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+      .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
       .alphaBlendOp        = VK_BLEND_OP_ADD,
     },
     {
@@ -2879,6 +2887,9 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
   {
     default:{InvalidPath;}break;
     case R_Vulkan_PipelineKind_GFX_Rect:
+    {
+      color_blend_attachment_state[1].blendEnable = VK_TRUE;
+    }break;
     case R_Vulkan_PipelineKind_GFX_Geo2D_Forward:
     case R_Vulkan_PipelineKind_GFX_Geo3D_Debug:
     case R_Vulkan_PipelineKind_GFX_Geo3D_Forward:
@@ -2937,7 +2948,7 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
     }break;
     case R_Vulkan_PipelineKind_GFX_Rect:
     {
-      color_blend_state_create_info.attachmentCount = 1;
+      color_blend_state_create_info.attachmentCount = 2;
     }break;
     // case R_Vulkan_PipelineKind_GFX_Blur:
     case R_Vulkan_PipelineKind_GFX_Noise:
@@ -3097,41 +3108,41 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
     {
       case R_Vulkan_PipelineKind_GFX_Rect:
       {
-        color_attachment_count = 1;
-        color_attachment_formats = push_array(scratch.arena, VkFormat, 1);
+        color_attachment_count = 2;
+        color_attachment_formats = push_array(scratch.arena, VkFormat, color_attachment_count);
         color_attachment_formats[0] = swapchain_format;
-        // color_attachment_formats[1] = VK_FORMAT_R32G32_UINT;
+        color_attachment_formats[1] = VK_FORMAT_R32G32B32A32_SFLOAT;
       }break;
       case R_Vulkan_PipelineKind_GFX_Noise:
       {
         color_attachment_count = 1;
-        color_attachment_formats = push_array(scratch.arena, VkFormat, 1);
+        color_attachment_formats = push_array(scratch.arena, VkFormat, color_attachment_count);
         color_attachment_formats[0] = swapchain_format;
       }break;
       case R_Vulkan_PipelineKind_GFX_Edge:
       {
         color_attachment_count = 1;
-        color_attachment_formats = push_array(scratch.arena, VkFormat, 1);
+        color_attachment_formats = push_array(scratch.arena, VkFormat, color_attachment_count);
         color_attachment_formats[0] = swapchain_format;
       }break;
       case R_Vulkan_PipelineKind_GFX_Crt:
       {
         color_attachment_count = 1;
-        color_attachment_formats = push_array(scratch.arena, VkFormat, 1);
+        color_attachment_formats = push_array(scratch.arena, VkFormat, color_attachment_count);
         color_attachment_formats[0] = swapchain_format;
       }break;
       case R_Vulkan_PipelineKind_GFX_Geo2D_Forward:
       {
         color_attachment_count = 3;
-        color_attachment_formats = push_array(scratch.arena, VkFormat, 3);
+        color_attachment_formats = push_array(scratch.arena, VkFormat, color_attachment_count);
         color_attachment_formats[0] = swapchain_format;
-        color_attachment_formats[1] = VK_FORMAT_R32G32_UINT;
+        color_attachment_formats[1] = VK_FORMAT_R32G32B32A32_SFLOAT;
         color_attachment_formats[2] = VK_FORMAT_R32G32B32A32_SFLOAT;
       }break;
       case R_Vulkan_PipelineKind_GFX_Geo2D_Composite:
       {
         color_attachment_count = 1;
-        color_attachment_formats = push_array(scratch.arena, VkFormat, 1);
+        color_attachment_formats = push_array(scratch.arena, VkFormat, color_attachment_count);
         color_attachment_formats[0] = swapchain_format;
       }break;
       case R_Vulkan_PipelineKind_GFX_Geo3D_ZPre:
@@ -3143,23 +3154,23 @@ r_vulkan_gfx_pipeline(R_Vulkan_PipelineKind kind, R_GeoTopologyKind topology, R_
       case R_Vulkan_PipelineKind_GFX_Geo3D_Forward:
       {
         color_attachment_count = 3;
-        color_attachment_formats = push_array(scratch.arena, VkFormat, 3);
+        color_attachment_formats = push_array(scratch.arena, VkFormat, color_attachment_count);
         color_attachment_formats[0] = swapchain_format;
         color_attachment_formats[1] = VK_FORMAT_R32G32B32A32_SFLOAT;
-        color_attachment_formats[2] = VK_FORMAT_R32G32_UINT;
+        color_attachment_formats[2] = VK_FORMAT_R32G32B32A32_SFLOAT;
         
         depth_attachment_format = r_vulkan_pdevice()->depth_image_format;
       }break;
       case R_Vulkan_PipelineKind_GFX_Geo3D_Composite:
       {
         color_attachment_count = 1;
-        color_attachment_formats = push_array(scratch.arena, VkFormat, 1);
+        color_attachment_formats = push_array(scratch.arena, VkFormat, color_attachment_count);
         color_attachment_formats[0] = swapchain_format;
       }break;
       case R_Vulkan_PipelineKind_GFX_Finalize:
       {
         color_attachment_count = 1;
-        color_attachment_formats = push_array(scratch.arena, VkFormat, 1);
+        color_attachment_formats = push_array(scratch.arena, VkFormat, color_attachment_count);
         color_attachment_formats[0] = swapchain_format;
       }break;
       default:{InvalidPath;}break;
@@ -5354,8 +5365,8 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
     Assert(targets->rc >= 0);
   }
 
-  ///////////////////////////////////////////////////////////////////////////////////////
-  // destroy deprecated render targets
+  ////////////////////////////////
+  //~ Destroy deprecated render targets
 
   for(R_Vulkan_RenderTargets *t = r_vulkan_state->first_to_free_render_targets; t != 0;)
   {
@@ -5373,16 +5384,16 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
     t = next;
   }
 
-  // Reset frame fence
+  // reset frame fence & command buffer
   VK_Assert(vkResetFences(device->h, 1, &frame->inflt_fence));
-  // Reset command buffers
   VK_Assert(vkResetCommandBuffer(frame->cmd_buf, 0));
 
-  // Start command recrod
+  // start command recrod
   r_vulkan_cmd_begin(frame->cmd_buf);
 
-  // NOTE(k): clear buffer in the beginning of frame
-  // clear framebuffers
+  ////////////////////////////////
+  //~ Clear framebuffers (stage color & stage id)
+
   // NOTE(k): we can't clear swapchain image using this, since swap image don't guarantee to have usage of VK_IMAGE_USAGE_TRANSFER_DST
   // https://github.com/GameTechDev/IntroductionToVulkan/issues/4
   VkImage stage_color_image = wnd->render_targets->stage_color_image.h;
@@ -5426,7 +5437,7 @@ r_window_begin_frame(OS_Handle os_wnd, R_Handle window_equip)
   ProfEnd();
 }
 
-r_hook U64
+r_hook Vec2F32
 r_window_end_frame(OS_Handle window, R_Handle window_equip, Vec2F32 mouse_ptr)
 {
   ProfBeginFunction();
@@ -5441,7 +5452,7 @@ r_window_end_frame(OS_Handle window, R_Handle window_equip, Vec2F32 mouse_ptr)
   // get point entity id
   void *ids = wnd->render_targets->stage_id_cpu.mapped;
   // U64 id = ((U64 *)ids)[(U64)(ptr.y*w+ptr.x)];
-  U64 id = ((U64 *)ids)[0];
+  Vec4F32 id = ((Vec4F32 *)ids)[0];
 
   // increase render_targets ref counter
   frame->render_targets_ref = wnd->render_targets;
@@ -5608,7 +5619,7 @@ r_window_end_frame(OS_Handle window, R_Handle window_equip, Vec2F32 mouse_ptr)
   wnd->curr_frame_idx = (wnd->curr_frame_idx + 1) % R_VULKAN_MAX_FRAMES_IN_FLIGHT;
   r_vulkan_pop_cmd();
   ProfEnd();
-  return id;
+  return v2f32(id.x, id.y);
 }
 
 //- rjf: render pass submission
@@ -5660,7 +5671,7 @@ r_window_submit(OS_Handle window, R_Handle window_equip, R_PassList *passes)
       {
         ProfBegin("ui_pass");
         Assert(ui_pass_index < R_MAX_RECT_PASS);
-        VkRenderingAttachmentInfo color_attachment_infos[1] = {0};
+        VkRenderingAttachmentInfo color_attachment_infos[2] = {0};
 
         color_attachment_infos[0].sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         color_attachment_infos[0].imageView   = render_targets->stage_color_image.view;
@@ -5668,11 +5679,11 @@ r_window_submit(OS_Handle window, R_Handle window_equip, R_PassList *passes)
         color_attachment_infos[0].loadOp      = VK_ATTACHMENT_LOAD_OP_LOAD;
         color_attachment_infos[0].storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
 
-        // color_attachment_infos[1].sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        // color_attachment_infos[1].imageView   = render_targets->stage_id_image.view;
-        // color_attachment_infos[1].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-        // color_attachment_infos[1].loadOp      = VK_ATTACHMENT_LOAD_OP_LOAD;
-        // color_attachment_infos[1].storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
+        color_attachment_infos[1].sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        color_attachment_infos[1].imageView   = render_targets->stage_id_image.view;
+        color_attachment_infos[1].imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        color_attachment_infos[1].loadOp      = VK_ATTACHMENT_LOAD_OP_LOAD;
+        color_attachment_infos[1].storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
 
         VkRenderingInfo render_info = { VK_STRUCTURE_TYPE_RENDERING_INFO };
         // The render area defiens where shader loads and stores will take place

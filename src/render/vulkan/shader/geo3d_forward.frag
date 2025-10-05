@@ -5,7 +5,7 @@
 
 layout(location = 0)       in vec2  texcoord;
 layout(location = 1)       in vec4  color;
-layout(location = 2)  flat in uvec2 id;
+layout(location = 2)  flat in vec2  id;
 layout(location = 3)  flat in float omit_light;
 layout(location = 4)       in vec3  nor_world;
 layout(location = 5)       in vec3  nor_view;
@@ -18,7 +18,7 @@ layout(location = 14) flat in uint  mat_idx;
 
 layout(location = 0) out vec4  out_color;
 layout(location = 1) out vec4  out_normal_depth;
-layout(location = 2) out uvec2 out_id;
+layout(location = 2) out vec4  out_id;
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // basic types
@@ -218,7 +218,7 @@ void main()
 
   // Assign to the output variable
   // out_id = uvec2(id_low, id_high);
-  out_id = id;
+  out_id = vec4(id.xy, 0, 1);
 
   // NOTE(k): normal is interpolated using berrycentric, so it's not guarenteed to be unit vector
   out_normal_depth.rgb = draw_edge > 0 ? normalize(nor_world) : vec3(0,0,0);

@@ -1,18 +1,25 @@
 #version 450
 
-layout(location = 0) in vec4  position;
-layout(location = 1) in vec2  rect_half_size_px;
-layout(location = 2) in vec2  texcoord_pct;
-layout(location = 3) in vec2  sdf_sample_pos;
-layout(location = 4) in vec4  tint;
-layout(location = 5) in float corner_radius_px;
-layout(location = 6) in float border_thickness_px;
-layout(location = 7) in float softness_px;
-layout(location = 8) in float omit_texture;
-layout(location = 9) in float white_texture_override;
-layout(location = 10) in vec4 line;
+// input
+layout(location = 0)  in vec4  position;
+layout(location = 1)  in vec2  rect_half_size_px;
+layout(location = 2)  in vec2  texcoord_pct;
+layout(location = 3)  in vec2  sdf_sample_pos;
+layout(location = 4)  in vec4  tint;
+layout(location = 5)  in float corner_radius_px;
+layout(location = 6)  in float border_thickness_px;
+layout(location = 7)  in float softness_px;
+layout(location = 8)  in float line_thickness_px;
+layout(location = 9)  in float white_texture_override;
+layout(location = 10) in float omit_texture;
+layout(location = 11) in float has_pixel_id;
+layout(location = 12) in vec2  pixel_id;
+layout(location = 13) in vec4  line;
 
+// output
 layout(location = 0) out vec4 out_color;
+layout(location = 1) out vec4 out_id;
+
 layout(set = 0, binding = 0) uniform Globals
 {
   vec2 viewport_size_px;                // Vec2F32 viewport_size;
@@ -93,4 +100,11 @@ void main()
   out_color.a *= border_sdf_t;
   out_color.a *= corner_sdf_t;
   out_color.a *= line_sdf_t;
+
+  vec4 id = vec4(pixel_id.xy,0.0,1.0);
+  if(has_pixel_id == 0.0)
+  {
+    id.w = 0;
+  }
+  out_id = id;
 }

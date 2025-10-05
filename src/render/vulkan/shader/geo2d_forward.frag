@@ -5,12 +5,12 @@
 
 layout(location = 0)       in vec2  texcoord;
 layout(location = 1)       in vec4  color;
-layout(location = 2)  flat in uvec2 id;
+layout(location = 2)  flat in vec2  id;
 layout(location = 3)  flat in uint  has_texture;
 layout(location = 4)  flat in uint  draw_edge;
 
 layout(location = 0) out vec4  out_color;
-layout(location = 1) out uvec2 out_id;
+layout(location = 1) out vec4  out_id;
 layout(location = 2) out vec4  out_edge;
 
 // texture
@@ -43,5 +43,5 @@ void main()
   // out_edge[2] = uintBitsToFloat(id[0]);
   // out_edge[3] = uintBitsToFloat(id[1]);
 
-  out_id = id;
+  out_id = vec4(id.xy, 0, 1.0);
 }

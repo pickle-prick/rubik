@@ -530,6 +530,25 @@ ik_key_new()
   return ret;
 }
 
+internal Vec2F32
+ik_2f32_from_key(IK_Key key)
+{
+  U32 high = (key.u64[0]>>32);
+  U32 low = key.u64[0];
+  Vec2F32 ret = {*((F32*)&high), *((F32*)&low)};
+  return ret;
+}
+
+internal IK_Key
+ik_key_from_2f32(Vec2F32 key_2f32)
+{
+  U32 high = *((U32*)(&key_2f32.x));
+  U32 low = *((U32*)(&key_2f32.y));
+  U64 key = ((U64)high<<32) | ((U64)low);
+  IK_Key ret = {key, 0};
+  return ret;
+}
+
 /////////////////////////////////
 //~ State accessor/mutator
 
@@ -1588,19 +1607,38 @@ ik_frame(void)
     IK_Box *select = frame->select;
 
     /////////////////////////////////
-    //~ Scrolled on blank -> mouve viewport up or down
+    //~ Scrolled fall-through -> mouve viewport up or down
 
-    if(blank->sig.scroll.y != 0)
+    for(UI_EventNode *n = ik_state->events->first, *next = 0; n != 0; n = next)
     {
-      F32 scroll_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "camera_scroll_t"), 1, .reset = 0, .rate = ik_state->animation.slow_rate);
-      F32 y_pct = mix_1f32(0.01, 0.04, scroll_t);
-      F32 delta_y = blank->sig.scroll.y;
-      F32 step_px = ik_state->window_dim.y*y_pct*delta_y;
-      F32 step_world = step_px * ik_state->world_to_screen_ratio.y;
+      B32 taken = 0;
+      next = n->next;
+      UI_Event *evt = &n->v;
 
-      camera->anim_rate = ik_state->animation.fast_rate;
-      camera->target_rect.y0 += step_world;
-      camera->target_rect.y1 += step_world;
+      if(evt->kind == UI_EventKind_Scroll && evt->modifiers != OS_Modifier_Ctrl)
+      {
+        Vec2F32 delta = evt->delta_2f32;
+        Vec2S16 delta16 = v2s16((S16)(delta.x/30.f), (S16)(delta.y/30.f));
+        if(delta.x > 0 && delta16.x == 0) { delta16.x = +1; }
+        if(delta.x < 0 && delta16.x == 0) { delta16.x = -1; }
+        if(delta.y > 0 && delta16.y == 0) { delta16.y = +1; }
+        if(delta.y < 0 && delta16.y == 0) { delta16.y = -1; }
+
+        F32 scroll_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "camera_scroll_t"), 1, .reset = 0, .rate = ik_state->animation.slow_rate);
+        F32 y_pct = mix_1f32(0.01, 0.04, scroll_t);
+        F32 step_px = ik_state->window_dim.y*y_pct*(F32)delta16.y;
+        F32 step_world = step_px * ik_state->world_to_screen_ratio.y;
+
+        camera->anim_rate = ik_state->animation.fast_rate;
+        camera->target_rect.y0 += step_world;
+        camera->target_rect.y1 += step_world;
+        taken = 1;
+      }
+
+      if(taken)
+      {
+        ui_eat_event_node(ik_state->events, n);
+      }
     }
 
     /////////////////////////////////
@@ -1784,7 +1822,7 @@ ik_frame(void)
     {
       IK_Box *b = ik_stroke();
       ik_kill_action();
-      ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = b->key;
+      // ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = b->key;
       ik_state->focus_active_box_key = b->key;
     }
 
@@ -2073,7 +2111,7 @@ ik_frame(void)
       // Vec4F32 clr = rgba_from_u32(0xFF0F0E0E);
       U32 src = 0x660B05FF;
       Vec4F32 clr = linear_from_srgba(rgba_from_u32(src));
-      dr_rect(rect, clr, 0,0,0);
+      dr_rect_keyed(rect, clr, 0,0,0, frame->blank->key_2f32);
     }
 
     /////////////////////////////////
@@ -2087,7 +2125,7 @@ ik_frame(void)
     // TODO(Next): what heck? should it be column major?
     dr_push_xform2d(transpose_3x3f32(xform2d));
 
-    IK_Box *roots[2] = {frame->select, frame->box_list.first};
+    IK_Box *roots[2] = {frame->box_list.first, frame->select};
     for(U64 i = 0; i < ArrayCount(roots); i++)
     {
       IK_Box *root = roots[i];
@@ -2096,6 +2134,7 @@ ik_frame(void)
         next = box->next;
         if(ik_state->frame_index >= box->draw_frame_index)
         {
+          B32 is_focus_hot = ik_key_match(ik_state->focus_hot_box_key[IK_MouseButtonKind_Left], box->key);
           Rng2F32 dst = ik_rect_from_box(box);
           Vec2F32 center = center_2f32(dst);
           dst.p0 = mix_2f32(center, dst.p0, 1.0-box->disabled_t);
@@ -2114,7 +2153,7 @@ ik_frame(void)
           // draw rect background
           if(box->flags & IK_BoxFlag_DrawBackground && !zero_dim)
           {
-            dr_rect(dst, box->background_color, 0, 0, 0);
+            dr_rect_keyed(dst, box->background_color, 0, 0, 0, box->key_2f32);
           }
           
           // draw image
@@ -2148,7 +2187,7 @@ ik_frame(void)
             if(image->loaded)
             {
               Rng2F32 src = {0,0, box->image->x, box->image->y};
-              dr_img(dst, src, box->image->handle, v4f32(1,1,1,1), 0, 0, 0);
+              dr_img_keyed(dst, src, box->image->handle, v4f32(1,1,1,1), 0, 0, 0, box->key_2f32);
             }
           }
 
@@ -2174,7 +2213,7 @@ ik_frame(void)
           if(box->flags & IK_BoxFlag_DrawBorder && !zero_dim)
           {
             F32 border_thickness = 1.5 * ik_state->world_to_screen_ratio.x;
-            R_Rect2DInst *inst = dr_rect(pad_2f32(dst, 2*border_thickness), box->border_color, 0, border_thickness, border_thickness/2.0);
+            R_Rect2DInst *inst = dr_rect_keyed(pad_2f32(dst, 2*border_thickness), box->border_color, 0, border_thickness, border_thickness/2.0, box->key_2f32);
           }
 
           if(box->flags & IK_BoxFlag_DrawHotEffects)
@@ -2186,7 +2225,7 @@ ik_frame(void)
             }
 
             F32 t = box->hot_t * (1.f-effective_active_t);
-            R_Rect2DInst *inst = dr_rect(dst, v4f32(0, 0, 0, 0), 0, 0, 1.f);
+            R_Rect2DInst *inst = dr_rect_keyed(dst, v4f32(0, 0, 0, 0), 0, 0, 1.f, box->key_2f32);
             Vec4F32 color = ik_rgba_from_theme_color(IK_ThemeColor_Hover);
             color.w *= t*0.1f;
             inst->colors[Corner_00] = color;
@@ -2198,12 +2237,20 @@ ik_frame(void)
             // MemoryCopyArray(inst->corner_radii, box->corner_radii);
           }
 
+          // draw focus hot overlay
+          if(is_focus_hot)
+          {
+            Vec4F32 clr = box->background_color;
+            clr.w = 0.01;
+            dr_rect_keyed(dst, clr, 0, 0, 0, box->key_2f32);
+          }
+
           // draw selection highlight
           if(box->sig.f & IK_SignalFlag_Select && !zero_dim)
           {
-            dr_rect(pad_2f32(dst, 0*ik_state->world_to_screen_ratio.x), v4f32(1,1,0,0.1), 0, 0, 0);
+            dr_rect_keyed(pad_2f32(dst, 0*ik_state->world_to_screen_ratio.x), v4f32(1,1,0,0.1), 0, 0, 0, box->key_2f32);
             F32 border_thickness = 3*ik_state->world_to_screen_ratio.x;
-            dr_rect(pad_2f32(dst, border_thickness*2), v4f32(0.1,0,1,1), 0, border_thickness, 0);
+            dr_rect_keyed(pad_2f32(dst, border_thickness*2), v4f32(0.1,0,1,1), 0, border_thickness, 0, box->key_2f32);
           }
         }
       }
@@ -2270,7 +2317,8 @@ ik_frame(void)
       }
       dr_submit_bucket(ik_state->os_wnd, ik_state->r_wnd, ik_state->bucket_ui);
     }
-    ik_state->hot_pixel_key = r_window_end_frame(ik_state->os_wnd, ik_state->r_wnd, ik_state->mouse);
+    Vec2F32 key_2f32 = r_window_end_frame(ik_state->os_wnd, ik_state->r_wnd, ik_state->mouse);
+    ik_state->pixel_hot_key = ik_key_from_2f32(key_2f32);
     r_end_frame();
   }
 
@@ -2495,6 +2543,15 @@ ik_get_drag_data(U64 min_required_size)
   //     scratch_end(scratch);
   // }
   return ik_state->drag_state_data;
+}
+
+//- selecting
+internal inline B32
+ik_is_selecting(void)
+{
+  Vec2F32 dim = dim_2f32(ik_state->selection_rect);
+  B32 ret = ik_tool() == IK_ToolKind_Selection && ik_dragging(ik_state->active_frame->blank->sig) && (dim.x > 0 && dim.y > 0);
+  return ret;
 }
 
 /////////////////////////////////
@@ -2861,7 +2918,6 @@ ik_frame_alloc()
   ik_push_stroke_color(frame->cfg.stroke_color);
   frame->blank = ik_build_box_from_stringf(IK_BoxFlag_MouseClickable|
                                            IK_BoxFlag_FitViewport|
-                                           IK_BoxFlag_Scroll|
                                            IK_BoxFlag_ClickToFocus|
                                            IK_BoxFlag_OmitCtxMenu|
                                            IK_BoxFlag_Orphan|
@@ -2936,6 +2992,7 @@ ik_build_box_from_key_(IK_BoxFlags flags, IK_Key key, B32 pre_order)
   IK_Palette *palette = ik_top_palette();
   // fill box info
   box->key = key;
+  box->key_2f32 = ik_2f32_from_key(key);
   box->flags = flags;
   box->frame = frame;
   box->font_size = ik_top_font_size();
@@ -3569,7 +3626,7 @@ IK_BOX_DRAW(text)
     // NOTE(k): we have \n run which is not renderable, and it will cutoff grouping continuation 
     if(!r_handle_match(r_handle_zero(), text_rect->tex))
     {
-      dr_img(text_rect->dst, text_rect->src, text_rect->tex, text_rect->color, 0,0,0);
+      dr_img_keyed(text_rect->dst, text_rect->src, text_rect->tex, text_rect->color, 0,0,0, box->key_2f32);
     }
     // dr_rect(text_rect->dst, v4f32(1,0,0,0.5), 0,1,0);
 
@@ -3791,7 +3848,7 @@ IK_BOX_DRAW(stroke)
 
         // draw line segment (prev → pt) with thickness
 #if 1
-        dr_line(prev, pt, stroke_color, stroke_size, edge_softness);
+        dr_line_keyed(prev, pt, stroke_color, stroke_size, edge_softness, box->key_2f32);
 
 #else
         {
@@ -3921,14 +3978,14 @@ IK_BOX_DRAW(arrow)
   {
     Rng2F32 rect = {.p0 = a, .p1 = a};
     rect = pad_2f32(rect, half_stroke_size*1.3);
-    dr_rect(rect, stroke_clr, half_stroke_size*1.3, 0, edge_softness);
+    dr_rect_keyed(rect, stroke_clr, half_stroke_size*1.3, 0, edge_softness, box->key_2f32);
   }
 
   // draw b with arrow
   {
     Rng2F32 rect = {.p0 = b, .p1 = b};
     rect = pad_2f32(rect, half_stroke_size*1.3);
-    dr_rect(rect, stroke_clr, half_stroke_size*1.3, 0, edge_softness);
+    dr_rect_keyed(rect, stroke_clr, half_stroke_size*1.3, 0, edge_softness, box->key_2f32);
 
     // draw arrow direction
     Vec2F32 dir = normalize_2f32(sub_2f32(b, c));
@@ -3943,7 +4000,7 @@ IK_BOX_DRAW(arrow)
       dir_inv.x*sin_f32(angle_turns)+dir_inv.y*cos_f32(angle_turns)
     };
     Vec2F32 up_end = add_2f32(b, scale_2f32(up, arrow_length));
-    dr_line(b, up_end, stroke_clr, stroke_size, edge_softness);
+    R_Rect2DInst *inst =  dr_line_keyed(b, up_end, stroke_clr, stroke_size, edge_softness, box->key_2f32);
 
     // down
     Vec2F32 down = 
@@ -3952,10 +4009,9 @@ IK_BOX_DRAW(arrow)
       dir_inv.x*sin_f32(-angle_turns)+dir_inv.y*cos_f32(-angle_turns)
     };
     Vec2F32 down_end = add_2f32(b, scale_2f32(down, arrow_length));
-    dr_line(b, down_end, stroke_clr, stroke_size, edge_softness);
+    dr_line_keyed(b, down_end, stroke_clr, stroke_size, edge_softness, box->key_2f32);
   }
 
-  // FIXME: m won't line on the curve, we should study a little more about bezier curve
   // draw a line between a and b, m as control point
   {
     Vec2F32 p0 = a;
@@ -3975,7 +4031,7 @@ IK_BOX_DRAW(arrow)
       };
 
       // draw line segment (prev → pt) with thickness
-      dr_line(prev, pt, stroke_clr, stroke_size, edge_softness);
+      dr_line_keyed(prev, pt, stroke_clr, stroke_size, edge_softness, box->key_2f32);
       prev = pt;
     }
   }
@@ -4257,6 +4313,7 @@ ik_signal_from_box(IK_Box *box)
   sig.box = box;
   sig.event_flags |= os_get_modifiers();
   Rng2F32 rect = ik_rect_from_box(box);
+  B32 pixel_hot = ik_key_match(box->key, ik_state->pixel_hot_key);
 
   /////////////////////////////////
   //~ Process events related to this box
@@ -4270,7 +4327,8 @@ ik_signal_from_box(IK_Box *box)
     //- unpack event
     // Vec2F32 evt_mouse = evt->pos;
     Vec2F32 evt_mouse = ik_state->mouse_in_world;
-    B32 evt_mouse_in_bounds = contains_2f32(rect, evt_mouse);
+    // B32 evt_mouse_in_bounds = contains_2f32(rect, evt_mouse);
+    B32 evt_mouse_in_bounds = pixel_hot;
     IK_MouseButtonKind evt_mouse_button_kind = 
       evt->key == OS_Key_LeftMouseButton   ? IK_MouseButtonKind_Left   :
       evt->key == OS_Key_RightMouseButton  ? IK_MouseButtonKind_Right  :
@@ -4391,12 +4449,13 @@ ik_signal_from_box(IK_Box *box)
     }
   }
 
-  B32 mouse_in_this_rect = contains_2f32(rect, ik_state->mouse_in_world);
+  // B32 mouse_in_this_rect = contains_2f32(rect, ik_state->mouse_in_world);
+  B32 mouse_in_this_rect = pixel_hot;
 
   //////////////////////////////
   //~ Mouse is over this box's rect -> always mark mouse-over
 
-  if(mouse_in_this_rect)
+  if(pixel_hot)
   {
     sig.f |= IK_SignalFlag_MouseOver;
   }
@@ -4630,7 +4689,7 @@ ik_ui_stats(void)
     {
       ui_labelf("ik_pixel_hot_key");
       ui_spacer(ui_pct(1.0, 0.0));
-      ui_labelf("%I64u", ik_state->hot_pixel_key);
+      ui_labelf("%I64u", ik_state->pixel_hot_key.u64[0]);
     }
     UI_Row
       UI_PrefWidth(ui_text_dim(1, 1.0))
@@ -4695,13 +4754,6 @@ ik_ui_stats(void)
       ui_labelf("ui_active_key");
       ui_spacer(ui_pct(1.0, 0.0));
       ui_labelf("%I64u", ui_state->active_box_key[UI_MouseButtonKind_Left].u64[0]);
-    }
-    UI_Row
-      UI_PrefWidth(ui_text_dim(1, 1.0))
-    {
-      ui_labelf("hot_pixel_key");
-      ui_spacer(ui_pct(1.0, 0.0));
-      ui_labelf("%I64u", ik_state->hot_pixel_key);
     }
     UI_Row
       UI_PrefWidth(ui_text_dim(1, 1.0))
@@ -7113,7 +7165,7 @@ ik_frame_from_tyml(String8 path)
   ik_push_frame(frame);
 
   /////////////////////////////////
-  // Read file
+  //~ Read file
 
   OS_Handle f = os_file_open(OS_AccessFlag_Read, (path));
   FileProperties f_props = os_properties_from_file(f);
@@ -7123,7 +7175,7 @@ ik_frame_from_tyml(String8 path)
   os_file_close(f);
 
   /////////////////////////////////
-  // Load blob
+  //~ Load blob
 
   U8 *c = data;
   U8 *opl = c+size;
@@ -7137,13 +7189,13 @@ ik_frame_from_tyml(String8 path)
   c+=blob_size;
 
   /////////////////////////////////
-  // Load se node
+  //~ Load se node
 
   String8 yml_string = str8_range(c++, opl);
   SE_Node *se_node = se_yml_node_from_string(scratch.arena, yml_string);
 
   /////////////////////////////////
-  // Camera
+  //~ Camera
 
   SE_Node *camera_node = se_struct_from_tag(se_node, str8_lit("camera"));
   if(camera_node)
@@ -7157,7 +7209,7 @@ ik_frame_from_tyml(String8 path)
   }
 
   /////////////////////////////////
-  // Load images
+  //~ Load images
 
   SE_Node *first_image_node = se_arr_from_tag(se_node, str8_lit("images"));
   ProfScope("load images")
@@ -7176,7 +7228,7 @@ ik_frame_from_tyml(String8 path)
   }
 
   /////////////////////////////////
-  // Build box
+  //~ Build box
 
   SE_Node *first_box_node = se_arr_from_tag(se_node, str8_lit("boxes"));
   if(first_box_node && first_box_node->parent)

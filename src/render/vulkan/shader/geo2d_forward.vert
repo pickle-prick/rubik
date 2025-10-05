@@ -12,7 +12,7 @@ layout(location = 6)  in vec4   weights;
 // Instance buffer
 layout(location = 7)  in  mat4  model;
 layout(location = 11) in  mat4  model_inv;
-layout(location = 15) in uvec2  id;
+layout(location = 15) in  vec2  id;
 layout(location = 16) in  uint  has_texture;
 layout(location = 17) in  vec4  color;
 layout(location = 18) in  uint  has_color;
@@ -22,7 +22,7 @@ layout(location = 19) in  uint  draw_edge;
 // That means that the index after it must be at least 2 higher
 layout(location = 0)       out  vec2  frag_texcoord;
 layout(location = 1)       out  vec4  frag_color;
-layout(location = 2)  flat out  uvec2 frag_id;
+layout(location = 2)  flat out  vec2  frag_id;
 layout(location = 3)  flat out  uint  frag_has_texture;
 layout(location = 4)  flat out  uint  frag_draw_edge;
 

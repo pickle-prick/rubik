@@ -8,20 +8,27 @@ layout(location = 3) in vec4 color10;
 layout(location = 4) in vec4 color01;
 layout(location = 5) in vec4 color11;
 layout(location = 6) in vec4 corner_radii_px;
-layout(location = 7) in vec4 style_params;
-layout(location = 8) in vec4 line;
+layout(location = 7) in vec4 style_params_1;
+layout(location = 8) in vec4 style_params_2;
+layout(location = 9) in vec4 line;
 
-layout(location = 0)      out vec4  frag_position;
-layout(location = 1) flat out vec2  frag_rect_half_size_px;
-layout(location = 2)      out vec2  frag_texcoord_pct;
-layout(location = 3)      out vec2  frag_sdf_sample_pos;
-layout(location = 4)      out vec4  frag_tint;
-layout(location = 5) flat out float frag_corner_radius_px;
-layout(location = 6) flat out float frag_border_thickness_px;
-layout(location = 7) flat out float frag_softness_px;
-layout(location = 8) flat out float frag_omit_texture;
-layout(location = 9) flat out float frag_white_texture_override;
-layout(location = 10) flat out vec4 frag_line;
+layout(location = 0)       out vec4  frag_position;
+layout(location = 1)  flat out vec2  frag_rect_half_size_px;
+layout(location = 2)       out vec2  frag_texcoord_pct;
+layout(location = 3)       out vec2  frag_sdf_sample_pos;
+layout(location = 4)       out vec4  frag_tint;
+layout(location = 5)  flat out float frag_corner_radius_px;
+// style_1
+layout(location = 6)  flat out float frag_border_thickness_px;
+layout(location = 7)  flat out float frag_softness_px;
+layout(location = 8)  flat out float frag_line_thickness_px;
+layout(location = 9)  flat out float frag_white_texture_override;
+// style_2
+layout(location = 10) flat out float frag_omit_texture;
+layout(location = 11) flat out float frag_has_pixel_id;
+layout(location = 12) flat out vec2  frag_pixel_id;
+// line
+layout(location = 13) flat out vec4  frag_line;
 
 layout(set = 0, binding = 0) uniform Globals {
   vec2 viewport_size_px;                // Vec2F32 viewport_size;
@@ -65,10 +72,13 @@ void main()
   vec2 dst_size_px = dst_p1_px - dst_p0_px;
 
   // Unpack style params
-  float border_thickness_px    = style_params.x;
-  float softness_px            = style_params.y;
-  float white_texture_override = style_params.z;
-  float omit_texture           = style_params.w;
+  float border_thickness_px    = style_params_1.x;
+  float softness_px            = style_params_1.y;
+  float line_thickness_px      = style_params_1.z;
+  float white_texture_override = style_params_1.w;
+  float omit_texture           = style_params_2.x;
+  float has_pixel_id           = style_params_2.y;
+  vec2  pixel_id               = style_params_2.zw;
 
   vec2 rect_normal_pos = positions[gl_VertexIndex];
   vec2 pct             = (rect_normal_pos+1.0) * 0.5; // x: [0-1] y: [0-1]
@@ -87,7 +97,10 @@ void main()
   frag_corner_radius_px       = corner_radii_px[gl_VertexIndex];
   frag_border_thickness_px    = border_thickness_px;
   frag_softness_px            = softness_px;
-  frag_omit_texture           = omit_texture;
+  frag_line_thickness_px      = line_thickness_px;
   frag_white_texture_override = white_texture_override;
+  frag_omit_texture           = omit_texture;
+  frag_has_pixel_id           = has_pixel_id;
+  frag_pixel_id               = pixel_id;
   frag_line                   = vec4(line.xy-frag_rect_half_size_px, line.zw-frag_rect_half_size_px);
 }

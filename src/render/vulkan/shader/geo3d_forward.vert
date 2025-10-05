@@ -13,7 +13,7 @@ layout(location = 6)  in vec4   weights;
 layout(location = 7)   in mat4  model;
 layout(location = 11)  in mat4  model_inv;
 
-layout(location = 15) in uvec2 id;
+layout(location = 15) in vec2  id;
 layout(location = 16) in uint  material_idx;
 layout(location = 17) in uint  draw_edge;
 layout(location = 18) in uint  joint_count;
@@ -25,7 +25,7 @@ layout(location = 21) in uint  omit_light;
 // That means that the index after it must be at least 2 higher
 layout(location = 0)       out  vec2  frag_texcoord;
 layout(location = 1)       out  vec4  frag_color;
-layout(location = 2)  flat out  uvec2 frag_id;
+layout(location = 2)  flat out  vec2  frag_id;
 layout(location = 3)  flat out  float frag_omit_light;
 layout(location = 4)       out  vec3  frag_nor_world;
 layout(location = 5)       out  vec3  frag_nor_view;

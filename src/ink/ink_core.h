@@ -448,6 +448,7 @@ typedef struct IK_Frame IK_Frame;
 struct IK_Box
 {
   IK_Key key;
+  Vec2F32 key_2f32;
   IK_Frame *frame;
 
   // Lookup table links
@@ -741,7 +742,7 @@ struct IK_State
   IK_ActionSlot         action_slot;
   IK_Key                focus_hot_box_key[IK_MouseButtonKind_COUNT];
   IK_Key                focus_active_box_key;
-  U64                   hot_pixel_key; // hot pixel key from renderer
+  IK_Key                pixel_hot_key; // hot pixel key from renderer
 
   U64                   press_timestamp_history_us[IK_MouseButtonKind_COUNT][3];
   IK_Key                press_key_history[IK_MouseButtonKind_COUNT][3];
@@ -823,6 +824,8 @@ internal B32    ik_key_match(IK_Key a, IK_Key b);
 internal IK_Key ik_key_make(U64 a, U64 b);
 internal IK_Key ik_key_zero();
 internal IK_Key ik_key_new();
+internal Vec2F32 ik_2f32_from_key(IK_Key key);
+internal IK_Key ik_key_from_2f32(Vec2F32 key_2f32);
 
 /////////////////////////////////
 //~ Handle
@@ -876,6 +879,9 @@ internal void    ik_store_drag_data(String8 string);
 internal String8 ik_get_drag_data(U64 min_required_size);
 #define ik_store_drag_struct(ptr) ik_store_drag_data(str8_struct(ptr))
 #define ik_get_drag_struct(type) ((type *)ik_get_drag_data(sizeof(type)).str)
+
+//- selecting
+internal inline B32 ik_is_selecting(void);
 
 /////////////////////////////////
 //~ OS event consumption helpers
@@ -1040,9 +1046,6 @@ internal Vec2F32 ik_screen_pos_from_world(Vec2F32 pos);
 // encode
 internal String8 ik_b64string_from_bytes(Arena *arena, String8 src);
 internal String8 ik_bytes_from_b64string(Arena *arena, String8 src);
-
-#define ik_is_selecting() (ik_tool() == IK_ToolKind_Selection&&ik_dragging(ik_state->active_frame->blank->sig))
-#define ik_selection_rect() (ik_state->selection_rect)
 
 ////////////////////////////////
 //~ Macro Loop Wrappers

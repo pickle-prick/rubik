@@ -151,8 +151,11 @@ struct R_Rect2DInst
   F32 corner_radii[Corner_COUNT];
   F32 border_thickness;
   F32 edge_softness;
+  F32 line_thickness;
   F32 white_texture_override;
   F32 omit_texture;
+  F32 has_pixel_id;
+  Vec2F32 pixel_id;
   Vec4F32 line;
 };
 
@@ -161,7 +164,7 @@ struct R_Mesh2DInst
 {
   Mat4x4F32 xform;
   Mat4x4F32 xform_inv;
-  U64 key;
+  Vec2F32 key; // FIXME: rename to pixel_id
   B32 has_texture;
   Vec4F32 color;
   B32 has_color;
@@ -174,7 +177,7 @@ struct R_Mesh3DInst
   // TODO(k): kind a mess here, some attributes were sent to instance buffer, some were copied to storage buffer 
   Mat4x4F32 xform;
   Mat4x4F32 xform_inv;
-  U64 key;
+  Vec2F32 key; // FIXME: rename to pixel_id
   U32 material_idx;
   B32 draw_edge;
   // NOTE(k): joint_xforms is stored in storage buffer instead of instance buffer
@@ -471,7 +474,7 @@ r_hook void              r_buffer_release(R_Handle buffer);
 r_hook void              r_begin_frame(void);
 r_hook void              r_end_frame(void);
 r_hook void              r_window_begin_frame(OS_Handle window, R_Handle window_equip);
-r_hook U64               r_window_end_frame(OS_Handle window, R_Handle window_equip, Vec2F32 mouse_ptr);
+r_hook Vec2F32           r_window_end_frame(OS_Handle window, R_Handle window_equip, Vec2F32 mouse_ptr);
 
 //- rjf: render pass submission
 r_hook void              r_window_submit(OS_Handle window, R_Handle window_equip, R_PassList *passes);
