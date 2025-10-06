@@ -69,9 +69,7 @@ void main()
   bool draw_line = !all(equal(a,b));
   if(draw_line)
   {
-    // TODO(k): we don't have more slots more line_thickness, so we use border_thickness_px here
-    float thickness = border_thickness_px;
-    float line_sdf_s = line_sdf(sdf_sample_pos, a, b, thickness/2);
+    float line_sdf_s = line_sdf(sdf_sample_pos, a, b, line_thickness_px/2);
     line_sdf_t = 1.0 - smoothstep(0, softness_px*2, line_sdf_s);
   }
 

@@ -12,8 +12,9 @@ run_full:
 	make build_full
 	./build/$(BUILD_TARGET)
 clean:
-	rm ./build/$(BUILD_TARGET)
+	rm ./build/$(BUILD_TARGET) || true
 	rm ./src/render/vulkan/shader/*.spv || true
+	rm -rf ./local || true
 debug:
 	make build_debug
 	gdb -q --tui ./build/$(BUILD_TARGET)

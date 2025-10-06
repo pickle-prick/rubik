@@ -71,9 +71,9 @@ then
       filename=$(basename -- "$font")
       extension="${filename##*.}"
       name="${filename%.*}"
-      out="${font_out_dir}/font_${name}.h"
-      echo "Packing ${font} -> ${out}"
-      xxd -i -n "ttf_${name}" "${font}" > "${out}"
+      font_out="${font_out_dir}/font_${name}.h"
+      echo "Packing ${font} -> ${font_out}"
+      xxd -i -n "ttf_${name}" "${font}" > "${font_out}"
     fi
   done
 fi

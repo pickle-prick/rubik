@@ -3806,7 +3806,7 @@ IK_BOX_DRAW(stroke)
   IK_Point *p2 = p1 ? p1->next : 0;
 
   Vec4F32 stroke_color = linear_from_srgba(box->stroke_color);
-  F32 edge_softness = 1.0 * ik_state->world_to_screen_ratio.x;
+  F32 edge_softness = 0.25f * ik_state->world_to_screen_ratio.x;
 
   F32 last_scale = 1.0;
   F32 last_point_drawn = 0;
@@ -3848,7 +3848,10 @@ IK_BOX_DRAW(stroke)
 
         // draw line segment (prev → pt) with thickness
 #if 1
-        dr_line_keyed(prev, pt, stroke_color, stroke_size, edge_softness, box->key_2f32);
+        if(length_2f32(sub_2f32(prev, pt)) > 1e-8)
+        {
+          dr_line_keyed(prev, pt, stroke_color, stroke_size, edge_softness, box->key_2f32);
+        }
 
 #else
         {
@@ -4020,7 +4023,7 @@ IK_BOX_DRAW(arrow)
     U64 steps = 10;
 
     Vec2F32 prev = p0;
-    for(U64 i = 0; i <= steps; i++)
+    for(U64 i = 1; i <= steps; i++)
     {
       F32 t = (F32)i / (F32)steps;
       F32 u = 1.0f - t;

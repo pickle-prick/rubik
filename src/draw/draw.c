@@ -459,10 +459,10 @@ dr_line(Vec2F32 a, Vec2F32 b, Vec4F32 color, F32 line_thickness, F32 edge_softne
   Rng2F32 dst = {.p0 = a, .p1 = b};
   if(dst.x0 > dst.x1) Swap(F32, dst.x0, dst.x1);
   if(dst.y0 > dst.y1) Swap(F32, dst.y0, dst.y1);
-  F32 radius = line_thickness;
-  dst = pad_2f32(dst, radius);
-  Vec2F32 p0 = sub_2f32(a, dst.p0);
-  Vec2F32 p1 = sub_2f32(b, dst.p0);
+  dst = pad_2f32(dst, line_thickness*0.51);
+  Vec2F32 center = center_2f32(dst);
+  Vec2F32 p0 = sub_2f32(a, center);
+  Vec2F32 p1 = sub_2f32(b, center);
 
   inst->dst                     = dst;
   inst->src                     = r2f32p(0, 0, 0, 0);
@@ -474,8 +474,9 @@ dr_line(Vec2F32 a, Vec2F32 b, Vec4F32 color, F32 line_thickness, F32 edge_softne
   inst->corner_radii[Corner_10] = 0;
   inst->corner_radii[Corner_11] = 0;
   inst->corner_radii[Corner_01] = 0;
-  inst->border_thickness        = line_thickness;
+  inst->border_thickness        = 0;
   inst->edge_softness           = edge_softness;
+  inst->line_thickness          = line_thickness;
   inst->white_texture_override  = 0.f;
   inst->omit_texture            = 1.f;
   inst->has_pixel_id            = 0.f;

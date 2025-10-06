@@ -102,5 +102,5 @@ void main()
   frag_omit_texture           = omit_texture;
   frag_has_pixel_id           = has_pixel_id;
   frag_pixel_id               = pixel_id;
-  frag_line                   = vec4(line.xy-frag_rect_half_size_px, line.zw-frag_rect_half_size_px);
+  frag_line                   = vec4(line.xy*globals.xform_scale, line.zw*globals.xform_scale);
 }
