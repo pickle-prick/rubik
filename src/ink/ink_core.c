@@ -3911,7 +3911,6 @@ ik_stroke()
   box->flags = IK_BoxFlag_MouseClickable|
                IK_BoxFlag_ClickToFocus|
                IK_BoxFlag_DragToPosition|
-               IK_BoxFlag_DragToScaleStrokeSize|
                IK_BoxFlag_DoubleClickToUnFocus|
                IK_BoxFlag_DragToScaleRectSize|
                IK_BoxFlag_DragToScalePoint|
