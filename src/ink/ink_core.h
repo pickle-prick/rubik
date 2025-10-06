@@ -427,6 +427,8 @@ typedef U64 IK_BoxFlags;
 # define IK_BoxFlag_DragPoint             (IK_BoxFlags)(1ull<<31)
 # define IK_BoxFlag_DragToScaleStrokeSize (IK_BoxFlags)(1ull<<32)
 # define IK_BoxFlag_OmitCtxMenu           (IK_BoxFlags)(1ull<<33)
+# define IK_BoxFlag_DrawKeyOverlay        (IK_BoxFlags)(1ull<<34)
+# define IK_BoxFlag_DoubleClickToUnFocus  (IK_BoxFlags)(1ull<<35)
 
 // compound flags
 #define IK_BoxFlag_Dragable (IK_BoxFlag_DragToScaleFontSize|IK_BoxFlag_DragToScalePoint|IK_BoxFlag_DragToScaleRectSize|IK_BoxFlag_DragToPosition|IK_BoxFlag_DragToScaleStrokeSize|IK_BoxFlag_DragToScaleStrokeSize)

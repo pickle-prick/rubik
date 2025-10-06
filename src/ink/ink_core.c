@@ -1346,13 +1346,8 @@ ik_frame(void)
   //- box interaction
 
   {
+    // NOTE(k): since we are now using pixel-perfect object picking, the order don't matter here
     IK_Box *roots[3] = {frame->select, frame->box_list.last, frame->blank};
-
-    IK_ToolKind tool = ik_tool();
-    if(tool != IK_ToolKind_Selection)
-    {
-      Swap(IK_Box*, roots[1], roots[2]);
-    }
 
     ////////////////////////////////
     //~ First pass to calculate size in place & handle box signal
@@ -1710,7 +1705,7 @@ ik_frame(void)
     //~ Selection
 
     //- mouse dragging on blank -> selecting boxes
-    if(tool == IK_ToolKind_Selection && ik_dragging(blank->sig))
+    if(ik_tool() == IK_ToolKind_Selection && ik_dragging(blank->sig))
     {
       typedef struct IK_SelectionDrag IK_SelectionDrag;
       struct IK_SelectionDrag
@@ -1742,7 +1737,7 @@ ik_frame(void)
     }
 
     //- selecting and mouse release -> commit state to select box
-    if(tool == IK_ToolKind_Selection && ik_released(blank->sig))
+    if(ik_tool() == IK_ToolKind_Selection && ik_released(blank->sig))
     {
       if(ik_state->selected_box_count > 0)
       {
@@ -1818,7 +1813,7 @@ ik_frame(void)
     //~ Tool panel
 
     //- pen
-    if(tool == IK_ToolKind_Draw && ik_pressed(blank->sig))
+    if(ik_tool() == IK_ToolKind_Draw && ik_pressed(blank->sig))
     {
       IK_Box *b = ik_stroke();
       ik_kill_action();
@@ -1827,7 +1822,7 @@ ik_frame(void)
     }
 
     //- rectangle tool
-    if(tool == IK_ToolKind_Rectangle && ik_pressed(blank->sig))
+    if(ik_tool() == IK_ToolKind_Rectangle && ik_pressed(blank->sig))
     {
       F32 font_size = ik_top_font_size();
       F32 font_size_in_world = font_size * ik_state->world_to_screen_ratio.x * 2;
@@ -1866,24 +1861,26 @@ ik_frame(void)
       ui_store_drag_struct(&drag);
 
       ik_state->tool = IK_ToolKind_Selection;
-      tool = IK_ToolKind_Selection;
     }
 
     //- text tool (tool or double click on blank to trigger)
-    if((tool == IK_ToolKind_Text && ik_pressed(blank->sig)) ||
-       (tool == IK_ToolKind_Selection && blank->sig.f&IK_SignalFlag_LeftDoubleClicked))
     {
-      IK_Box *box = ik_text(str8_lit(""), ik_state->mouse_in_world);
-      box->draw_frame_index = ik_state->frame_index+1;
-      box->disabled_t = 1.0;
-      ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = box->key;
-      ik_state->focus_active_box_key = box->key;
-      ik_kill_action();
-      ik_state->tool = IK_ToolKind_Selection;
+      IK_ToolKind tool = ik_tool();
+      if((tool == IK_ToolKind_Text && ik_pressed(blank->sig)) ||
+         (tool == IK_ToolKind_Selection && blank->sig.f&IK_SignalFlag_LeftDoubleClicked))
+      {
+        IK_Box *box = ik_text(str8_lit(""), ik_state->mouse_in_world);
+        box->draw_frame_index = ik_state->frame_index+1;
+        box->disabled_t = 1.0;
+        ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = box->key;
+        ik_state->focus_active_box_key = box->key;
+        ik_kill_action();
+        ik_state->tool = IK_ToolKind_Selection;
+      }
     }
 
     //- arrow tool
-    if(tool == IK_ToolKind_Arrow && ik_pressed(blank->sig))
+    if(ik_tool() == IK_ToolKind_Arrow && ik_pressed(blank->sig))
     {
       IK_Box *b = ik_arrow();
       ik_kill_action();
@@ -2050,7 +2047,7 @@ ik_frame(void)
     /////////////////////////////////
     //- hover cursor
 
-    if(tool == IK_ToolKind_Selection)
+    if(ik_tool() == IK_ToolKind_Selection)
     {
       IK_Box *hot = ik_box_from_key(ik_state->hot_box_key);
       IK_Box *active = ik_box_from_key(ik_state->active_box_key[IK_MouseButtonKind_Left]);
@@ -2125,7 +2122,14 @@ ik_frame(void)
     // TODO(Next): what heck? should it be column major?
     dr_push_xform2d(transpose_3x3f32(xform2d));
 
-    IK_Box *roots[2] = {frame->box_list.first, frame->select};
+    // NOTE(k): since we are now using pixel-perfect object picking, the drawing order matters 
+    IK_Box *roots[] = {frame->blank, frame->box_list.first, frame->select};
+    if(ik_tool() != IK_ToolKind_Selection)
+    {
+      Swap(IK_Box*, roots[0], roots[2]);
+      Swap(IK_Box*, roots[0], roots[1]);
+    }
+
     for(U64 i = 0; i < ArrayCount(roots); i++)
     {
       IK_Box *root = roots[i];
@@ -2244,13 +2248,19 @@ ik_frame(void)
             clr.w = 0.01;
             dr_rect_keyed(dst, clr, 0, 0, 0, box->key_2f32);
           }
-
+          
           // draw selection highlight
           if(box->sig.f & IK_SignalFlag_Select && !zero_dim)
           {
             dr_rect_keyed(pad_2f32(dst, 0*ik_state->world_to_screen_ratio.x), v4f32(1,1,0,0.1), 0, 0, 0, box->key_2f32);
             F32 border_thickness = 3*ik_state->world_to_screen_ratio.x;
             dr_rect_keyed(pad_2f32(dst, border_thickness*2), v4f32(0.1,0,1,1), 0, border_thickness, 0, box->key_2f32);
+          }
+
+          // draw key overlay
+          if(box->flags & IK_BoxFlag_DrawKeyOverlay)
+          {
+            dr_rect_keyed(dst, v4f32(0,0,0,0), 0, 0, 0, box->key_2f32);
           }
         }
       }
@@ -2920,6 +2930,7 @@ ik_frame_alloc()
                                            IK_BoxFlag_FitViewport|
                                            IK_BoxFlag_ClickToFocus|
                                            IK_BoxFlag_OmitCtxMenu|
+                                           IK_BoxFlag_DrawKeyOverlay|
                                            IK_BoxFlag_Orphan|
                                            IK_BoxFlag_OmitGroupSelection|
                                            IK_BoxFlag_OmitDeletion,
@@ -3891,6 +3902,7 @@ ik_stroke()
                IK_BoxFlag_ClickToFocus|
                IK_BoxFlag_DragToPosition|
                IK_BoxFlag_DragToScaleStrokeSize|
+               IK_BoxFlag_DoubleClickToUnFocus|
                IK_BoxFlag_DragToScaleRectSize|
                IK_BoxFlag_DragToScalePoint|
                IK_BoxFlag_DrawStroke;
