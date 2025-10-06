@@ -2266,6 +2266,16 @@ ik_frame(void)
       }
     }
 
+    // draw focus hot overlay
+    {
+      IK_Box *b = ik_box_from_key(ik_state->focus_hot_box_key[IK_MouseButtonKind_Left]);
+      if(b)
+      {
+        Rng2F32 dst = ik_rect_from_box(b);
+        dr_rect_keyed(dst, v4f32(0,0,0,0), 0, 0, 0, b->key_2f32);
+      }
+    }
+
     dr_pop_viewport();
     dr_pop_xform2d();
 
@@ -4569,6 +4579,17 @@ ik_signal_from_box(IK_Box *box)
         {
           ik_state->focus_hot_box_key[IK_MouseButtonKind_Left] = box->key;
         }
+      }
+    }
+  }
+
+  if(box->flags & IK_BoxFlag_DoubleClickToUnFocus)
+  {
+    for EachEnumVal(IK_MouseButtonKind, k)
+    {
+      if(sig.f&IK_SignalFlag_LeftDoubleClicked<<k)
+      {
+        ik_state->focus_hot_box_key[k] = ik_key_zero();
       }
     }
   }
