@@ -1837,7 +1837,6 @@ ik_frame(void)
         .drag_start_mouse_in_world = ik_state->mouse_in_world,
       };
       ui_store_drag_struct(&drag);
-
       ik_state->tool = IK_ToolKind_Selection;
     }
 
@@ -3484,7 +3483,7 @@ IK_BOX_UPDATE(text)
     }
   }
 
-  box->text_bounds = text_bounds;
+  if(is_focus_active || box->string.size > 0) box->text_bounds = text_bounds;
 
   ////////////////////////////////
   // interaction
