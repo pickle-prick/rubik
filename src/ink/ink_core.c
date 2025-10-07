@@ -5264,6 +5264,9 @@ ik_ui_selection(void)
               Rng2F32 new_rect = old_rect;
               new_rect.p0 = add_2f32(new_rect.p0, delta);
 
+              new_rect.x1 = ClampBot(old_rect.x0+1, new_rect.x1);
+              new_rect.y1 = ClampBot(old_rect.y0+1, new_rect.y1);
+
               Vec2F32 old_rect_size = dim_2f32(old_rect);
               Vec2F32 new_rect_size = dim_2f32(new_rect);
 
@@ -5378,6 +5381,9 @@ ik_ui_selection(void)
               Rng2F32 old_rect = drag.drag_start_rect;
               Rng2F32 new_rect = old_rect;
               new_rect.p1 = add_2f32(new_rect.p1, delta);
+
+              new_rect.x1 = ClampBot(old_rect.x0+1, new_rect.x1);
+              new_rect.y1 = ClampBot(old_rect.y0+1, new_rect.y1);
 
               Vec2F32 old_rect_size = dim_2f32(old_rect);
               Vec2F32 new_rect_size = dim_2f32(new_rect);
