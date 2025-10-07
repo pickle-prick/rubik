@@ -1199,123 +1199,21 @@ ik_frame(void)
   OS_Cursor next_cursor = 0;
 
   ////////////////////////////////
-  //- camera controls
+  //- window resized
 
+  if(ik_state->window_res_changed)
   {
-    B32 is_zooming = 0;
-
-    ////////////////////////////////
-    //- window resized
-
-    if(ik_state->window_res_changed)
+    if(ik_state->window_dim.x != 0 && ik_state->window_dim.y != 0)
     {
-      if(ik_state->window_dim.x != 0 && ik_state->window_dim.y != 0)
-      {
-        Vec2F32 camera_dim = dim_2f32(camera->target_rect);
-        F32 area = camera_dim.x*camera_dim.y;
-        F32 ratio = ik_state->window_dim.x/ik_state->window_dim.y;
-        F32 y = sqrt_f32(area/ratio);
-        F32 x = ratio*y;
-        camera->target_rect.y1 = camera->target_rect.y0 + y;
-        camera->target_rect.x1 = camera->target_rect.x0 + x;
-      }
-     }
-
-    ////////////////////////////////
-    //- events related to camera
-
-    for(UI_EventNode *n = ik_state->events->first, *next = 0; n != 0; n = next)
-    {
-      B32 taken = 0;
-      next = n->next;
-      UI_Event *evt = &n->v;
-
-      ////////////////////////////////
-      //- zoom
-
-      if(evt->kind == UI_EventKind_Scroll && evt->modifiers == OS_Modifier_Ctrl)
-      {
-        is_zooming = 1;
-        F32 delta = evt->delta_2f32.y;
-        // get normalized rect
-        Rng2F32 rect = camera->rect;
-        Vec2F32 rect_center = center_2f32(camera->rect);
-        Vec2F32 shift = {-rect_center.x, -rect_center.y};
-        Vec2F32 shift_inv = rect_center;
-        rect = shift_2f32(rect, shift);
-
-        F32 zoom_step = mix_1f32(camera->min_zoom_step, camera->max_zoom_step, camera->zoom_t);
-        F32 scale_unit = 1.f+zoom_step;
-        F32 scale = pow_f32(scale_unit, delta);
-        rect.x0 *= scale;
-        rect.x1 *= scale;
-        rect.y0 *= scale;
-        rect.y1 *= scale;
-        rect = shift_2f32(rect, shift_inv);
-
-        // anchor mouse pos in world
-        Mat4x4F32 proj_mat_after = make_orthographic_vulkan_4x4f32(rect.x0, rect.x1, rect.y1, rect.y0, camera->zn, camera->zf);
-        Mat4x4F32 proj_mat_inv_after = inverse_4x4f32(proj_mat_after);
-        Vec2F32 mouse_in_world_after = ik_mouse_in_world(proj_mat_inv_after);
-        Vec2F32 world_delta = sub_2f32(ik_state->mouse_in_world, mouse_in_world_after);
-        rect = shift_2f32(rect, world_delta);
-        camera->target_rect = rect;
-        camera->anim_rate = ik_state->animation.fast_rate;
-
-        taken = 1;
-      }
-
-      ////////////////////////////////
-      //- pan
-
-      // TODO(k): support middle mouse dragging
-
-      // pan started
-      if((ik_tool() == IK_ToolKind_Hand) && evt->kind == UI_EventKind_Press && evt->key == OS_Key_LeftMouseButton)
-      {
-        camera->drag_start_mouse = ik_state->mouse;
-        Vec2F32 rect_dim = dim_2f32(camera->rect);
-        camera->drag_start_rect = camera->target_rect;
-        camera->dragging = 1;
-        camera->anim_rate = ik_state->animation.fast_rate;
-        taken = 1;
-      }
-
-      // pan ended
-      // NOTE(k): we can't check if space is released or not, since pressing space will repeat the keydown and keyup
-      if(camera->dragging && evt->kind == UI_EventKind_Release && evt->key == OS_Key_LeftMouseButton)
-      {
-        taken = 1;
-        camera->dragging = 0;
-      }
-
-      if(taken) ui_eat_event_node(ik_state->events, n);
+      Vec2F32 camera_dim = dim_2f32(camera->target_rect);
+      F32 area = camera_dim.x*camera_dim.y;
+      F32 ratio = ik_state->window_dim.x/ik_state->window_dim.y;
+      F32 y = sqrt_f32(area/ratio);
+      F32 x = ratio*y;
+      camera->target_rect.y1 = camera->target_rect.y0 + y;
+      camera->target_rect.x1 = camera->target_rect.x0 + x;
     }
-
-    // TODO(Next): not pretty
-    camera->dragging = ik_tool() == IK_ToolKind_Hand ? camera->dragging : 0;
-
-    // apply pan
-    if(camera->dragging)
-    {
-      Vec2F32 delta = sub_2f32(camera->drag_start_mouse, ik_state->mouse);
-      Vec2F32 camera_rect_dim = dim_2f32(camera->rect);
-      Vec2F32 mouse_scale = v2f32(camera_rect_dim.x/ik_state->window_dim.x, camera_rect_dim.y/ik_state->window_dim.y);
-      delta.x *= mouse_scale.x;
-      delta.y *= mouse_scale.y;
-
-      Rng2F32 rect = shift_2f32(camera->drag_start_rect, delta);
-      camera->target_rect = rect;
-      camera->rect = rect;
-    }
-
-    // camera animation
-    camera->rect.x0 += camera->anim_rate * (camera->target_rect.x0-camera->rect.x0);
-    camera->rect.x1 += camera->anim_rate * (camera->target_rect.x1-camera->rect.x1);
-    camera->rect.y0 += camera->anim_rate * (camera->target_rect.y0-camera->rect.y0);
-    camera->rect.y1 += camera->anim_rate * (camera->target_rect.y1-camera->rect.y1);
-    camera->zoom_t  += ik_state->animation.slow_rate * ((F32)is_zooming-camera->zoom_t);
-  }
+   }
 
   ////////////////////////////////
   //- ik state begin build
@@ -1602,14 +1500,85 @@ ik_frame(void)
     IK_Box *select = frame->select;
 
     /////////////////////////////////
-    //~ Scrolled fall-through -> mouve viewport up or down
+    //~ Left dragging on blank and in hand mode? -> camera pan
 
+    if(ik_tool() == IK_ToolKind_Hand && ik_dragging(blank->sig))
+    {
+      typedef struct IK_CameraDrag IK_CameraDrag;
+      struct IK_CameraDrag
+      {
+        Rng2F32 drag_start_rect;
+      };
+
+      if(ik_pressed(blank->sig))
+      {
+        IK_CameraDrag drag = {camera->target_rect};
+        ik_store_drag_struct(&drag);
+        camera->anim_rate = ik_state->animation.fast_rate;
+      }
+      else
+      {
+        IK_CameraDrag drag = *ik_get_drag_struct(IK_CameraDrag);
+        Vec2F32 delta = sub_2f32(ik_state->drag_start_mouse, ik_state->mouse);
+        delta.x *= ik_state->world_to_screen_ratio.x;
+        delta.y *= ik_state->world_to_screen_ratio.y;
+        Rng2F32 rect = shift_2f32(drag.drag_start_rect, delta);
+        camera->target_rect = rect;
+        camera->rect = rect;
+      }
+    }
+
+    /////////////////////////////////
+    //~ Scrolled fall-through -> scroll viewport
+
+    B32 is_zooming = 0;
     for(UI_EventNode *n = ik_state->events->first, *next = 0; n != 0; n = next)
     {
       B32 taken = 0;
       next = n->next;
       UI_Event *evt = &n->v;
 
+      // camera zoom in/out
+      if(evt->kind == UI_EventKind_Scroll && evt->modifiers == OS_Modifier_Ctrl)
+      {
+        is_zooming = 1;
+
+        Vec2F32 delta = evt->delta_2f32;
+        Vec2S16 delta16 = v2s16((S16)(delta.x/30.f), (S16)(delta.y/30.f));
+        if(delta.x > 0 && delta16.x == 0) { delta16.x = +1; }
+        if(delta.x < 0 && delta16.x == 0) { delta16.x = -1; }
+        if(delta.y > 0 && delta16.y == 0) { delta16.y = +1; }
+        if(delta.y < 0 && delta16.y == 0) { delta16.y = -1; }
+
+        // get normalized rect
+        Rng2F32 rect = camera->rect;
+        Vec2F32 rect_center = center_2f32(camera->rect);
+        Vec2F32 shift = {-rect_center.x, -rect_center.y};
+        Vec2F32 shift_inv = rect_center;
+        rect = shift_2f32(rect, shift);
+
+        F32 zoom_step = mix_1f32(camera->min_zoom_step, camera->max_zoom_step, camera->zoom_t);
+        F32 scale_unit = 1.f+zoom_step;
+        F32 scale = pow_f32(scale_unit, (F32)delta.y);
+        rect.x0 *= scale;
+        rect.x1 *= scale;
+        rect.y0 *= scale;
+        rect.y1 *= scale;
+        rect = shift_2f32(rect, shift_inv);
+
+        // anchor mouse pos in world
+        Mat4x4F32 proj_mat_after = make_orthographic_vulkan_4x4f32(rect.x0, rect.x1, rect.y1, rect.y0, camera->zn, camera->zf);
+        Mat4x4F32 proj_mat_inv_after = inverse_4x4f32(proj_mat_after);
+        Vec2F32 mouse_in_world_after = ik_mouse_in_world(proj_mat_inv_after);
+        Vec2F32 world_delta = sub_2f32(ik_state->mouse_in_world, mouse_in_world_after);
+        rect = shift_2f32(rect, world_delta);
+        camera->target_rect = rect;
+        camera->anim_rate = ik_state->animation.fast_rate;
+
+        taken = 1;
+      }
+
+      // up-down scroll
       if(evt->kind == UI_EventKind_Scroll && evt->modifiers != OS_Modifier_Ctrl)
       {
         Vec2F32 delta = evt->delta_2f32;
@@ -1635,6 +1604,15 @@ ik_frame(void)
         ui_eat_event_node(ik_state->events, n);
       }
     }
+
+    /////////////////////////////////
+    //~ Camera animation
+
+    camera->rect.x0 += camera->anim_rate * (camera->target_rect.x0-camera->rect.x0);
+    camera->rect.x1 += camera->anim_rate * (camera->target_rect.x1-camera->rect.x1);
+    camera->rect.y0 += camera->anim_rate * (camera->target_rect.y0-camera->rect.y0);
+    camera->rect.y1 += camera->anim_rate * (camera->target_rect.y1-camera->rect.y1);
+    camera->zoom_t  += ik_state->animation.slow_rate * ((F32)is_zooming-camera->zoom_t);
 
     /////////////////////////////////
     //~ Mouse pressed on blank -> unset focus_hot & focus_active
@@ -2138,7 +2116,6 @@ ik_frame(void)
         next = box->next;
         if(ik_state->frame_index >= box->draw_frame_index)
         {
-          B32 is_focus_hot = ik_key_match(ik_state->focus_hot_box_key[IK_MouseButtonKind_Left], box->key);
           Rng2F32 dst = ik_rect_from_box(box);
           Vec2F32 center = center_2f32(dst);
           dst.p0 = mix_2f32(center, dst.p0, 1.0-box->disabled_t);
@@ -2241,14 +2218,6 @@ ik_frame(void)
             // MemoryCopyArray(inst->corner_radii, box->corner_radii);
           }
 
-          // draw focus hot overlay
-          if(is_focus_hot)
-          {
-            Vec4F32 clr = box->background_color;
-            clr.w = 0.01;
-            dr_rect_keyed(dst, clr, 0, 0, 0, box->key_2f32);
-          }
-          
           // draw selection highlight
           if(box->sig.f & IK_SignalFlag_Select && !zero_dim)
           {
@@ -2267,6 +2236,7 @@ ik_frame(void)
     }
 
     // draw focus hot overlay
+    if(ik_tool() == IK_ToolKind_Selection)
     {
       IK_Box *b = ik_box_from_key(ik_state->focus_hot_box_key[IK_MouseButtonKind_Left]);
       if(b)
@@ -6363,8 +6333,7 @@ ik_ui_notification(void)
                                                   .text = v4f32(0,0,0,1.0),
                                                   .background = ik_rgba_from_theme_color(IK_ThemeColor_Breakpoint)))
     UI_Flags(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawDropShadow)
-      ui_label(msg->string); // FIXME: text trunc not working
-      // ui_labelf("31290000000000000000000000000000000000000000000000");
+      ui_label(msg->string);
 
     if(msg->next) ui_spacer(ui_em(0.5,0.0));
   }

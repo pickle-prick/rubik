@@ -243,11 +243,6 @@ struct IK_Camera
   F32 min_zoom_step;
   F32 max_zoom_step;
   F32 zoom_t;
-
-  // drag state
-  B32 dragging;
-  Vec2F32 drag_start_mouse;
-  Rng2F32 drag_start_rect;
 };
 
 ////////////////////////////////
