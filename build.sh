@@ -64,7 +64,7 @@ fi
 # --- Pack Fonts ---------------------------------------------------------------
 if [ ! -v no_meta ]
 then
-  font_in_dir="./fonts"
+  font_in_dir="./data/fonts"
   font_out_dir="./local"
   for font in "${font_in_dir}"/*.{ttf,}; do
     if [[ -f "$font" ]]; then

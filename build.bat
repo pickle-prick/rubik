@@ -128,8 +128,8 @@ if not "%no_meta%"=="1" (
 
 :: --- Pack Fonts -------------------------------------------------------------
 if not "%no_meta%"=="1" (
-  set font_in_dir=%~dp0fonts
-  set font_out_dir=%~dp0local
+  set font_in_dir=%~dp0\data\fonts
+  set font_out_dir=%~dp0\local
   for %%G in (!font_in_dir!\*.ttf) do (
     set "name=%%~nG"
     echo Packing %%G to !font_out_dir!\!name!.h

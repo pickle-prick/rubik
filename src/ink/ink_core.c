@@ -604,20 +604,21 @@ ik_init(OS_Handle os_wnd, R_Handle r_wnd)
 
   // Fonts
 #if BUILD_DEBUG
-  ik_state->cfg_font_tags[IK_FontSlot_Main] = fnt_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
-  ik_state->cfg_font_tags[IK_FontSlot_Code] = fnt_tag_from_path(str8_lit("./fonts/Mplus1Code-Medium.ttf"));
-  ik_state->cfg_font_tags[IK_FontSlot_Icons] = fnt_tag_from_path(str8_lit("./fonts/icons.ttf"));
-  ik_state->cfg_font_tags[IK_FontSlot_IconsExtra] = fnt_tag_from_path(str8_lit("./fonts/icons_extra.ttf"));
-  ik_state->cfg_font_tags[IK_FontSlot_HandWrite1] = fnt_tag_from_path(str8_lit("./fonts/Virgil.ttf"));
-  ik_state->cfg_font_tags[IK_FontSlot_HandWrite2] = fnt_tag_from_path(str8_lit("./fonts/XiaolaiMono-Regular.ttf"));
+  ik_state->cfg_font_tags[IK_FontSlot_Main] = fnt_tag_from_path(str8_lit("./data/fonts/segoeui.ttf"));
+  ik_state->cfg_font_tags[IK_FontSlot_Code] = fnt_tag_from_path(str8_lit("./data/fonts/segoeui.ttf"));
+  ik_state->cfg_font_tags[IK_FontSlot_Icons] = fnt_tag_from_path(str8_lit("./data/fonts/icons.ttf"));
+  ik_state->cfg_font_tags[IK_FontSlot_IconsExtra] = fnt_tag_from_path(str8_lit("./data/fonts/icons_extra.ttf"));
+  ik_state->cfg_font_tags[IK_FontSlot_HandWrite1] = fnt_tag_from_path(str8_lit("./data/fonts/Virgil.ttf"));
+  ik_state->cfg_font_tags[IK_FontSlot_HandWrite2] = fnt_tag_from_path(str8_lit("./data/fonts/XiaolaiMono-Regular.ttf"));
 #else
-  String8 font_mplus = str8(ttf_Mplus1Code_Medium, ttf_Mplus1Code_Medium_len);
+  // String8 font_mono = str8(ttf_Mplus1Code_Medium, ttf_Mplus1Code_Medium_len);
+  String8 font_mono = str8(ttf_segoeui, ttf_segoeui_len);
   String8 font_icons = str8(ttf_icons, ttf_icons_len);
   String8 font_icons_extra = str8(ttf_icons_extra, ttf_icons_extra_len);
   String8 font_virgil = str8(ttf_Virgil, ttf_Virgil_len);
   String8 font_xiaolai = str8(ttf_XiaolaiMono_Regular, ttf_XiaolaiMono_Regular_len);
-  ik_state->cfg_font_tags[IK_FontSlot_Main] = fnt_tag_from_static_data_string(&font_mplus);
-  ik_state->cfg_font_tags[IK_FontSlot_Code] = fnt_tag_from_static_data_string(&font_mplus);
+  ik_state->cfg_font_tags[IK_FontSlot_Main] = fnt_tag_from_static_data_string(&font_mono);
+  ik_state->cfg_font_tags[IK_FontSlot_Code] = fnt_tag_from_static_data_string(&font_mono);
   ik_state->cfg_font_tags[IK_FontSlot_Icons] = fnt_tag_from_static_data_string(&font_icons);
   ik_state->cfg_font_tags[IK_FontSlot_IconsExtra] = fnt_tag_from_static_data_string(&font_icons_extra);
   ik_state->cfg_font_tags[IK_FontSlot_HandWrite1] = fnt_tag_from_static_data_string(&font_virgil);
@@ -6545,9 +6546,9 @@ ik_ui_checkbox(String8 key_string, B32 b)
       UI_WidthFill
       UI_HeightFill
       UI_Column
-      UI_Padding(ui_px(3.5,1.0))
+      UI_Padding(ui_px(4,1.0))
       UI_Row
-      UI_Padding(ui_px(3.5,1.0))
+      UI_Padding(ui_px(4,1.0))
       UI_CornerRadius(1.0)
       UI_Flags(UI_BoxFlag_MouseClickable|
                UI_BoxFlag_DrawBorder|
@@ -6572,7 +6573,7 @@ ik_ui_button(String8 string)
 { 
   UI_Signal sig;
   UI_Size pref_width = ui_top_pref_width();
-  F32 padding_px = 3.f;
+  F32 padding_px = 4.f;
   F32 font_size = ui_top_font_size() - padding_px;
   F32 corner_radius = 1.0;
 
