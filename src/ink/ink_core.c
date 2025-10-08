@@ -1179,11 +1179,11 @@ ik_frame(void)
   ik_ui_toolbar();
   ik_ui_bottom_bar();
   ik_ui_notification();
-  ik_ui_box_ctx_menu();
-  ik_ui_g_ctx_menu();
   ik_ui_selection();
   ik_ui_inspector();
   ik_ui_stats();
+  ik_ui_box_ctx_menu();
+  ik_ui_g_ctx_menu();
 
   ////////////////////////////////
   //~ Copy events
@@ -6383,10 +6383,10 @@ ik_ui_notification(void)
 internal void
 ik_ui_box_ctx_menu(void)
 {
-  IK_Key key = ik_state->focus_hot_box_key[IK_MouseButtonKind_Right];
-  IK_Box *box = ik_box_from_key(key);
+  IK_Key focus_hot_box_key = ik_state->focus_hot_box_key[IK_MouseButtonKind_Right];
+  IK_Box *box = ik_box_from_key(focus_hot_box_key);
   B32 deleted = 0;
-  B32 is_focus_active = ik_key_match(ik_state->focus_active_box_key, key);
+  B32 is_focus_active = ik_key_match(ik_state->focus_active_box_key, focus_hot_box_key);
   if(box && !(box->flags&IK_BoxFlag_OmitCtxMenu) && !is_focus_active)
   {
     UI_Key key = ui_key_from_stringf(ui_key_zero(), "box_ctx_menu_%I64u", box->key.u64[0]);
@@ -6438,11 +6438,19 @@ ik_ui_box_ctx_menu(void)
       }
     }
 
-    if(!ui_ctx_menu_is_open(key))
+    // NOTE: other parts of ui could close the ctx menu
+    B32 opened = ui_ctx_menu_is_open(key);
+    B32 close_next_frame = ui_state->next_ctx_menu_open == 0;
+
+    if(opened && close_next_frame)
+    {
+      ik_state->focus_hot_box_key[IK_MouseButtonKind_Right] = ik_key_zero();
+    }
+    else if(!opened)
     {
       ui_ctx_menu_open(key, ui_key_zero(), ui_state->mouse);
     }
-    else if(box->sig.f&IK_SignalFlag_RightPressed)
+    else if(opened && box->sig.f&IK_SignalFlag_RightPressed)
     {
       ui_ctx_menu_close();
     }
