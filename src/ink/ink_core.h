@@ -243,6 +243,9 @@ struct IK_Camera
   F32 min_zoom_step;
   F32 max_zoom_step;
   F32 zoom_t;
+
+  // pan stage
+  B32 is_panning;
 };
 
 ////////////////////////////////
@@ -745,6 +748,7 @@ struct IK_State
   IK_Key                press_key_history[IK_MouseButtonKind_COUNT][3];
   Vec2F32               press_pos_history[IK_MouseButtonKind_COUNT][3];
 
+  B32                   g_ctx_menu_open;
   Vec2F32               drag_start_mouse;
   Arena                 *drag_state_arena;
   String8               drag_state_data;
