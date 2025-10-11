@@ -543,6 +543,46 @@ struct IK_BoxList
 };
 
 ////////////////////////////////
+//- Action
+
+typedef enum IK_ActionKind
+{
+  IK_ActionKind_Create,
+  IK_ActionKind_Delete,
+  // IK_ActionKind_Edit,
+  IK_ActionKind_COUNT,
+} IK_ActionKind;
+
+typedef struct IK_Action IK_Action;
+struct IK_Action
+{
+  IK_ActionKind kind;
+  union
+  {
+    struct
+    {
+      IK_Box *first;
+    } create;
+
+    struct
+    {
+      IK_Box *first;
+    } delete;
+  } v;
+};
+
+typedef struct IK_ActionRing IK_ActionRing;
+struct IK_ActionRing
+{
+  U64 head; // next write pos
+  U64 mark; // last write pos
+  U64 tail; // oldest write pos
+  IK_Action *slots;
+  U64 slot_count;
+  U64 write_count; // diff between head and tail
+};
+
+////////////////////////////////
 //- Frame
 
 typedef struct IK_BoxHashSlot IK_BoxHashSlot;
@@ -574,6 +614,9 @@ struct IK_Frame
 
   // image cache
   IK_ImageCacheSlot image_cache_table[1024];
+
+  // action ring buffer
+  IK_ActionRing action_ring;
 
   // free stack
   IK_Box *first_free_box;
@@ -967,6 +1010,22 @@ internal IK_Box* ik_arrow(void);
 
 internal void ik_box_do_scale(IK_Box *box, Vec2F32 scale, Vec2F32 origin);
 internal void ik_box_do_translate(IK_Box *box, Vec2F32 translate);
+
+/////////////////////////////////
+//~ Action Type Functions
+
+//- ring buffer operations
+internal IK_Action *ik_action_ring_write();
+internal IK_Action *ik_action_ring_backward();
+internal IK_Action *ik_action_ring_forward();
+
+//- action undo/redo
+internal void ik_action_undo(IK_Action *action);
+internal void ik_action_redo(IK_Action *action);
+
+//- state undo/redo
+internal B32 ik_undo();
+internal B32 ik_redo();
 
 /////////////////////////////////
 //~ Point Function

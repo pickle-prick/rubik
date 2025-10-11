@@ -2922,6 +2922,10 @@ ik_frame_alloc()
 
   Arena *arena = frame->arena;
 
+  // alloc action ring buffer
+  frame->action_ring.slot_count = 1024;
+  frame->action_ring.slots = push_array(arena, IK_Action, frame->action_ring.slot_count);
+
   /////////////////////////////////
   //~ Fill default settings
 
@@ -3091,7 +3095,7 @@ ik_build_box_from_stringf(IK_BoxFlags flags, char *fmt, ...)
 //- box node destruction
 internal void
 ik_box_release(IK_Box *box)
-{
+{ 
   IK_Frame *frame = box->frame;
   IK_Box *group = box->group;
 
@@ -4171,6 +4175,100 @@ ik_box_do_translate(IK_Box *box, Vec2F32 translate)
     ik_box_do_translate(child, translate);
   }
 }
+
+/////////////////////////////////
+//~ Action Type Functions
+
+//- ring buffer operations
+
+internal IK_Action *
+ik_action_ring_write()
+{
+  IK_Frame *frame = ik_top_frame();
+  IK_ActionRing *ring = &frame->action_ring;
+
+  U64 next_head = (ring->head+1) % ring->slot_count;
+  U64 next_tail = ring->tail;
+
+  U64 written = 1;
+  if(ring->write_count > 0 && ring->head == ring->tail)
+  {
+    next_tail = ring->head;
+    written = 0;
+  }
+
+  IK_Action *ret = &ring->slots[ring->head];
+  // commit head&tail
+  ring->mark = ring->head;
+  ring->head = next_head;
+  ring->tail = next_tail;
+  ring->write_count += written;
+  return ret;
+}
+
+internal IK_Action *
+ik_action_ring_backward()
+{
+  IK_Frame *frame = ik_top_frame();
+  IK_ActionRing *ring = &frame->action_ring;
+
+  IK_Action *ret = 0;
+  U64 next_head = (ring->head-1) % ring->slot_count;
+  if(ring->write_count > 0)
+  {
+    ret = &ring->slots[next_head];
+    // commit head
+    ring->head = next_head;
+    ring->write_count--;
+  }
+  return ret;
+}
+
+internal IK_Action *
+ik_action_ring_forward()
+{
+  IK_Frame *frame = ik_top_frame();
+  IK_ActionRing *ring = &frame->action_ring;
+  IK_Action *ret = 0;
+  U64 next_head = (ring->head+1) % ring->slot_count;
+  U64 marked_head = (ring->mark+1) % ring->slot_count;
+  if(marked_head != next_head)
+  {
+    ret = &ring->slots[ring->head];
+    ring->head = next_head;
+    ring->write_count++;
+  }
+  return ret;
+}
+
+//- action undo/redo
+
+internal void
+ik_action_undo(IK_Action *action)
+{
+  switch(action->kind)
+  {
+    case IK_ActionKind_Create:
+    {
+      for(IK_Box *box = action->v.create.first, *next = 0; box != 0; box = next)
+      {
+        // next = box->create_next;
+        // FIXME: soft delete
+      }
+    }break;
+    case IK_ActionKind_Delete:
+    {
+      for(IK_Box *box = action->v.create.first, *next = 0; box != 0; box = next)
+      {
+        // next = box->delete_next;
+        // FIXME: create
+      }
+    }break;
+    default:{}break;
+  }
+}
+
+//- state undo/redo
 
 /////////////////////////////////
 //~ Point Function
