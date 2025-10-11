@@ -502,20 +502,20 @@ ik_key_from_stringf(IK_Key seed_key, char *fmt, ...)
   return result;
 }
 
-internal B32
+internal inline B32
 ik_key_match(IK_Key a, IK_Key b)
 {
-  return a.u64[0] == b.u64[0] && a.u64[1] == b.u64[1];
+  return MemoryMatchStruct(&a,&b);
 }
 
-internal IK_Key
+internal inline IK_Key
 ik_key_make(U64 a, U64 b)
 {
   IK_Key result = {a,b};
   return result;
 }
 
-internal IK_Key
+internal inline IK_Key
 ik_key_zero()
 {
   return (IK_Key){0}; 
@@ -535,6 +535,8 @@ ik_2f32_from_key(IK_Key key)
   U32 high = (key.u64[0]>>32);
   U32 low = key.u64[0];
   Vec2F32 ret = {*((F32*)&high), *((F32*)&low)};
+  // FIXME: vulkan could drop subnormal number (< 1.0e-39) to 0
+  // https://stackoverflow.com/questions/73498522/writing-small-floats-to-fbo-in-vulkan
   return ret;
 }
 
@@ -2122,6 +2124,7 @@ ik_frame(void)
       Rng2F32 rect = {0,0, ik_state->window_dim.x, ik_state->window_dim.y};
       // Vec4F32 clr = rgba_from_u32(0xFF0F0E0E);
       U32 src = 0x660B05FF;
+      // U32 src = 0x8C1007FF;
       Vec4F32 clr = linear_from_srgba(rgba_from_u32(src));
       dr_rect_keyed(rect, clr, 0,0,0, frame->blank->key_2f32);
     }
@@ -3846,7 +3849,7 @@ IK_BOX_DRAW(stroke)
     // scale stroke size based on dist, mimic ink pen effect
     F32 dist = length_2f32(sub_2f32(m1, m2));
     F32 t = round_f32(dist/base_stroke_size);
-    F32 scale = mix_1f32(1.0, 0.2, t/2.0);
+    F32 scale = mix_1f32(1.0, 0.25, t/2.0);
     scale = last_scale*0.9+0.1*scale;
     last_scale = scale;
     F32 stroke_size = base_stroke_size*scale;

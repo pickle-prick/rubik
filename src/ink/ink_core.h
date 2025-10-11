@@ -821,9 +821,9 @@ internal String8 ik_display_part_from_key_string(String8 string);
 
 internal IK_Key ik_key_from_string(IK_Key seed, String8 string);
 internal IK_Key ik_key_from_stringf(IK_Key seed, char* fmt, ...);
-internal B32    ik_key_match(IK_Key a, IK_Key b);
-internal IK_Key ik_key_make(U64 a, U64 b);
-internal IK_Key ik_key_zero();
+internal inline B32 ik_key_match(IK_Key a, IK_Key b);
+internal inline IK_Key ik_key_make(U64 a, U64 b);
+internal inline IK_Key ik_key_zero();
 internal IK_Key ik_key_new();
 internal Vec2F32 ik_2f32_from_key(IK_Key key);
 internal IK_Key ik_key_from_2f32(Vec2F32 key_2f32);

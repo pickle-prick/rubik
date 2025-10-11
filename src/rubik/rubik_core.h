@@ -23,7 +23,7 @@ struct RK_Key
 ////////////////////////////////
 //~ Frame Entry
 
-#define RK_FRAME_ENTRY_UPDATE(name) B32 name(DR_Bucket **return_buckets, U64 *return_bucket_count)
+#define RK_FRAME_ENTRY_UPDATE(name) B32 name(DR_Bucket ***return_buckets, U64 *return_bucket_count)
 typedef RK_FRAME_ENTRY_UPDATE(RK_FrameEntryUpdateFunctionType);
 
 typedef struct RK_FrameEntry RK_FrameEntry;
@@ -97,7 +97,7 @@ struct RK_State
   Vec2F32 mouse_delta;
 
   // pixel key
-  U64 hot_pixel_key;
+  RK_Key pixel_hot_key;
 
   // animation
   struct
@@ -132,11 +132,13 @@ internal String8 rk_display_part_from_key_string(String8 string);
 /////////////////////////////////
 //~ Key
 
-internal RK_Key rk_key_from_string(RK_Key seed, String8 string);
-internal RK_Key rk_key_from_stringf(RK_Key seed, char* fmt, ...);
-internal B32    rk_key_match(RK_Key a, RK_Key b);
-internal RK_Key rk_key_make(U64 a, U64 b);
-internal RK_Key rk_key_zero();
+internal RK_Key  rk_key_from_string(RK_Key seed, String8 string);
+internal RK_Key  rk_key_from_stringf(RK_Key seed, char* fmt, ...);
+internal B32     rk_key_match(RK_Key a, RK_Key b);
+internal RK_Key  rk_key_make(U64 a, U64 b);
+internal RK_Key  rk_key_zero();
+internal Vec2F32 rk_2f32_from_key(RK_Key key);
+internal RK_Key  rk_key_from_2f32(Vec2F32 key_2f32);
 
 /////////////////////////////////
 //~ Entry Call Functions

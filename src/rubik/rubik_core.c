@@ -1,18 +1,101 @@
 /////////////////////////////////
 //~ Basic Type Functions
 
-internal U64     rk_hash_from_string(U64 seed, String8 string);
-internal String8 rk_hash_part_from_key_string(String8 string);
-internal String8 rk_display_part_from_key_string(String8 string);
+internal U64
+rk_hash_from_string(U64 seed, String8 string)
+{
+  U64 result = XXH3_64bits_withSeed(string.str, string.size, seed);
+  return result;
+}
+
+internal String8
+rk_hash_part_from_key_string(String8 string)
+{
+  String8 result = string;
+  // k: look for ### patterns, which can replace the entirety of the part of
+  // the string that is hashed.
+  U64 hash_replace_signifier_pos = str8_find_needle(string, 0, str8_lit("###"), 0);
+  if(hash_replace_signifier_pos < string.size)
+  {
+    result = str8_skip(string, hash_replace_signifier_pos);
+  }
+  return result;
+}
+
+internal String8
+rk_display_part_from_key_string(String8 string)
+{
+  U64 hash_pos = str8_find_needle(string, 0, str8_lit("##"), 0);
+  string.size = hash_pos;
+  return string;
+}
 
 /////////////////////////////////
 //~ Key
 
-internal RK_Key rk_key_from_string(RK_Key seed, String8 string);
-internal RK_Key rk_key_from_stringf(RK_Key seed, char* fmt, ...);
-internal B32    rk_key_match(RK_Key a, RK_Key b);
-internal RK_Key rk_key_make(U64 a, U64 b);
-internal RK_Key rk_key_zero();
+internal RK_Key rk_key_from_string(RK_Key seed, String8 string)
+{
+  RK_Key result = {0};
+  if(string.size != 0)
+  {
+    String8 hash_part = rk_hash_part_from_key_string(string);
+    result.u64[0] = rk_hash_from_string(seed.u64[0], hash_part);
+  }
+  return result;
+}
+
+internal RK_Key
+rk_key_from_stringf(RK_Key seed, char* fmt, ...)
+{
+  Temp scratch = scratch_begin(0,0);
+  va_list args;
+  va_start(args, fmt);
+  String8 string = push_str8fv(scratch.arena, fmt, args);
+  va_end(args);
+
+  RK_Key result = {0};
+  result = rk_key_from_string(seed, string);
+  scratch_end(scratch);
+  return result;
+}
+
+internal B32
+rk_key_match(RK_Key a, RK_Key b)
+{
+  return MemoryMatchStruct(&a,&b);
+}
+
+internal RK_Key
+rk_key_make(U64 a, U64 b)
+{
+  RK_Key result = {a,b};
+  return result;
+}
+
+internal RK_Key
+rk_key_zero()
+{
+  return (RK_Key){0}; 
+}
+
+internal Vec2F32
+rk_2f32_from_key(RK_Key key)
+{
+  U32 high = (key.u64[0]>>32);
+  U32 low = key.u64[0];
+  Vec2F32 ret = {*((F32*)&high), *((F32*)&low)};
+  return ret;
+}
+
+internal RK_Key
+rk_key_from_2f32(Vec2F32 key_2f32)
+{
+  U32 high = *((U32*)(&key_2f32.x));
+  U32 low = *((U32*)(&key_2f32.y));
+  U64 key = ((U64)high<<32) | ((U64)low);
+  RK_Key ret = {key, 0};
+  return ret;
+}
 
 /////////////////////////////////
 //~ Entry Call Functions
@@ -119,7 +202,7 @@ rk_frame(void)
 
   // Call frame entry
   RK_FrameEntry *entry = rk_state->entry;
-  DR_Bucket *buckets = 0;
+  DR_Bucket **buckets = 0;
   U64 bucket_count = 0;
   if(entry)
   {
@@ -138,9 +221,9 @@ rk_frame(void)
     r_window_begin_frame(rk_state->os_wnd, rk_state->r_wnd);
     for(U64 i = 0; i < bucket_count; i++)
     {
-      dr_submit_bucket(rk_state->os_wnd, rk_state->r_wnd, &buckets[i]);
+      dr_submit_bucket(rk_state->os_wnd, rk_state->r_wnd, buckets[i]);
     }
-    rk_state->hot_pixel_key = r_window_end_frame(rk_state->os_wnd, rk_state->r_wnd, rk_state->mouse);
+    rk_state->pixel_hot_key = rk_key_from_2f32(r_window_end_frame(rk_state->os_wnd, rk_state->r_wnd, rk_state->mouse));
     r_end_frame();
   }
 
