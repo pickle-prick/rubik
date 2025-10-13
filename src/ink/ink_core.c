@@ -2961,6 +2961,7 @@ ik_frame_alloc()
                                             IK_BoxFlag_ClickToFocus|
                                             IK_BoxFlag_Orphan|
                                             IK_BoxFlag_DrawBorder|
+                                            IK_BoxFlag_DrawBackground|
                                             IK_BoxFlag_DrawDropShadow|
                                             IK_BoxFlag_DragToPosition|
                                             IK_BoxFlag_OmitGroupSelection|
@@ -2969,6 +2970,7 @@ ik_frame_alloc()
                                             IK_BoxFlag_FitChildren,
                                             "select");
   frame->select->hover_cursor = OS_Cursor_UpDownLeftRight;
+  frame->select->background_color.w = 0.05;
 
   ik_pop_frame();
   ik_pop_background_color();
@@ -4965,7 +4967,7 @@ ik_ui_man_page()
   UI_Box *container;
   UI_Rect(rect)
     UI_Flags(UI_BoxFlag_MouseClickable|UI_BoxFlag_Scroll|UI_BoxFlag_DrawBackground)
-    UI_Transparency(mix_1f32(0, 0.3, open_t))
+    UI_Transparency(mix_1f32(0, 0.2, open_t))
     UI_Squish(1.f-open_t)
     container = ui_build_box_from_stringf(0, "###man_page_container");
 
