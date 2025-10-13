@@ -99,6 +99,22 @@ void main()
   out_color.a *= corner_sdf_t;
   out_color.a *= line_sdf_t;
 
+  // FIXME: move this into some dedicated color grading pass or just implement 3D LUT
+  // warmer
+  mat3 warm_mat = mat3(
+    1.10,  0.05, -0.02,
+    0.00,  1.00,  0.00,
+    -0.05, -0.05,  0.95
+  );
+  vec3 c = warm_mat*out_color.rgb;
+  // desaturate slightly
+  float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = mix(vec3(lum), c, 0.9);
+  // slight fade blacks / lift shadows
+  c = mix(vec3(0.02), c, vec3(0.98));
+  c = clamp(c, 0.0, 1.0);
+  out_color.rgb = c;
+
   vec4 id = vec4(pixel_id.xy,0.0,1.0);
   if(has_pixel_id == 0.0)
   {
