@@ -3839,7 +3839,7 @@ IK_BOX_DRAW(stroke)
   IK_Point *p2 = p1 ? p1->next : 0;
 
   Vec4F32 stroke_color = linear_from_srgba(box->stroke_color);
-  F32 edge_softness = 0.25f * ik_state->world_to_screen_ratio.x;
+  F32 edge_softness = 1.f * ik_state->world_to_screen_ratio.x;
 
   F32 last_scale = 1.0;
   F32 last_point_drawn = 0;
@@ -3853,7 +3853,7 @@ IK_BOX_DRAW(stroke)
     // scale stroke size based on dist, mimic ink pen effect
     F32 dist = length_2f32(sub_2f32(m1, m2));
     F32 t = round_f32(dist/base_stroke_size);
-    F32 scale = mix_1f32(1.0, 0.25, t/2.0);
+    F32 scale = mix_1f32(1.0, 0.15, t/2.0);
     scale = last_scale*0.9+0.1*scale;
     last_scale = scale;
     F32 stroke_size = base_stroke_size*scale;
@@ -3866,7 +3866,9 @@ IK_BOX_DRAW(stroke)
       Vec2F32 p2 = m2;
 
       // decide step size
-      U64 steps = 3;
+      F32 dist_px = length_2f32(sub_2f32(p0,p2))/ik_state->world_to_screen_ratio.x;
+      U64 steps = floor_f32(dist_px/4.0);
+      steps = Clamp(1, steps, 20);
 
       Vec2F32 prev = p0;
       for(U64 i = 1; i <= steps; i++)
@@ -3885,8 +3887,8 @@ IK_BOX_DRAW(stroke)
         {
           dr_line_keyed(prev, pt, stroke_color, stroke_size, edge_softness, box->key_2f32);
         }
-
 #else
+        F32 half_stroke_size = stroke_size/2.0;
         {
           Vec2F32 pos = prev;
           Rng2F32 rect = {pos.x-half_stroke_size, pos.y-half_stroke_size, pos.x+half_stroke_size, pos.y+half_stroke_size};
@@ -3898,7 +3900,6 @@ IK_BOX_DRAW(stroke)
           dr_rect(rect, stroke_color, half_stroke_size, 0, edge_softness);
         }
 #endif
-
         prev = pt;
       }
     }
@@ -4027,7 +4028,7 @@ IK_BOX_DRAW(arrow)
     Vec2F32 dir = normalize_2f32(sub_2f32(b, c));
     Vec2F32 dir_inv = {-dir.x, -dir.y};
     F32 angle_turns = 0.08;
-    F32 arrow_length = stroke_size * 12;
+    F32 arrow_length = stroke_size * 6;
 
     // up
     Vec2F32 up =
@@ -4053,11 +4054,19 @@ IK_BOX_DRAW(arrow)
     Vec2F32 p0 = a;
     Vec2F32 p1 = c;
     Vec2F32 p2 = b;
-    U64 steps = 10;
+
+    // decide step size 
+    F32 dist_px = length_2f32(sub_2f32(p0,p2))/ik_state->world_to_screen_ratio.x;
+    U64 steps = floor_f32(dist_px/4.0);
+    steps = Clamp(1, steps, 30);
 
     Vec2F32 prev = p0;
+    F32 last_scaled_stroke_size = stroke_size;
     for(U64 i = 1; i <= steps; i++)
     {
+      F32 scaled_stroke_size = last_scaled_stroke_size*0.96f;
+      scaled_stroke_size = ClampBot(stroke_size*0.25, scaled_stroke_size);
+      last_scaled_stroke_size = scaled_stroke_size;
       F32 t = (F32)i / (F32)steps;
       F32 u = 1.0f - t;
 
@@ -4067,7 +4076,7 @@ IK_BOX_DRAW(arrow)
       };
 
       // draw line segment (prev → pt) with thickness
-      dr_line_keyed(prev, pt, stroke_clr, stroke_size, edge_softness, box->key_2f32);
+      dr_line_keyed(prev, pt, stroke_clr, scaled_stroke_size, edge_softness, box->key_2f32);
       prev = pt;
     }
   }

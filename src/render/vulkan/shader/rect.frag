@@ -33,7 +33,6 @@ layout(set = 0, binding = 0) uniform Globals
   float _padding1_[2];                  // F32 _padding1_;
 } globals;
 
-// There are equivalent sampler1D and sampler3D types for other types of images
 layout(set = 1, binding = 0) uniform sampler2D tex_sampler;
 
 float rect_sdf(vec2 pos, vec2 rect_size, float r)
@@ -69,8 +68,8 @@ void main()
   bool draw_line = !all(equal(a,b));
   if(draw_line)
   {
-    float line_sdf_s = line_sdf(sdf_sample_pos, a, b, line_thickness_px/2);
-    line_sdf_t = 1.0 - smoothstep(0, softness_px*2, line_sdf_s);
+    float line_sdf_s = line_sdf(sdf_sample_pos, a, b, line_thickness_px/2.0-softness_px*2.0);
+    line_sdf_t = 1.0 - smoothstep(0, softness_px*2.0, line_sdf_s);
   }
 
   // Sample for borders
@@ -86,6 +85,7 @@ void main()
   // Sample for corners
   float corner_sdf_t = 1.0;
   if(corner_radius_px > 0 || softness_px > 0.75)
+  // if(corner_radius_px > 0 || softness_px > 0)
   {
     float corner_sdf_s = rect_sdf(sdf_sample_pos, rect_half_size_px - 2*softness_px, corner_radius_px);
     corner_sdf_t = 1.0 - smoothstep(0, 2*softness_px, corner_sdf_s);
