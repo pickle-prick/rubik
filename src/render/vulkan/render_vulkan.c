@@ -3583,8 +3583,11 @@ r_init(OS_Handle window, B32 debug)
   if(major < 1 || minor < 3)
   {
     // VK_API_VERSION_1_3
-    fprintf(stderr, "Vulkan api version >= 1.3 is required\n");
-    exit(1);
+    Temp scratch = scratch_begin(0, 0);
+    String8 message = push_str8f(scratch.arena, "Unsupported Vulkan version (%i.%i, need at least 1.3)", major, minor);
+    os_graphical_message(1, str8_lit("Fatal Error"), message);
+    os_abort(1);
+    scratch_end(scratch);
   }
 
   ////////////////////////////////
@@ -5733,8 +5736,11 @@ r_window_submit(OS_Handle window, R_Handle window_equip, R_PassList *passes)
 
           if(inst_idx > R_MAX_RECT_INSTANCES)
           {
-            fprintf(stderr, "too many rects, %lu > %d\n", inst_idx, R_MAX_RECT_INSTANCES);
-            exit(1);
+            Temp scratch = scratch_begin(0, 0);
+            String8 message = push_str8f(scratch.arena, "Too many rects for one frame, %I64u > %i", inst_idx, R_MAX_RECT_INSTANCES);
+            os_graphical_message(1, str8_lit("Fatal Error"), message);
+            os_abort(1);
+            scratch_end(scratch);
           }
 
           // Bind instance buffer

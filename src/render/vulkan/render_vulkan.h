@@ -744,9 +744,12 @@ internal VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeveri
 #define VK_Assert(result) \
   do { \
     if((result) != VK_SUCCESS) { \
-      fprintf(stderr, "[VK_ERROR] [CODE: %d] in (%s)(%s:%d)\n", result, __FUNCTION__, __FILE__, __LINE__); \
+      Temp scratch = scratch_begin(0, 0); \
+      String8 err_msg = push_str8f(scratch.arena, "[VK_ERROR] [CODE: %d] in (%s)(%s:%i)", result, __FUNCTION__, __FILE__, __LINE__); \
+      os_graphical_message(1, str8_lit("Fatal Error"), err_msg); \
       Trap(); \
-      exit(EXIT_FAILURE); \
+      os_abort(1); \
+      scratch_end(scratch); \
     } \
   } while (0)
 
