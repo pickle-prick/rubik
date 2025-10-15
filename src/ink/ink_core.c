@@ -1186,6 +1186,7 @@ ik_frame(void)
   ik_ui_stats();
   ik_ui_box_ctx_menu();
   ik_ui_g_ctx_menu();
+  ik_ui_version();
 
   ////////////////////////////////
   //~ Copy events
@@ -6676,6 +6677,16 @@ ik_ui_g_ctx_menu()
   {
     ui_ctx_menu_open(key, ui_key_zero(), ui_state->mouse);
   }
+}
+
+internal void
+ik_ui_version()
+{
+  char *display = BUILD_TITLE_STRING_LITERAL;
+  UI_FixedX(0) UI_FixedY(0)
+    UI_Flags(UI_BoxFlag_DrawText)
+    UI_PrefWidth(ui_text_dim(0.0,0.0))
+    ui_build_box_from_stringf(0, "%s", BUILD_TITLE_STRING_LITERAL);
 }
 
 internal UI_Signal

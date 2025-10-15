@@ -7,7 +7,7 @@
 ////////////////////////////////
 //~ Build options
 
-#define BUILD_TITLE          str8_lit("Ink")
+#define BUILD_TITLE          "Ink"
 #define OS_FEATURE_GRAPHICAL 1
 #define OS_FEATURE_AUDIO     0
 
@@ -86,7 +86,7 @@ entry_point(CmdLine *cmd_line)
   {
     window_rect = r2f32p(0,0, 1600, 1000);
   }
-  String8 window_title = BUILD_TITLE;
+  String8 window_title = str8_lit(BUILD_TITLE);
 
   // open window
   OS_Handle os_wnd = os_window_open(window_rect, 0, window_title);

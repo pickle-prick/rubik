@@ -1070,6 +1070,7 @@ internal void      ik_ui_bottom_bar(void);
 internal void      ik_ui_notification(void);
 internal void      ik_ui_box_ctx_menu(void);
 internal void      ik_ui_g_ctx_menu(void);
+internal void      ik_ui_version(void);
 internal UI_Signal ik_ui_checkbox(String8 key_string, B32 b);
 internal UI_Signal ik_ui_button(String8 string);
 internal UI_Signal ik_ui_buttonf(char *fmt, ...);
