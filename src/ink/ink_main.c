@@ -7,9 +7,10 @@
 ////////////////////////////////
 //~ Build options
 
-#define BUILD_TITLE          "Ink"
-#define OS_FEATURE_GRAPHICAL 1
-#define OS_FEATURE_AUDIO     0
+#define BUILD_TITLE                      "Ink"
+#define OS_FEATURE_GRAPHICAL             1
+#define OS_FEATURE_AUDIO                 0
+#define BUILD_ISSUES_LINK_STRING_LITERAL "https://github.com/pickle-prick/ink/issues"
 
 ////////////////////////////////
 //~ Includes
