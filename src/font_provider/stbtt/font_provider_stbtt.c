@@ -19,9 +19,10 @@ fp_font_open(String8 path)
   FP_STBTT_Font *font = push_array(arena, FP_STBTT_Font, 1);
 
   // read content from path
-  OS_Handle file = os_file_open(OS_AccessFlag_Read, path);
+  OS_Handle file = os_file_open(OS_AccessFlag_Read|OS_AccessFlag_ShareRead, path);
   FileProperties props = os_properties_from_file(file);
   font->buffer = os_string_from_file_range(arena, file, rng_1u64(0,props.size));
+  os_file_close(file);
 
   // init the font info
   AssertAlways(stbtt_InitFont(&font->info, (const unsigned char*)font->buffer.str, 0) != 0);
